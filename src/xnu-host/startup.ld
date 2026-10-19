@@ -2,6 +2,8 @@
  * declares its entries writable and keeps all linked initialization records. */
 SECTIONS
 {
+  PROVIDE (__xnu_text_start = ADDR(.text));
+  PROVIDE (__xnu_text_end = ADDR(.text) + SIZEOF(.text));
   .xnu_startup_entries : ALIGN(8)
   {
     PROVIDE ("section$start$__BOOTDATA$__init_entry_set" = .);

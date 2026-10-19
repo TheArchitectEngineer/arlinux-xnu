@@ -284,6 +284,15 @@ void
 }
 
 void
+fillPage(ppnum_t page, unsigned int fill)
+{
+    assert(page && page < frame_limit);
+    unsigned int *words = (void *)phystokv((pmap_paddr_t)page * PAGE_SIZE);
+    for (unsigned int index = 0; index < PAGE_SIZE / sizeof(*words); index++)
+        words[index] = fill;
+}
+
+void
 (pmap_copy_part_page)(ppnum_t source, vm_offset_t source_offset,
     ppnum_t target, vm_offset_t target_offset, vm_size_t length)
 {
@@ -362,6 +371,11 @@ xnu_host_pmap_bootstrap(void)
     (pmap_zero_page)(first);
     assert(right[0] == 0 && right[PAGE_SIZE - 1] == 0);
     assert(copy[0] == 0x5a && copy[PAGE_SIZE - 1] == 0xa5);
+    fillPage(second, 0x89abcdefu);
+    volatile unsigned int *filled = (void *)copy;
+    for (unsigned int index = 0; index < PAGE_SIZE / sizeof(*filled); index++)
+        assert(filled[index] == 0x89abcdefu);
+    assert(left[0] == 0 && right[PAGE_SIZE - 1] == 0);
     (pmap_zero_page)(second);
     pmap_protect(kernel_pmap, a, a + PAGE_SIZE, VM_PROT_READ);
     assert(xnu_host_memory_expect_fault(a, 1) == 0);
@@ -393,7 +407,7 @@ xnu_host_pmap_bootstrap(void)
     assert(pmap_query_resident(kernel_pmap, a, b + PAGE_SIZE, &compressed) == 0 &&
         compressed == 0 && copy[0] == 0x7b);
     (pmap_zero_page)(second);
-    kprintf("XNU_HOST_PMAP resident/block/reclaim/shared-alias/copy/zero/protect/disconnect/fault passed free_pages=%u (VM not initialized)\n",
+    kprintf("XNU_HOST_PMAP fill/resident/block/reclaim/shared-alias/copy/zero/protect/disconnect/fault passed free_pages=%u (VM not initialized)\n",
         pmap_free_pages());
     return 0;
 }

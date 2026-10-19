@@ -10,6 +10,7 @@
 #include <host/memory.h>
 #include <host/time.h>
 #include <host/entropy.h>
+#include <host/image.h>
 
 int
 xnu_host_kernel_early_startup(void)
@@ -19,6 +20,7 @@ xnu_host_kernel_early_startup(void)
     assert(current_cpu_datap()->cpu_number == 0);
     assert(cpu_number() == 0 && cpu_datap(0) == current_cpu_datap());
     assert(exception_stack_pointer() != 0);
+    xnu_host_image_initialize();
     int error = xnu_host_pmap_bootstrap();
     if (error)
         return error;
