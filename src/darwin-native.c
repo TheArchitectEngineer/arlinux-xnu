@@ -22,6 +22,7 @@
 #include <time.h>
 #include <fcntl.h>
 #include <linux/stat.h>
+#include <sched.h>
 
 extern long darwin_raw(long, long, long, long, long, long, long);
 extern char darwin_raw_return[];
@@ -52,12 +53,12 @@ static int darwin_error(long result)
 static void trace_call(unsigned long number,unsigned long pc,unsigned long result)
 {
     /* Bounded, TLS/libc-free diagnosis. No guest buffers or credentials. */
-    char line[100];
-    const char *labels[] = {"DARWIN_CALL nr=0x"," pc=0x"," result=0x"};
-    unsigned long values[] = {number,pc,result};
+    char line[140];
+    const char *labels[] = {"DARWIN_CALL nr=0x"," pc=0x"," result=0x"," tid=0x"};
+    unsigned long values[] = {number,pc,result,RAW(SYS_gettid,0,0,0,0,0,0)};
     const char hex[] = "0123456789abcdef";
     unsigned int n=0;
-    for (unsigned int i=0;i<3;i++) {
+    for (unsigned int i=0;i<4;i++) {
         for (const char *p=labels[i];*p;p++) line[n++]=*p;
         for (int bit=60;bit>=0;bit-=4) line[n++]=hex[(values[i]>>bit)&15];
     }
@@ -200,6 +201,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 }
 
 #include "darwin-ipc.h"
+#include "darwin-threads.h"
 
 static void dispatch(int signal, siginfo_t *info, void *context)
 {
@@ -222,6 +224,21 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
             return;
         }
+        if (number==27) {
+            struct native_thread *thread=native_current_thread();
+            r[0]=thread ? thread->port : 0;
+            if (thread) __atomic_fetch_add(&thread->refs,1,__ATOMIC_RELAXED);
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
+        if (number==14) {
+            if (r[0]!=CURRENT_TASK_PORT) r[0]=16;
+            else if (r[3] || (r[4]&~3UL)) r[0]=46;
+            else if ((r[1]&16383) || !r[2] || r[2]>(1ULL<<32)) r[0]=4;
+            else r[0]=RAW(SYS_mprotect,r[1],(r[2]+16383)&~16383UL,r[4],0,0,0) ? 1 : 0;
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
         if (number==29 || number==26) {
             if (number==29) host_send_refs++;
             r[0]=number==29 ? CURRENT_HOST_PORT : ipc_reply_port();
@@ -234,7 +251,13 @@ static void dispatch(int signal, siginfo_t *info, void *context)
                 r[1]==CALENDAR_CLOCK_PORT ? &clock_send_refs[1] : NULL;
             if (r[0]!=CURRENT_TASK_PORT) r[0]=16;
             else if (refs && *refs) { --*refs; r[0]=0; }
-            else r[0]=15; /* KERN_INVALID_NAME */
+            else {
+                struct native_thread *thread=native_thread_port(r[1]);
+                if (thread && __atomic_load_n(&thread->refs,__ATOMIC_ACQUIRE)) {
+                    __atomic_fetch_sub(&thread->refs,1,__ATOMIC_ACQ_REL); r[0]=0;
+                } else r[0]=15;
+                native_reap_threads();
+            }
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
             return;
         }
@@ -333,8 +356,19 @@ static void dispatch(int signal, siginfo_t *info, void *context)
                 for (unsigned int i=0;i<r[4]/8;i++) trace_call(i,uc->uc_mcontext.pc,metadata[i]);
             }
         }
+        result=r[16]==366 ? native_thread_register(r) : native_thread_create(r);
         break;
     }
+    case 361: result=native_thread_terminate(r); break;
+    case 515: case 516:
+        result=native_ulock(r);
+        if (r[0]&0x01000000U) {
+            trace_call(r[16],uc->uc_mcontext.pc,result);
+            r[0]=result<0 ? -(long)darwin_error(result) : result;
+            uc->uc_mcontext.pstate&=~CARRY;
+            return;
+        }
+        break;
     case 381: {                /* __mac_syscall: compatibility dyld policy only */
         char policy[5];
         struct iovec local={policy,sizeof(policy)},remote={(void *)r[0],sizeof(policy)};
@@ -475,6 +509,14 @@ static void fault(int signal,siginfo_t *info,void *context)
 
 void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base)
 {
+    /* One actual schedulable CPU, inherited by clone children. */
+    cpu_set_t available,one;
+    if (sched_getaffinity(0,sizeof(available),&available)) { perror("guest CPU affinity"); exit(1); }
+    CPU_ZERO(&one);
+    for (int cpu=0;cpu<CPU_SETSIZE;cpu++) if (CPU_ISSET(cpu,&available)) { CPU_SET(cpu,&one); break; }
+    if (sched_setaffinity(0,sizeof(one),&one)) { perror("single guest CPU"); exit(1); }
+    native_threads[0].tid=RAW(SYS_gettid,0,0,0,0,0,0);
+    native_threads[0].state=2; native_threads[0].port=0x20001; native_threads[0].refs=1;
     current_cache_base=cache_base;
     char *absolute=realpath(program,NULL);
     if (!absolute || strlen(absolute)>=sizeof(executable_path)) {
@@ -522,7 +564,6 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     for (unsigned int i=0;i<sizeof(failures)/sizeof(failures[0]);i++) {
         if (sigaction(failures[i],&action,NULL)) { perror("fault handler"); exit(1); }
     }
-    uintptr_t allowed = (uintptr_t)darwin_raw_return;
     void *vdso = dlopen("linux-vdso.so.1",RTLD_NOW|RTLD_LOCAL);
     uint32_t *sigreturn = vdso ? dlsym(vdso,"__kernel_rt_sigreturn") : NULL;
     /* Linux ARM64's VDSO ABI is mov x8,#139; svc #0. Allow that exact
@@ -532,23 +573,21 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
         sigreturn[1] != 0xd4000001U) {
         fprintf(stderr,"Unsupported ARM64 signal-return trampoline\n"); exit(1);
     }
-    uintptr_t restored = (uintptr_t)(sigreturn+2);
-    struct sock_filter code[] = {
-        BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,arch)),
-        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,AUDIT_ARCH_AARCH64,1,0),
-        BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_KILL_PROCESS),
-        BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)),
-        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)allowed,0,2),
-        BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)+4),
-        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)(allowed>>32),5,0),
-        BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)),
-        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)restored,0,2),
-        BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)+4),
-        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)(restored>>32),1,0),
-        BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_TRAP),
-        BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_ALLOW),
-    };
-    struct sock_fprog filter_program = {.len=sizeof(code)/sizeof(code[0]),.filter=code};
+    uintptr_t sites[]={(uintptr_t)darwin_raw_return,(uintptr_t)(sigreturn+2),(uintptr_t)darwin_clone_return};
+    struct sock_filter code[3+5*3+1];
+    size_t count=0;
+    code[count++]=(struct sock_filter)BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,arch));
+    code[count++]=(struct sock_filter)BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,AUDIT_ARCH_AARCH64,1,0);
+    code[count++]=(struct sock_filter)BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_KILL_PROCESS);
+    for (unsigned int i=0;i<3;i++) {
+        code[count++]=(struct sock_filter)BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer));
+        code[count++]=(struct sock_filter)BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)sites[i],0,3);
+        code[count++]=(struct sock_filter)BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)+4);
+        code[count++]=(struct sock_filter)BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)(sites[i]>>32),0,1);
+        code[count++]=(struct sock_filter)BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_ALLOW);
+    }
+    code[count++]=(struct sock_filter)BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_TRAP);
+    struct sock_fprog filter_program = {.len=count,.filter=code};
     if (prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0) ||
         RAW(SYS_seccomp,SECCOMP_SET_MODE_FILTER,0,&filter_program,0,0,0)) {
         perror("native syscall filter"); exit(1);

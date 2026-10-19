@@ -19,34 +19,40 @@ struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
 static struct ipc_endpoint *ipc_find(uint32_t name)
 {
     for (unsigned int i=0;i<IPC_ENDPOINTS;i++)
-        if (ipc_endpoints[i].used && ipc_endpoints[i].name==name) return ipc_endpoints+i;
+        if (__atomic_load_n(&ipc_endpoints[i].used,__ATOMIC_ACQUIRE)==2 && ipc_endpoints[i].name==name) return ipc_endpoints+i;
     return NULL;
 }
 static uint32_t ipc_reply_port(void)
 {
-    for (unsigned int i=0;i<IPC_ENDPOINTS;i++) if (!ipc_endpoints[i].used) {
-        int pair[2];
-        if (RAW(SYS_socketpair,AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC,0,pair,0,0)) return 0;
+    for (unsigned int i=0;i<IPC_ENDPOINTS;i++) {
         struct ipc_endpoint *endpoint=ipc_endpoints+i;
+        int unused=0;
+        if (!__atomic_compare_exchange_n(&endpoint->used,&unused,1,0,__ATOMIC_ACQ_REL,__ATOMIC_RELAXED)) continue;
+        int pair[2];
+        if (RAW(SYS_socketpair,AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC,0,pair,0,0)) {
+            __atomic_store_n(&endpoint->used,0,__ATOMIC_RELEASE); return 0;
+        }
         endpoint->generation=(endpoint->generation+1)&0xff;
         if (!endpoint->generation) endpoint->generation=1;
         endpoint->name=((i+3)<<8)|endpoint->generation;
-        endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0; endpoint->used=1;
+        endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0; __atomic_store_n(&endpoint->used,2,__ATOMIC_RELEASE);
         return endpoint->name;
     }
     return 0;
 }
 static uint32_t ipc_semaphore(unsigned int initial)
 {
-    for (unsigned int i=0;i<IPC_ENDPOINTS;i++) if (!ipc_endpoints[i].used) {
-        long fd=RAW(SYS_eventfd2,initial,EFD_SEMAPHORE|EFD_NONBLOCK|EFD_CLOEXEC,0,0,0,0);
-        if (fd<0) return 0;
+    for (unsigned int i=0;i<IPC_ENDPOINTS;i++) {
         struct ipc_endpoint *endpoint=ipc_endpoints+i;
+        int unused=0;
+        if (!__atomic_compare_exchange_n(&endpoint->used,&unused,1,0,__ATOMIC_ACQ_REL,__ATOMIC_RELAXED)) continue;
+        long fd=RAW(SYS_eventfd2,initial,EFD_SEMAPHORE|EFD_NONBLOCK|EFD_CLOEXEC,0,0,0,0);
+        if (fd<0) { __atomic_store_n(&endpoint->used,0,__ATOMIC_RELEASE); return 0; }
         endpoint->generation=(endpoint->generation+1)&0xff;
         if (!endpoint->generation) endpoint->generation=1;
         endpoint->name=((i+3)<<8)|endpoint->generation;
         endpoint->read_fd=endpoint->write_fd=fd;
-        endpoint->kind=1; endpoint->send_refs=1; endpoint->used=1;
+        endpoint->kind=1; endpoint->send_refs=1; __atomic_store_n(&endpoint->used,2,__ATOMIC_RELEASE);
         return endpoint->name;
     }
     return 0;
