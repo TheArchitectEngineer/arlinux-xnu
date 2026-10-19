@@ -6,13 +6,17 @@ _start:
     // Darwin write(1, message, length); x8 deliberately names Linux close.
     mov x0, #1
     adr x1, message
-    mov x2, #(message_end-message)
+    adr x3, message_end
+    sub x2, x3, x1
     mov x8, #57
     mov x16, #4
     cmp xzr, xzr
     svc #0x80
     b.cs failure
-    cmp x0, #(message_end-message)
+    adr x3, message
+    adr x4, message_end
+    sub x4, x4, x3
+    cmp x0, x4
     b.ne failure
 
     // Verify Darwin error ABI: positive EBADF=9, carry set.
