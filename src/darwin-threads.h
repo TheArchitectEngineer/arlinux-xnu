@@ -8,7 +8,7 @@
 struct native_thread {
     uint64_t runtime_top,guest_sp,pthread,port,function,argument,flags;
     int tid,state; /* tid offset 56 is used by the clone trampoline. */
-    uint64_t runtime_memory,signal_memory,refs,generation;
+    uint64_t runtime_memory,signal_memory,refs,generation,initial_signal_mask;
 };
 _Static_assert(offsetof(struct native_thread,tid)==56,"native clone ABI");
 static struct native_thread native_threads[NATIVE_THREADS];
@@ -54,6 +54,11 @@ void darwin_thread_boot(struct native_thread *thread)
     if (RAW(SYS_sigaltstack,&alternate,0,0,0,0,0)) {
         RAW(SYS_exit_group,125,0,0,0,0,0); __builtin_unreachable();
     }
+    /* clone ran inside SIGSYS: its temporary handler mask must not leak into
+     * the new guest thread. Restore the parent's pre-trap Linux signal mask. */
+    if (RAW(SYS_rt_sigprocmask,SIG_SETMASK,&thread->initial_signal_mask,0,8,0,0)) {
+        RAW(SYS_exit_group,125,0,0,0,0,0); __builtin_unreachable();
+    }
     uint64_t tls=thread->pthread+registered_tsd;
     if (registered_tsd) __asm__ volatile("msr tpidr_el0,%0" :: "r"(tls) : "memory");
     darwin_thread_enter(thread->guest_sp,thread_start_callback,thread->pthread,thread->port,
@@ -77,7 +82,7 @@ static long native_thread_register(const unsigned long long *r)
     thread_start_callback=r[0];
     return 0;
 }
-static long native_thread_create(const unsigned long long *r)
+static long native_thread_create(const unsigned long long *r,const sigset_t *original_mask)
 {
     if (!thread_start_callback) return -22;
     uint32_t flags=r[4];
@@ -102,6 +107,7 @@ static long native_thread_create(const unsigned long long *r)
         thread->runtime_memory=memory; thread->runtime_top=memory+65536;
         thread->signal_memory=alternate; thread->guest_sp=r[2]; thread->pthread=r[3];
         thread->function=r[0]; thread->argument=r[1]; thread->flags=r[4];
+        __builtin_memcpy(&thread->initial_signal_mask,original_mask,8);
         if (registered_tsd) thread->flags|=0x10000000;
         thread->generation=(thread->generation+1)&255;
         if (!thread->generation) thread->generation=1;

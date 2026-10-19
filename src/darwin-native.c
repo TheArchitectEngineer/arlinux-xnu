@@ -356,7 +356,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
                 for (unsigned int i=0;i<r[4]/8;i++) trace_call(i,uc->uc_mcontext.pc,metadata[i]);
             }
         }
-        result=r[16]==366 ? native_thread_register(r) : native_thread_create(r);
+        result=r[16]==366 ? native_thread_register(r) : native_thread_create(r,&uc->uc_sigmask);
         break;
     }
     case 361: result=native_thread_terminate(r); break;
