@@ -8,8 +8,8 @@ fixed. Original XNU boot is a behavioral reference, not an application gate.
 No iOS App, UI, actual pthread creation or Android integration has passed.
 
 Latest real journey:
-[39333118207](https://github.com/taowen/arlinux-xnu/actions/runs/39333118207),
-source `c227560d72c4b52d3e4fe6fed96ea315e545125b`, dyld job `118336058730`.
+[39333644488](https://github.com/taowen/arlinux-xnu/actions/runs/39333644488),
+source `1439495a869f302eefdb4238a8468e9919d60d3b`, dyld job `118337789192`.
 The native console prerequisite passes both complete launches. The dynamic
 variant is now a normal C main using real write/read, malloc/free and
 pthread_create/join imports through a normal TAPI link interface. The stub
@@ -81,12 +81,13 @@ multithreaded journey. No actual iOS UI App or ARLinux integration has run.
 - Cache: 1276837888 bytes, SHA-256 `a60a0653eb730f73b5d1de61a97e86e5a241f7a4ff00c83659f9eefb965cac6f`.
 - Dynamic C Mach-O SHA-256: `2b66ddec09f799b483a2e97b86b859ed5cc1e0474a9c6afb197dde17cf3327ca`.
 - Native runtime SHA-256: `2d05a59f6433ecd89d4e787b0451c589237d4f1b802bfa8ae8d9d4c13d7c6d36`.
-- Latest dyld receipt SHA-256: `7f337ad2aed45e7695f2754701cb3e5c00eb6e6be9a2f21405d01f73ad8f9397`.
-- Latest local text: build/runs/39333118207/dyld-job.log. Run artifacts retain
+- Latest dyld receipt SHA-256: `f6ea882e7b5de1f22f5f93a0b3f9ba7c8211a08c581da900e826d068514e3902`.
+- Latest local text: build/runs/39333644488/dyld-job.log. Run artifacts retain
   input/cache metadata, native hashes, runtime/LLDB logs and cache-frames.json.
-  LLDB confirms normal exit 72; the older fault-only command tail then errors
-  when trying to read registers of the exited process. The updated script
-  handles this normal failure exit explicitly; its next runner run validates it.
+  LLDB confirms GUEST_EXIT_STATUS 72 and LLDB_COMMAND_STATUS 0: the normal
+  failure exit is retained without asking for registers of a dead process.
+  Both this run and 39333118207 reach main and fail on actual thread creation;
+  the program/runtime SHA-256 values are identical across the two builds.
   Apple firmware, cache and executable files remain transient on the runner.
 
 The cache format reference inspected locally is Apple dyld-655.1, source
