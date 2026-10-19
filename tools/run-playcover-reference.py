@@ -56,7 +56,7 @@ run('xcrun', 'swiftc', '-O', '-g', '-import-objc-header',
     corresponding / 'DataExtensions.swift', corresponding / 'PlayCoverError.swift',
     corresponding / 'playcover-convert.swift', '-o', out / 'playcover-convert')
 
-run('xcrun', 'swiftc', '-O', root / 'tools/playcover-ui.swift', '-o', out / 'playcover-ui')
+run('xcrun', 'swiftc', '-parse-as-library', '-O', root / 'tools/playcover-ui.swift', '-o', out / 'playcover-ui')
 
 original = root / 'build/native/ARHello.app'
 app = out / 'ARHello.app'
