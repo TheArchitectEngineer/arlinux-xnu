@@ -9,33 +9,32 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39288235552](https://github.com/taowen/arlinux-xnu/actions/runs/39288235552),
-root `52e53638fb40a2867c92205c41831c584497e72a`, fork `abe6e09`.
-Actual compiler job `118182247990` passed original shared thread-state conversion
-and ulock wait/wake integration. Compiler receipt SHA-256:
-`d924a3ef1d1b0bb95a5ce10e36be9092176ff54f144fd1d5b0d5b935dade23cc`.
+[39288886790](https://github.com/taowen/arlinux-xnu/actions/runs/39288886790),
+root `54f00aaca32c34698d4d7ce0d5d79da7ff9d8f8d`, fork `abe6e09`.
+Actual compiler job `118184495117` passed physical-page data-cache synchronization
+integration. Compiler receipt SHA-256:
+`ede8bef249f411ff335e3232c302adb822e69cd3366959ea04d4e8084b5ff10c`.
 
-Actual VM job `118182875723` compiled native services and passed the
-native/kernel ABI collision audit, but executable linkage failed on machine/pmap
-and further service imports. Failure receipt SHA-256:
-`85699aaef5670979abb38a1a2164de01095b830b0fba5d5c398598cbca8f25bf`.
+Actual VM job `118185210355` compiled native ARM64 cache operations and passed
+the native/kernel ABI collision audit, but executable linkage still failed on
+machine/pmap and further service imports. Failure receipt SHA-256:
+`7ceba0379e9e49ec6b192d0a5f80fcfa978def897a781e3fa19e5b82217b6272`.
 No new VM executable, initialization, real allocation, task or guest ran.
-Actual logs are retained under `build/runs/39288235552`; Actions retains complete
-receipts/output hashes. This run is terminal. Do not redispatch identical source.
+Actual logs are retained under `build/runs/39288886790`; Actions retains complete
+receipts/output hashes. This run is terminal; do not redispatch identical source.
 
-The next source connects `pmap_sync_page_attributes_phys` required by original
-vm_fault. This is distinct from instruction-cache synchronization: native ARM64
-DC CIVAC writes back and invalidates data cache lines across the physical view
-and every registered alias, with DSB barriers. Line size comes from Linux's
-user-visible CTR_EL0; invalid geometry fails rather than skipping maintenance.
-Temporary writable translations permit data-cache maintenance, and tracked
-protections are restored without changing XNU ref/mod or wiring metadata.
-Instruction synchronization retains the compiler runtime's CVAU/IVAU sequence
-and its separate executable-alias selection. No runtime cache journey has run,
-and no virtual device or DMA service is implied. Runner verification is pending.
-Reference host behavior: the pinned UML tree's
+`pmap_sync_page_attributes_phys` now has a native implementation distinct from
+instruction-cache synchronization: ARM64 DC CIVAC writes back and invalidates
+data cache lines across the physical view and every registered alias, with DSB
+barriers. Line size comes from Linux's user-visible CTR_EL0; unsupported geometry
+fails rather than skipping maintenance. Temporary writable translations permit
+data-cache maintenance, and tracked protections are restored without changing
+XNU ref/mod or wiring metadata. Code synchronization retains the compiler
+runtime's CVAU/IVAU sequence and its executable-alias selection. Both sides
+compiled, but no runtime cache journey has run; no device/DMA operation is proved.
+Reference: the pinned UML tree's
 [Linux cache-maintenance trap handler](https://github.com/zalexdev/linux-um-arm64/blob/32e5e10b81d8882bdaf77b71e4106a941840c750/arch/arm64/kernel/traps.c)
-supports DC CIVAC, including fault propagation.
+supports DC CIVAC with fault propagation.
 
 Protection semantics remain compiled but unverified in a VM. Ordinary writable
 requests preserve mappings for later VM fault/COW handling; explicit immediate
@@ -47,8 +46,8 @@ Dispatch now compares the selected local ref with its GitHub commit before
 submitting. Both real entry paths were observed: pushed `f314bf1` dispatched,
 and unpushed `20c23ff` was refused with no run created. Earlier accidental
 old-source run `39287502627` was confirmed cancelled. This fixes dispatch source
-selection, not guest execution. Instruction-cache synchronization and fail-stop native mapping errors remain
-compiled but unverified at runtime. No device/DMA journey has been implemented.
+selection, not guest execution. Cache synchronization and fail-stop native
+mapping errors remain compiled but unverified at runtime. No device/DMA journey has been implemented.
 
 The NOENTER correction from `72f6733` is included: original VM fault capacity
 requests no longer attempt to map physical page zero. This has compiled, but
