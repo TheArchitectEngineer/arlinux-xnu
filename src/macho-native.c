@@ -90,6 +90,8 @@ int main(int argc,char **argv)
         load_image(argv[2],&dyld,1);
         need(dyld.filetype==7,"interpreter must be MH_DYLINKER");
         map_guest(&dyld); rewrite_tls(&dyld);
+        fprintf(stderr,"NATIVE_DYLD_ENTRY entry=%#" PRIx64 " header=%#" PRIx64 " slide=%#" PRIx64 "\n",
+                dyld.entry,dyld.header_address,dyld.slide);
     }
     void *stack=mmap(NULL,1024*1024,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     if (stack==MAP_FAILED) die("guest stack");

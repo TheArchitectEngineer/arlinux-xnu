@@ -16,6 +16,8 @@
 #include <sys/syscall.h>
 #include <ucontext.h>
 #include <dlfcn.h>
+#include <unistd.h>
+#include <string.h>
 
 extern long darwin_raw(long, long, long, long, long, long, long);
 extern char darwin_raw_return[];
@@ -84,6 +86,15 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         RAW(SYS_exit_group,126,0,0,0,0,0);
         __builtin_unreachable();
     }
+    if ((int64_t)r[16] < 0) {
+        /* Mach traps do not use BSD's positive errno/carry convention. Until
+         * a real port namespace exists, port-returning traps fail with NULL;
+         * other unsupported Mach operations return KERN_NOT_SUPPORTED. */
+        unsigned long number=-(int64_t)r[16];
+        r[0]=(number>=26 && number<=29) ? 0 : 46;
+        trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+        return;
+    }
     long result = -38;
     switch (r[16]) {
     case 1:
@@ -150,6 +161,27 @@ static void fault(int signal,siginfo_t *info,void *context)
 
 void darwin_native_prepare(void)
 {
+    /* Legacy ARM64 Darwin commpage ABI. These are real properties of the
+     * declared compatibility machine, not fabricated hardware capabilities.
+     * Leave optional acceleration/timebase features disabled. XNU's ARM
+     * cpu_capabilities.h defines the offsets; iOS 12 accesses kernel shift
+     * at +0x37 during dyld mach_init, as observed in the failed actual run. */
+    unsigned char *page=mmap((void *)0xfffffc000ULL,PAGE16,PROT_READ|PROT_WRITE,
+                            MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
+    if (page==MAP_FAILED) { perror("Darwin commpage"); exit(1); }
+    memcpy(page,"commpage 64-bit",14);
+    *(uint16_t *)(page+0x1e)=3;
+    *(uint32_t *)(page+0x20)=1U<<16; /* one configured CPU, conservative features */
+    page[0x24]=page[0x25]=14;
+    long cache=sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+    if (cache<=0 || cache>65535) { fprintf(stderr,"Unknown native cache line size\n"); exit(1); }
+    *(uint16_t *)(page+0x26)=(uint16_t)cache;
+    page[0x34]=page[0x35]=page[0x36]=1;
+    page[0x37]=14;
+    long physical=sysconf(_SC_PHYS_PAGES),host_page=sysconf(_SC_PAGESIZE);
+    if (physical<=0 || host_page<=0) { fprintf(stderr,"Unknown native memory size\n"); exit(1); }
+    *(uint64_t *)(page+0x38)=(uint64_t)physical*(uint64_t)host_page;
+    if (mprotect(page,PAGE16,PROT_READ)) { perror("read-only commpage"); exit(1); }
     /* Initialize before the filter is live, on host TLS. The signal handler
      * thereafter uses only the exact allowed raw SVC site. Like tawcroot,
      * compare the address AFTER SVC, as Linux records it in seccomp_data. */
