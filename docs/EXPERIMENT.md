@@ -9,31 +9,35 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39290167115](https://github.com/taowen/arlinux-xnu/actions/runs/39290167115),
-root `e1e78853d60cf1fbfa6a40d9c1d8db295874decc`, fork `abe6e09`.
-Actual compiler job `118188865620` passed physical-page interlocks and
-single-CPU metadata preemption protection. Compiler receipt SHA-256:
-`9add5899945a88db43f61b1ff07884e275e8e121214ce7ecad985f23d4d99a24`.
+[39290674843](https://github.com/taowen/arlinux-xnu/actions/runs/39290674843),
+root `093d12fd8cfe2e16735fe37139e9adad2d0d7664`, fork `abe6e09`.
+Actual compiler job `118190644779` passed generic ARM processor selection,
+delay policy and saved-state PC integration. Compiler receipt SHA-256:
+`849a3f841d568630b48c1b2fd24dc9697db55af1680b294e05782675c2d27b94`.
 
-Actual VM job `118189616914` compiled native services and passed the
-native/kernel ABI collision audit, but executable linkage failed on further
+Actual VM job `118191180733` compiled native services and passed the
+native/kernel ABI collision audit, but executable linkage failed on remaining
 machine/pmap and service imports. Failure receipt SHA-256:
-`c6874a3a70c4b076da81f4cbfa8973d21d6a83e64042fb1e04158e380b173424`.
+`71fa04fac051de31c7d8c5626f8c2bf4c28aee6db2334da608771cf492fe82c9`.
 No new VM executable, initialization, real allocation, task or guest ran.
-Actual logs are retained under `build/runs/39290167115`; Actions retains complete
+Actual logs are retained under `build/runs/39290674843`; Actions retains complete
 receipts/output hashes. The run is terminal; do not redispatch identical source.
 
-The next source brings over generic ARM machine policy: retain the processor
-selected by XNU's scheduler, read the actual saved ARM64 PC for backtraces,
-and compare delay duration against the virtual CPU's idle-latency record.
-Unknown latency chooses the original conservative non-spin policy; original
-clock.c still checks interrupt/preemption context and chooses its real wait
-or spin path. This does not substitute host thread scheduling, fabricate a PC,
-or implement timer interrupt delivery. Runner verification remains pending.
-Inspect existing experiment
-[39290674843](https://github.com/taowen/arlinux-xnu/actions/runs/39290674843),
-source `093d12fd8cfe2e16735fe37139e9adad2d0d7664`, before another dispatch;
-retain its handles through delayed status or log observations.
+The next source connects a real monotonic timerfd to decrementer programming,
+remaining-time and pending-event queries. Kernel interrupt-enable boundaries
+consume an expiry, install a software kernel-boundary interrupt frame, switch
+to the virtual CPU's exception stack and call original `sleh_fiq` (now in the
+compiled graph). Original SLEH/rtclock/timer queues own the actual callback path;
+preemption is pinned until interrupt state is restored and the IRQ stack is free.
+Urgent AST processing then happens on the original thread kernel stack.
+There is no asynchronous Linux signal handler or fabricated timer success.
+
+This is cooperative kernel delivery, not arbitrary native instruction preemption.
+The boundary frame is diagnostic, not a guest architectural return state. Guest
+execution and idle waiting still need to feed timer events; blocked XNU threads
+are not woken merely by arming a timerfd. All new clock/IRQ operations require
+runner compilation and the real VM/guest runtime journey; no isolated timer
+probe has been added. See the explicit boundary in ARCHITECTURE.md.
 
 `pmap_sync_page_attributes_phys` now has a native implementation distinct from
 instruction-cache synchronization: ARM64 DC CIVAC writes back and invalidates

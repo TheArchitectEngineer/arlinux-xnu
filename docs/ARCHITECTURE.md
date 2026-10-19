@@ -95,6 +95,24 @@ original copy validation. Existing direct-copy leaves alone do not provide this.
 If this cannot support the actual VM/copy paths, revise it before implementing
 more dependent services; do not bypass user-map checks with ptrace writes.
 
+## Kernel timer interrupt boundary
+
+The first host clock transport uses one CLOCK_MONOTONIC timerfd with real
+one-shot programming, remaining-time queries and event consumption. Kernel
+interrupt-enable boundaries service pending events through original `sleh_fiq`,
+`rtclock_intr` and timer queues. This is cooperative kernel interrupt delivery;
+it does not asynchronously preempt arbitrary Linux/native C instructions.
+The one-CPU implementation pins preemption while on the virtual interrupt stack,
+restores CPU interrupt state, then handles urgent ASTs on the kernel thread stack.
+Its software boundary frame supplies diagnostic PC/SP/frame pointers; it is not
+a captured native exception or a guest register set for architectural return.
+
+Guest execution slices/stops and idle waiting must still feed this event source
+and deliver guest-aware interrupt state. Those paths are not implemented by
+arming a timer. Kernel delivery, accounting, callback expiry and restoration
+still require the real runtime journey. Do not substitute a timerfd probe or
+Linux sleep for a blocked XNU thread's scheduler/timer wakeup.
+
 ## Native execution constraint: Darwin TLS
 
 Apple's `libsyscall/os/tsd.h::_os_tsd_get_base` directly reads `TPIDRRO_EL0`.

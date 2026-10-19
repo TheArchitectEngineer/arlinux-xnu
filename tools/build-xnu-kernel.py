@@ -242,6 +242,7 @@ def main():
         'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm/arm_timer.c',
         'osfmk/arm/machine_routines_common.c',
         'osfmk/arm64/pcb.c', 'osfmk/arm64/loose_ends.c',
+        'osfmk/arm64/sleh.c',
         'osfmk/arm64/status.c', 'osfmk/arm/status_shared.c',
         'osfmk/arm64/machine_task.c',
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',

@@ -11,6 +11,9 @@
 #include <mach/machine.h>
 #include <machine/machine_routines.h>
 #include <host/context.h>
+#include <host/time.h>
+#include <arm/rtclock.h>
+#include <kern/cpu_data.h>
 #include <arm64/usermode_context.h>
 #include <pexpert/pexpert.h>
 
@@ -245,6 +248,61 @@ xnu_host_context_adopt_boot_thread(void)
     kprintf("XNU_HOST_CONTEXT adopted XNU thread_bootstrap thread=%p\n", thread);
 }
 
+extern void sleh_fiq(arm_saved_state_t *state);
+static bool host_timer_active;
+
+int
+xnu_host_timer_interrupt_active(void)
+{
+    return host_timer_active;
+}
+
+static int
+host_timer_interrupt_body(void)
+{
+    assert(host_timer_active && boot_cpu.cpu_int_state != NULL);
+    /* Original SLEH owns vtimer checks, trace, rtclock and timer-queue expiry. */
+    sleh_fiq(boot_cpu.cpu_int_state);
+    return 0;
+}
+
+static void
+host_deliver_pending_timer(void)
+{
+    assert(!host_interrupts_enabled && boot_cpu.cpu_int_state == NULL);
+    int pending = xnu_host_timer_take();
+    if (pending < 0)
+        panic("host timer event read error=%d", -pending);
+    if (!pending)
+        return;
+    /* This is a synchronous kernel safe-point interrupt frame, not a captured
+     * Linux exception or a guest register set suitable for architectural return.
+     * The ordinary C/stack-switch ABI preserves the interrupted kernel caller. */
+    arm_saved_state_t state = {0};
+    state.ash.flavor = ARM_SAVED_STATE64;
+    state.ash.count = ARM_SAVED_STATE64_COUNT;
+    set_saved_state_cpsr(&state, PSR64_KERNEL_STANDARD);
+    set_saved_state_pc(&state, (uintptr_t)__builtin_return_address(0));
+    set_saved_state_lr(&state, (uintptr_t)__builtin_return_address(0));
+    set_saved_state_fp(&state, (uintptr_t)__builtin_frame_address(0));
+    uintptr_t stack;
+    __asm__ volatile("mov %0, sp" : "=r"(stack));
+    set_saved_state_sp(&state, stack);
+    thread_t interrupted = host_thread;
+    int preemption = get_preemption_level();
+    disable_preemption();
+    boot_cpu.cpu_int_state = &state;
+    host_timer_active = true;
+    int result = xnu_host_run_on_stack(host_timer_interrupt_body, boot_cpu.excepstack_top);
+    assert(result == 0 && host_thread == interrupted);
+    assert(boot_cpu.cpu_int_state == &state && get_preemption_level() == preemption + 1);
+    host_timer_active = false;
+    boot_cpu.cpu_int_state = NULL;
+    /* IRQs are still virtually masked: urgent AST processing happens only
+     * below, back on this thread's kernel stack after the IRQ stack is free. */
+    enable_preemption();
+}
+
 boolean_t
 ml_get_interrupts_enabled(void)
 {
@@ -255,8 +313,10 @@ boolean_t
 ml_set_interrupts_enabled(boolean_t enable)
 {
     boolean_t old = host_interrupts_enabled;
-    if (enable && !old) {
+    if (enable) {
         assert(host_thread != THREAD_NULL && boot_cpu.cpu_int_state == NULL);
+        host_interrupts_enabled = FALSE;
+        host_deliver_pending_timer();
         /* Keep ARM's real preemption semantics before unmasking the virtual
          * interrupt state. DAIF belongs to Linux; pending XNU ASTs do not. */
         if (get_preemption_level() == 0) {

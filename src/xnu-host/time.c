@@ -1,5 +1,5 @@
-/* Feed XNU's original ARM rtclock conversion code from Linux nanosecond clocks.
- * Timer interrupt delivery and scheduler context switching remain separate. */
+/* Feed original ARM rtclock from Linux nanoseconds and a real timerfd source.
+ * Kernel safe-point FIQ delivery is in context.c; guest/idle delivery is pending. */
 #include <arm/rtclock.h>
 #include <arm/cpu_data_internal.h>
 #include <kern/assert.h>
@@ -47,6 +47,38 @@ PE_register_timebase_callback(timebase_callback_func callback)
     struct timebase_freq_t frequency = { .timebase_num = NSEC_PER_SEC,
         .timebase_den = 1 };
     callback(&frequency);
+}
+
+void
+ml_set_decrementer(uint32_t ticks)
+{
+    int error = xnu_host_timer_program(ticks);
+    if (error)
+        panic("host decrementer program ticks=%u error=%d", ticks, error);
+}
+
+uint32_t
+ml_get_decrementer(void)
+{
+    unsigned int remaining;
+    int pending;
+    int error = xnu_host_timer_state(&remaining, &pending);
+    if (error)
+        panic("host decrementer query error=%d", error);
+    return remaining;
+}
+
+boolean_t
+ml_get_timer_pending(void)
+{
+    if (xnu_host_timer_interrupt_active())
+        return TRUE;
+    unsigned int remaining;
+    int pending;
+    int error = xnu_host_timer_state(&remaining, &pending);
+    if (error)
+        panic("host timer pending query error=%d", error);
+    return pending;
 }
 
 uint64_t
