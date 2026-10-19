@@ -15,6 +15,15 @@
 static struct thread boot_thread;
 cpu_data_t PERCPU_DATA(cpu_data);
 struct percpu_base percpu_base;
+/* The running host thread supplies one physical/logical virtual CPU. Memory
+ * capacity is filled only after Linux has created the physical backing. */
+struct machine_info machine_info = {
+    .max_cpus = MAX_CPUS,
+    .physical_cpu = 1,
+    .physical_cpu_max = MAX_CPUS,
+    .logical_cpu = 1,
+    .logical_cpu_max = MAX_CPUS,
+};
 #define boot_cpu (*PERCPU_GET_MASTER(cpu_data))
 static __thread thread_t host_thread;
 static __thread boolean_t host_interrupts_enabled;

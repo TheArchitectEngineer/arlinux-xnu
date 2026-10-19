@@ -6,6 +6,8 @@
 #include <kern/assert.h>
 #include <kern/debug.h>
 #include <vm/pmap.h>
+#include <mach/machine.h>
+#include <machine/machine_routines.h>
 #include <string.h>
 #include <host/memory.h>
 #include <host/fault.h>
@@ -17,6 +19,13 @@ uint64_t gDramBase, gDramSize;
 uint64_t max_mem, max_mem_actual, sane_size;
 static ppnum_t next_frame;
 static ppnum_t frame_limit;
+
+uint64_t
+ml_get_booter_memory_size(void)
+{
+    assert(gPhysSize != 0);
+    return gPhysSize;
+}
 
 void
 pmap_require(pmap_t pmap)
@@ -351,6 +360,8 @@ xnu_host_pmap_bootstrap(void)
     gDramBase = gPhysBase;
     gDramSize = gPhysSize;
     max_mem = max_mem_actual = sane_size = gPhysSize;
+    machine_info.max_mem = gPhysSize;
+    machine_info.memory_size = (uint32_t)MIN(gPhysSize, 0x80000000UL);
     next_frame = 1;
     frame_limit = 1 + gPhysSize / PAGE_SIZE;
     kernel_pmap->min = XNU_HOST_KERNEL_BASE;

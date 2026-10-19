@@ -38,6 +38,13 @@ xnu_host_kernel_early_startup(void)
     int error = xnu_host_pmap_bootstrap();
     if (error)
         return error;
+    assert(machine_info.max_cpus == ml_get_cpu_count());
+    assert(machine_info.physical_cpu == 1 && machine_info.physical_cpu_max == 1);
+    assert(machine_info.logical_cpu == 1 && machine_info.logical_cpu_max == 1);
+    assert(machine_info.max_mem == ml_get_booter_memory_size());
+    assert(machine_info.memory_size == machine_info.max_mem);
+    kprintf("XNU_HOST_MACHINE physical=%u logical=%u memory=%llu (Linux backing allocated)\n",
+        machine_info.physical_cpu, machine_info.logical_cpu, machine_info.max_mem);
     error = xnu_host_time_bootstrap();
     if (error)
         return error;
