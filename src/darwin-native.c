@@ -43,6 +43,7 @@ static int darwin_error(long result)
     case 38: return 78;           /* ENOSYS */
     case 36: return 63;           /* ENAMETOOLONG */
     case 75: return 84;           /* EOVERFLOW */
+    case 110: return 60;          /* ETIMEDOUT */
     case 95: return 45;           /* ENOTSUP */
     default: return 5;            /* unclassified Linux failure -> EIO */
     }
@@ -212,6 +213,20 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
             return;
         }
+        if (number==33 || number==36) { /* semaphore signal/wait */
+            struct ipc_endpoint *endpoint=ipc_find(r[0]);
+            long status=-22;
+            if (endpoint && endpoint->kind==1) {
+                if (number==36) status=ipc_semaphore_wait(r[0],NULL);
+                else {
+                    uint64_t token=1;
+                    status=RAW(SYS_write,endpoint->write_fd,&token,8,0,0,0)==8 ? 0 : -22;
+                }
+            }
+            r[0]=status ? 4 : 0;
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
         if (number==31) {
             r[0]=ipc_message(r,uc->uc_mcontext.pc);
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
@@ -343,6 +358,14 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case 294: /* Actual process-private cache mappings prepared before entry. */
         result=current_cache_base ? guest_copy(&current_cache_base,r[0],sizeof(current_cache_base),1) : -12;
         break;
+    case 334: case 423: { /* __semwait_signal and nocancel */
+        if (r[1] || r[2]>1 || (r[2] && r[3]!=1) || (long)r[4]<0 || r[5]>=1000000000) {
+            result=-95; break;
+        }
+        struct timespec timeout={r[4],r[5]};
+        result=ipc_semaphore_wait(r[0],r[2] ? &timeout : NULL);
+        break;
+    }
     case 338: case 339: case 340: result=guest_stat(r[0],r[1],r[16]); break;
     case 20: result = RAW(SYS_getpid,0,0,0,0,0,0); break;
     case 372: result = RAW(SYS_gettid,0,0,0,0,0,0); break; /* thread_selfid */

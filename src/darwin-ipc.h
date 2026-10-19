@@ -6,13 +6,14 @@
 #pragma once
 #include <sys/socket.h>
 #include <poll.h>
+#include <sys/eventfd.h>
 #define CURRENT_HOST_PORT 0x203U
 #define SYSTEM_CLOCK_PORT 0x10001U
 #define CALENDAR_CLOCK_PORT 0x10101U
 static unsigned long host_send_refs,clock_send_refs[2];
 #define IPC_ENDPOINTS 64
 #define IPC_BYTES 1024
-struct ipc_endpoint { uint32_t name,generation; int used,read_fd,write_fd; };
+struct ipc_endpoint { uint32_t name,generation; int used,kind,read_fd,write_fd; unsigned long send_refs; };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
 static struct ipc_endpoint *ipc_find(uint32_t name)
@@ -30,10 +31,42 @@ static uint32_t ipc_reply_port(void)
         endpoint->generation=(endpoint->generation+1)&0xff;
         if (!endpoint->generation) endpoint->generation=1;
         endpoint->name=((i+3)<<8)|endpoint->generation;
-        endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->used=1;
+        endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0; endpoint->used=1;
         return endpoint->name;
     }
     return 0;
+}
+static uint32_t ipc_semaphore(unsigned int initial)
+{
+    for (unsigned int i=0;i<IPC_ENDPOINTS;i++) if (!ipc_endpoints[i].used) {
+        long fd=RAW(SYS_eventfd2,initial,EFD_SEMAPHORE|EFD_NONBLOCK|EFD_CLOEXEC,0,0,0,0);
+        if (fd<0) return 0;
+        struct ipc_endpoint *endpoint=ipc_endpoints+i;
+        endpoint->generation=(endpoint->generation+1)&0xff;
+        if (!endpoint->generation) endpoint->generation=1;
+        endpoint->name=((i+3)<<8)|endpoint->generation;
+        endpoint->read_fd=endpoint->write_fd=fd;
+        endpoint->kind=1; endpoint->send_refs=1; endpoint->used=1;
+        return endpoint->name;
+    }
+    return 0;
+}
+/* Linux eventfd maintains the actual count; poll supplies real timed waits.
+ * Contended Mach FIFO policy and concurrent namespace access are unverified. */
+static long ipc_semaphore_wait(uint32_t name,const struct timespec *timeout)
+{
+    struct ipc_endpoint *endpoint=ipc_find(name);
+    if (!endpoint || endpoint->kind!=1) return -22;
+    uint64_t token;
+    long result=RAW(SYS_read,endpoint->read_fd,&token,8,0,0,0);
+    if (result==8) return 0;
+    if (result!=-11) return result<0 ? result : -5;
+    struct pollfd descriptor={.fd=endpoint->read_fd,.events=POLLIN};
+    long ready=RAW(SYS_ppoll,&descriptor,1,timeout,0,0,0);
+    if (!ready) return -110;
+    if (ready<0) return ready;
+    result=RAW(SYS_read,endpoint->read_fd,&token,8,0,0,0);
+    return result==8 ? 0 : (result<0 ? result : -5);
 }
 static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
 {
@@ -58,10 +91,11 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         }
         int clock=header->remote==SYSTEM_CLOCK_PORT ? 0 :
                   header->remote==CALENDAR_CLOCK_PORT ? 1 : -1;
-        if (header->remote!=CURRENT_HOST_PORT && clock<0) return send_invalid_dest;
-        if ((clock<0 && !host_send_refs) || (clock>=0 && !clock_send_refs[clock])) return send_invalid_dest;
+        int task=header->remote==CURRENT_TASK_PORT;
+        if (header->remote!=CURRENT_HOST_PORT && clock<0 && !task) return send_invalid_dest;
+        if ((!task && clock<0 && !host_send_refs) || (clock>=0 && !clock_send_refs[clock])) return send_invalid_dest;
         struct ipc_endpoint *reply=ipc_find(header->local);
-        if (!reply) return send_invalid_reply;
+        if (!reply || reply->kind) return send_invalid_reply;
         if (header->bits!=0x1513 || header->voucher ||
             header->id>INT32_MAX-100) return 0x10000010U;
         /* MIG host_info: header, NDR, flavor, output count. Unknown routines
@@ -73,7 +107,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         out->id=header->id+100;
         response[7]=1; /* NDR little-endian integer representation */
         response[8]=(uint32_t)-303; /* MIG_BAD_ID */
-        if (clock<0 && header->id==200 && r[2]==40) {
+        if (!task && clock<0 && header->id==200 && r[2]==40) {
             uint32_t flavor,count; __builtin_memcpy(&flavor,request+32,4);
             __builtin_memcpy(&count,request+36,4);
             response[8]=4; /* KERN_INVALID_ARGUMENT */
@@ -86,7 +120,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 for (unsigned int i=0;i<8;i++) response[10+i]=policy[i];
             }
         }
-        if (clock<0 && header->id==206 && r[2]==36) {
+        if (!task && clock<0 && header->id==206 && r[2]==36) {
             uint32_t clock_id; __builtin_memcpy(&clock_id,request+32,4);
             response[8]=4; /* KERN_INVALID_ARGUMENT */
             if (clock_id<=1) {
@@ -95,6 +129,20 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 response[6]=1; response[7]=clock_id ? CALENDAR_CLOCK_PORT : SYSTEM_CLOCK_PORT;
                 response[8]=0; response[9]=17U<<16;
                 clock_send_refs[clock_id]++;
+            }
+        }
+        if (task && header->id==3418 && r[2]==40) {
+            uint32_t policy,value; __builtin_memcpy(&policy,request+32,4);
+            __builtin_memcpy(&value,request+36,4);
+            response[8]=4;
+            if (!policy && value<=INT32_MAX) {
+                uint32_t semaphore=ipc_semaphore(value);
+                response[8]=3; /* KERN_RESOURCE_SHORTAGE */
+                if (semaphore) {
+                    out->bits|=0x80000000U; out->size=40;
+                    response[6]=1; response[7]=semaphore;
+                    response[8]=0; response[9]=17U<<16;
+                }
             }
         }
         if (clock>=0 && header->id==1000 && r[2]==24) {
@@ -108,7 +156,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
     }
     if (options&2) {
         struct ipc_endpoint *endpoint=ipc_find(r[4]);
-        if (!endpoint) return receive_invalid_name;
+        if (!endpoint || endpoint->kind) return receive_invalid_name;
         unsigned char response[IPC_BYTES+8];
         if (options&0x100) {
             struct pollfd descriptor={.fd=endpoint->read_fd,.events=POLLIN};
