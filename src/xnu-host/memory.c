@@ -249,7 +249,9 @@ xnu_host_memory_map(unsigned long address, unsigned int page, int protection, in
     void *mapped = mmap((void *)address, XNU_HOST_PAGE_SIZE, native_protection,
         MAP_SHARED | MAP_FIXED, physical_fd, offset);
     if (mapped == MAP_FAILED)
-        return errno;
+        /* A failed replacement does not establish that the previous native
+         * VA is intact. Stop instead of treating unknown state as retryable. */
+        return -errno;
     unsigned long index = (address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE;
     unlink_mapping(index);
     kernel_pages[index] = page;

@@ -9,42 +9,40 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39285455715](https://github.com/taowen/arlinux-xnu/actions/runs/39285455715),
-root `eb8ce9b1379ee19500ab3f7f48d8112e2e018e0c`, fork `abe6e09`.
-Actual compiler job `118170682476` passed, including original shutdown, corpse
-lifecycle and configured memory-pressure code. Compiler receipt SHA-256:
-`337aeb2fd05c86ee8e0bf570f2fe5666495db88712f1c82cc17369eef069c87c`.
+[39286393400](https://github.com/taowen/arlinux-xnu/actions/runs/39286393400),
+root `be0e43a4cacea961c6f97c83f2a54d39ed1fd41c`, fork `abe6e09`.
+Actual compiler job `118174363760` passed, including executable-page cache
+synchronization callers. Compiler receipt SHA-256:
+`7400f617833ea8abe0b6eba85bd7fb631dc3edf0da7b94d375e7891e72bd575b`.
 
-Actual VM job `118171229157` passed the native/kernel ABI collision audit,
-but executable linkage failed on machine/pmap and further service imports.
-Failure receipt SHA-256:
-`463a525d60c4fb0e4a3f09f18afa0adf2b26f486368cf22ccb0bc5079ea24ef0`.
+Actual VM job `118175251720` compiled native Linux cache synchronization and
+passed the native/kernel ABI collision audit, but executable linkage failed on
+machine/pmap and further service imports. Failure receipt SHA-256:
+`ec8698da8f2442fab57006400f9903ccfe8c9fd4a7de7a33ce5838d6e4b7280b`.
 No new VM executable, initialization, real allocation, task or guest ran.
-Actual logs are retained under `build/runs/39285455715`; Actions retains complete
-receipts/output hashes. This run is terminal by actual job output even though
-run/job GET metadata continues to report queued. Do not redispatch its source.
+Actual logs are retained under `build/runs/39286393400`; Actions retains complete
+receipts/output hashes. The run is terminal by actual job output. Do not
+redispatch its source because stale metadata still reports queued.
 
-Two actual compiler failures from the preceding run were repaired. Original
-memory pressure code requires VM_PRESSURE_EVENTS alongside memorystatus;
-the fork now enables its real notification mechanism. MIG generation had also
-collapsed exported and private headers with the same name. It now follows the
-original `osfmk/mach/Makefile` distinction: all exported headers are generated
-under `mig-public` without MACH_KERNEL_PRIVATE; private sender/server headers
-remain under `mig`. osfmk prefers private headers with an exported fallback;
-BSD/libkern/pexpert prefer exported headers. Both repairs compiled in the above
-run. There is no fabricated IPC type or substitute service implementation.
-
-The next source implements real instruction-cache synchronization for kernel
-physical pages: the compiler runtime's native ARM64 cache-maintenance sequence
-runs on the physical aperture and every executable alias. Temporary readable
-permissions permit cache maintenance with ref/dirty tracking or execute-only
-mappings, then each view's tracked permissions are restored without changing
-page attributes. Original `pmap_sync_page_data_phys` and cache-attribute-sync
-callers use this operation. Native map insertion now distinguishes errors before
-commit from tracking/cache errors after commit; the latter stop the kernel so
-VM cannot reclaim a frame still mapped. No cache runtime journey is verified.
-The separate physical cache-attribute/DMA API is still unimplemented.
+The native cache operation uses the compiler runtime on the physical aperture
+and every executable alias. Temporary readable permissions permit cache
+maintenance under ref/dirty tracking or execute-only mappings, then original
+tracked permissions are restored without changing page attributes. Original
+`pmap_sync_page_data_phys` and `pmap_attribute_cache_sync` use this operation.
+Compilation does not establish runtime instruction coherence or permission
+restoration. Physical cache-attribute/DMA synchronization remains unimplemented.
 Reference: [GCC ARM64 cache runtime](https://github.com/gcc-mirror/gcc/blob/releases/gcc-13/libgcc/config/aarch64/sync-cache.c).
+
+Follow-up source also stops the kernel on a failed native MAP_FIXED attempt:
+only input-validation errors before that attempt remain retryable. Both a
+failed replacement and a failed post-install tracking/cache update leave native
+VA state unsuitable for assuming a clean failed insertion. The host must stop
+before VM can recycle a frame potentially still mapped. This follow-up requires
+runner verification; no isolated cache or mapping probe has been added.
+
+Exported/private MIG header separation, original corpse/shutdown/pressure
+services and VM_PRESSURE_EVENTS remain included. Their compilation has passed;
+none has completed an actual kernel lifecycle journey.
 
 The NOENTER correction from `72f6733` is included: original VM fault capacity
 requests no longer attempt to map physical page zero. This has compiled, but

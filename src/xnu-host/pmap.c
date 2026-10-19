@@ -129,7 +129,7 @@ pmap_enter(pmap_t pmap, vm_map_offset_t address, ppnum_t page, vm_prot_t protect
         return KERN_NOT_SUPPORTED;
     int error = xnu_host_memory_map(address, page, protection, wired);
     if (error < 0)
-        panic("host pmap_enter committed mapping address=%#llx page=%u error=%d",
+        panic("host pmap_enter native mapping state address=%#llx page=%u error=%d",
             address, page, -error);
     return error ? KERN_FAILURE : KERN_SUCCESS;
 }
