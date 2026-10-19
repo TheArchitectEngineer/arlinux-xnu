@@ -21,9 +21,9 @@ xnu_host_vm_bootstrap(void)
         return result;
     /* Match ARM's pre-VM order: locks/tunables, timer infrastructure, then
      * the real boot processor/pset and global task/thread queues. */
-    kernel_debug_string_early("timer_call_init");
+    xnu_host_boot_phase("timer_call_init");
     timer_call_init();
-    kernel_debug_string_early("processor_bootstrap");
+    xnu_host_boot_phase("processor_bootstrap");
     processor_bootstrap();
     kprintf("XNU_VM_BOOTSTRAP begin\n");
     vm_mem_bootstrap();

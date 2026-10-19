@@ -202,7 +202,7 @@ def main():
             'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref', 'clock',
             'coalition', 'extmod_statistics', 'host_notify', 'counter_common',
             'clock_oldops', 'sync_sema', 'task_ident', 'ipc_clock',
-            'affinity', 'thread_group', 'sched_multiq', 'ux_handler', 'mk_timer', 'mk_sp']],
+            'affinity', 'thread_group', 'sched_multiq', 'ux_handler', 'mk_timer', 'mk_sp', 'sfi']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
@@ -226,6 +226,9 @@ def main():
         'bsd/kern/kern_authorization.c', 'bsd/kern/kern_priv.c',
         'bsd/kern/kern_subr.c', 'bsd/kern/bsd_init.c',
         'bsd/kern/kern_synch.c', 'bsd/kern/kern_newsysctl.c',
+        # Preserve real event filtering, early buffers and triage storage.
+        'bsd/kern/kdebug.c', 'bsd/kern/kdebug_common.c',
+        'bsd/kern/kdebug_triage.c', 'bsd/kern/kern_ktrace.c',
     ]
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))

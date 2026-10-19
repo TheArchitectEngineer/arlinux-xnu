@@ -72,10 +72,20 @@ kprintf(const char *format, ...)
 }
 
 void
-kernel_debug_string_early(const char *message)
+xnu_host_boot_phase(const char *message)
 {
     fprintf(stderr, "XNU_BOOT_PHASE %s\n", message);
 }
+
+#ifndef XNU_HOST_BOOT_VM
+/* The standalone diagnostic does not link the full trace service. Real VM
+ * startup uses original kdebug.c; its early trace buffer is not stdout. */
+void
+kernel_debug_string_early(const char *message)
+{
+    xnu_host_boot_phase(message);
+}
+#endif
 
 _Noreturn void
 panic(const char *format, ...)
