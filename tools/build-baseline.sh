@@ -31,6 +31,6 @@ xcodebuild -version
 xcrun --find iig
 (cd dxb && bash build.sh)
 mkdir -p ../../out-baseline
-cp dxb/fakeroot/System/Library/Kernels/kernel.* ../../out-baseline/
+find dxb/fakeroot/System/Library/Kernels -maxdepth 1 -type f -name 'kernel.*' -exec cp {} ../../out-baseline/ \;
 file ../../out-baseline/kernel.* > ../../out-baseline/file.txt
 (cd ../../out-baseline && shasum -a 256 kernel.* > SHA256SUMS)
