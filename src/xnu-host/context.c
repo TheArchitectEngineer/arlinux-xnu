@@ -11,6 +11,7 @@
 #include <mach/machine.h>
 #include <machine/machine_routines.h>
 #include <host/context.h>
+#include <host/userexec.h>
 #include <host/time.h>
 #include <arm/rtclock.h>
 #include <kern/cpu_data.h>
@@ -289,7 +290,7 @@ host_timer_interrupt_body(void)
 }
 
 static void
-host_deliver_pending_timer(void)
+host_deliver_timer_state(arm_saved_state_t *state)
 {
     assert(!host_interrupts_enabled && boot_cpu.cpu_int_state == NULL);
     int pending = xnu_host_timer_take();
@@ -298,9 +299,23 @@ host_deliver_pending_timer(void)
     if (!pending)
         return;
     assert(host_timer_cpu_ready);
-    /* This is a synchronous kernel safe-point interrupt frame, not a captured
-     * Linux exception or a guest register set suitable for architectural return.
-     * The ordinary C/stack-switch ABI preserves the interrupted kernel caller. */
+    thread_t interrupted = host_thread;
+    int preemption = get_preemption_level();
+    disable_preemption();
+    boot_cpu.cpu_int_state = state;
+    host_timer_active = true;
+    int result = xnu_host_run_on_stack(host_timer_interrupt_body, boot_cpu.excepstack_top);
+    assert(result == 0 && host_thread == interrupted);
+    assert(boot_cpu.cpu_int_state == state && get_preemption_level() == preemption + 1);
+    host_timer_active = false;
+    boot_cpu.cpu_int_state = NULL;
+    enable_preemption(); /* IRQs remain masked; caller chooses kernel/user ASTs. */
+}
+
+static void
+host_deliver_pending_timer(void)
+{
+    /* Synchronous kernel safe-point diagnostic frame, not guest CPU state. */
     arm_saved_state_t state = {0};
     state.ash.flavor = ARM_SAVED_STATE64;
     state.ash.count = ARM_SAVED_STATE64_COUNT;
@@ -311,19 +326,25 @@ host_deliver_pending_timer(void)
     uintptr_t stack;
     __asm__ volatile("mov %0, sp" : "=r"(stack));
     set_saved_state_sp(&state, stack);
-    thread_t interrupted = host_thread;
-    int preemption = get_preemption_level();
-    disable_preemption();
-    boot_cpu.cpu_int_state = &state;
-    host_timer_active = true;
-    int result = xnu_host_run_on_stack(host_timer_interrupt_body, boot_cpu.excepstack_top);
-    assert(result == 0 && host_thread == interrupted);
-    assert(boot_cpu.cpu_int_state == &state && get_preemption_level() == preemption + 1);
-    host_timer_active = false;
-    boot_cpu.cpu_int_state = NULL;
-    /* IRQs are still virtually masked: urgent AST processing happens only
-     * below, back on this thread's kernel stack after the IRQ stack is free. */
-    enable_preemption();
+    host_deliver_timer_state(&state);
+}
+
+void
+xnu_usermode_timer_poll(arm_saved_state_t *state)
+{
+    assert(get_preemption_level() == 0 && is_saved_state64(state));
+    assert(PSR64_IS_USER(get_saved_state_cpsr(state)));
+    host_deliver_timer_state(state);
+}
+
+void
+xnu_usermode_user_interrupts_enable(void)
+{
+    assert(get_preemption_level() == 0 && boot_cpu.cpu_int_state == NULL);
+    assert(!host_interrupts_enabled);
+    /* Pending clocks are polled against real user state; urgent ASTs must
+     * enter ast_taken_user, never the kernel-return shortcut. */
+    host_interrupts_enabled = TRUE;
 }
 
 boolean_t

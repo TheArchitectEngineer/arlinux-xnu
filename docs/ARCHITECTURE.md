@@ -6,8 +6,10 @@ fixed. All compilation and execution use `build.sh` on GitHub runners.
 
 ## Selected execution boundary
 
-Use Unicorn 2.1.4's ARM64 instruction engine for guest user instructions. The
-exact unmodified source is a submodule and is recorded in `sources.lock.json`.
+Use a pinned Unicorn 2.1.4-based ARM64 engine for guest user instructions. The
+[taowen fork](https://github.com/taowen/unicorn) adds read-only pending exception
+syndrome/address registers, queried inside the interrupt hook. Exact fork/base
+sources are recorded in `sources.lock.json`; no build-time patch pile is used.
 This deliberately prioritizes controllable CPU state over native performance.
 Native ptrace execution is no longer the initial implementation target.
 
@@ -80,13 +82,28 @@ These operations are new and have not run through real XNU. User-copy, VM/COW
 fault dispatch, nested/shared-cache/commpage maps and runnable threads remain
 unfinished. The objective still includes those paths and a genuine app journey.
 
-The machine return path must transfer the actual thread saved state, run its
-engine, and translate the reported event into original ARM exception handling:
-Mach/BSD SVC dispatch or VM fault resolution in that thread's kernel context.
-Do not confuse Unicorn exception numbers with ARM ESR values. Preserve the
-correct faulting/resume PC, error convention, carry flags and return state.
-Thread blocking/continuations stay in the original scheduler. A time slice must
-service pending kernel clock events before the next scheduled user execution.
+The machine return path now transfers the real thread's integer/FP/SIMD state,
+Darwin TPIDRRO/TSD and CPU-ID TPIDR_EL0 to its pmap engine. It preserves original
+x18 policy and enters original SLEH for BSD/Mach SVC dispatch and VM faults.
+A noreturn assembly entry resets the finished kernel call stack before the next
+user execution; blocking/continuations remain in the original scheduler. TSD
+setters store real PCB state that is installed on each engine resume, without
+touching host Linux TLS. None of this path has executed through XNU yet.
+
+Engine exception indices are not ESR. The fork exposes pending syndrome/address
+from the actual virtual CPU before exception_index is cleared. Internal/yield/
+semihost events remain unsupported. Flat mapping failures explicitly model
+translation/permission faults of a 16 KiB leaf; unaligned entry PC is an ARM PC
+alignment event. The transport does not decode arbitrary instruction byte
+patterns or treat stale ESR_EL1/FAR_EL1 banks as current exceptions.
+
+Bounded user slices poll pending clock events against the actual stopped user
+saved state, while kernel safe points retain diagnostic kernel frames. Original
+FIQ/timer queues and user AST handling own scheduling; user return never uses the
+kernel-only urgent-AST shortcut. PFZ deferral follows CONFIG_ARM_PFZ, as in original
+locore. Timer/AST/state restoration remains runtime-unverified. Direct counter/
+commpage timebase, hardware debug, all uncommon exception cases and full kernel
+startup still require work; this is not working app compatibility.
 
 USERMODE copyio now retains original copyio.c bounds/tag/zone/alignment checks
 and kernel-to-kernel handling, then copies isolated user memory through real
@@ -104,7 +121,7 @@ physical load/store. Wait-if-equals reads the real value; equal may finish as a
 spurious WFE hint, not as ulock completion. Original ulock scheduling still must
 be connected and validated. Page boundaries service cooperative IRQ safe points
 without unmasking a caller's masked interrupts. These paths are unexecuted.
-Architectural fault/recover metadata and exception return still need integration;
+Architectural copy-fault/recover metadata still needs integration;
 this C transport does not synthesize a complete ARM exception frame.
 
 Linux syscall buffers and engine/libc calls must still use native storage: Linux

@@ -18,7 +18,7 @@
   "virtualCpus": 1,
   "xnuKernel": {
     "repository": "taowen/xnu",
-    "commit": "355e0c6e9767a88e58749e2e1f6817d316a4f4b7",
+    "commit": "ac6d2d422d4232a01e8e01c564b63a50d0772870",
     "tag": "xnu-8796.141.3",
     "path": "third_party/xnu",
     "upstreamCommit": "1b191cb58250d0705d8a51287127505aa4bc0789",
@@ -30,10 +30,12 @@
     "path": "third_party/bootstrap_cmds"
   },
   "guestExecutionEngine": {
-    "repository": "unicorn-engine/unicorn",
-    "commit": "8028ec436f2d9376525352dd38ed9ed6b9f6be10",
-    "tag": "2.1.4",
+    "repository": "taowen/unicorn",
+    "commit": "2bca534e6168c9096e326c1868279a5baed4f9b3",
     "path": "third_party/unicorn",
-    "architecture": "aarch64"
+    "architecture": "aarch64",
+    "upstreamRepository": "unicorn-engine/unicorn",
+    "upstreamCommit": "8028ec436f2d9376525352dd38ed9ed6b9f6be10",
+    "upstreamTag": "2.1.4"
   }
 }

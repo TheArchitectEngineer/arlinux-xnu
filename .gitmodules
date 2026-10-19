@@ -6,4 +6,4 @@
 	url = https://github.com/darlinghq/darling-bootstrap_cmds.git
 [submodule "third_party/unicorn"]
 	path = third_party/unicorn
-	url = https://github.com/unicorn-engine/unicorn.git
+	url = https://github.com/taowen/unicorn.git

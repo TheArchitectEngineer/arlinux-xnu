@@ -22,6 +22,7 @@
 #include <host/fault.h>
 #include <host/guest.h>
 #include <host/usercopy.h>
+#include <host/userexec.h>
 
 static struct pmap kernel_pmap_store;
 const pmap_t kernel_pmap = &kernel_pmap_store;
@@ -199,6 +200,19 @@ xnu_usermode_pmap_page(pmap_t pmap, vm_map_offset_t address,
         return false;
     *physical = (pmap_paddr_t)mapping->page * PAGE_SIZE + (address & PAGE_MASK);
     return true;
+}
+
+struct xnu_host_guest *
+xnu_usermode_pmap_engine(pmap_t pmap)
+{
+    /* The executing thread owns its current VM map/pmap across a CPU run.
+     * Native callbacks cannot switch XNU threads or destroy that map. */
+    disable_preemption();
+    require_pmap_locked(pmap);
+    assert(pmap != kernel_pmap);
+    struct xnu_host_guest *guest = (*user_pmap_link(pmap))->guest;
+    enable_preemption();
+    return guest;
 }
 
 static void

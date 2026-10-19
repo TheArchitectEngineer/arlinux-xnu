@@ -19,7 +19,8 @@ enum xnu_host_guest_stop {
 };
 struct xnu_host_guest_event {
     enum xnu_host_guest_stop reason;
-    unsigned int exception; /* Pinned ARM engine exception number, not XNU ESR. */
+    unsigned int exception; /* Raw pinned engine exception, for diagnosis only. */
+    unsigned int esr, syndrome_valid; /* Explicit ARM syndrome, never raw intno. */
     unsigned long long address;
     unsigned int access; /* VM_PROT_READ/WRITE/EXECUTE values 1/2/4. */
     unsigned int protection_fault;

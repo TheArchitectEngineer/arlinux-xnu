@@ -45,6 +45,10 @@ results do not establish guest execution.
   userland bring-up on Redmi Note 10 Pro. Our bare-metal baseline uses its pinned
   patches and upstream build recipe; credit belongs to its authors/contributors.
 
+* [Unicorn Engine](https://github.com/unicorn-engine/unicorn): ARM64 instruction
+  execution. [Our fork](https://github.com/taowen/unicorn) exposes pending CPU
+  exception metadata; XNU retains VM and Mach/BSD ownership.
+
 Preserved forks: [taowen/linux-um-arm64](https://github.com/taowen/linux-um-arm64)
 and [taowen/ios-sweet](https://github.com/taowen/ios-sweet). Fixed source commits
 and upstream repositories are recorded in `sources.lock.json`.

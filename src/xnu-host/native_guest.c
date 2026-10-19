@@ -31,13 +31,36 @@ struct xnu_host_guest {
 
 static struct xnu_host_guest *guests;
 
+/* Indices are from pinned qemu/target/arm/cpu.h. The fork exposes the
+ * pending syndrome/address before cpu-exec clears exception_index. Never
+ * infer ESR from intno or read stale architectural ESR_EL1/FAR_EL1 banks. */
 static void
 exception_stop(uc_engine *engine, uint32_t exception, void *opaque)
 {
     struct xnu_host_guest *guest = opaque;
     guest->event.reason = XNU_HOST_GUEST_EXCEPTION;
     guest->event.exception = exception;
-    guest->stop_error = uc_emu_stop(engine);
+    uc_err error = UC_ERR_OK;
+    if (exception == 1 || exception == 2 || exception == 3 ||
+        exception == 4 || exception == 7) {
+        uint32_t syndrome;
+        uint64_t address = 0;
+        error = uc_reg_read(engine, UC_ARM64_REG_EXCEPTION_SYNDROME, &syndrome);
+        if (!error) {
+            unsigned int ec = syndrome >> 26;
+            if (ec == 0x20 || ec == 0x21 || ec == 0x22 ||
+                ec == 0x24 || ec == 0x25 || ec == 0x26 || ec == 0x34 || ec == 0x35)
+                error = uc_reg_read(engine, UC_ARM64_REG_EXCEPTION_VADDRESS, &address);
+        }
+        if (!error) {
+            guest->event.esr = syndrome;
+            guest->event.address = address;
+            guest->event.syndrome_valid = 1;
+        }
+    }
+    /* Internal/yield/semihost events are not ARM synchronous exceptions. */
+    uc_err stop = uc_emu_stop(engine);
+    guest->stop_error = error ? error : stop;
 }
 
 static bool
@@ -53,6 +76,13 @@ memory_stop(uc_engine *engine, uc_mem_type type, uint64_t address,
         type == UC_MEM_FETCH_UNMAPPED || type == UC_MEM_FETCH_PROT ? 4 : 1;
     guest->event.protection_fault = type == UC_MEM_WRITE_PROT ||
         type == UC_MEM_READ_PROT || type == UC_MEM_FETCH_PROT;
+    /* Flat engine translations model a 16 KiB leaf. ISV stays clear; access
+     * type and translation/permission failure are the information we own. */
+    uint32_t ec = guest->event.access == 4 ? 0x20u : 0x24u;
+    guest->event.esr = (ec << 26) | (1u << 25) |
+        (guest->event.protection_fault ? 0xfu : 0x7u) |
+        (guest->event.access == 2 ? (1u << 6) : 0);
+    guest->event.syndrome_valid = 1;
     guest->stop_error = uc_emu_stop(engine);
     /* Do not claim to resolve a fault. The XNU caller must resolve it and
      * explicitly update this pmap before resuming the faulting instruction. */
@@ -69,6 +99,9 @@ guest_create(struct xnu_host_guest **result)
     if (!guest)
         return UC_ERR_NOMEM;
     uc_err error = uc_open(UC_ARCH_ARM64, UC_MODE_ARM, &guest->engine);
+    uint32_t cpacr = 3u << 20; /* FP/SIMD enabled for the restored 128-bit state. */
+    if (!error)
+        error = uc_reg_write(guest->engine, UC_ARM64_REG_CPACR_EL1, &cpacr);
     uc_hook hook;
     if (!error)
         error = uc_hook_add(guest->engine, &hook, UC_HOOK_INTR,
@@ -296,8 +329,13 @@ guest_run(struct xnu_host_guest *guest,
     struct xnu_host_guest_event *event)
 {
     if (!guest || guest->running || guest->poisoned || !state || !event || !instructions ||
-        (state->pc & 3) || (state->pstate & 0x1f)) /* AArch64 EL0t only. */
+        (state->pstate & 0x1f)) /* AArch64 EL0t only. */
         return UC_ERR_ARG;
+    if (state->pc & 3) {
+        *event = (struct xnu_host_guest_event){ .reason = XNU_HOST_GUEST_EXCEPTION,
+            .esr = (0x22u << 26) | (1u << 25), .syndrome_valid = 1, .address = state->pc };
+        return 0;
+    }
     uc_err error = transfer_state(guest->engine, state, true);
     if (error)
         return error;
@@ -323,6 +361,8 @@ guest_run(struct xnu_host_guest *guest,
             return error;
     } else if (error == UC_ERR_INSN_INVALID) {
         guest->event.reason = XNU_HOST_GUEST_UNDEFINED;
+        guest->event.esr = 1u << 25;
+        guest->event.syndrome_valid = 1;
     } else if (error) {
         return error;
     }

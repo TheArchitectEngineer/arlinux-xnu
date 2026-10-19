@@ -10,9 +10,7 @@ The native adapter transfers integer/FP/SIMD/PSTATE/TLS state, maps XNU-owned
 16 KiB frame backing and reports exception/memory/slice stops. It implements no
 Darwin syscall or Mach-O loader. Engine operations now switch to a guarded native
 CPU stack allocated before XNU startup, avoiding libc/TCG use of small XNU kernel
-thread stacks. That stack integration compiled in the latest run but has not executed. USERMODE TSD
-installation still rejects unsupported requests until actual thread return is
-connected; saving cthread_self alone is insufficient.
+thread stacks. That stack integration compiled in the latest run but has not executed. The new return path now restores virtual TPIDRRO from the PCB, but has not run.
 
 Latest completed run:
 [39303186380](https://github.com/taowen/arlinux-xnu/actions/runs/39303186380),
@@ -71,15 +69,25 @@ stop at NUL; atomic transfers use aligned single loads/stores. Wait-if-equals
 allows a spurious WFE-hint return, not a fake ulock completion. Native engine
 memory APIs never substitute for XNU permission checks.
 
-Next connect original saved-state/exception return/dispatch, including fault
-recovery metadata. Original thread_exception_return is noreturn: machine return
-must discard the consumed kernel call stack before the next user execution,
-not recursively grow a C stack on every SVC. Preserve the real thread context
-and original Mach/BSD blocking/continuation semantics. The
-new copy transport and resident mapping/ledger behavior still need real XNU
-execution. Nested/shared-cache/commpage paths and service providers remain.
-No isolated copy sample/test is added; the supervisor/child journey remains
-acceptance. Do not choose unrelated providers by unresolved-symbol counts.
+New, not yet built: original machine-return symbols now reset the consumed
+kernel stack and enter a real-thread CPU loop. It restores integer/FP/TLS state,
+handles original user ASTs, runs a bounded pmap engine slice and passes synchronous
+events to original sleh_synchronous. Clocks poll with actual user saved state;
+kernel safe points retain kernel diagnostic frames. PCB TSD setters install
+virtual TPIDRRO on next resume. No native Linux TLS register is overwritten.
+
+The pinned Unicorn fork adds read-only pending syndrome/address queries. The
+native hook captures real virtual CPU metadata for synchronous exceptions;
+internal events are unsupported. Flat mapping failures model leaf permission/
+translation errors. No arbitrary byte-pattern decoder or stale ESR/FAR bank is
+used. This fork extension and CPU return/IRQ/AST path have not executed.
+
+Next inspect this actual build, then follow the original kernel bootstrap/task/
+thread/service ordering toward the supervisor/child journey. The current VM
+entry still ends after its intermediate allocator attempt; kernel task startup,
+root filesystem/console/exec, nested/commpage and missing machine/service inputs
+remain. Copy-fault recovery metadata, debug and timebase behavior also need work.
+Do not substitute a CPU sample or a syscall shim for the real process journey.
 
 The first acceptance is supervisor plus child through original BSD exec/VFS:
 console output, XNU allocation/touch/free, normal child exit and real parent wait.
