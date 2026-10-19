@@ -54,7 +54,7 @@ xnu_host_context_initialize(void *stack_base, unsigned long stack_size,
     boot_cpu.excepstack_top = boot_cpu.intstack_top;
     boot_thread.machine.CpuDatap = &boot_cpu;
     boot_thread.machine.kstackptr = (vm_offset_t)stack_base + stack_size;
-    boot_thread.machine.preemption_count = 1; /* early boot, scheduler not running */
+    boot_thread.machine.preemption_count = 0; /* ARM early boot permits mutex locking */
     boot_thread.kernel_stack = (vm_offset_t)stack_base;
     boot_thread.state = TH_RUN;
     machine_set_current_thread(&boot_thread);
@@ -63,6 +63,18 @@ xnu_host_context_initialize(void *stack_base, unsigned long stack_size,
         boot_cpu.cpu_number, host_thread, boot_thread.machine.preemption_count,
         stack_size, exception_size);
     return 0;
+}
+
+void
+xnu_host_context_adopt_boot_thread(void)
+{
+    assert(host_thread != THREAD_NULL);
+    thread_t thread = thread_bootstrap();
+    thread->kernel_stack = host_thread->kernel_stack;
+    thread->machine.kstackptr = host_thread->machine.kstackptr;
+    thread->machine.preemption_count = 0;
+    machine_set_current_thread(thread);
+    kprintf("XNU_HOST_CONTEXT adopted XNU thread_bootstrap thread=%p\n", thread);
 }
 
 int

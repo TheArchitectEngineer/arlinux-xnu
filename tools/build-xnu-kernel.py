@@ -160,7 +160,8 @@ def main():
             'startup', 'task', 'thread', 'exception', 'ipc_tt', 'ipc_kobject',
             'ipc_host', 'ipc_mig', 'host', 'processor', 'kalloc', 'zalloc',
             'lock_group', 'locks', 'compact_id', 'lock_mtx', 'lock_rw',
-            'lock_ticket', 'ledger', 'kext_alloc', 'backtrace', 'btlog']],
+            'lock_ticket', 'ledger', 'kext_alloc', 'backtrace', 'btlog',
+            'timer', 'bsd_kern']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
@@ -170,8 +171,10 @@ def main():
         'libkern/os/refcnt.c',
     ]
     # Build the actual MIG dispatch implementations, not just their headers.
+    configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
     units += ['build/kernel/mig/mach/' + name for name in
-              upstream_words(XNU / 'osfmk/mach/Makefile', 'MIG_KSSRC')]
+              upstream_words(XNU / 'osfmk/mach/Makefile', 'MIG_KSSRC')
+              if Path(name).with_suffix('.o').name in configured_objects]
     units += ['build/kernel/mig/device/' + name for name in
               upstream_words(XNU / 'osfmk/device/Makefile', 'DEVICE_FILES')
               if name.endswith('.c')]
@@ -180,7 +183,12 @@ def main():
         name = Path(unit).stem
         obj = OUT / (name + '.o')
         source_path = ROOT / unit if unit.startswith(('src/', 'build/')) else XNU / unit
-        command = [*flags, str(source_path), '-o', str(obj)]
+        component_flags = []
+        if unit.startswith('libkern/'):
+            # libkern/conf/Makefile.template uses the BSD/libkern namespace.
+            component_flags = ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',
+                               '-DLIBKERN_KERNEL_PRIVATE=1', '-DOSALLOCDEBUG=1']
+        command = [*flags, *component_flags, str(source_path), '-o', str(obj)]
         commands.append({'directory': str(ROOT), 'file': str(source_path), 'arguments': command})
         print('Compiling actual XNU:', unit, flush=True)
         completed = subprocess.run(command, capture_output=True, text=True)

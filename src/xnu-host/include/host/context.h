@@ -5,4 +5,6 @@
 int xnu_host_context_initialize(void *stack_base, unsigned long stack_size,
     void *exception_base, unsigned long exception_size);
 
+void xnu_host_context_adopt_boot_thread(void);
+
 #endif
