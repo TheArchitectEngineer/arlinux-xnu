@@ -80,9 +80,7 @@ print(report.read_text(), end='')
 if collisions:
     raise SystemExit('Native Linux imports collide with XNU definitions: ' + ', '.join(collisions))
 PY
-link_stage=0
-if [[ $stage == vm ]]; then link_stage=1; fi
-cc -E -P -x c -DXNU_HOST_VM_STAGE="$link_stage" src/xnu-host/startup.ld > "$output/startup.ld"
+cc -E -P -x c src/xnu-host/startup.ld > "$output/startup.ld"
 link_flags=(-no-pie -pthread -Wl,--gc-sections -Wl,-Ttext-segment="$base"
   -Wl,-T,"$output/startup.ld" -Wl,-Map,"$output/link-map.txt")
 if [[ $stage == early ]]; then
@@ -96,7 +94,10 @@ if [[ $stage == early ]]; then
     build/kernel/WKdmDecompress_16k.o build/kernel/WKdmData.o build/kernel/lz4.o)
 else
   ar rcs "$output/libxnu.a" build/kernel/*.o
-  objects=(-Wl,--start-group "$output/libxnu.a" -Wl,--end-group)
+  # KEEP cannot extract otherwise-unreferenced archive members. Bring every
+  # declared kernel object into the link so its startup/type registrations
+  # exist, then let section GC remove only unreferenced non-registration code.
+  objects=(-Wl,--whole-archive "$output/libxnu.a" -Wl,--no-whole-archive)
 fi
 cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "${engine_objects[@]}" "${objects[@]}" "${engine_link[@]}" \
   -o "$output/xnu-host" 2>&1 | tee "$output/link.log"

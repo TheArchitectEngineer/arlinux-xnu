@@ -244,7 +244,7 @@ jobs:
         with:
           name: xnu-linux-arm64-kernel-port
           path: build/kernel/
-      - name: Link and attempt actual XNU VM bootstrap
+      - name: Link and attempt original XNU kernel bootstrap
         shell: bash
         run: |
           bash tools/run-xnu-host.sh vm

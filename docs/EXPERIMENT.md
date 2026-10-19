@@ -101,11 +101,16 @@ internal events are unsupported. Flat mapping failures model leaf permission/
 translation errors. No arbitrary byte-pattern decoder or stale ESR/FAR bank is
 used. The fork extension and CPU return/IRQ/AST path compiled but have not executed.
 
-Next inspect this actual build, then follow the original kernel bootstrap/task/
-thread/service ordering toward the supervisor/child journey. The current VM
-entry still ends after its intermediate allocator attempt; kernel task startup,
-root filesystem/console/exec, nested/commpage and missing machine/service inputs
-remain. Copy-fault recovery metadata, debug and timebase behavior also need work.
+New, not yet built: the default entry now calls original kernel_bootstrap,
+after original ARM pre-VM timer/processor preparation, instead of exiting after
+an allocator sample. VM and full-link jobs extract every declared archive member (KEEP alone cannot
+extract unreferenced members), then retain all compiled startup entries rather
+than only phases through ZALLOC. Original VM/task/thread/service ordering must
+actually execute, not be mimicked by setting startup_phase.
+
+Next follow that actual boot call graph toward the supervisor/child journey.
+Missing machine/service inputs, root filesystem/console/exec and nested/commpage
+paths remain. Copy-fault recovery metadata, debug and timebase behavior also need work.
 Do not substitute a CPU sample or a syscall shim for the real process journey.
 
 The first acceptance is supervisor plus child through original BSD exec/VFS:

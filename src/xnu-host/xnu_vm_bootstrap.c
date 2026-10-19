@@ -1,14 +1,10 @@
-/* The next real-kernel entry: keep this separate from the verified early boot
- * while VM's required kernel/platform dependencies are being brought up. */
+/* Host platform preparation followed by original XNU kernel bootstrap.
+ * No allocator sample or substitute task/syscall startup is an acceptance gate. */
 #include <host/context.h>
-#include <vm/vm_init.h>
-#include <pexpert/pexpert.h>
-#include <kern/assert.h>
+#include <kern/debug.h>
 #include <kern/startup.h>
-#include <kern/kalloc.h>
 #include <kern/processor.h>
 #include <kern/timer_call.h>
-#include <sys/kdebug_kernel.h>
 
 extern int xnu_host_kernel_initialize(void);
 
@@ -19,28 +15,16 @@ xnu_host_vm_bootstrap(void)
     int result = xnu_host_kernel_initialize();
     if (result)
         return result;
-    /* Match ARM's pre-VM order: locks/tunables, timer infrastructure, then
-     * the real boot processor/pset and global task/thread queues. */
+    /* Original arm/arm_init.c performs these before machine_startup reaches
+     * kernel_bootstrap. Original kernel_bootstrap itself calls VM exactly once,
+     * then advances real startup phases and creates kernel_bootstrap_thread. */
     xnu_host_boot_phase("timer_call_init");
     timer_call_init();
-    xnu_host_boot_phase("processor_bootstrap");
-    processor_bootstrap();
     xnu_host_boot_phase("timer_cpu_initialize");
     xnu_host_timer_cpu_initialize();
-    kprintf("XNU_VM_BOOTSTRAP begin\n");
-    vm_mem_bootstrap();
-    assert(startup_phase == STARTUP_SUB_ZALLOC);
-    void *buffer = kalloc_data(PAGE_SIZE, Z_WAITOK | Z_ZERO);
-    assert(buffer != NULL);
-    volatile unsigned char *bytes = buffer;
-    for (vm_size_t i = 0; i < PAGE_SIZE; i++) {
-        assert(bytes[i] == 0);
-        bytes[i] = (unsigned char)i;
-    }
-    for (vm_size_t i = 0; i < PAGE_SIZE; i++)
-        assert(bytes[i] == (unsigned char)i);
-    kfree_data(buffer, PAGE_SIZE);
-    kprintf("XNU_VM_ALLOCATION real kalloc_data zero/write/read/free passed bytes=%lu\n", (unsigned long)PAGE_SIZE);
-    kprintf("XNU_VM_BOOTSTRAP initialized (guest execution not connected)\n");
-    return 0;
+    xnu_host_boot_phase("processor_bootstrap");
+    processor_bootstrap();
+    xnu_host_boot_phase("original kernel_bootstrap");
+    kernel_bootstrap();
+    panic("original kernel_bootstrap returned instead of loading its first thread");
 }

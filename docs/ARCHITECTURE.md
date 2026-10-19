@@ -141,6 +141,13 @@ XNU startup, avoiding libc/TCG execution on XNU kernel thread stacks. Nested
 entry is rejected; no engine callback may schedule XNU. Stack switching and
 the actual guest path still require runtime validation.
 
+Default host entry now performs the original ARM pre-VM timer/processor setup,
+then calls original kernel_bootstrap exactly once. It no longer exits after a
+kernel allocation sample. Both boot/link stages extract every declared kernel archive member, then
+retain compiled startup registrations including phases after ZALLOC; omitted callbacks must never be
+replaced by merely advancing startup_phase. This full bootstrap attempt still
+requires missing machine/service inputs and real runtime validation.
+
 ## First execution journey
 
 Boot the real kernel, mount a file-backed image through real XNU VFS/filesystem

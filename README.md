@@ -19,7 +19,7 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 
 ```bash
 ./build.sh build --mode host       # explicit historical host/shim diagnostics
-./build.sh build                   # default: real XNU compilation and VM startup attempt
+./build.sh build                   # default: original XNU kernel bootstrap attempt
 ./build.sh build --mode baseline   # ios-sweet bare-metal build
 ./build.sh status --run-id RUN_ID
 ./build.sh download --run-id RUN_ID
