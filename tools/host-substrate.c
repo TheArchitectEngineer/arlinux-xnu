@@ -57,7 +57,7 @@ static void trap_probe(void) {
         register uint64_t x8 __asm__("x8")=SYS_close;
         register uint64_t x16 __asm__("x16")=DARWIN_GETPID;
         uint64_t flags;
-        __asm__ volatile("svc #0x80\n\tmrs %3,nzcv" : "+r"(x0), "+r"(x8), "+r"(x16), "=r"(flags) :: "memory","cc");
+        __asm__ volatile("cmp xzr,xzr\n\tsvc #0x80\n\tmrs %3,nzcv" : "+r"(x0), "+r"(x8), "+r"(x16), "=r"(flags) :: "memory","cc");
         int returned=(x0==GUEST_PID && !(flags&(1UL<<29)));
         int suppressed=(fcntl(guard,F_GETFD)!=-1);
         _exit(returned && suppressed ? 0 : 3);
