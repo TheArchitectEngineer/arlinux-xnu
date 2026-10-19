@@ -2,6 +2,14 @@
 
 ## Current handoff
 
+Execution direction has been revised: use the pinned ARM64 instruction engine
+for user instructions, with real XNU services, instead of starting with native
+ptrace and adapting Apple's TLS instructions. The native CPU adapter and runner
+build integration are new; no engine-backed user pmap, XNU exception bridge or
+guest journey is connected yet. Do not resume symbol-by-symbol expansion as the
+primary work plan. Establish the execution path described in ARCHITECTURE.md.
+
+
 The objective is real XNU execution of ARM64 Mach-O, followed by dyld, genuine
 iOS frameworks and an app. [Execution design](ARCHITECTURE.md) now defines the
 host/kernel/guest ownership and unresolved ABI constraints. It is a proposed

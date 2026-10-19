@@ -28,5 +28,12 @@
     "repository": "darlinghq/darling-bootstrap_cmds",
     "commit": "0f300a7a04bb1174a3b7db58b57d738aadc14e13",
     "path": "third_party/bootstrap_cmds"
+  },
+  "guestExecutionEngine": {
+    "repository": "unicorn-engine/unicorn",
+    "commit": "8028ec436f2d9376525352dd38ed9ed6b9f6be10",
+    "tag": "2.1.4",
+    "path": "third_party/unicorn",
+    "architecture": "aarch64"
   }
 }

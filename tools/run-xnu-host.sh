@@ -17,6 +17,31 @@ base=$(printf 'XNU_HOST_KERNEL_BASE\n' | cc -E -P -x c \
   -idirafter third_party/xnu/osfmk/arm -include usermode_vm.h -)
 flags=(-Wall -Wextra -Werror -O1 -g -pthread -Isrc/xnu-host/include
   -idirafter third_party/xnu/osfmk/arm -ffunction-sections -fdata-sections)
+# The guest CPU engine is a pinned, unmodified source dependency. It supplies
+# instructions/registers only; this does not add a substitute Darwin runtime.
+engine_objects=()
+engine_link=()
+if [[ $stage != early ]]; then
+  python3 - <<'ENGINE_PIN'
+import json
+from pathlib import Path
+import subprocess
+lock = json.loads(Path('sources.lock.json').read_text())['guestExecutionEngine']
+actual = subprocess.check_output(['git', '-C', lock['path'], 'rev-parse', 'HEAD'], text=True).strip()
+if actual != lock['commit']:
+    raise SystemExit(f"Guest CPU source mismatch: {actual} != {lock['commit']}")
+print(f"GUEST_CPU_SOURCE {lock['repository']} {actual}")
+ENGINE_PIN
+  cmake -S third_party/unicorn -B "build/engine-$stage" \
+    -DCMAKE_BUILD_TYPE=Release -DUNICORN_ARCH=aarch64 \
+    -DUNICORN_BUILD_TESTS=OFF -DUNICORN_INSTALL=OFF -DBUILD_SHARED_LIBS=ON \
+    -DCMAKE_LIBRARY_OUTPUT_DIRECTORY="$PWD/$output/engine"
+  cmake --build "build/engine-$stage" --target unicorn -j2
+  flags+=(-Ithird_party/unicorn/include)
+  cc "${flags[@]}" -c src/xnu-host/native_guest.c -o "$output/native_guest.o"
+  engine_objects=("$output/native_guest.o")
+  engine_link=(-L"$output/engine" -lunicorn '-Wl,-rpath,$ORIGIN/engine')
+fi
 cc "${flags[@]}" "${entry_flags[@]}" -c src/xnu-host/host.c -o "$output/host.o"
 cc "${flags[@]}" -c src/xnu-host/memory.c -o "$output/memory.o"
 cc "${flags[@]}" -c src/xnu-host/native_time.c -o "$output/native_time.o"
@@ -37,6 +62,15 @@ def symbols(objects, mode):
             if len(fields := line.split()) >= 2 and len(fields[1]) == 1}
 
 native = symbols(sorted(output.glob('*.o')), '--undefined-only')
+# Dynamic dependencies also import host libc. Include their actual imports in
+# the same collision audit so kernel exports cannot interpose on the engine.
+for library in (output / 'engine').glob('*.so.*'):
+    if library.is_symlink():
+        continue
+    listing = subprocess.check_output(['nm', '-D', '-g', '--undefined-only',
+                                      '--format=posix', str(library)], text=True)
+    native.update(line.split()[0].split('@')[0] for line in listing.splitlines()
+                  if len(line.split()) >= 2)
 kernel = symbols(sorted(Path('build/kernel').glob('*.o')), '--defined-only')
 collisions = sorted(name for name in native & kernel
                     if not name.startswith('xnu_host_'))
@@ -64,7 +98,7 @@ else
   ar rcs "$output/libxnu.a" build/kernel/*.o
   objects=(-Wl,--start-group "$output/libxnu.a" -Wl,--end-group)
 fi
-cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "${objects[@]}" \
+cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "${engine_objects[@]}" "${objects[@]}" "${engine_link[@]}" \
   -o "$output/xnu-host" 2>&1 | tee "$output/link.log"
 file "$output/xnu-host" > "$output/file.txt"
 if [[ $stage == full ]]; then
