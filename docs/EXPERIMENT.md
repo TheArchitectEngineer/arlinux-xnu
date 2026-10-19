@@ -9,29 +9,29 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39292773110](https://github.com/taowen/arlinux-xnu/actions/runs/39292773110),
-root `ff949ec56aaedfb24610effe8b30c939d98bf40b`, fork `abe6e09`.
-Actual compiler job `118197748257` passed real per-CPU timer-queue initialization.
+[39293855240](https://github.com/taowen/arlinux-xnu/actions/runs/39293855240),
+root `ed6dc28b14cad3ad6b5464c7c1bc84fba20b7b31`, fork `abe6e09`.
+Actual compiler job `118201592730` passed CPU idle and wake-transport integration.
 Compiler receipt SHA-256:
-`7049ae3571ae8596a6fc7392363222946ed4754b32d4d300f2baac9c4f327872`.
+`e3ad2182d59c8e42dc731f334baf44afe358b25567ac3af7664612c5bebfbf05`.
 
-Actual VM job `118198349863` compiled native services and passed the
-native/kernel ABI collision audit, but executable linkage failed on remaining
-machine/pmap and service imports. Failure receipt SHA-256:
-`d74bce1a417b2a8f647370aa689f1e500a33f989fe388dec5f6c4c995b41782c`.
+Actual VM job `118202303527` compiled native timerfd/eventfd/TLS operations and
+passed the native/kernel ABI collision audit, but executable linkage failed on
+remaining machine/pmap and service imports. Failure receipt SHA-256:
+`5e80d036199519c980f698c2e2f0bb2165f21816fe3ac1f2c7462984259a1809`.
 No new VM executable, initialization, real allocation, task or guest ran.
-Actual logs are retained under `build/runs/39292773110`; Actions retains complete
+Actual logs are retained under `build/runs/39293855240`; Actions retains complete
 receipts/output hashes. The run is terminal; do not redispatch identical source.
 
-The next source connects machine_idle to original timer_resync_deadlines and a
-real timerfd/eventfd poll. A queued urgent AST bypasses waiting. The wait consumes
-only wake notices, leaving clock expirations for original FIQ at interrupt
-unmask. Normal and deferred idle signals post real, coalesced wake tokens for
-the one virtual CPU; deferred hints are posted eagerly while XNU retains its
-scheduler state. No runnable thread, timeout result or scheduling decision is
-fabricated. Syscall output objects use native TLS rather than reference-tracked
-XNU kernel stacks; CPU stores transfer results back through normal fault handling.
-Runner verification and actual scheduler/timer wakeup journeys are pending.
+machine_idle now calls original timer_resync_deadlines and waits on real
+timerfd/eventfd readiness. A queued urgent AST bypasses waiting. Wait consumes
+only wake notices; original FIQ consumes clock expiry at interrupt unmask.
+Normal/deferred idle signals post real coalesced wake tokens for the one virtual
+CPU, with eager deferred hints and original XNU scheduler bookkeeping. Native
+syscall output objects use TLS; CPU stores transfer results to XNU memory through
+normal fault handling. Both sides compiled, but actual scheduler sleep/expiry/
+wakeup, transport consumption and interrupt restoration have not run. No runnable
+thread, timeout result or scheduling decision has been fabricated.
 
 The compiled timer transport uses real monotonic one-shot events and original
 sleh_fiq/rtclock/timer queues. A diagnostic software boundary frame and separate
