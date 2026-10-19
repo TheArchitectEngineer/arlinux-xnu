@@ -66,7 +66,7 @@ cache-loading responsibility rather than faking its completion.
 Real libSystem/pthread/libc initializers now execute. The observed Host
 priority query, Clock service lookup and semaphore creation have passed their
 clients' checks. The true dynamically linked C main now executes real libSystem
-write/malloc/free calls, but pthread_create still fails. An empty task Bootstrap
+write/malloc/free calls and real pthread create/join, input, exit and relaunch. An empty task Bootstrap
 slot is reported as NULL, not as a working launchd/XPC service. See docs/EXPERIMENT.md for the exact source/run/hash and
 remaining acceptance gaps. Cache symbolication preserves actual image and nearest-symbol
 metadata from the same input without uploading Apple executable contents.

@@ -5,7 +5,7 @@ on:
       mode:
         type: choice
         default: native
-        options: [both, host, baseline, native, dyld]
+        options: [both, host, baseline, native, dyld, app]
 permissions:
   contents: read
 jobs:
@@ -74,7 +74,7 @@ jobs:
           path: build/macho/
           retention-days: 30
   native-userland:
-    if: inputs.mode == 'both' || inputs.mode == 'native' || inputs.mode == 'dyld'
+    if: inputs.mode == 'both' || inputs.mode == 'native' || inputs.mode == 'dyld' || inputs.mode == 'app'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
@@ -99,6 +99,12 @@ jobs:
           # It supplies no replacement implementation or fabricated exports.
           clang-18 --target=arm64-apple-ios12.0 -ffreestanding -fno-stack-protector -O1 -g -c guests/dynamic-console.c -o build/native/console-dynamic.o
           ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/console-dynamic.o -needed_library guests/libSystem.tbd -o build/native/console-dynamic.macho
+          # ARHello is a UIKit app, not a replacement framework. These TBDs only
+          # describe link interfaces; all implementations come from real iOS.
+          mkdir -p build/native/ARHello.app
+          cp guests/ARHello/Info.plist build/native/ARHello.app/
+          clang-18 --target=arm64-apple-ios12.0 -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c guests/ARHello/main.m -o build/native/ARHello.o
+          ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/ARHello.o -needed_library guests/libSystem.tbd -needed_library guests/ARHello/UIKit.tbd -needed_library guests/ARHello/Foundation.tbd -needed_library guests/ARHello/libobjc.tbd -o build/native/ARHello.app/ARHello
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
           cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -mno-outline-atomics -c src/darwin-native.c -o build/native/runtime.o
           cc -c src/darwin-native.S -o build/native/entry.o
@@ -112,7 +118,7 @@ jobs:
             cat build/native/console-$attempt.stdout build/native/console-$attempt.log
             if [[ $status != 0 ]]; then exit "$status"; fi
           done
-          (cd build/native && sha256sum macho-native console.macho console-dynamic.macho > SHA256SUMS)
+          (cd build/native && sha256sum macho-native console.macho console-dynamic.macho ARHello.app/ARHello ARHello.app/Info.plist > SHA256SUMS)
       - name: Record experiment receipt
         if: always()
         run: python3 tools/experiment-receipt.py --directory build/native --outcome '${{ job.status }}'
@@ -123,7 +129,7 @@ jobs:
           path: build/native/
           retention-days: 30
   dyld-userland:
-    if: inputs.mode == 'dyld'
+    if: inputs.mode == 'dyld' || inputs.mode == 'app'
     needs: native-userland
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
@@ -158,6 +164,21 @@ jobs:
             cat "build/dyld/console-${attempt}.stdout" "build/dyld/runtime-${attempt}.log"
             if [ "$status" -ne 0 ]; then exit "$status"; fi
           done
+      - name: Start ARHello 1.0 with real UIKit
+        if: inputs.mode == 'app'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The marker chooses the same program for failure-only LLDB capture.
+          echo build/native/ARHello.app/ARHello > build/dyld/debugger.program
+          python3 -c "import hashlib,json,pathlib; p=pathlib.Path('build/native/ARHello.app/ARHello'); print('APP_INPUT '+json.dumps({'name':'ARHello','version':'1.0','bundleId':'io.arlinux.ARHello','sha256':hashlib.sha256(p.read_bytes()).hexdigest()}))" | tee build/dyld/app-input.json
+          status=0
+          timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log || status=$?
+          cat build/dyld/app.stdout build/dyld/app.runtime.log
+          echo "APP_PROCESS_STATUS=$status"
+          # Even reaching UIApplicationMain is only a startup milestone. The
+          # display, touch, normal close and relaunch journey is still required.
+          exit "$status"
       - name: Dynamically trace the actual failed dyld journey
         if: failure()
         shell: bash
