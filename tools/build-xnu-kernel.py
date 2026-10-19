@@ -92,7 +92,7 @@ def main():
              '-mbranch-protection=none', '-include', str(generated / 'meta_features.h'),
              '-U__linux__', '-Ulinux', '-D__APPLE__=1', '-isystem', resource + '/include',
              '-D__arm64__=1', '-D__ARM64__=1', '-Darm64=1', '-DARM64=1',
-             '-D__ARM_ARCH_8_0__=1', '-D__ARM64_ARCH_8__=1', '-D__ARM_16K_PG__=1',
+             '-D__ARM_ARCH__=8', '-D__ARM_ARCH_8_0__=1', '-D__ARM64_ARCH_8__=1', '-D__ARM_16K_PG__=1',
              '-DPAGE_SIZE_FIXED=1', '-DAPPLE=1', '-DKERNEL=1', '-DKERNEL_PRIVATE=1',
              '-DXNU_KERNEL_PRIVATE=1', '-DMACH_KERNEL_PRIVATE=1', '-DMACH_KERNEL=1',
              '-DPRIVATE=1', '-D__MACHO__=1', '-DCONFIG_USERMODE=1',
@@ -193,7 +193,7 @@ def main():
             'ipc_host', 'ipc_mig', 'host', 'processor', 'kalloc', 'zalloc',
             'lock_group', 'locks', 'compact_id', 'lock_mtx', 'lock_rw', 'lock_ptr',
             'lock_ticket', 'ledger', 'kext_alloc', 'backtrace', 'btlog',
-            'timer', 'bsd_kern', 'kern_cdata',
+            'timer', 'bsd_kern', 'kern_cdata', 'machine',
             # Providers required by the actual VM/thread link, not host stubs.
             'ast', 'sched_prim', 'sched_average', 'sched_traditional', 'sched_dualq', 'priority',
             'waitq', 'turnstile', 'timer_call', 'mpsc_queue', 'recount',

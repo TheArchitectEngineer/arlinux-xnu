@@ -4,12 +4,31 @@
 #include <kern/assert.h>
 #include <kern/clock.h>
 #include <kern/debug.h>
+#include <kern/startup.h>
 #include <mach/mach_time.h>
 #include <pexpert/pexpert.h>
 #include <host/time.h>
 
 /* Normally provided by ARM's boot assembly data area. */
 rtclock_data_t RTClockData;
+
+/* Match ARM's lock budgets in the Linux nanosecond timebase, rather than
+ * copying constants measured at a specific Apple hardware clock frequency.
+ * Original machine_timeout_init applies boot overrides during TIMEOUTS. */
+MACHINE_TIMEOUT_DEV_WRITEABLE(LockTimeOut, "lock", NSEC_PER_SEC / 4,
+    MACHINE_TIMEOUT_UNIT_TIMEBASE, NULL);
+MACHINE_TIMEOUT_DEV_WRITEABLE(TLockTimeOut, "ticket-lock", NSEC_PER_SEC / 8,
+    MACHINE_TIMEOUT_UNIT_TIMEBASE, NULL);
+MACHINE_TIMEOUT_DEV_WRITEABLE(MutexSpin, "mutex-spin", 10 * NSEC_PER_USEC,
+    MACHINE_TIMEOUT_UNIT_TIMEBASE, NULL);
+
+boolean_t
+machine_timeout_suspended(void)
+{
+    /* As on upstream ARM64, lock timeout accounting remains active. */
+    return FALSE;
+}
+
 
 void
 PE_register_timebase_callback(timebase_callback_func callback)

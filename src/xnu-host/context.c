@@ -17,15 +17,6 @@
 static struct thread boot_thread;
 cpu_data_t PERCPU_DATA(cpu_data);
 struct percpu_base percpu_base;
-/* The running host thread supplies one physical/logical virtual CPU. Memory
- * capacity is filled only after Linux has created the physical backing. */
-struct machine_info machine_info = {
-    .max_cpus = MAX_CPUS,
-    .physical_cpu = 1,
-    .physical_cpu_max = MAX_CPUS,
-    .logical_cpu = 1,
-    .logical_cpu_max = MAX_CPUS,
-};
 #define boot_cpu (*PERCPU_GET_MASTER(cpu_data))
 static __thread thread_t host_thread;
 static __thread boolean_t host_interrupts_enabled;
@@ -189,6 +180,11 @@ xnu_host_context_initialize(void *stack_base, unsigned long stack_size,
     /* Original single-CPU layout: iterate the master slot once, no replicas. */
     percpu_base.start = VM_MAX_KERNEL_ADDRESS;
     percpu_base.end = 0;
+    /* Initialize the original kern/machine.c singleton from the one CPU
+     * Linux actually hosts. Physical memory is recorded after allocation. */
+    machine_info.max_cpus = MAX_CPUS;
+    machine_info.physical_cpu = machine_info.physical_cpu_max = 1;
+    machine_info.logical_cpu = machine_info.logical_cpu_max = 1;
     boot_cpu.cpu_number = 0;
     boot_cpu.cpu_type = CPU_TYPE_ARM64;
     boot_cpu.cpu_subtype = CPU_SUBTYPE_ARM64_ALL;
