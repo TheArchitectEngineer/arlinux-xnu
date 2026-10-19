@@ -86,6 +86,7 @@ static long anonymous16(unsigned long size, int protection)
  * resolve inside the selected firmware root; only the explicit executable
  * retains its host path. This is path adaptation, not a security sandbox. */
 static int root_descriptor=-1;
+static uint64_t current_cache_base;
 /* Process-local name for this task's VM capability. Only implemented VM traps
  * accept it; other port/IPC operations remain unsupported, never successful. */
 #define CURRENT_TASK_PORT 0x103U
@@ -314,6 +315,9 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         result=(int)r[0]==root_descriptor ? -9 : RAW(SYS_close,r[0],0,0,0,0,0); break;
     case 153: case 414: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
     case 199: result=RAW(SYS_lseek,r[0],r[1],r[2],0,0,0); break;
+    case 294: /* Actual process-private cache mappings prepared before entry. */
+        result=current_cache_base ? guest_copy(&current_cache_base,r[0],sizeof(current_cache_base),1) : -12;
+        break;
     case 338: case 339: case 340: result=guest_stat(r[0],r[1],r[16]); break;
     case 20: result = RAW(SYS_getpid,0,0,0,0,0,0); break;
     case 372: result = RAW(SYS_gettid,0,0,0,0,0,0); break; /* thread_selfid */
@@ -376,8 +380,9 @@ static void fault(int signal,siginfo_t *info,void *context)
     __builtin_unreachable();
 }
 
-void darwin_native_prepare(const char *root,const char *program)
+void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base)
 {
+    current_cache_base=cache_base;
     char *absolute=realpath(program,NULL);
     if (!absolute || strlen(absolute)>=sizeof(executable_path)) {
         fprintf(stderr,"Invalid guest executable path\n"); exit(1);

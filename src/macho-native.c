@@ -31,6 +31,21 @@ struct section64 {
     uint64_t address,size;
     uint32_t offset,align,reloff,nreloc,flags,reserved1,reserved2,reserved3;
 };
+static size_t rewrite_instruction_words(uint32_t *instructions,uint64_t count)
+{
+    size_t rewritten=0;
+    for (uint64_t k=0;k<count;k++) {
+        uint32_t word=instructions[k];
+        if ((word&~31U)==0xd53bd060U) {
+            instructions[k]=0xd53bd040U|(word&31); /* Darwin TSD -> Linux TLS */
+            rewritten++;
+        } else if ((word&~31U)==0xd53bd040U) {
+            instructions[k]=0xd2800000U|(word&31); /* single CPU metadata */
+            rewritten++;
+        }
+    }
+    return rewritten;
+}
 static void rewrite_tls(struct image *im)
 {
     struct header h; memcpy(&h,im->bytes,sizeof(h));
@@ -55,18 +70,7 @@ static void rewrite_tls(struct image *im)
                          section.offset==s.offset+section.address-s.address,
                          "instruction section bounds/alignment");
                     uint32_t *instructions=(void *)section.address;
-                    for (uint64_t k=0;k<section.size/4;k++) {
-                        uint32_t op=instructions[k];
-                        if ((op&~31U)==0xd53bd060U) { /* mrs Xt,TPIDRRO_EL0 */
-                            instructions[k]=0xd53bd040U|(op&31); /* Linux guest TLS */
-                            rewritten++;
-                        } else if ((op&~31U)==0xd53bd040U) {
-                            /* Original Darwin TPIDR_EL0 holds CPU metadata.
-                             * Our declared machine has a single CPU, index 0. */
-                            instructions[k]=0xd2800000U|(op&31);
-                            rewritten++;
-                        }
-                    }
+                    rewritten+=rewrite_instruction_words(instructions,section.size/4);
                 }
                 __builtin___clear_cache((void *)s.address,(void *)(s.address+s.size));
                 need(mprotect((void *)s.address,round16(s.size),s.prot)==0,"restore code protection");
@@ -76,6 +80,8 @@ static void rewrite_tls(struct image *im)
     }
     fprintf(stderr,"NATIVE_TLS_REWRITE instructions=%zu guest_page=16384 cpu_count=1\n",rewritten);
 }
+
+#include "dyld-cache.h"
 
 int main(int argc,char **argv)
 {
@@ -95,6 +101,7 @@ int main(int argc,char **argv)
         fprintf(stderr,"NATIVE_DYLD_ENTRY entry=%#" PRIx64 " header=%#" PRIx64 " slide=%#" PRIx64 "\n",
                 dyld.entry,dyld.header_address,dyld.slide);
     }
+    uint64_t cache_base=root ? load_native_cache(root) : 0;
     void *stack=mmap(NULL,1024*1024,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     if (stack==MAP_FAILED) die("guest stack");
     uint64_t top=((uintptr_t)stack+1024*1024-128)&~15UL;
@@ -125,6 +132,6 @@ int main(int argc,char **argv)
     }
     /* Zeroed argc/argv/env/apple terminators for this freestanding entry. */
     fprintf(stderr,"NATIVE_DARWIN_ENTRY entry=%#" PRIx64 " host_page=%ld (Linux services, not XNU boot)\n",im.entry,host);
-    darwin_native_prepare(root,program);
+    darwin_native_prepare(root,program,cache_base);
     darwin_native_enter(top,dynamic ? dyld.entry : im.entry);
 }
