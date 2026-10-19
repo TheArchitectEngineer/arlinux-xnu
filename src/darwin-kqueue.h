@@ -6,9 +6,10 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <sys/ioctl.h>
+#include "darwin-memory-pressure.h"
 struct native_knote {
     struct darwin_kevent_qos event;
-    int used,fd,enabled; uint32_t generation;
+    int used,fd,enabled; uint32_t generation,memory_state;
 };
 struct native_kqueue {
     int used,fd,worker;
@@ -57,7 +58,14 @@ static long native_kqueue_create(void)
 static long native_knote_change(struct native_kqueue *queue,const struct darwin_kevent_qos *event)
 {
     if (event->xflags || (event->flags&~(D_EV_ADD|D_EV_DELETE|D_EV_ENABLE|D_EV_DISABLE|
-        D_EV_ONESHOT|D_EV_CLEAR|D_EV_RECEIPT|D_EV_DISPATCH))) return -ENOTSUP;
+        D_EV_ONESHOT|D_EV_CLEAR|D_EV_RECEIPT|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC))) return -ENOTSUP;
+    /* UDATA-specific memory sources have separate subscriptions and ordinary
+     * DISPATCH rearm/delete semantics. Deferred deletion for arbitrary other
+     * source kinds is still unsupported. */
+    if ((event->flags&D_EV_UDATA_SPECIFIC) && event->filter!=D_EVFILT_MEMORYSTATUS) return -ENOTSUP;
+    if (event->filter==D_EVFILT_MEMORYSTATUS &&
+        (event->ident || (event->fflags&~(D_MEMORY_NORMAL|D_MEMORY_WARN|D_MEMORY_CRITICAL|
+            D_MEMORY_PROC_WARN|D_MEMORY_PROC_CRITICAL|D_MEMORY_MSL_STATUS)))) return -ENOTSUP;
     struct native_knote *note=NULL;
     unsigned int index=0;
     for (;index<D_KQUEUE_WATCHES;index++) {
@@ -80,7 +88,8 @@ static long native_knote_change(struct native_kqueue *queue,const struct darwin_
         long fd;
         switch (event->filter) {
         case D_EVFILT_USER: fd=RAW(SYS_eventfd2,0,EFD_CLOEXEC|EFD_NONBLOCK,0,0,0,0); break;
-        case D_EVFILT_TIMER: fd=RAW(SYS_timerfd_create,CLOCK_MONOTONIC,TFD_CLOEXEC|TFD_NONBLOCK,0,0,0,0); break;
+        case D_EVFILT_TIMER: case D_EVFILT_MEMORYSTATUS:
+            fd=RAW(SYS_timerfd_create,CLOCK_MONOTONIC,TFD_CLOEXEC|TFD_NONBLOCK,0,0,0,0); break;
         case D_EVFILT_READ: case D_EVFILT_WRITE:
             if (event->fflags) return -ENOTSUP;
             fd=RAW(SYS_fcntl,event->ident,F_DUPFD_CLOEXEC,0,0,0,0); break;
@@ -88,11 +97,23 @@ static long native_knote_change(struct native_kqueue *queue,const struct darwin_
         }
         if (fd<0) return fd;
         note->fd=fd; note->enabled=0; note->event=*event;
+        note->memory_state=0;
         note->generation++; if (!note->generation) note->generation=1;
         fresh=1;
     }
     long error=0;
-    if (event->filter==D_EVFILT_USER) {
+    if (event->filter==D_EVFILT_MEMORYSTATUS && (event->flags&D_EV_ADD)) {
+        /* Validate real access before accepting a monitor. MSL/Jetsam status
+         * is a standalone no-cap policy, not a fabricated limit notification. */
+        long state=native_memory_pressure();
+        if (state<0) error=state;
+        else {
+            struct itimerspec timer={.it_value={D_MEMORY_SAMPLE_SECONDS,0},
+                                     .it_interval={D_MEMORY_SAMPLE_SECONDS,0}};
+            error=RAW(SYS_timerfd_settime,note->fd,0,&timer,0,0,0);
+            note->event.fflags=event->fflags;
+        }
+    } else if (event->filter==D_EVFILT_USER) {
         uint32_t flags=note->event.fflags&D_NOTE_FFLAGSMASK,value=event->fflags&D_NOTE_FFLAGSMASK;
         switch (event->fflags&D_NOTE_FFCTRLMASK) {
         case D_NOTE_FFAND: flags&=value; break;
@@ -184,13 +205,32 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
             struct darwin_kevent_qos event=note->event;
             event.flags&=D_EV_ONESHOT|D_EV_CLEAR|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC;
             if (events[i].events&(EPOLLHUP|EPOLLRDHUP)) event.flags|=D_EV_EOF;
-            if (event.filter==D_EVFILT_TIMER || (event.filter==D_EVFILT_USER &&
+            if (event.filter==D_EVFILT_TIMER || event.filter==D_EVFILT_MEMORYSTATUS || (event.filter==D_EVFILT_USER &&
                 (note->event.flags&(D_EV_CLEAR|D_EV_ONESHOT)))) {
                 uint64_t value;
                 long read=RAW(SYS_read,note->fd,&value,sizeof(value),0,0,0);
                 if (read==-EAGAIN) continue;
                 if (read!=(long)sizeof(value)) { native_kqueue_unlock(); return read<0 ? read : -EIO; }
                 if (event.filter==D_EVFILT_TIMER) event.data=value;
+                if (event.filter==D_EVFILT_MEMORYSTATUS) {
+                    long state=native_memory_pressure();
+                    if (state<0) { native_kqueue_unlock(); return state; }
+                    uint32_t changed=note->memory_state!=(uint32_t)state;
+                    note->memory_state=state;
+                    event.fflags=changed ? ((uint32_t)state&note->event.fflags) : 0;
+                    event.data=0;
+                    if (!event.fflags) {
+                        /* A sampling tick is not a pressure event. Keep the
+                         * oneshot epoll registration armed until real change. */
+                        struct epoll_event ep={.events=EPOLLIN};
+                        if (note->event.flags&D_EV_CLEAR) ep.events|=EPOLLET;
+                        if (note->event.flags&(D_EV_ONESHOT|D_EV_DISPATCH)) ep.events|=EPOLLONESHOT;
+                        ep.data.u64=((uint64_t)note->generation<<32)|index;
+                        long rearm=RAW(SYS_epoll_ctl,queue->fd,EPOLL_CTL_MOD,note->fd,&ep,0,0);
+                        if (rearm) { native_kqueue_unlock(); return rearm; }
+                        continue;
+                    }
+                }
             } else if (event.filter!=D_EVFILT_USER) {
                 int available=0;
                 long result=RAW(SYS_ioctl,note->fd,FIONREAD,&available,0,0,0);

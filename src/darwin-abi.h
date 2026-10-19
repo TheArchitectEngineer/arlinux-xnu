@@ -222,6 +222,7 @@ enum darwin_workqueue_abi {
 /* XNU bsd/sys/event.h, ARM64 kevent_qos wire layout. */
 enum darwin_kevent_abi {
     D_EVFILT_READ=-1, D_EVFILT_WRITE=-2, D_EVFILT_TIMER=-7, D_EVFILT_USER=-10,
+    D_EVFILT_MEMORYSTATUS=-14,
     D_EV_ADD=1, D_EV_DELETE=2, D_EV_ENABLE=4, D_EV_DISABLE=8,
     D_EV_ONESHOT=0x10, D_EV_CLEAR=0x20, D_EV_RECEIPT=0x40, D_EV_DISPATCH=0x80,
     D_EV_UDATA_SPECIFIC=0x100, D_EV_ERROR=0x4000, D_EV_EOF=0x8000,
@@ -237,6 +238,11 @@ struct darwin_kevent_qos {
     uint64_t udata; uint32_t fflags,xflags; int64_t data; uint64_t ext[4];
 };
 _Static_assert(sizeof(struct darwin_kevent_qos)==72,"ARM64 kevent_qos wire layout");
+enum darwin_memory_event {
+    D_MEMORY_NORMAL=1, D_MEMORY_WARN=2, D_MEMORY_CRITICAL=4,
+    D_MEMORY_PROC_WARN=0x10, D_MEMORY_PROC_CRITICAL=0x20,
+    D_MEMORY_MSL_STATUS=0xf0000000U
+};
 
 /* libpthread-330 internal.h mutex options and XNU bank/bank_types.h. */
 enum darwin_mutex_voucher_abi {

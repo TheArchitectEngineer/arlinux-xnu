@@ -28,3 +28,7 @@
 #define D_KQUEUE_BUFFER_OFFSET 512
 #define D_DIAGNOSTIC_REQUEST_LIMIT 64
 #define D_PSYNCH_WAIT_OBJECTS 512
+/* Compatibility policy: sample actual Linux MemAvailable once per second. */
+#define D_MEMORY_SAMPLE_SECONDS 1
+#define D_MEMORY_WARN_PERCENT 10
+#define D_MEMORY_CRITICAL_PERCENT 3
