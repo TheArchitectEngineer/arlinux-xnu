@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39239233825](https://github.com/taowen/arlinux-xnu/actions/runs/39239233825)
-at source `68672d1` compiled 143 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39240562977](https://github.com/taowen/arlinux-xnu/actions/runs/39240562977)
+at source `7b8db51` compiled 150 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -75,12 +75,15 @@ the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps
 and pmap ledger/wiring accounting are not connected yet. Reference/dirty attributes record
 conservative mapping history, not precise accesses or cleared-bit tracking.
-The VM executable still fails linkage (349 distinct undefined references), before its original
+The VM executable still fails linkage (329 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
 
 Next: connect remaining machine/thread, kernel data layout, host pmap and BSD service dependencies,
-then execute the original VM bootstrap. Selected objects now include original
+then execute the original VM bootstrap. Ticket reservation on invalid addresses
+also requires host synchronous-fault recovery; the current child access-fault
+diagnostics do not implement kernel recovery or guest exception delivery.
+Selected objects now include original
 BSD process/read-only process data, fork/uthread, coalition, counters, host
 notifications and configured MIG senders. ARM's scheduler dispatch selects dualq;
 the profile now enables its original provider alongside traditional scheduling
@@ -96,6 +99,10 @@ configuration. BSD syscall prototypes use upstream unifdef/makesyscalls; MIG
 public and kernel sender interfaces follow their distinct upstream Makefile
 rules. These providers expose the real dependency graph; task lifecycle, timer IRQ delivery and
 guest context switching remain unverified.
+Original pointer locks, Blocks runtime/data, BSD bootstrap, authorization,
+privilege checks and hash-allocation helpers now compile and resolve their
+corresponding imports. They have not executed in the early binary. BSD bootstrap
+guards optional MPTCP/loopback headers according to the selected subsystems.
 
 X300 observation (2026-10-19): Vivo X300/V2509A, ARM64, Android 17/API 37,
 Linux 6.12.58 with 4 KiB host pages (`getconf PAGE_SIZE=4096`, corroborated by
@@ -116,7 +123,7 @@ retained in artifacts; this is not yet a Linux-only compiler toolchain.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | [143 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39239233825) | Complete kernel or guest execution |
+| `xnu-kernel` | [150 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39240562977) | Complete kernel or guest execution |
 | `xnu-link-inputs` | Same run: relocatable merge passes, host TLS replaces privileged current-thread access | Executable linkage or kernel boot |
 | `xnu-early-startup` | Same run: eight starts; ELF bounds, per-CPU traversal, page fill, aperture data updates and pmap access faults, original rtclock, Linux entropy and early dispatcher | Real RO-zone allocation/update, lock hooks, VM/tasks initialization or guest execution |
 | `xnu-vm-startup` | Same run: executable link fails; log and link map retained | VM bootstrap or guest execution |
