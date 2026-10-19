@@ -159,18 +159,27 @@ def main():
         *['osfmk/kern/' + name + '.c' for name in [
             'startup', 'task', 'thread', 'exception', 'ipc_tt', 'ipc_kobject',
             'ipc_host', 'ipc_mig', 'host', 'processor', 'kalloc', 'zalloc',
-            'lock_group', 'locks']],
+            'lock_group', 'locks', 'compact_id', 'lock_mtx', 'lock_rw',
+            'lock_ticket', 'ledger', 'kext_alloc', 'backtrace', 'btlog']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
             'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
-            'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb']],
+            'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb', 'vm_purgeable']],
+        'osfmk/arm/locks_arm.c',
+        'libkern/os/refcnt.c',
     ]
+    # Build the actual MIG dispatch implementations, not just their headers.
+    units += ['build/kernel/mig/mach/' + name for name in
+              upstream_words(XNU / 'osfmk/mach/Makefile', 'MIG_KSSRC')]
+    units += ['build/kernel/mig/device/' + name for name in
+              upstream_words(XNU / 'osfmk/device/Makefile', 'DEVICE_FILES')
+              if name.endswith('.c')]
     commands, results = [], []
     for unit in units:
         name = Path(unit).stem
         obj = OUT / (name + '.o')
-        source_path = ROOT / unit if unit.startswith('src/') else XNU / unit
+        source_path = ROOT / unit if unit.startswith(('src/', 'build/')) else XNU / unit
         command = [*flags, str(source_path), '-o', str(obj)]
         commands.append({'directory': str(ROOT), 'file': str(source_path), 'arguments': command})
         print('Compiling actual XNU:', unit, flush=True)
