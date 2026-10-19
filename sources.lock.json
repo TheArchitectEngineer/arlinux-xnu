@@ -18,7 +18,7 @@
   "virtualCpus": 1,
   "xnuKernel": {
     "repository": "taowen/xnu",
-    "commit": "dabc484d41685c382cc19144b12d3ff8c07917d8",
+    "commit": "5e3d9b7461a5e59a1c4e7aa396c8b17e490ae5bf",
     "tag": "xnu-8796.141.3",
     "path": "third_party/xnu",
     "upstreamCommit": "1b191cb58250d0705d8a51287127505aa4bc0789",

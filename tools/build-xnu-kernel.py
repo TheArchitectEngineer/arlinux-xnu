@@ -183,7 +183,7 @@ def main():
             'lock_ticket', 'ledger', 'kext_alloc', 'backtrace', 'btlog',
             'timer', 'bsd_kern',
             # Providers required by the actual VM/thread link, not host stubs.
-            'ast', 'sched_prim', 'sched_average', 'sched_traditional',
+            'ast', 'sched_prim', 'sched_average', 'sched_traditional', 'sched_dualq', 'priority',
             'waitq', 'turnstile', 'timer_call', 'mpsc_queue', 'recount',
             'thread_act', 'thread_policy', 'task_policy', 'syscall_subr',
             'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref', 'clock',
@@ -198,7 +198,7 @@ def main():
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
         'osfmk/prng/prng_random.c', 'osfmk/arm/counter.c',
-        'bsd/kern/kern_fork.c',
+        'bsd/kern/kern_fork.c', 'bsd/kern/kern_proc.c',
     ]
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
