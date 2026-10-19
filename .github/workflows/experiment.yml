@@ -152,10 +152,12 @@ jobs:
           # guess a private policy argument structure from a different version.
           llvm-objdump-18 -d --disassemble-symbols=_amfi_check_dyld_policy_self build/ios-input/dyld > build/dyld/amfi-wrapper.txt
           cat build/dyld/amfi-wrapper.txt
-          status=0
-          printf '+q' | timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/console-dynamic.macho > build/dyld/console.stdout 2> build/dyld/runtime.log || status=$?
-          cat build/dyld/console.stdout build/dyld/runtime.log
-          exit "$status"
+          for attempt in 1 2; do
+            status=0
+            printf '+q' | timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/console-dynamic.macho > "build/dyld/console-${attempt}.stdout" 2> "build/dyld/runtime-${attempt}.log" || status=$?
+            cat "build/dyld/console-${attempt}.stdout" "build/dyld/runtime-${attempt}.log"
+            if [ "$status" -ne 0 ]; then exit "$status"; fi
+          done
       - name: Dynamically trace the actual failed dyld journey
         if: failure()
         shell: bash

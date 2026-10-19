@@ -33,6 +33,16 @@ Primary sources: [tawcroot runtime](https://github.com/taowen/tawc/blob/bee5ae2d
 [Apple TSD](https://github.com/apple-oss-distributions/xnu/blob/1b191cb58250d0705d8a51287127505aa4bc0789/libsyscall/os/tsd.h)
 and [platform calls](https://github.com/apple-oss-distributions/xnu/blob/1b191cb58250d0705d8a51287127505aa4bc0789/osfmk/arm64/machine_routines.c).
 
+## ABI definitions and adapter policy
+
+`src/darwin-abi.h` owns guest syscall/trap IDs, errno and MIG values, flags,
+commpage offsets and wire structures. Its source references identify the Apple
+interfaces; named fields replace pthread-registration byte offsets. Host errno
+uses Linux headers and is explicitly translated, even where values coincide.
+`src/darwin-machine.h` owns our address layout, stack limits and local port-name
+allocation policy. Add ABI values to the former and adapter choices to the
+latter; keep interface-specific meanings distinct when numbers happen to match.
+
 ## Guest address geometry
 
 All guest heap/stack allocations use disjoint MAP_FIXED_NOREPLACE ranges below

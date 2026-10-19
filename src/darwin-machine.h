@@ -1,0 +1,23 @@
+/* Adapter machine/limits and local object-name allocation policy.
+ * These are configuration choices, not undocumented Darwin wire constants. */
+#pragma once
+#define D_GUEST_PAGE_SHIFT 14
+#define D_GUEST_PAGE_SIZE (1UL << D_GUEST_PAGE_SHIFT)
+#define D_GUEST_HEAP_START 0x300000000UL
+#define D_GUEST_COMMPAGE 0xfffffc000ULL
+#define D_GUEST_ADDRESS_LIMIT 0x1000000000ULL
+#define D_VM_MAX_ALLOCATION (1ULL << 32)
+#define D_SIGNAL_STACK_SIZE (128UL * 1024)
+#define D_THREAD_RUNTIME_STACK_SIZE (64UL * 1024)
+#define D_COMM_COMPAT_VERSION 3
+#define CURRENT_TASK_PORT 0x103U
+#define CURRENT_HOST_PORT 0x203U
+#define SYSTEM_CLOCK_PORT 0x10001U
+#define CALENDAR_CLOCK_PORT 0x10101U
+#define D_THREAD_PORT_INDEX_BASE 0x200U
+#define D_PORT_NAME_INDEX_SHIFT 8
+#define D_PORT_GENERATION_MASK 255
+#define D_REPLY_PORT_INDEX_BASE 3
+#define D_RUNTIME_FATAL_EXIT 125
+#define D_RUNTIME_BAD_TRANSPORT_EXIT 126
+#define D_PTHREAD_MAX_SIZE (64UL * 1024)

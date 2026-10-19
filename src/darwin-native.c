@@ -4,6 +4,10 @@
  */
 #define _GNU_SOURCE
 #include "darwin-native.h"
+#include "darwin-abi.h"
+#include "darwin-machine.h"
+#include <errno.h>
+#include <sys/wait.h>
 #include <stddef.h>
 #include <signal.h>
 #include <stdio.h>
@@ -27,8 +31,8 @@
 extern long darwin_raw(long, long, long, long, long, long, long);
 extern char darwin_raw_return[];
 #define RAW(n,a,b,c,d,e,f) darwin_raw((n),(long)(a),(long)(b),(long)(c),(long)(d),(long)(e),(long)(f))
-#define PAGE16 16384UL
-#define CARRY (1UL << 29)
+#define PAGE16 D_GUEST_PAGE_SIZE
+#define CARRY D_ARM64_CARRY
 #ifndef SYS_SECCOMP
 #define SYS_SECCOMP 1
 #endif
@@ -36,17 +40,42 @@ extern char darwin_raw_return[];
 static int darwin_error(long result)
 {
     switch (-result) {
-    case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 8: case 9:
-    case 10: case 12: case 13: case 14: case 16: case 17: case 19: case 20:
-    case 21: case 22: case 23: case 24: case 27: case 28: case 29: case 30:
-    case 31: case 32: case 33: case 34: return (int)-result;
-    case 11: return 35;           /* EAGAIN */
-    case 38: return 78;           /* ENOSYS */
-    case 36: return 63;           /* ENAMETOOLONG */
-    case 75: return 84;           /* EOVERFLOW */
-    case 110: return 60;          /* ETIMEDOUT */
-    case 95: return 45;           /* ENOTSUP */
-    default: return 5;            /* unclassified Linux failure -> EIO */
+    case EPERM: return D_EPERM;
+    case ENOENT: return D_ENOENT;
+    case ESRCH: return D_ESRCH;
+    case EINTR: return D_EINTR;
+    case EIO: return D_EIO;
+    case ENXIO: return D_ENXIO;
+    case E2BIG: return D_E2BIG;
+    case ENOEXEC: return D_ENOEXEC;
+    case EBADF: return D_EBADF;
+    case ECHILD: return D_ECHILD;
+    case ENOMEM: return D_ENOMEM;
+    case EACCES: return D_EACCES;
+    case EFAULT: return D_EFAULT;
+    case EBUSY: return D_EBUSY;
+    case EEXIST: return D_EEXIST;
+    case ENODEV: return D_ENODEV;
+    case ENOTDIR: return D_ENOTDIR;
+    case EISDIR: return D_EISDIR;
+    case EINVAL: return D_EINVAL;
+    case ENFILE: return D_ENFILE;
+    case EMFILE: return D_EMFILE;
+    case EFBIG: return D_EFBIG;
+    case ENOSPC: return D_ENOSPC;
+    case ESPIPE: return D_ESPIPE;
+    case EROFS: return D_EROFS;
+    case EMLINK: return D_EMLINK;
+    case EPIPE: return D_EPIPE;
+    case EDOM: return D_EDOM;
+    case ERANGE: return D_ERANGE;
+    case EAGAIN: return D_EAGAIN;
+    case ENOTSUP: return D_ENOTSUP;
+    case ETIMEDOUT: return D_ETIMEDOUT;
+    case ENAMETOOLONG: return D_ENAMETOOLONG;
+    case ENOSYS: return D_ENOSYS;
+    case EOVERFLOW: return D_EOVERFLOW;
+    default: return D_EIO;
     }
 }
 
@@ -70,26 +99,26 @@ static void trace_call(unsigned long number,unsigned long pc,unsigned long resul
  * Keep every guest allocation below its commpage, independently of Linux's
  * much higher automatic mmap placement. The atomic cursor also reserves
  * disjoint ranges before future concurrent allocation is enabled. */
-static unsigned long guest_next=0x300000000UL;
+static unsigned long guest_next=D_GUEST_HEAP_START;
 static long anonymous_aligned(unsigned long size,int protection,unsigned long mask)
 {
     /* Until executable mapping rewrite is implemented, never grant unadapted
      * new executable pages. Unknown/file/fixed map modes fail at the caller. */
-    if (!size || size > (1UL << 32) || (protection & ~3) ||
-        mask>=(1UL<<32) || (mask&(mask+1))) return -22;
+    if (!size || size > D_VM_MAX_ALLOCATION || (protection & ~(PROT_READ|PROT_WRITE)) ||
+        mask>=D_VM_MAX_ALLOCATION || (mask&(mask+1))) return -EINVAL;
     unsigned long alignment=mask+1;
     if (alignment<PAGE16) alignment=PAGE16;
     size = (size + PAGE16 - 1) & ~(PAGE16 - 1);
-    long raw=-12;
+    long raw=-ENOMEM;
     for (unsigned int attempt=0;attempt<128;attempt++) {
         unsigned long requested=__atomic_fetch_add(&guest_next,size+alignment,__ATOMIC_RELAXED);
-        if (requested>=0xfffffc000UL || size+alignment>0xfffffc000UL-requested) return -12;
+        if (requested>=D_GUEST_COMMPAGE || size+alignment>D_GUEST_COMMPAGE-requested) return -ENOMEM;
         raw=RAW(SYS_mmap,requested,size+alignment,protection,
                 MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
-        if (raw==-17) continue; /* Preserve existing mappings, choose another range. */
+        if (raw==-EEXIST) continue; /* Preserve existing mappings, choose another range. */
         if ((unsigned long)raw >= (unsigned long)-4095) return raw;
         if ((unsigned long)raw!=requested) {
-            RAW(SYS_munmap,raw,size+alignment,0,0,0,0); return -95;
+            RAW(SYS_munmap,raw,size+alignment,0,0,0,0); return -ENOTSUP;
         }
         break;
     }
@@ -98,7 +127,7 @@ static long anonymous_aligned(unsigned long size,int protection,unsigned long ma
     unsigned long prefix = base - raw, suffix = alignment - prefix;
     if ((prefix && RAW(SYS_munmap,raw,prefix,0,0,0,0)) ||
         (suffix && RAW(SYS_munmap,base+size,suffix,0,0,0,0))) {
-        RAW(SYS_exit_group,125,0,0,0,0,0);
+        RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0);
         __builtin_unreachable();
     }
     return (long)base;
@@ -116,22 +145,21 @@ static int root_descriptor=-1;
 static uint64_t current_cache_base;
 /* Process-local name for this task's VM capability. Only implemented VM traps
  * accept it; other port/IPC operations remain unsupported, never successful. */
-#define CURRENT_TASK_PORT 0x103U
 static char executable_path[4096];
 static long guest_copy(void *local, unsigned long remote, unsigned long length, int write)
 {
     struct iovec here={local,length},there={(void *)remote,length};
     long pid=RAW(SYS_getpid,0,0,0,0,0,0);
     long count=RAW(write ? SYS_process_vm_writev : SYS_process_vm_readv,pid,&here,1,&there,1,0);
-    return count==(long)length ? 0 : -14;
+    return count==(long)length ? 0 : -EFAULT;
 }
 static long guest_path(unsigned long address,char *path)
 {
     for (unsigned int i=0;i<4096;i++) {
-        if (guest_copy(path+i,address+i,1,0)) return -14;
+        if (guest_copy(path+i,address+i,1,0)) return -EFAULT;
         if (!path[i]) return 0;
     }
-    return -36; /* Linux ENAMETOOLONG, translated below */
+    return -ENAMETOOLONG; /* Linux ENAMETOOLONG, translated below */
 }
 static int path_directory(char **path)
 {
@@ -147,7 +175,7 @@ static int path_directory(char **path)
 static long guest_open(unsigned long address,unsigned long flags)
 {
     /* The firmware is read-only. Unsupported flag semantics are explicit. */
-    if (flags & ~(0x100UL|0x100000UL|0x1000000UL)) return -95;
+    if (flags & ~(D_O_NOFOLLOW|D_O_DIRECTORY|D_O_CLOEXEC)) return -ENOTSUP;
     char buffer[4096],*path=buffer;
     long error=guest_path(address,buffer);
     if (error) return error;
@@ -158,44 +186,37 @@ static long guest_open(unsigned long address,unsigned long flags)
     RAW(SYS_write,2,"\n",1,0,0,0);
     int directory=path_directory(&path);
     int options=O_RDONLY;
-    if (flags&0x100) options|=O_NOFOLLOW;
-    if (flags&0x100000) options|=O_DIRECTORY;
-    if (flags&0x1000000) options|=O_CLOEXEC;
+    if (flags&D_O_NOFOLLOW) options|=O_NOFOLLOW;
+    if (flags&D_O_DIRECTORY) options|=O_DIRECTORY;
+    if (flags&D_O_CLOEXEC) options|=O_CLOEXEC;
     return RAW(SYS_openat,directory,path,options,0,0,0);
 }
 /* XNU bsd/sys/stat.h __DARWIN_STRUCT_STAT64, ARM64 layout. statx avoids
  * depending on the host libc struct-stat ABI inside the TLS-free handler. */
-struct darwin_stat64 {
-    int32_t device; uint16_t mode,links; uint64_t inode;
-    uint32_t uid,gid; int32_t rdevice,padding;
-    int64_t times[8];
-    int64_t size,blocks; int32_t blocksize; uint32_t flags,generation;
-    int32_t spare; int64_t qspare[2];
-};
 static long guest_stat(unsigned long argument,unsigned long destination,unsigned int kind)
 {
     char buffer[4096],*path=buffer;
     int directory,options=0;
-    if (kind==339) { directory=(int)argument; path=""; options=AT_EMPTY_PATH; }
+    if (kind==D_SYS_FSTAT64) { directory=(int)argument; path=""; options=AT_EMPTY_PATH; }
     else {
         long error=guest_path(argument,buffer); if (error) return error;
         directory=path_directory(&path);
-        if (kind==340) options=AT_SYMLINK_NOFOLLOW;
+        if (kind==D_SYS_LSTAT64) options=AT_SYMLINK_NOFOLLOW;
     }
     struct statx actual={0};
     long error=RAW(SYS_statx,directory,path,options,STATX_BASIC_STATS|STATX_BTIME,&actual,0);
     if (error) return error;
-    if (actual.stx_nlink>65535 || actual.stx_dev_major>255 || actual.stx_dev_minor>0xffffff ||
-        actual.stx_rdev_major>255 || actual.stx_rdev_minor>0xffffff) return -75;
+    if (actual.stx_nlink>UINT16_MAX || actual.stx_dev_major>D_DEV_MAJOR_MAX || actual.stx_dev_minor>D_DEV_MINOR_MAX ||
+        actual.stx_rdev_major>D_DEV_MAJOR_MAX || actual.stx_rdev_minor>D_DEV_MINOR_MAX) return -EOVERFLOW;
     struct darwin_stat64 out={0};
-    out.device=(actual.stx_dev_major<<24)|actual.stx_dev_minor;
-    out.rdevice=(actual.stx_rdev_major<<24)|actual.stx_rdev_minor;
+    out.device=(actual.stx_dev_major<<D_DEV_MAJOR_SHIFT)|actual.stx_dev_minor;
+    out.rdevice=(actual.stx_rdev_major<<D_DEV_MAJOR_SHIFT)|actual.stx_rdev_minor;
     out.mode=actual.stx_mode; out.links=actual.stx_nlink; out.inode=actual.stx_ino;
     out.uid=actual.stx_uid; out.gid=actual.stx_gid;
-    out.times[0]=actual.stx_atime.tv_sec; out.times[1]=actual.stx_atime.tv_nsec;
-    out.times[2]=actual.stx_mtime.tv_sec; out.times[3]=actual.stx_mtime.tv_nsec;
-    out.times[4]=actual.stx_ctime.tv_sec; out.times[5]=actual.stx_ctime.tv_nsec;
-    out.times[6]=actual.stx_btime.tv_sec; out.times[7]=actual.stx_btime.tv_nsec;
+    out.access.seconds=actual.stx_atime.tv_sec; out.access.nanoseconds=actual.stx_atime.tv_nsec;
+    out.modification.seconds=actual.stx_mtime.tv_sec; out.modification.nanoseconds=actual.stx_mtime.tv_nsec;
+    out.change.seconds=actual.stx_ctime.tv_sec; out.change.nanoseconds=actual.stx_ctime.tv_nsec;
+    out.birth.seconds=actual.stx_btime.tv_sec; out.birth.nanoseconds=actual.stx_btime.tv_nsec;
     out.size=actual.stx_size; out.blocks=actual.stx_blocks; out.blocksize=actual.stx_blksize;
     return guest_copy(&out,destination,sizeof(out),1);
 }
@@ -210,90 +231,90 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     ucontext_t *uc = context;
     unsigned long long *r = uc->uc_mcontext.regs;
     if (signal != SIGSYS || info->si_code != SYS_SECCOMP) {
-        RAW(SYS_exit_group,126,0,0,0,0,0);
+        RAW(SYS_exit_group,D_RUNTIME_BAD_TRANSPORT_EXIT,0,0,0,0,0);
         __builtin_unreachable();
     }
-    int32_t trap=(int32_t)r[16];
-    if (trap<0 && (uint32_t)trap!=0x80000000U) {
-        /* Mach traps do not use BSD's positive errno/carry convention. Until
-         * a real port namespace exists, port-returning traps fail with NULL;
-         * other unsupported Mach operations return KERN_NOT_SUPPORTED. */
+    int32_t trap=(int32_t)r[D_ARM64_SYSCALL_REGISTER];
+    if (trap<0 && (uint32_t)trap!=D_SYS_PLATFORM) {
+        /* Mach traps do not use BSD's positive errno/carry convention. Only
+         * implemented process-local capabilities are returned; unsupported
+         * operations return KERN_NOT_SUPPORTED. */
         unsigned long number=-(int64_t)trap;
-        if (number==28) {
+        if (number==D_TRAP_TASK_SELF) {
             r[0]=CURRENT_TASK_PORT;
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==27) {
+        if (number==D_TRAP_THREAD_SELF) {
             struct native_thread *thread=native_current_thread();
             r[0]=thread ? thread->port : 0;
             if (thread) __atomic_fetch_add(&thread->refs,1,__ATOMIC_RELAXED);
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==14) {
-            if (r[0]!=CURRENT_TASK_PORT) r[0]=16;
-            else if (r[3] || (r[4]&~3UL)) r[0]=46;
-            else if ((r[1]&16383) || !r[2] || r[2]>(1ULL<<32)) r[0]=4;
-            else r[0]=RAW(SYS_mprotect,r[1],(r[2]+16383)&~16383UL,r[4],0,0,0) ? 1 : 0;
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+        if (number==D_TRAP_VM_PROTECT) {
+            if (r[0]!=CURRENT_TASK_PORT) r[0]=D_KERN_INVALID_TASK;
+            else if (r[3] || (r[4]&~(PROT_READ|PROT_WRITE))) r[0]=D_KERN_NOT_SUPPORTED;
+            else if ((r[1]&(D_GUEST_PAGE_SIZE-1)) || !r[2] || r[2]>D_VM_MAX_ALLOCATION) r[0]=D_KERN_INVALID_ARGUMENT;
+            else r[0]=RAW(SYS_mprotect,r[1],(r[2]+(D_GUEST_PAGE_SIZE-1))&~(D_GUEST_PAGE_SIZE-1),r[4],0,0,0) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==29 || number==26) {
-            if (number==29) host_send_refs++;
-            r[0]=number==29 ? CURRENT_HOST_PORT : ipc_reply_port();
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+        if (number==D_TRAP_HOST_SELF || number==D_TRAP_REPLY_PORT) {
+            if (number==D_TRAP_HOST_SELF) host_send_refs++;
+            r[0]=number==D_TRAP_HOST_SELF ? CURRENT_HOST_PORT : ipc_reply_port();
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==18) { /* release implemented service send-right references */
+        if (number==D_TRAP_PORT_DEALLOCATE) { /* release implemented service send-right references */
             unsigned long *refs=r[1]==CURRENT_HOST_PORT ? &host_send_refs :
                 r[1]==SYSTEM_CLOCK_PORT ? &clock_send_refs[0] :
                 r[1]==CALENDAR_CLOCK_PORT ? &clock_send_refs[1] : NULL;
-            if (r[0]!=CURRENT_TASK_PORT) r[0]=16;
+            if (r[0]!=CURRENT_TASK_PORT) r[0]=D_KERN_INVALID_TASK;
             else if (refs && *refs) { --*refs; r[0]=0; }
             else {
                 struct native_thread *thread=native_thread_port(r[1]);
                 if (thread && __atomic_load_n(&thread->refs,__ATOMIC_ACQUIRE)) {
                     __atomic_fetch_sub(&thread->refs,1,__ATOMIC_ACQ_REL); r[0]=0;
-                } else r[0]=15;
+                } else r[0]=D_KERN_INVALID_NAME;
                 native_reap_threads();
             }
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==33 || number==36) { /* semaphore signal/wait */
+        if (number==D_TRAP_SEMAPHORE_SIGNAL || number==D_TRAP_SEMAPHORE_WAIT) { /* semaphore signal/wait */
             struct ipc_endpoint *endpoint=ipc_find(r[0]);
-            long status=-22;
+            long status=-EINVAL;
             if (endpoint && endpoint->kind==1) {
-                if (number==36) status=ipc_semaphore_wait(r[0],NULL);
+                if (number==D_TRAP_SEMAPHORE_WAIT) status=ipc_semaphore_wait(r[0],NULL);
                 else {
                     uint64_t token=1;
-                    status=RAW(SYS_write,endpoint->write_fd,&token,8,0,0,0)==8 ? 0 : -22;
+                    status=RAW(SYS_write,endpoint->write_fd,&token,8,0,0,0)==8 ? 0 : -EINVAL;
                 }
             }
-            r[0]=status ? 4 : 0;
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            r[0]=status ? D_KERN_INVALID_ARGUMENT : D_KERN_SUCCESS;
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==31) {
+        if (number==D_TRAP_MSG) {
             r[0]=ipc_message(r,uc->uc_mcontext.pc);
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==10 || number==15) { /* current-task anonymous allocate/map */
+        if (number==D_TRAP_VM_ALLOCATE || number==D_TRAP_VM_MAP) { /* current-task anonymous allocate/map */
             uint64_t address=0;
-            unsigned long status=4; /* KERN_INVALID_ARGUMENT */
-            if (r[0]!=CURRENT_TASK_PORT) status=16; /* KERN_INVALID_TASK */
-            else if (guest_copy(&address,r[1],sizeof(address),0)) status=1;
-            else if (((number==10 ? r[3] : r[4])&~0xff000001UL)==0 &&
-                     ((number==10 ? r[3] : r[4])&1) && r[2] &&
-                     (number==10 || !(r[5]&~3UL))) {
-                long mapped=anonymous_aligned(r[2],number==10 ? PROT_READ|PROT_WRITE : r[5],
-                                              number==10 ? PAGE16-1 : r[3]);
-                if ((unsigned long)mapped>=(unsigned long)-4095) status=3;
+            unsigned long status=D_KERN_INVALID_ARGUMENT; /* KERN_INVALID_ARGUMENT */
+            if (r[0]!=CURRENT_TASK_PORT) status=D_KERN_INVALID_TASK; /* KERN_INVALID_TASK */
+            else if (guest_copy(&address,r[1],sizeof(address),0)) status=D_KERN_INVALID_ADDRESS;
+            else if (((number==D_TRAP_VM_ALLOCATE ? r[3] : r[4])&~(unsigned long)(D_VM_FLAGS_TAG_MASK|D_VM_FLAGS_ANYWHERE))==0 &&
+                     ((number==D_TRAP_VM_ALLOCATE ? r[3] : r[4])&D_VM_FLAGS_ANYWHERE) && r[2] &&
+                     (number==D_TRAP_VM_ALLOCATE || !(r[5]&~(PROT_READ|PROT_WRITE)))) {
+                long mapped=anonymous_aligned(r[2],number==D_TRAP_VM_ALLOCATE ? PROT_READ|PROT_WRITE : r[5],
+                                              number==D_TRAP_VM_ALLOCATE ? PAGE16-1 : r[3]);
+                if ((unsigned long)mapped>=(unsigned long)-4095) status=D_KERN_RESOURCE_SHORTAGE;
                 else {
                     address=mapped;
-                    status=guest_copy(&address,r[1],sizeof(address),1) ? 1 : 0;
+                    status=guest_copy(&address,r[1],sizeof(address),1) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
                     if (status) RAW(SYS_munmap,mapped,(r[2]+PAGE16-1)&~(PAGE16-1),0,0,0,0);
                 }
             }
@@ -303,52 +324,52 @@ static void dispatch(int signal, siginfo_t *info, void *context)
                 for (unsigned int i=0;i<6;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
             }
             r[0]=status;
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==12) {       /* _kernelrpc_mach_vm_deallocate_trap */
+        if (number==D_TRAP_VM_DEALLOCATE) {       /* _kernelrpc_mach_vm_deallocate_trap */
             unsigned long start=r[1]&~(PAGE16-1),offset=r[1]-start;
             unsigned long size=r[2];
-            if (r[0]!=CURRENT_TASK_PORT) r[0]=16;
-            else if (size>(1UL<<32) || start+size+offset+PAGE16<start) r[0]=4;
+            if (r[0]!=CURRENT_TASK_PORT) r[0]=D_KERN_INVALID_TASK;
+            else if (size>D_VM_MAX_ALLOCATION || start+size+offset+PAGE16<start) r[0]=D_KERN_INVALID_ARGUMENT;
             else if (!size) r[0]=0;
-            else r[0]=RAW(SYS_munmap,start,(size+offset+PAGE16-1)&~(PAGE16-1),0,0,0,0) ? 1 : 0;
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            else r[0]=RAW(SYS_munmap,start,(size+offset+PAGE16-1)&~(PAGE16-1),0,0,0,0) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==3 || number==4) {
+        if (number==D_TRAP_ABSOLUTE_TIME || number==D_TRAP_CONTINUOUS_TIME) {
             /* ARM fast-time calls return a value, not kern_return_t/errno.
              * Use genuine nanosecond clocks, paired with timebase 1/1. */
             struct timespec now;
-            long error=RAW(SYS_clock_gettime,number==3 ? CLOCK_MONOTONIC : CLOCK_BOOTTIME,&now,0,0,0,0);
+            long error=RAW(SYS_clock_gettime,number==D_TRAP_ABSOLUTE_TIME ? CLOCK_MONOTONIC : CLOCK_BOOTTIME,&now,0,0,0,0);
             if (error) {
-                trace_call(r[16],uc->uc_mcontext.pc,error);
-                RAW(SYS_exit_group,125,0,0,0,0,0);
+                trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,error);
+                RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0);
                 __builtin_unreachable();
             }
             r[0]=(uint64_t)now.tv_sec*1000000000ULL+now.tv_nsec;
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==89) {
+        if (number==D_TRAP_TIMEBASE_INFO) {
             const uint32_t scale[2]={1,1};
             struct iovec local={(void *)scale,sizeof(scale)},remote={(void *)r[0],sizeof(scale)};
             long size=RAW(SYS_process_vm_writev,RAW(SYS_getpid,0,0,0,0,0,0),&local,1,&remote,1,0);
-            r[0]=size==(long)sizeof(scale) ? 0 : 1; /* KERN_INVALID_ADDRESS */
-            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            r[0]=size==(long)sizeof(scale) ? D_KERN_SUCCESS : D_KERN_INVALID_ADDRESS; /* KERN_INVALID_ADDRESS */
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        r[0]=(number>=26 && number<=29) ? 0 : 46;
-        trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+        r[0]=(number>=D_TRAP_REPLY_PORT && number<=D_TRAP_HOST_SELF) ? D_MACH_PORT_NULL : D_KERN_NOT_SUPPORTED;
+        trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
         return;
     }
-    long result = -38;
-    switch (r[16]) {
-    case 360: case 366: {
+    long result = -ENOSYS;
+    switch (r[D_ARM64_SYSCALL_REGISTER]) {
+    case D_SYS_BSDTHREAD_CREATE: case D_SYS_BSDTHREAD_REGISTER: {
         const char label[]="DARWIN_THREAD_REQUEST argument-index/pc/value follows\n";
         RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
         for (unsigned int i=0;i<6;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
-        if (r[16]==366 && r[4]>=8 && r[4]<=128) {
+        if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_REGISTER && r[4]>=8 && r[4]<=128) {
             uint64_t metadata[16]={0};
             if (!guest_copy(metadata,r[3],r[4],0)) {
                 const char record[]="DARWIN_THREAD_REGISTRATION word-index/pc/value follows\n";
@@ -356,27 +377,27 @@ static void dispatch(int signal, siginfo_t *info, void *context)
                 for (unsigned int i=0;i<r[4]/8;i++) trace_call(i,uc->uc_mcontext.pc,metadata[i]);
             }
         }
-        result=r[16]==366 ? native_thread_register(r) : native_thread_create(r,&uc->uc_sigmask);
+        result=r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_REGISTER ? native_thread_register(r) : native_thread_create(r,&uc->uc_sigmask);
         break;
     }
-    case 361: result=native_thread_terminate(r); break;
-    case 515: case 516:
+    case D_SYS_BSDTHREAD_TERMINATE: result=native_thread_terminate(r); break;
+    case D_SYS_ULOCK_WAIT: case D_SYS_ULOCK_WAKE:
         result=native_ulock(r);
-        if (r[0]&0x01000000U) {
-            trace_call(r[16],uc->uc_mcontext.pc,result);
+        if (r[0]&D_UL_NO_ERRNO) {
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,result);
             r[0]=result<0 ? -(long)darwin_error(result) : result;
             uc->uc_mcontext.pstate&=~CARRY;
             return;
         }
         break;
-    case 381: {                /* __mac_syscall: compatibility dyld policy only */
+    case D_SYS_MAC_SYSCALL: {                /* __mac_syscall: compatibility dyld policy only */
         char policy[5];
         struct iovec local={policy,sizeof(policy)},remote={(void *)r[0],sizeof(policy)};
         long pid=RAW(SYS_getpid,0,0,0,0,0,0);
         if (RAW(SYS_process_vm_readv,pid,&local,1,&remote,1,0)!=(long)sizeof(policy)) {
-            result=-14; break;
+            result=-EFAULT; break;
         }
-        if (r[1]!=90 || policy[0]!='A' || policy[1]!='M' || policy[2]!='F' ||
+        if (r[1]!=D_AMFI_DYLD_POLICY || policy[0]!='A' || policy[1]!='M' || policy[2]!='F' ||
             policy[3]!='I' || policy[4]) break;
         /* Confirmed from the actual 650.3.4 wrapper: two uint64_t words,
          * input flags and a POINTER to the uint64_t result, not inline output.
@@ -387,31 +408,32 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         local=(struct iovec){args,sizeof(args)};
         remote=(struct iovec){(void *)r[2],sizeof(args)};
         if (RAW(SYS_process_vm_readv,pid,&local,1,&remote,1,0)!=(long)sizeof(args)) {
-            result=-14; break;
+            result=-EFAULT; break;
         }
-        uint64_t permissions=0x3f;
+        uint64_t permissions=D_AMFI_ALLOW_AT_PATHS|D_AMFI_ALLOW_PATH_ENV|D_AMFI_ALLOW_CUSTOM_CACHE|
+                             D_AMFI_ALLOW_FALLBACK_PATHS|D_AMFI_ALLOW_PRINT_ENV|D_AMFI_ALLOW_FAILED_INSERT;
         local=(struct iovec){&permissions,sizeof(permissions)};
         remote=(struct iovec){(void *)args[1],sizeof(permissions)};
-        result=RAW(SYS_process_vm_writev,pid,&local,1,&remote,1,0)==(long)sizeof(permissions) ? 0 : -14;
+        result=RAW(SYS_process_vm_writev,pid,&local,1,&remote,1,0)==(long)sizeof(permissions) ? 0 : -EFAULT;
         break;
     }
-    case 500: {                 /* Darwin getentropy: success returns zero */
-        if (r[1]>256) { result=-5; break; }
+    case D_SYS_GETENTROPY: {                 /* Darwin getentropy: success returns zero */
+        if (r[1]>256) { result=-EIO; break; }
         unsigned long done=0;
         while (done<r[1]) {
             long count=RAW(SYS_getrandom,r[0]+done,r[1]-done,0,0,0,0);
-            if (count==-4) continue; /* retry EINTR without host errno/TLS */
+            if (count==-EINTR) continue; /* retry EINTR without host errno/TLS */
             if (count<0) { result=count; break; }
-            if (!count) { result=-5; break; }
+            if (!count) { result=-EIO; break; }
             done+=(unsigned long)count;
         }
         if (done==r[1]) result=0;
         break;
     }
-    case 520: case 521: {       /* retain actual dyld fatal reason, no fake success */
+    case D_SYS_ABORT_WITH_PAYLOAD: case D_SYS_TERMINATE_WITH_PAYLOAD: {       /* retain actual dyld fatal reason, no fake success */
         char text[512];
         struct iovec local={text,sizeof(text)};
-        struct iovec remote={(void *)r[r[16]==521 ? 4 : 5],sizeof(text)};
+        struct iovec remote={(void *)r[r[D_ARM64_SYSCALL_REGISTER]==D_SYS_TERMINATE_WITH_PAYLOAD ? 4 : 5],sizeof(text)};
         long size=RAW(SYS_process_vm_readv,RAW(SYS_getpid,0,0,0,0,0,0),&local,1,&remote,1,0);
         if (size>0) {
             unsigned long length=0;
@@ -423,67 +445,67 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         }
         break;
     }
-    case 1:
-        trace_call(r[16],uc->uc_mcontext.pc,r[0]&255);
+    case D_SYS_EXIT:
+        trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]&255);
         RAW(SYS_exit_group,r[0]&255,0,0,0,0,0);
         __builtin_unreachable();
-    case 3: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
-    case 4: result = RAW(SYS_write,r[0],r[1],r[2],0,0,0); break;
-    case 5: case 398: result=guest_open(r[0],r[1]); break;
-    case 6: case 399:
-        result=(int)r[0]==root_descriptor ? -9 : RAW(SYS_close,r[0],0,0,0,0,0); break;
-    case 153: case 414: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
-    case 199: result=RAW(SYS_lseek,r[0],r[1],r[2],0,0,0); break;
-    case 294: /* Actual process-private cache mappings prepared before entry. */
-        result=current_cache_base ? guest_copy(&current_cache_base,r[0],sizeof(current_cache_base),1) : -12;
+    case D_SYS_READ: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
+    case D_SYS_WRITE: result = RAW(SYS_write,r[0],r[1],r[2],0,0,0); break;
+    case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_open(r[0],r[1]); break;
+    case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
+        result=(int)r[0]==root_descriptor ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
+    case D_SYS_PREAD: case D_SYS_PREAD_NOCANCEL: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
+    case D_SYS_LSEEK: result=RAW(SYS_lseek,r[0],r[1],r[2],0,0,0); break;
+    case D_SYS_SHARED_REGION_CHECK: /* Actual process-private cache mappings prepared before entry. */
+        result=current_cache_base ? guest_copy(&current_cache_base,r[0],sizeof(current_cache_base),1) : -ENOMEM;
         break;
-    case 334: case 423: { /* __semwait_signal and nocancel */
+    case D_SYS_SEMWAIT_SIGNAL: case D_SYS_SEMWAIT_SIGNAL_NOCANCEL: { /* __semwait_signal and nocancel */
         if (r[1] || r[2]>1 || (r[2] && r[3]!=1) || (long)r[4]<0 || r[5]>=1000000000) {
-            result=-95; break;
+            result=-ENOTSUP; break;
         }
         struct timespec timeout={r[4],r[5]};
         result=ipc_semaphore_wait(r[0],r[2] ? &timeout : NULL);
         break;
     }
-    case 338: case 339: case 340: result=guest_stat(r[0],r[1],r[16]); break;
-    case 20: result = RAW(SYS_getpid,0,0,0,0,0,0); break;
-    case 372: result = RAW(SYS_gettid,0,0,0,0,0,0); break; /* thread_selfid */
-    case 2:
+    case D_SYS_STAT64: case D_SYS_FSTAT64: case D_SYS_LSTAT64: result=guest_stat(r[0],r[1],r[D_ARM64_SYSCALL_REGISTER]); break;
+    case D_SYS_GETPID: result = RAW(SYS_getpid,0,0,0,0,0,0); break;
+    case D_SYS_THREAD_SELFID: result = RAW(SYS_gettid,0,0,0,0,0,0); break; /* thread_selfid */
+    case D_SYS_FORK:
         result = RAW(SYS_clone,SIGCHLD,0,0,0,0,0);
         if (!result) {
             r[1] = 1;           /* Darwin raw fork child discriminator */
             result = RAW(SYS_getpid,0,0,0,0,0,0);
         } else r[1] = 0;
         break;
-    case 7:
-        if (r[3] || (r[2] & ~3UL)) { result = -95; break; }
+    case D_SYS_WAIT4:
+        if (r[3] || (r[2] & ~(WNOHANG|WUNTRACED))) { result = -ENOTSUP; break; }
         result = RAW(SYS_wait4,r[0],r[1],r[2],0,0,0);
         break;
-    case 73: case 74:
-        if ((r[0] & (PAGE16-1)) || !r[1] || r[1] > (1UL << 32) ||
+    case D_SYS_MUNMAP: case D_SYS_MPROTECT:
+        if ((r[0] & (PAGE16-1)) || !r[1] || r[1] > D_VM_MAX_ALLOCATION ||
             r[0] + ((r[1]+PAGE16-1)&~(PAGE16-1)) < r[0]) {
-            result = -22; break;
+            result = -EINVAL; break;
         }
-        if (r[16] == 74 && (r[2] & ~3UL)) { result = -95; break; }
-        result = RAW(r[16] == 73 ? SYS_munmap : SYS_mprotect,
+        if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_MPROTECT && (r[2] & ~(PROT_READ|PROT_WRITE))) { result = -ENOTSUP; break; }
+        result = RAW(r[D_ARM64_SYSCALL_REGISTER]==D_SYS_MUNMAP ? SYS_munmap : SYS_mprotect,
                      r[0],(r[1]+PAGE16-1)&~(PAGE16-1),r[2],0,0,0);
         break;
-    case 197:
-        if (r[0] || r[3] != 0x1002 || r[4] != (unsigned long)-1 || r[5]) {
-            result = -95; break;
+    case D_SYS_MMAP:
+        if (r[0] || r[3] != (D_MAP_PRIVATE|D_MAP_ANON) || r[4] != (unsigned long)-1 || r[5]) {
+            result = -ENOTSUP; break;
         }
         result = darwin_native_memory(r[1],r[2]);
         break;
-    case 0x80000000:
-        if (r[3] == 2) {
+    case D_SYS_PLATFORM:
+        if (r[3] == D_PLATFORM_SET_TSD) {
             __asm__ volatile("msr tpidr_el0,%0" :: "r"(r[0]) : "memory");
             result = 0;
-        } else if (r[3] == 3) {
+        } else if (r[3] == D_PLATFORM_GET_TSD) {
             __asm__ volatile("mrs %0,tpidr_el0" : "=r"(result));
-        } else result = -38;
+        } else result = -ENOSYS;
         break;
     }
-    trace_call(r[16],uc->uc_mcontext.pc,result);
+    trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,result);
     if ((unsigned long)result >= (unsigned long)-4095) {
         r[0] = darwin_error(result);
         uc->uc_mcontext.pstate |= CARRY;
@@ -516,7 +538,7 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     for (int cpu=0;cpu<CPU_SETSIZE;cpu++) if (CPU_ISSET(cpu,&available)) { CPU_SET(cpu,&one); break; }
     if (sched_setaffinity(0,sizeof(one),&one)) { perror("single guest CPU"); exit(1); }
     native_threads[0].tid=RAW(SYS_gettid,0,0,0,0,0,0);
-    native_threads[0].state=2; native_threads[0].port=0x20001; native_threads[0].refs=1;
+    native_threads[0].state=2; native_threads[0].port=(D_THREAD_PORT_INDEX_BASE<<D_PORT_NAME_INDEX_SHIFT)|1; native_threads[0].refs=1;
     current_cache_base=cache_base;
     char *absolute=realpath(program,NULL);
     if (!absolute || strlen(absolute)>=sizeof(executable_path)) {
@@ -532,28 +554,28 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
      * Leave optional acceleration/timebase features disabled. XNU's ARM
      * cpu_capabilities.h defines the offsets; iOS 12 accesses kernel shift
      * at +0x37 during dyld mach_init, as observed in the failed actual run. */
-    unsigned char *page=mmap((void *)0xfffffc000ULL,PAGE16,PROT_READ|PROT_WRITE,
+    unsigned char *page=mmap((void *)D_GUEST_COMMPAGE,PAGE16,PROT_READ|PROT_WRITE,
                             MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
     if (page==MAP_FAILED) { perror("Darwin commpage"); exit(1); }
     memcpy(page,"commpage 64-bit",14);
-    *(uint16_t *)(page+0x1e)=3;
-    *(uint32_t *)(page+0x20)=1U<<16; /* one configured CPU, conservative features */
-    page[0x24]=page[0x25]=14;
+    *(uint16_t *)(page+D_COMM_VERSION)=D_COMM_COMPAT_VERSION;
+    *(uint32_t *)(page+D_COMM_CPU_CAPABILITIES)=1U<<D_COMM_CPU_COUNT_SHIFT; /* one configured CPU, conservative features */
+    page[D_COMM_USER_PAGE_SHIFT_32]=page[D_COMM_USER_PAGE_SHIFT_64]=D_GUEST_PAGE_SHIFT;
     long cache=sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
     if (cache<=0 || cache>65535) { fprintf(stderr,"Unknown native cache line size\n"); exit(1); }
-    *(uint16_t *)(page+0x26)=(uint16_t)cache;
-    page[0x34]=page[0x35]=page[0x36]=1;
-    page[0x37]=14;
+    *(uint16_t *)(page+D_COMM_CACHE_LINE_SIZE)=(uint16_t)cache;
+    page[D_COMM_ACTIVE_CPUS]=page[D_COMM_PHYSICAL_CPUS]=page[D_COMM_LOGICAL_CPUS]=1;
+    page[D_COMM_KERNEL_PAGE_SHIFT]=D_GUEST_PAGE_SHIFT;
     long physical=sysconf(_SC_PHYS_PAGES),host_page=sysconf(_SC_PAGESIZE);
     if (physical<=0 || host_page<=0) { fprintf(stderr,"Unknown native memory size\n"); exit(1); }
-    *(uint64_t *)(page+0x38)=(uint64_t)physical*(uint64_t)host_page;
+    *(uint64_t *)(page+D_COMM_MEMORY_SIZE)=(uint64_t)physical*(uint64_t)host_page;
     if (mprotect(page,PAGE16,PROT_READ)) { perror("read-only commpage"); exit(1); }
     /* Initialize before the filter is live, on host TLS. The signal handler
      * thereafter uses only the exact allowed raw SVC site. Like tawcroot,
      * compare the address AFTER SVC, as Linux records it in seccomp_data. */
-    void *stack = mmap(NULL,128*1024,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    void *stack = mmap(NULL,D_SIGNAL_STACK_SIZE,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     if (stack == MAP_FAILED) { perror("signal stack"); exit(1); }
-    stack_t alt = {.ss_sp=stack,.ss_size=128*1024};
+    stack_t alt = {.ss_sp=stack,.ss_size=D_SIGNAL_STACK_SIZE};
     struct sigaction action = {.sa_sigaction=dispatch,.sa_flags=SA_SIGINFO|SA_ONSTACK};
     sigemptyset(&action.sa_mask);
     if (sigaltstack(&alt,NULL) || sigaction(SIGSYS,&action,NULL)) {
@@ -569,8 +591,8 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     /* Linux ARM64's VDSO ABI is mov x8,#139; svc #0. Allow that exact
      * return PC, not syscall number 139 at arbitrary guest PCs: Darwin x8 is
      * not its syscall selector and may coincidentally contain that value. */
-    if (!sigreturn || sigreturn[0] != (0xd2800008U | (SYS_rt_sigreturn << 5)) ||
-        sigreturn[1] != 0xd4000001U) {
+    if (!sigreturn || sigreturn[0] != (D_ARM64_INSN_MOVZ_X8 | (SYS_rt_sigreturn << D_ARM64_MOVZ_IMMEDIATE_SHIFT)) ||
+        sigreturn[1] != D_ARM64_INSN_SVC_0) {
         fprintf(stderr,"Unsupported ARM64 signal-return trampoline\n"); exit(1);
     }
     uintptr_t sites[]={(uintptr_t)darwin_raw_return,(uintptr_t)(sigreturn+2),(uintptr_t)darwin_clone_return};
