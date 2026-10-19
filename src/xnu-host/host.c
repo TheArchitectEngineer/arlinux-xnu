@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <usermode_vm.h>
 
 #include <host/context.h>
 #include <host/fault.h>
@@ -117,6 +119,23 @@ main(int argc, char **argv)
         fprintf(stderr, "pthread_attr_getstack: %s\n", strerror(error));
         return 1;
     }
+#ifdef XNU_HOST_BOOT_VM
+    stack_size = xnu_host_kernel_stack_size();
+    if (stack_size > XNU_HOST_PHYSICAL_VIEW - XNU_HOST_BOOT_STACK_BASE) {
+        fputs("XNU bootstrap stack exceeds its reserved arena\n", stderr);
+        return 1;
+    }
+    stack_base = mmap((void *)XNU_HOST_BOOT_STACK_BASE, stack_size,
+        PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+    if (stack_base == MAP_FAILED) {
+        perror("XNU bootstrap stack mmap");
+        return 1;
+    }
+    if ((uintptr_t)stack_base != XNU_HOST_BOOT_STACK_BASE) {
+        fputs("XNU bootstrap stack mapped at an unexpected address\n", stderr);
+        return 1;
+    }
+#endif
     /* These stacks live for the host process lifetime. */
     size_t exception_size = 128 * 1024;
     void *exception_base = malloc(exception_size);
@@ -137,7 +156,7 @@ main(int argc, char **argv)
     if (xnu_host_context_initialize(stack_base, stack_size, exception_base, exception_size))
         return 1;
 #ifdef XNU_HOST_BOOT_VM
-    return xnu_host_vm_bootstrap();
+    return xnu_host_run_on_stack(xnu_host_vm_bootstrap, xnu_host_kernel_stack_top());
 #else
     return xnu_host_kernel_early_startup();
 #endif

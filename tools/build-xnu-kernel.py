@@ -180,6 +180,7 @@ def main():
         'src/xnu-host/ticket.c', 'osfmk/arm64/usermode_ticket.S',
         'src/xnu-host/copyio_probe.c', 'osfmk/arm64/copyio.c',
         'osfmk/arm64/usermode_copyio.S',
+        'osfmk/arm64/usermode_cswitch.S',
         # Core IPC structures used by Mach ports/messages and task initialization.
         *['osfmk/ipc/' + name + '.c' for name in [
             'ipc_space', 'mach_port', 'mach_msg', 'ipc_init', 'ipc_entry',

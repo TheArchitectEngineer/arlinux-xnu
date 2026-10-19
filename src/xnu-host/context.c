@@ -11,6 +11,7 @@
 #include <mach/machine.h>
 #include <machine/machine_routines.h>
 #include <host/context.h>
+#include <arm64/usermode_context.h>
 
 static struct thread boot_thread;
 cpu_data_t PERCPU_DATA(cpu_data);
@@ -27,6 +28,42 @@ struct machine_info machine_info = {
 #define boot_cpu (*PERCPU_GET_MASTER(cpu_data))
 static __thread thread_t host_thread;
 static __thread boolean_t host_interrupts_enabled;
+
+unsigned long
+xnu_host_kernel_stack_size(void)
+{
+    assert(kernel_stack_size >= PAGE_SIZE &&
+        (kernel_stack_size & (kernel_stack_size - 1)) == 0);
+    return kernel_stack_size;
+}
+
+unsigned long
+xnu_host_thread_stack_top(thread_t thread)
+{
+    assert(thread != THREAD_NULL && thread->kernel_stack != 0);
+    assert(thread->machine.kstackptr == (vm_offset_t)thread_get_kernel_state(thread));
+    return thread->machine.kstackptr;
+}
+
+void *
+xnu_host_thread_kernel_context(thread_t thread)
+{
+    return &((thread_kernel_state_t)xnu_host_thread_stack_top(thread))->machine;
+}
+
+unsigned long
+xnu_host_kernel_stack_top(void)
+{
+    unsigned long top = xnu_host_thread_stack_top(host_thread);
+    thread_initialize_kernel_state(host_thread);
+    return top;
+}
+
+void
+xnu_host_continuation_returned(void)
+{
+    panic("kernel continuation returned after thread termination");
+}
 
 vm_offset_t
 current_percpu_base(void)
@@ -153,7 +190,8 @@ xnu_host_context_initialize(void *stack_base, unsigned long stack_size,
     boot_cpu.intstack_top = (vm_offset_t)exception_base + exception_size;
     boot_cpu.excepstack_top = boot_cpu.intstack_top;
     boot_thread.machine.CpuDatap = &boot_cpu;
-    boot_thread.machine.kstackptr = (vm_offset_t)stack_base + stack_size;
+    boot_thread.machine.kstackptr = (vm_offset_t)stack_base + stack_size -
+        sizeof(struct thread_kernel_state);
     boot_thread.machine.preemption_count = 0; /* ARM early boot permits mutex locking */
     boot_thread.kernel_stack = (vm_offset_t)stack_base;
     boot_thread.state = TH_RUN;
