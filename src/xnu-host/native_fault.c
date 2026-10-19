@@ -18,6 +18,7 @@ extern char xnu_host_ticket_fault_start[], xnu_host_ticket_fault_end[];
 extern char xnu_host_ticket_fault_return[];
 static uintptr_t alternate_start, alternate_end;
 static volatile sig_atomic_t recoveries, alternate_recoveries;
+static volatile sig_atomic_t segv_recoveries, bus_recoveries;
 static int initialized;
 
 static void
@@ -42,6 +43,10 @@ fault_handler(int signal_number, siginfo_t *information, void *context)
         uintptr_t stack = (uintptr_t)&marker;
         if (recoveries < SIG_ATOMIC_MAX)
             recoveries++;
+        if (signal_number == SIGSEGV && segv_recoveries < SIG_ATOMIC_MAX)
+            segv_recoveries++;
+        if (signal_number == SIGBUS && bus_recoveries < SIG_ATOMIC_MAX)
+            bus_recoveries++;
         if (stack >= alternate_start && stack < alternate_end &&
             alternate_recoveries < SIG_ATOMIC_MAX)
             alternate_recoveries++;
@@ -98,6 +103,13 @@ xnu_host_fault_statistics(unsigned long *recovered, unsigned long *alternate)
 {
     *recovered = (unsigned long)recoveries;
     *alternate = (unsigned long)alternate_recoveries;
+}
+
+void
+xnu_host_fault_signal_statistics(unsigned long *segv, unsigned long *bus)
+{
+    *segv = (unsigned long)segv_recoveries;
+    *bus = (unsigned long)bus_recoveries;
 }
 
 int
