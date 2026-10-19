@@ -1,6 +1,7 @@
 #ifndef ARLINUX_XNU_HOST_USEREXEC_H
 #define ARLINUX_XNU_HOST_USEREXEC_H
 /* Kernel-only CPU-return interfaces, never included by Linux-facing TUs. */
+#include <stdint.h>
 #include <mach/arm/thread_status.h>
 #include <vm/pmap.h>
 #include <host/guest.h>

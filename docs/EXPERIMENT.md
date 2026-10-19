@@ -69,7 +69,16 @@ stop at NUL; atomic transfers use aligned single loads/stores. Wait-if-equals
 allows a spurious WFE-hint return, not a fake ulock completion. Native engine
 memory APIs never substitute for XNU permission checks.
 
-New, not yet built: original machine-return symbols now reset the consumed
+The first machine-return attempt
+[39306755796](https://github.com/taowen/arlinux-xnu/actions/runs/39306755796),
+root `204ed91d7690c4c0f2c4c9426eb8108b1b8aa311`, failed compilation because the
+new userexec.h included ARM state definitions before stdint.h. That include
+order is now fixed. Failure receipt SHA-256:
+`658fcafdcd2467935260f5ff0eb97261d29a230ec6883698bad6905cd1652c74`.
+No native/link/runtime job ran for that attempt. Logs are retained in
+`build/runs/39306755796`.
+
+New machine-return code, not runtime-validated: original symbols now reset the consumed
 kernel stack and enter a real-thread CPU loop. It restores integer/FP/TLS state,
 handles original user ASTs, runs a bounded pmap engine slice and passes synchronous
 events to original sleh_synchronous. Clocks poll with actual user saved state;

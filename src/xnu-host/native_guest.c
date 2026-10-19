@@ -359,6 +359,13 @@ guest_run(struct xnu_host_guest *guest,
             error != UC_ERR_READ_PROT && error != UC_ERR_WRITE_PROT &&
             error != UC_ERR_FETCH_PROT)
             return error;
+    } else if (guest->event.reason == XNU_HOST_GUEST_EXCEPTION) {
+        /* Keep the CPU's captured syndrome, including sysreg/FP/alignment
+         * traps. A generic emulator exception result must not overwrite it. */
+        if (error != UC_ERR_OK && error != UC_ERR_EXCEPTION &&
+            error != UC_ERR_INSN_INVALID && error != UC_ERR_READ_UNALIGNED &&
+            error != UC_ERR_WRITE_UNALIGNED && error != UC_ERR_FETCH_UNALIGNED)
+            return error;
     } else if (error == UC_ERR_INSN_INVALID) {
         guest->event.reason = XNU_HOST_GUEST_UNDEFINED;
         guest->event.esr = 1u << 25;
