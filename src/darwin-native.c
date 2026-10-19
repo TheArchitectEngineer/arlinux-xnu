@@ -143,6 +143,7 @@ long darwin_native_memory(unsigned long size,int protection)
  * retains its host path. This is path adaptation, not a security sandbox. */
 static int root_descriptor=-1,bundle_descriptor=-1;
 static char bundle_path[4096];
+static size_t bundle_path_length;
 static uint64_t current_cache_base;
 /* Process-local name for this task's VM capability. Only implemented VM traps
  * accept it; other port/IPC operations remain unsupported, never successful. */
@@ -167,10 +168,11 @@ static int path_directory(char **path)
     unsigned int i=0;
     while ((*path)[i] && (*path)[i]==executable_path[i]) i++;
     if (!(*path)[i] && !executable_path[i]) return AT_FDCWD;
-    size_t bundle_length=strlen(bundle_path);
-    if (bundle_descriptor>=0 && !strncmp(*path,bundle_path,bundle_length) &&
-        ((*path)[bundle_length]=='/' || !(*path)[bundle_length])) {
-        *path+=bundle_length;
+    size_t matched=0;
+    while (matched<bundle_path_length && (*path)[matched]==bundle_path[matched]) matched++;
+    if (bundle_descriptor>=0 && matched==bundle_path_length &&
+        ((*path)[matched]=='/' || !(*path)[matched])) {
+        *path+=matched;
         if (**path=='/') (*path)++;
         if (!**path) *path=".";
         return bundle_descriptor;
@@ -618,6 +620,7 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     char *slash=strrchr(bundle_path,'/');
     if (!slash) { fprintf(stderr,"Missing application bundle parent\n"); exit(1); }
     *slash=0;
+    bundle_path_length=slash-bundle_path;
     bundle_descriptor=open(*bundle_path ? bundle_path : "/",O_PATH|O_DIRECTORY|O_CLOEXEC);
     if (bundle_descriptor<0) { perror("application bundle directory"); exit(1); }
     free(absolute);
