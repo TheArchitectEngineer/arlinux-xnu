@@ -103,6 +103,23 @@ Full-system ios-sweet/XNU runs are behavioral references, not proof of ARLinux
 compatibility. The active application path uses native ARM64 execution; its
 build does not depend on a CPU instruction-emulation engine.
 
+## PlayCover reference boundary
+
+PlayCover's pinned Macho.swift changes iOS Mach-O platform commands to Mac
+Catalyst and adjusts selected library paths. Its native host supplies UIKit
+from /System/iOSSupport. PlayTools adds method swizzling, display adaptation and
+input-to-touch conversion; these are useful application adaptations, not a
+Linux Darwin/runtime implementation. Only the explicitly locked reference converter is consumed by the workflow;
+research checkouts do not silently become build dependencies.
+
+The reference workflow reads the immutable PlayCover source-lock commit and
+compiles its unchanged converter together with our small entry. It compares
+original and transformed/signed hashes, retains GPL corresponding source and
+license, and observes the actual application under the macOS debugger. Linux
+and macOS success remain separate observations: the macOS frameworks are newer
+than our pinned iOS 12 firmware, so a different path is not automatically a
+Linux implementation bug. No framework binaries from macOS are redistributed.
+
 ## Application-driven sequence
 
 1. Run the native interactive Mach-O console end to end: real VM/COW and TLS,

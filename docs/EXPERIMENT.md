@@ -7,15 +7,24 @@ Linux/Android. Native ARM64, 16 KiB guest pages and one advertised CPU remain
 fixed. Original XNU boot is a behavioral reference, not an application gate.
 No third-party iOS App, UI or Android integration has passed.
 
-Latest completed real journey:
-[39336200293](https://github.com/taowen/arlinux-xnu/actions/runs/39336200293),
-source `07748b48224dade1c8003b62e7ef7b813b4cd7d1`, dyld job `118346403945`.
-The native console prerequisite passes both complete launches. Apple dyld
-650.3.4 loads the actual cached system libraries and enters a normal C main.
-Its imported pthread_create/join now execute a genuine Linux worker thread,
-observe its return value 37 and shared-memory value 42, process input and
-return 0 through real libSystem. Both independent dynamic launches complete
-with those results, including normal exit and relaunch of the same binaries.
+Current application: **ARHello 1.0** (`io.arlinux.ARHello`), a programmatic
+UIKit window, label and increment button. Its interfaces/TBD files contain only
+ABI declarations; real implementations come from the selected iOS firmware.
+The app's code and bundle metadata are committed under guests/ARHello.
+
+Latest application attempt:
+[39336911768](https://github.com/taowen/arlinux-xnu/actions/runs/39336911768),
+source `4e4c98aa071f1c4e12fbb8ba4e0978ba3414b390`, dyld job `118348800479`.
+It enters real UIKitCore UIApplicationMain/UIApplicationMainPreparations, then
+libdispatch's root-queue initialization calls _pthread_workqueue_supported.
+The real libpthread deliberately traps because basic registration returned 0
+and its supported-features state remains unset. The process exits 133 (SIGTRAP).
+No window/display/input callback has passed.
+
+The same run first completes both independent real-libSystem console launches:
+worker return 37, shared memory 42, input counter 1 and normal exit. Previous
+standalone console regression is
+[39336200293](https://github.com/taowen/arlinux-xnu/actions/runs/39336200293).
 
 ### Verified execution
 
@@ -62,17 +71,29 @@ with those results, including normal exit and relaunch of the same binaries.
 
 ### Current boundary and next action
 
-The real multithreaded console now completes, including input and normal exit.
-The ABI constants refactor separates guest definitions in darwin-abi.h from
-adapter policy in darwin-machine.h. Its regression passes two independent dynamic
-launches of the same binaries. Runtime logs and exit status remain authoritative.
+Implement actual dispatch/workqueue support or adapt genuine userland to use
+real pthread-backed scheduling. Do not return an invented feature bitmap just
+to get past _pthread_workqueue_supported: registration currently implements only
+basic pthread creation. The actual app already loads real UIKit dependencies;
+this concrete scheduler failure comes before a window or input can be tested.
+General Mach descriptors, port sets, notifications and cross-process namespaces
+are incomplete. No actual iOS UI journey or ARLinux integration has passed.
 
-This is an authored console, not a third-party iOS App. Next work must advance
-toward actual framework/display/input requirements and a named App journey.
-Workqueues, non-default QoS scheduling, general Mach descriptors, port sets,
-notifications and cross-process namespace behavior remain incomplete. Contended
-FIFO semaphore semantics and broad thread lifecycle coverage are not proven by
-this single worker. No actual iOS UI App or ARLinux integration has run.
+The macOS reference uses the identical iOS app binary as input, PlayCover's
+unmodified Macho.swift conversion at the source-lock commit, ad-hoc debug
+signing and LLDB on the real macOS host. It does not yet inject PlayTools or
+claim PlayCover's complete installation/GUI workflow. First reference run:
+[39337252053](https://github.com/taowen/arlinux-xnu/actions/runs/39337252053),
+source `35fd78da6238b6e01a3fc931aaffb9ae1256dbe8`, job `118349837480`.
+The actual macOS 14.8.9 ARM64 runner hits UIKitCore UIApplicationMain in LLDB,
+then logs ARHELLO_READY. Its screenshot shows the real white app window,
+ARHello 1.0 — Count: 0 and Increment button. The observation ends at timeout
+124; button interaction, normal close and relaunch remain unverified. This
+confirms a usable native reference/debugger/GUI path, not a completed app journey.
+Original input hash matches the Linux app hash below; converted/signed hash is
+`5b08e8cf4c36e5894825b254bc3de4e43058da9fc77c407fff948e6b196e340f`.
+Reference receipt: `b4675a7aa0aa55cdd9d42a4bb8123eeff5ae41ce5de1c827bfee2a30d0c44ada`.
+Text and inspected screenshot: build/runs/39337252053/{playcover-job.log,screen.png}.
 
 ### Reproducible inputs and evidence
 
@@ -81,6 +102,11 @@ this single worker. No actual iOS UI App or ARLinux integration has run.
 - OS DMG SHA-256: `7040c19bd5b62182ccf6449ca562bbeb6071f4e404138ace93c5f731d1a9e5a7`.
 - dyld SHA-256: `5c5563ec91c78cfe060cb500e3ca8d764350572f124f98144bac175aa25655e9`.
 - Cache: 1276837888 bytes, SHA-256 `a60a0653eb730f73b5d1de61a97e86e5a241f7a4ff00c83659f9eefb965cac6f`.
+- ARHello 1.0 Mach-O SHA-256: `4b346aa7dd998425990cb9ef282ddb7e5252b4d9d069b12c369d32d407f29b77`.
+- Failed app attempt receipt SHA-256: `746ebdd5a489cde0e40c12c10378a11f4bcbd7abb884896e800ace99d721ec4e`.
+- Failed application text: build/runs/39336911768/dyld-job.log. Actual LLDB frames
+  are symbolicated against the same cache; the stop is libsystem_pthread
+  _pthread_workqueue_supported +44, reached from UIKitCore/libdispatch.
 - Dynamic C Mach-O SHA-256: `2b66ddec09f799b483a2e97b86b859ed5cc1e0474a9c6afb197dde17cf3327ca`.
 - Native runtime SHA-256: `a4b010f189b6edf98b728d79519a5049a60230e2dbffb5f0e652fca4281eed46`.
 - Successful dyld receipt SHA-256:
@@ -108,8 +134,8 @@ Earlier milestones/failures remain in Actions and Git history: real dyld entry
 39328108372; cache initialization 39328927723; vm_map 39329330536. The original
 XNU full-system VM/COW/exit reference is run 39311945725, not Linux adaptation
 or application acceptance. The removed kernel candidate is preserved in Git.
-macOS reference tracing has not been validated; active execution is on the
-Linux ARM64 runner using the root build.sh entry.
+macOS reference tracing and the ARHello window are now observed in the run
+above; Linux and macOS both use the root build.sh entry.
 
 ## Evidence boundaries
 

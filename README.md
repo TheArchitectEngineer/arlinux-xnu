@@ -1,15 +1,15 @@
 # ARLinux XNU experiment
 
 An experimental Darwin/iOS compatibility environment for ARLinux on
-Linux/Android. **No iOS app runs here yet.** XNU, dyld and iOS userland may be
+Linux/Android. **No iOS app runs on Linux/Android here yet.** XNU, dyld and iOS userland may be
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.
 
-The current native ARM64 path adapts static Mach-O TLS reads and intercepts
-Darwin calls inside the process without depending on host libc TLS. Its first
-journey is an interactive console program with memory/COW, per-process TLS,
-input, normal exit and restart. [Runner verification passed](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457). It is not dyld,
-a framework-based app or a working Android integration.
+The native ARM64 path runs a real dyld/libSystem console through memory, TLS,
+threads, input, normal exit and restart. ARHello 1.0 now enters real UIKit on
+Linux but stops at missing workqueue support. The same iOS binary, converted
+with PlayCover on a macOS ARM64 runner, displays its window under LLDB; input,
+normal close/relaunch and Android integration remain unverified.
 
 A [full-system XNU reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
 provides a behavior comparison. Compilation is not application compatibility.
