@@ -12,6 +12,7 @@
 #include <machine/machine_routines.h>
 #include <host/context.h>
 #include <arm64/usermode_context.h>
+#include <pexpert/pexpert.h>
 
 static struct thread boot_thread;
 cpu_data_t PERCPU_DATA(cpu_data);
@@ -32,8 +33,15 @@ static __thread boolean_t host_interrupts_enabled;
 unsigned long
 xnu_host_kernel_stack_size(void)
 {
+    /* The native stack must exist before original TUNABLES/stack_init runs.
+     * Use its same configured page count; stack_init will establish caches
+     * and recompute these values once the startup dispatcher reaches it. */
+    uint32_t pages = KERNEL_STACK_SIZE / PAGE_SIZE;
+    PE_parse_boot_argn("kernel_stack_pages", &pages, sizeof(pages));
+    kernel_stack_size = (vm_offset_t)pages * PAGE_SIZE;
     assert(kernel_stack_size >= PAGE_SIZE &&
         (kernel_stack_size & (kernel_stack_size - 1)) == 0);
+    kernel_stack_mask = ~(kernel_stack_size - 1);
     return kernel_stack_size;
 }
 
