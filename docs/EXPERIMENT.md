@@ -30,7 +30,10 @@ With KPERF disabled, user configuration returns ENOTSUP and internal kernel
 configuration asserts that KPERF was not requested; no pretend sampling/reset
 provider is added. Original kdebug reset/ownership behavior remains intact.
 These changes require runner verification and do not establish timekeeping,
-timer interrupt delivery or a working VM.
+timer interrupt delivery or a working VM. The current submitted experiment is
+[39282928929](https://github.com/taowen/arlinux-xnu/actions/runs/39282928929),
+source `0ef524d`. Inspect this exact run's jobs/logs before another dispatch;
+observation delays are not a reason to resubmit unchanged source.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
