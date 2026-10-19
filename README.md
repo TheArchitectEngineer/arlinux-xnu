@@ -6,12 +6,22 @@ Initial scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries,
 software framebuffer. No 32-bit guest, Apple GPU driver, Metal translation or IPA support.
 Apple proprietary firmware/frameworks are not included or downloaded by this project.
 
-The sole workstation entry is `./build.ps1`; Linux/macOS compilation runs only on GitHub-hosted runners.
+The sole workstation entry is `./build.sh`. Use Bash, Python 3 and authenticated
+GitHub CLI (`gh`). Linux/macOS compilation runs only on GitHub-hosted runners;
+the local entry only dispatches jobs and retrieves their status/artifacts.
 
-```powershell
-./build.ps1 build
-./build.ps1 status
-./build.ps1 download
+```bash
+./build.sh build
+./build.sh status
+./build.sh download --run-id RUN_ID
+```
+
+To run only one experiment or inspect an exact run:
+
+```bash
+./build.sh build --mode host
+./build.sh build --mode baseline
+./build.sh status --run-id RUN_ID
 ```
 
 Two independent experiments run in one dispatched workflow:
@@ -33,7 +43,9 @@ See Actions for the actual outcome; compilation alone does not establish app com
 [ARM64 host-substrate run 39212532039](https://github.com/taowen/arlinux-xnu/actions/runs/39212532039)
 passed on ubuntu-24.04-arm (4 KiB host pages): 16 KiB shared mapping and write
 protection, Darwin SVC 0x80 interception, Linux syscall suppression, and register
-return. Source commit: `39a5c50`. Artifacts contain the actual ELF and logs.
+return. Source commit: `39a5c50`. A repeat with explicit carry-flag initialization
+also passed in [run 39212664017](https://github.com/taowen/arlinux-xnu/actions/runs/39212664017).
+Artifacts contain the actual ELF and logs.
 The first attempt incorrectly expected ENOSYS after ARM64 syscall cancellation;
 the corrected diagnostic verifies the observable absence of close(fd)'s side effect.
 
