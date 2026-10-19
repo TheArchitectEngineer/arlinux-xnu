@@ -97,7 +97,8 @@ jobs:
           ld64.lld-18 -arch arm64 -platform_version ios 13.0 13.0 -no_adhoc_codesign -e _start build/native/console.o -o build/native/console.macho
           # A standard link-time interface records a real runtime dependency.
           # It supplies no replacement implementation or fabricated exports.
-          ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _start build/native/console.o -needed_library guests/libSystem.tbd -o build/native/console-dynamic.macho
+          clang-18 --target=arm64-apple-ios12.0 -ffreestanding -fno-stack-protector -O1 -g -c guests/dynamic-console.c -o build/native/console-dynamic.o
+          ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/console-dynamic.o -needed_library guests/libSystem.tbd -o build/native/console-dynamic.macho
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
           cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -c src/darwin-native.c -o build/native/runtime.o
           cc -c src/darwin-native.S -o build/native/entry.o

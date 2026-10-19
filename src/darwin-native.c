@@ -65,22 +65,30 @@ static void trace_call(unsigned long number,unsigned long pc,unsigned long resul
     RAW(SYS_write,2,line,n,0,0,0);
 }
 
-static long anonymous16(unsigned long size, int protection)
+static long anonymous_aligned(unsigned long size,int protection,unsigned long mask)
 {
     /* Until executable mapping rewrite is implemented, never grant unadapted
      * new executable pages. Unknown/file/fixed map modes fail at the caller. */
-    if (!size || size > (1UL << 32) || (protection & ~3)) return -22;
+    if (!size || size > (1UL << 32) || (protection & ~3) ||
+        mask>=(1UL<<32) || (mask&(mask+1))) return -22;
+    unsigned long alignment=mask+1;
+    if (alignment<PAGE16) alignment=PAGE16;
     size = (size + PAGE16 - 1) & ~(PAGE16 - 1);
-    long raw = RAW(SYS_mmap,0,size+PAGE16,protection,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    long raw = RAW(SYS_mmap,0,size+alignment,protection,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     if ((unsigned long)raw >= (unsigned long)-4095) return raw;
-    unsigned long base = ((unsigned long)raw + PAGE16 - 1) & ~(PAGE16 - 1);
-    unsigned long prefix = base - raw, suffix = PAGE16 - prefix;
+    unsigned long base = ((unsigned long)raw + alignment - 1) & ~(alignment - 1);
+    unsigned long prefix = base - raw, suffix = alignment - prefix;
     if ((prefix && RAW(SYS_munmap,raw,prefix,0,0,0,0)) ||
         (suffix && RAW(SYS_munmap,base+size,suffix,0,0,0,0))) {
         RAW(SYS_exit_group,125,0,0,0,0,0);
         __builtin_unreachable();
     }
     return (long)base;
+}
+
+static long anonymous16(unsigned long size,int protection)
+{
+    return anonymous_aligned(size,protection,PAGE16-1);
 }
 
 /* Read-only filesystem access for genuine dyld dependencies. Darwin paths
@@ -239,14 +247,20 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             else if (guest_copy(&address,r[1],sizeof(address),0)) status=1;
             else if (((number==10 ? r[3] : r[4])&~0xff000001UL)==0 &&
                      ((number==10 ? r[3] : r[4])&1) && r[2] &&
-                     (number==10 || (!r[3] && !(r[5]&~3UL)))) {
-                long mapped=anonymous16(r[2],number==10 ? PROT_READ|PROT_WRITE : r[5]);
+                     (number==10 || !(r[5]&~3UL))) {
+                long mapped=anonymous_aligned(r[2],number==10 ? PROT_READ|PROT_WRITE : r[5],
+                                              number==10 ? PAGE16-1 : r[3]);
                 if ((unsigned long)mapped>=(unsigned long)-4095) status=3;
                 else {
                     address=mapped;
                     status=guest_copy(&address,r[1],sizeof(address),1) ? 1 : 0;
                     if (status) RAW(SYS_munmap,mapped,(r[2]+PAGE16-1)&~(PAGE16-1),0,0,0,0);
                 }
+            }
+            if (status) {
+                const char label[]="DARWIN_VM_REJECTED argument-index/pc/value follows\n";
+                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                for (unsigned int i=0;i<6;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
             }
             r[0]=status;
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
