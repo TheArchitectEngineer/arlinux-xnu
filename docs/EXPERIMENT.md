@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39243200101](https://github.com/taowen/arlinux-xnu/actions/runs/39243200101)
-at source `63476cc` compiled 152 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39244611652](https://github.com/taowen/arlinux-xnu/actions/runs/39244611652)
+at source `c8a0a04` compiled 158 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -88,33 +88,27 @@ the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps
 and pmap ledger/wiring accounting are not connected yet. Reference/dirty attributes record
 conservative mapping history, not precise accesses or cleared-bit tracking.
-The VM executable still fails linkage (328 distinct undefined references), before its original
+The VM executable still fails linkage (318 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
 
 Next: connect remaining machine/thread, kernel data layout, host pmap and BSD service dependencies,
 then execute the original VM bootstrap. Ticket reservation's recovery is now
 connected, while general kernel recovery and guest exception delivery are not.
-Selected objects now include original
-BSD process/read-only process data, fork/uthread, coalition, counters, host
-notifications and configured MIG senders. ARM's scheduler dispatch selects dualq;
-the profile now enables its original provider alongside traditional scheduling
-and the original priority implementation. Original clock-service, semaphore and
-task-identity-token units now compile and resolve their corresponding service
-imports, but have not executed; they still depend on real VM, tasks and timers.
-The same boundary applies to the newly compiled original ARM64 task state,
-affinity, thread groups, multiq groups, clock-port conversion and Unix exception
-receiver implementations. Original BSD credentials, security tokens, resource
-limits and Unix exception-to-signal conversion now compile and resolve their
-service imports, but have not executed. Optional hooks follow the selected
-configuration. BSD syscall prototypes use upstream unifdef/makesyscalls; MIG
-public and kernel sender interfaces follow their distinct upstream Makefile
-rules. These providers expose the real dependency graph; task lifecycle, timer IRQ delivery and
-guest context switching remain unverified.
-Original pointer locks, Blocks runtime/data, BSD bootstrap, authorization,
-privilege checks and hash-allocation helpers now compile and resolve their
-corresponding imports. They have not executed in the early binary. BSD bootstrap
-guards optional MPTCP/loopback headers according to the selected subsystems.
+The selected graph contains real IPC, task/thread, VM/zone allocator, libkern
+and required BSD providers; the build script is the authoritative source list.
+ARM dispatch selects original dualq with traditional scheduling/priority support.
+BSD syscall prototypes use upstream unifdef/makesyscalls; public and kernel MIG
+interfaces follow their distinct upstream rules. Optional hooks follow the
+selected configuration, including networking and IOKit boundaries.
+
+Newly compiled providers cover Mach debug-port queries, message timers, scheduling
+policy, BSD sleep/wakeup, ARM timer queues and the sysctl registry. Their imports
+now resolve, but these providers are absent from the executed early subset.
+IOKit object descriptions explicitly return unsupported when IOKit is disabled;
+other Mach debug-port behavior remains original. Task lifecycle, actual timer
+programming/IRQ delivery, sysctl boot registration and guest switching remain
+unverified until the full VM executable links and runs.
 
 X300 observation (2026-10-19): Vivo X300/V2509A, ARM64, Android 17/API 37,
 Linux 6.12.58 with 4 KiB host pages (`getconf PAGE_SIZE=4096`, corroborated by
@@ -135,7 +129,7 @@ retained in artifacts; this is not yet a Linux-only compiler toolchain.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | [152 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39243200101) | Complete kernel or guest execution |
+| `xnu-kernel` | [158 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39244611652) | Complete kernel or guest execution |
 | `xnu-link-inputs` | Same run: relocatable merge passes, host TLS replaces privileged current-thread access | Executable linkage or kernel boot |
 | `xnu-early-startup` | Same run: eight starts; real ticket atomics + scoped SIGSEGV/SIGBUS recovery, fatal unmatched child, prior memory/time/entropy/per-CPU/image/dispatcher checks | General recovery/guest exceptions, real RO-zone allocation/update, lock hooks, VM/tasks initialization or guest execution |
 | `xnu-vm-startup` | Same run: executable link fails; log and link map retained | VM bootstrap or guest execution |
