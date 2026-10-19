@@ -15,21 +15,21 @@ installation still rejects unsupported requests until actual thread return is
 connected; saving cthread_self alone is insufficient.
 
 Latest completed run:
-[39301312150](https://github.com/taowen/arlinux-xnu/actions/runs/39301312150),
-root `c153c93d2908ae20f2b7a35ff3ab55798d6a6a72`, XNU `abe6e09`,
+[39303186380](https://github.com/taowen/arlinux-xnu/actions/runs/39303186380),
+root `766b14c8a4ab8d007cf43c5ef48c1805ed403506`, XNU `355e0c6e9767a88e58749e2e1f6817d316a4f4b7`,
 Unicorn `8028ec436f2d9376525352dd38ed9ed6b9f6be10`.
 
-- Compiler job `118227496164` passed; receipt SHA-256
-  `7538594a7e1b9b18cde5e345efd10ce1aa54582bd95fa3b17ab79151cf4b3a9b`.
-- VM job `118228114244` built the native adapter and ARM64 engine and passed
+- Compiler job `118233738297` passed; receipt SHA-256
+  `e5c65c875c53f79fd8292e26d0448eb892a15c823cd77493f3706a1aea0c56cf`.
+- VM job `118234406591` built the native adapter and ARM64 engine and passed
   the native/kernel ABI audit. Executable linkage still failed on genuine kernel
   machine/pmap/service imports. Receipt SHA-256
-  `34900fe937a9d60c788180882bb8e9af2982dc4c66bc7c5c4e8272ce6bb238c2`.
+  `5ad9c8b3c398e9ae6df81dd44123294becab8382a341a204fba9ad2c806ee532`.
 - Built `libunicorn.so.2` SHA-256
   `f1175a539cbc884127a03e554c224e155f9746a1f0e698a42b2b108d66cb70d3`.
   This proves neither engine execution nor XNU bootstrap.
 
-Logs are in `build/runs/39301312150`. The prior engine run `39295473899`
+Logs are in `build/runs/39303186380`. The prior engine run `39295473899`
 exposed a kernel/native ABI hazard: XNU diagnostic `log(int, format, ...)`
 encountered the engine's transitive libm `log(double)`. Kernel external linkage
 is now `xnu_kernel_log`, and the misleading libm DSO error no longer masks the
@@ -62,7 +62,7 @@ explicitly unsupported. They must not be silently billed as ordinary resident
 pages. Native reverse aliases and XNU records/ledger terms need the real VM
 journey to validate consistency. No isolated mapping sample/test is added.
 
-New, not yet built: the XNU fork routes validated USERMODE byte/string/atomic
+Compiled, not runtime-validated: the fork routes validated USERMODE byte/string/atomic
 copies to a kernel VM transport. A permitted resident mapping is accessed with
 preemption disabled; otherwise original vm_fault resolves the page/protection/
 COW and the mapping is revalidated before physical access. Public validation,
@@ -71,8 +71,11 @@ stop at NUL; atomic transfers use aligned single loads/stores. Wait-if-equals
 allows a spurious WFE-hint return, not a fake ulock completion. Native engine
 memory APIs never substitute for XNU permission checks.
 
-Next inspect this revision's actual runner result and then connect original
-saved-state/exception return/dispatch, including fault recovery metadata. The
+Next connect original saved-state/exception return/dispatch, including fault
+recovery metadata. Original thread_exception_return is noreturn: machine return
+must discard the consumed kernel call stack before the next user execution,
+not recursively grow a C stack on every SVC. Preserve the real thread context
+and original Mach/BSD blocking/continuation semantics. The
 new copy transport and resident mapping/ledger behavior still need real XNU
 execution. Nested/shared-cache/commpage paths and service providers remain.
 No isolated copy sample/test is added; the supervisor/child journey remains
@@ -92,10 +95,10 @@ intact and do not replace it with engine samples or successful placeholders.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | [Selected real kernel graph compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39301312150) | Executable kernel or guest execution |
-| `xnu-link-inputs` | Run 39301312150: relocatable merge passes | Executable linkage or kernel boot |
+| `xnu-kernel` | [Selected real kernel graph compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39303186380) | Executable kernel or guest execution |
+| `xnu-link-inputs` | Run 39303186380: relocatable merge passes | Executable linkage or kernel boot |
 | `xnu-early-startup` | [Latest link fails on lock startup imports](https://github.com/taowen/arlinux-xnu/actions/runs/39270528453); prior raw diagnostics passed | VM initialization, tasks or guest execution |
-| `xnu-vm-startup` | [Executable link fails; native engine compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39301312150) | VM bootstrap or guest execution |
+| `xnu-vm-startup` | [Executable link fails; native engine compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39303186380) | VM bootstrap or guest execution |
 
 These are historical observations at their runs' source revisions, not promises
 about current HEAD. No Android app-sandbox journey or third-party iOS app has
