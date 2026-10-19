@@ -161,7 +161,11 @@ def main():
             'ipc_host', 'ipc_mig', 'host', 'processor', 'kalloc', 'zalloc',
             'lock_group', 'locks', 'compact_id', 'lock_mtx', 'lock_rw',
             'lock_ticket', 'ledger', 'kext_alloc', 'backtrace', 'btlog',
-            'timer', 'bsd_kern']],
+            'timer', 'bsd_kern',
+            # Providers required by the actual VM/thread link, not host stubs.
+            'ast', 'sched_prim', 'sched_average', 'sched_traditional',
+            'waitq', 'turnstile', 'timer_call', 'mpsc_queue', 'recount',
+            'thread_act', 'thread_policy']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
