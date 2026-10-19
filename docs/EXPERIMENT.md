@@ -30,7 +30,10 @@ allocates the real 16 KiB early trace buffer in static ELF storage: USERMODE has
 no bare-metal ARM `data.s` BOOTDATA reservation. Original trace recording remains
 intact; the static buffer is retained rather than freed as bootloader memory.
 Both changes still require runner verification and do not establish a working
-filesystem, tracing journey or VM.
+filesystem, tracing journey or VM. Inspect the existing submitted experiment
+[39282406671](https://github.com/taowen/arlinux-xnu/actions/runs/39282406671),
+source `91ed81d`, before dispatching any further build. Do not resubmit this
+source because queue metadata or a log read is delayed.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
