@@ -203,7 +203,7 @@ jobs:
           path: build/dyld/
           retention-days: 30
   playcover-reference:
-    if: inputs.mode == 'app' || inputs.mode == 'playcover'
+    if: inputs.mode == 'playcover'
     needs: native-userland
     runs-on: macos-14
     timeout-minutes: 15

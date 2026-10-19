@@ -8,8 +8,9 @@ preserved. Running an unchanged kernel is not a requirement.
 The native ARM64 path runs a real dyld/libSystem console through memory, TLS,
 threads, input, normal exit and restart. ARHello 1.0 now enters real UIKit on
 Linux but stops at missing workqueue support. The same iOS binary, converted
-with PlayCover on a macOS ARM64 runner, displays its window under LLDB; input,
-normal close/relaunch and Android integration remain unverified.
+with PlayCover on a macOS ARM64 runner, completes display, real mouse input,
+normal exit and relaunch under LLDB. Linux GUI and Android integration remain
+unverified.
 
 A [full-system XNU reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
 provides a behavior comparison. Compilation is not application compatibility.
@@ -27,7 +28,7 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 ./build.sh build --mode host       # explicit historical host/shim diagnostics
 ./build.sh build                   # default: native Darwin console journey
 ./build.sh build --mode dyld       # real dyld/libSystem console journey
-./build.sh build --mode app        # ARHello 1.0 on Linux + macOS reference
+./build.sh build --mode app        # ARHello 1.0 real UIKit on Linux
 ./build.sh build --mode playcover  # same iOS binary, PlayCover conversion on macOS
 ./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
 ./build.sh status --run-id RUN_ID

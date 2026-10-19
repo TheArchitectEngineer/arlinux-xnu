@@ -13,13 +13,14 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39336911768](https://github.com/taowen/arlinux-xnu/actions/runs/39336911768),
-source `4e4c98aa071f1c4e12fbb8ba4e0978ba3414b390`, dyld job `118348800479`.
-It enters real UIKitCore UIApplicationMain/UIApplicationMainPreparations, then
-libdispatch's root-queue initialization calls _pthread_workqueue_supported.
-The real libpthread deliberately traps because basic registration returned 0
-and its supported-features state remains unset. The process exits 133 (SIGTRAP).
-No window/display/input callback has passed.
+[39339057078](https://github.com/taowen/arlinux-xnu/actions/runs/39339057078),
+source `91b14125062de1a934cb3d7bb8fee9af1621baac`, dyld job `118355918738`.
+Real libpthread now accepts the ordinary-workqueue/basic QoS feature result;
+its previous uninitialized-feature trap is gone. The actual release libdispatch
+has no fallback-switch symbol and traps in _dispatch_root_queues_init_once +264
+at 0x1808b6850 with x0=0x4000001f (our supported features, excluding kevent).
+No ordinary workqueue callback has executed in the UIKit journey yet. Do not
+claim that the new backend alone is sufficient for this release library.
 
 The same run first completes both independent real-libSystem console launches:
 worker return 37, shared memory 42, input counter 1 and normal exit. Previous
@@ -71,29 +72,42 @@ standalone console regression is
 
 ### Current boundary and next action
 
-Implement actual dispatch/workqueue support or adapt genuine userland to use
-real pthread-backed scheduling. Do not return an invented feature bitmap just
-to get past _pthread_workqueue_supported: registration currently implements only
-basic pthread creation. The actual app already loads real UIKit dependencies;
-this concrete scheduler failure comes before a window or input can be tested.
-General Mach descriptors, port sets, notifications and cross-process namespaces
-are incomplete. No actual iOS UI journey or ARLinux integration has passed.
+Adapt the real release libdispatch path to the implemented ordinary workqueue,
+or implement its required event delivery. The near-version OSS reference
+(libdispatch-1008.250.7, e930039885b0167c65e48f24b370fbabc8085fc2) compiles its
+fallback only with DISPATCH_USE_MGR_THREAD; the environment override is
+restricted to debug/profile builds. Do not infer a release fallback from those
+conditional source branches. The loader now tolerates the absent switch,
+leaving the genuine release code to report its missing capability. Next inspect
+the actual root-queue initializer instructions around its fatal branch.
+General Mach/event delivery, UI presentation and ARLinux integration remain
+unfinished. No Linux iOS UI journey has passed.
 
-The macOS reference uses the identical iOS app binary as input, PlayCover's
-unmodified Macho.swift conversion at the source-lock commit, ad-hoc debug
-signing and LLDB on the real macOS host. It does not yet inject PlayTools or
-claim PlayCover's complete installation/GUI workflow. First reference run:
-[39337252053](https://github.com/taowen/arlinux-xnu/actions/runs/39337252053),
-source `35fd78da6238b6e01a3fc931aaffb9ae1256dbe8`, job `118349837480`.
-The actual macOS 14.8.9 ARM64 runner hits UIKitCore UIApplicationMain in LLDB,
-then logs ARHELLO_READY. Its screenshot shows the real white app window,
-ARHello 1.0 — Count: 0 and Increment button. The observation ends at timeout
-124; button interaction, normal close and relaunch remain unverified. This
-confirms a usable native reference/debugger/GUI path, not a completed app journey.
+The macOS reference now completes **two actual GUI journeys**:
+[39338697656](https://github.com/taowen/arlinux-xnu/actions/runs/39338697656),
+source `2cffea293786eeb28826291a8eba7a5b24ab199a`, job `118354771378`.
+The identical iOS input is converted by pinned, unchanged PlayCover code and
+ad-hoc signed; no PlayTools is injected. Actual HID mouse events produce the
+app callback and a screenshot displaying Count: 1. Normal NSRunningApplication
+termination yields inferior exit 0 under LLDB. Relaunch starts at Count: 0,
+then a second click and normal exit repeat successfully. All three inspected
+clicked/relaunch screenshots agree with the app logs. macOS success does not
+establish Linux/Android compatibility.
+
 Original input hash matches the Linux app hash below; converted/signed hash is
 `5b08e8cf4c36e5894825b254bc3de4e43058da9fc77c407fff948e6b196e340f`.
-Reference receipt: `b4675a7aa0aa55cdd9d42a4bb8123eeff5ae41ce5de1c827bfee2a30d0c44ada`.
-Text and inspected screenshot: build/runs/39337252053/{playcover-job.log,screen.png}.
+Reference receipt: `b2e4e987dea4a4840b0f125b56c425bb42ec05490c0aed87cbae41b76c26bc62`.
+Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
+never reached the button; the accepted run uses the actual macOS HID queue.
+
+Linux ordinary-workqueue implementation includes native worker stacks, clone,
+scheduling gates, registered callbacks and cleanup. Linux priority permission
+errors are propagated before guest callbacks run. Kevent/workloop support is not
+advertised. Both independent dynamic consoles pass in 39339057078, but actual
+UIKit still stops at the release initializer's missing-kevent branch. This is
+implemented infrastructure, not an observed successful UIKit work dispatch.
+Latest failed app receipt:
+`95ee8ae7741a878c2d6bd76521264172d0eb8a2390bc9ceacd651db234ac2e82`.
 
 ### Reproducible inputs and evidence
 

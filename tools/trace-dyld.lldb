@@ -45,5 +45,8 @@ script stopped = process.GetState() == lldb.eStateStopped; print("GUEST_EXIT_STA
 script lldb.debugger.HandleCommand("thread backtrace all") if stopped else None
 script lldb.debugger.HandleCommand("register read") if stopped else None
 script lldb.debugger.HandleCommand("disassemble --frame --count 16") if stopped else None
+# Cache faults can stop at the final BRK of a stripped function. Preserve
+# preceding instructions as well, so the branch/call that chose it is visible.
+script pc = thread.GetFrameAtIndex(0).GetPC() if stopped else 0; lldb.debugger.HandleCommand("disassemble --start-address " + hex(pc-320) + " --count 96") if stopped and pc >= 320 else None
 script lldb.debugger.HandleCommand("process kill") if stopped else None
 quit
