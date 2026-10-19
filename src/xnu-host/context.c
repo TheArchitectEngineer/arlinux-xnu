@@ -238,6 +238,15 @@ boolean_t
 ml_set_interrupts_enabled(boolean_t enable)
 {
     boolean_t old = host_interrupts_enabled;
+    if (enable && !old) {
+        assert(host_thread != THREAD_NULL && boot_cpu.cpu_int_state == NULL);
+        /* Keep ARM's real preemption semantics before unmasking the virtual
+         * interrupt state. DAIF belongs to Linux; pending XNU ASTs do not. */
+        if (get_preemption_level() == 0) {
+            while (host_thread->machine.CpuDatap->cpu_pending_ast & AST_URGENT)
+                ast_taken_kernel();
+        }
+    }
     host_interrupts_enabled = !!enable;
     return old;
 }
@@ -259,4 +268,21 @@ boolean_t
 ml_at_interrupt_context(void)
 {
     return boot_cpu.cpu_int_state != NULL;
+}
+
+/* The original ARM path sends an IPI only when targeting another processor.
+ * There is no other processor in this port. Pending local ASTs are consumed
+ * at enable-preemption/unmask and user-return boundaries. */
+void
+cause_ast_check(processor_t processor)
+{
+    assert(processor != PROCESSOR_NULL && processor == current_processor());
+}
+
+void
+ml_get_power_state(boolean_t *in_interrupt, boolean_t *idle)
+{
+    processor_t processor = current_processor();
+    *in_interrupt = ml_at_interrupt_context();
+    *idle = processor != PROCESSOR_NULL && processor->state == PROCESSOR_IDLE;
 }
