@@ -30,6 +30,10 @@ Unknown latency chooses the original conservative non-spin policy; original
 clock.c still checks interrupt/preemption context and chooses its real wait
 or spin path. This does not substitute host thread scheduling, fabricate a PC,
 or implement timer interrupt delivery. Runner verification remains pending.
+Inspect existing experiment
+[39290674843](https://github.com/taowen/arlinux-xnu/actions/runs/39290674843),
+source `093d12fd8cfe2e16735fe37139e9adad2d0d7664`, before another dispatch;
+retain its handles through delayed status or log observations.
 
 `pmap_sync_page_attributes_phys` now has a native implementation distinct from
 instruction-cache synchronization: ARM64 DC CIVAC writes back and invalidates
