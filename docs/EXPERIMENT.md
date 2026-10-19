@@ -86,8 +86,28 @@ interfaces remain incomplete.
 The latest trace also showed zero-extended ARM fast-time selectors (0xfffffffd)
 were falling through the BSD handler. The new code normalizes the selector as
 XNU does, supplies actual MONOTONIC/BOOTTIME nanosecond clocks and timebase 1/1,
-and retains proper Mach return conventions. This correction awaits the next
-actual-dyld regression; no local probe or unit test substitutes for that journey.
+and retains proper Mach return conventions. Actual dyld run 39325147072 verified
+increasing real clock values; the libdyld loading failure remains unchanged.
+Dynamic tracing now works on the actual Linux ARM64 journey:
+[39326720941](https://github.com/taowen/arlinux-xnu/actions/runs/39326720941),
+source `13c98b1b422550831ed56489cbe36db36cc6a6e2`, job `118314564978`.
+LLDB loads the exact Apple Mach-O symbols with its explicit ARM64/iOS triple
+and declared image slide. It stops before native entry, resolves and hits
+amfi_check_dyld_policy_self at 0x20003723c, observes input flags 0 and a live
+output pointer, and single-steps to 0x200037240. Continuing captures the actual
+SIGTRAP with symbols: abort_with_payload_wrapper_internal -> abort_with_payload
+-> dyld::halt -> dyld::_main -> _dyld_start. The debugger then kills the stopped
+process only for cleanup; this is not normal application exit or acceptance.
+The original untraced run still fails with the LC_MAIN/libdyld reason.
+
+Receipt SHA-256:
+`7622ecc8becd25484d0da173efff671803312c0b1afaa98446e1415f3f3928e7`.
+The artifact retains lldb.log, runtime logs and startup output. Local text:
+build/runs/39326720941/dyld-job.log. macOS reference execution has not been
+validated; the active runtime depends on Linux seccomp/signals/syscalls and
+must be debugged there. A macOS reference can supplement this evidence but
+cannot establish that the Linux adaptation works.
+
 Earlier runtime failures remain preserved in Actions/local logs: missing
 commpage, thread_selfid, entropy, executable_path and AMFI policy. They are no
 longer the current library-loading blocker.
