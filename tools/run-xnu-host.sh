@@ -20,17 +20,19 @@ cc "${flags[@]}" "${entry_flags[@]}" -c src/xnu-host/host.c -o "$output/host.o"
 cc "${flags[@]}" -c src/xnu-host/memory.c -o "$output/memory.o"
 cc "${flags[@]}" -c src/xnu-host/native_time.c -o "$output/native_time.o"
 cc "${flags[@]}" -c src/xnu-host/native_entropy.c -o "$output/native_entropy.o"
+cc "${flags[@]}" -c src/xnu-host/native_fault.c -o "$output/native_fault.o"
 link_flags=(-no-pie -pthread -Wl,--gc-sections -Wl,-Ttext-segment="$base"
   -Wl,-T,src/xnu-host/startup.ld -Wl,-Map,"$output/link-map.txt")
 if [[ $stage == early ]]; then
   objects=(build/kernel/startup.o build/kernel/xnu_bootstrap.o build/kernel/context.o
     build/kernel/pmap.o build/kernel/time.o build/kernel/rtclock.o
-    build/kernel/OSAtomicOperations.o build/kernel/entropy.o build/kernel/image.o)
+    build/kernel/OSAtomicOperations.o build/kernel/entropy.o build/kernel/image.o
+    build/kernel/ticket.o build/kernel/usermode_ticket.o)
 else
   ar rcs "$output/libxnu.a" build/kernel/*.o
   objects=(-Wl,--start-group "$output/libxnu.a" -Wl,--end-group)
 fi
-cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "${objects[@]}" \
+cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "${objects[@]}" \
   -o "$output/xnu-host" 2>&1 | tee "$output/link.log"
 file "$output/xnu-host" > "$output/file.txt"
 timeout 30 "$output/xnu-host" startup_debug=1 > "$output/stdout.txt" 2> "$output/stderr.txt"

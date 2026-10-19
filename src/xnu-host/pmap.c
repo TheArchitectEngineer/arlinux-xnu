@@ -8,6 +8,7 @@
 #include <vm/pmap.h>
 #include <string.h>
 #include <host/memory.h>
+#include <host/fault.h>
 
 static struct pmap kernel_pmap_store;
 const pmap_t kernel_pmap = &kernel_pmap_store;
@@ -421,6 +422,7 @@ xnu_host_pmap_bootstrap(void)
         VM_PROT_NONE, 0, TRUE) == KERN_SUCCESS);
     right[0] = 0x7b;
     assert(left[0] == 0 && copy[0] == 0x7b);
+    xnu_host_ticket_bootstrap(b);
     unsigned int attributes = (pmap_disconnect)(first);
     assert((attributes & (VM_MEM_MODIFIED | VM_MEM_REFERENCED)) ==
         (VM_MEM_MODIFIED | VM_MEM_REFERENCED));

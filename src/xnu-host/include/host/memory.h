@@ -13,6 +13,7 @@ int xnu_host_memory_protect_page(unsigned int page, int protection);
 int xnu_host_memory_disconnect(unsigned int page, unsigned int *attributes);
 int xnu_host_memory_page_has_mappings(unsigned int page);
 int xnu_host_memory_expect_fault(unsigned long address, int write_access);
+int xnu_host_memory_expect_unhandled_fault(unsigned long address);
 unsigned int xnu_host_memory_lookup(unsigned long address);
 int xnu_host_pmap_bootstrap(void);
 /* Data-only aperture writes; NULL source zeroes bytes without changing aliases. */

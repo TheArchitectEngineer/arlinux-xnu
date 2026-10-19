@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include <host/context.h>
+#include <host/fault.h>
 
 static int boot_argc;
 static char **boot_argv;
@@ -126,6 +127,11 @@ main(int argc, char **argv)
     stack_t alternate = { .ss_sp = exception_base, .ss_size = exception_size };
     if (sigaltstack(&alternate, NULL)) {
         perror("sigaltstack");
+        return 1;
+    }
+    error = xnu_host_fault_initialize();
+    if (error) {
+        fprintf(stderr, "fault handler initialization: %s\n", strerror(error));
         return 1;
     }
     if (xnu_host_context_initialize(stack_base, stack_size, exception_base, exception_size))

@@ -246,8 +246,8 @@ xnu_host_memory_page_has_mappings(unsigned int page)
     return physical_heads[page - 1] != 0;
 }
 
-int
-xnu_host_memory_expect_fault(unsigned long address, int write_access)
+static int
+expect_fault(unsigned long address, int write_access, int reset_handler)
 {
     if (!heap_address(address))
         return EINVAL;
@@ -256,7 +256,8 @@ xnu_host_memory_expect_fault(unsigned long address, int write_access)
         return errno;
     if (!child) {
         const struct rlimit core_limit = {0, 0};
-        if (setrlimit(RLIMIT_CORE, &core_limit) || signal(SIGSEGV, SIG_DFL) == SIG_ERR)
+        if (setrlimit(RLIMIT_CORE, &core_limit) ||
+            (reset_handler && signal(SIGSEGV, SIG_DFL) == SIG_ERR))
             _exit(100);
         if (write_access)
             *(volatile unsigned char *)address = 0x7e;
@@ -272,6 +273,18 @@ xnu_host_memory_expect_fault(unsigned long address, int write_access)
     if (result == -1)
         return errno;
     return WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV ? 0 : EPROTO;
+}
+
+int
+xnu_host_memory_expect_fault(unsigned long address, int write_access)
+{
+    return expect_fault(address, write_access, 1);
+}
+
+int
+xnu_host_memory_expect_unhandled_fault(unsigned long address)
+{
+    return expect_fault(address, 1, 0);
 }
 
 unsigned int
