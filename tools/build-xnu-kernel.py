@@ -166,16 +166,16 @@ def main():
             'ast', 'sched_prim', 'sched_average', 'sched_traditional',
             'waitq', 'turnstile', 'timer_call', 'mpsc_queue', 'recount',
             'thread_act', 'thread_policy', 'task_policy', 'syscall_subr',
-            'restartable', 'work_interval', 'smr', 'thread_call', 'stack']],
+            'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
             'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
             'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb', 'vm_purgeable',
             'vm32_user']],
-        'osfmk/arm/locks_arm.c',
+        'osfmk/arm/locks_arm.c', 'osfmk/arm64/pcb.c', 'osfmk/arm64/status.c',
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',
-        'osfmk/bank/bank.c',
+        'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
     ]
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
@@ -195,6 +195,8 @@ def main():
             # libkern/conf/Makefile.template uses the BSD/libkern namespace.
             component_flags = ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',
                                '-DLIBKERN_KERNEL_PRIVATE=1', '-DOSALLOCDEBUG=1']
+        if source_path.suffix == '.cpp':
+            component_flags += ['-std=gnu++17', '-fno-exceptions', '-fno-rtti']
         command = [*flags, *component_flags, str(source_path), '-o', str(obj)]
         commands.append({'directory': str(ROOT), 'file': str(source_path), 'arguments': command})
         print('Compiling actual XNU:', unit, flush=True)
