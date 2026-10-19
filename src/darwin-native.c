@@ -194,13 +194,15 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==10) {       /* _kernelrpc_mach_vm_allocate_trap */
+        if (number==10 || number==15) { /* current-task anonymous allocate/map */
             uint64_t address=0;
             unsigned long status=4; /* KERN_INVALID_ARGUMENT */
             if (r[0]!=CURRENT_TASK_PORT) status=16; /* KERN_INVALID_TASK */
             else if (guest_copy(&address,r[1],sizeof(address),0)) status=1;
-            else if ((r[3]&~0xff000001UL)==0 && (r[3]&1) && r[2]) {
-                long mapped=anonymous16(r[2],PROT_READ|PROT_WRITE);
+            else if (((number==10 ? r[3] : r[4])&~0xff000001UL)==0 &&
+                     ((number==10 ? r[3] : r[4])&1) && r[2] &&
+                     (number==10 || (!r[3] && !(r[5]&~3UL)))) {
+                long mapped=anonymous16(r[2],number==10 ? PROT_READ|PROT_WRITE : r[5]);
                 if ((unsigned long)mapped>=(unsigned long)-4095) status=3;
                 else {
                     address=mapped;
