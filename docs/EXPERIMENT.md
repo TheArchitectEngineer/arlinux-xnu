@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39256103670](https://github.com/taowen/arlinux-xnu/actions/runs/39256103670)
-at source `b6974c4` (XNU fork `0554506`) compiled 161 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39258292037](https://github.com/taowen/arlinux-xnu/actions/runs/39258292037)
+at source `75ad025` (XNU fork `e1857d9`) compiled 164 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -122,12 +122,20 @@ count is not a runtime acceptance gate.
 ELF startup records are now separated by original XNU phase. VM startup retains
 every hook through ZALLOC, the last phase executed by `vm_mem_bootstrap`; a
 separate full-link job retains all phases from exactly the same compiled objects
-and still fails with 272 missing imports. Boot variables use ordinary individual
+and still fails with 275 missing imports. Boot variables use ordinary individual
 ELF data sections, preventing the initial thread from retaining unrelated IPC
 callbacks just because Mach-O grouped them in the same boot-data section.
 The staged link no longer roots the processor-control MIG server table. This
 is dependency isolation, not successful VM execution. Remaining failures include
 context switching, pmap lifecycle, compressor and file-backed-memory services.
+Original compressor, compressor-pager and algorithm providers now compile; the
+non-Jetsam app-swap branches follow the variable declaration's CONFIG_JETSAM
+guard. No compressed-memory operation has executed. Their dependencies include
+the 16 KiB decoder, compressed-page mappings and swap backend, not just counters.
+Keep DEVELOPMENT alongside MACH_ASSERT for this upstream revision: disabling
+only DEVELOPMENT failed compilation because several assertions refer to fields
+and helpers guarded by DEVELOPMENT/DEBUG (run 39257044605). That configuration
+experiment was reverted rather than weakening assertions or patching bookkeeping.
 The VM entry now requires real `kalloc_data` zero/write/read/free after original
 VM bootstrap before reporting allocation success; that check has not executed.
 
