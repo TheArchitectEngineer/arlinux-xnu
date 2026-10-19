@@ -1,18 +1,25 @@
 /* Host pmap primitives used by XNU's original vm_resident bootstrap.
  * This is not the ARM hardware page-table implementation. Linux owns mappings
  * and TLB/cache maintenance; XNU still owns VM objects/maps and page allocation.
- * User pmaps and pmap accounting are not connected yet. */
+ * User pmap ownership is backed by real XNU allocation/ledgers and an engine.
+ * User mapping, task accounting and execution are not connected yet. */
 #include <arm/usermode_vm.h>
 #include <kern/assert.h>
 #include <kern/debug.h>
 #include <kern/locks.h>
 #include <kern/cpu_data.h>
+#include <kern/kalloc.h>
+#include <kern/ledger.h>
+#include <kern/startup.h>
+#include <os/atomic_private.h>
+#include <arm/pmap/pmap_pt_geometry.h>
 #include <vm/pmap.h>
 #include <mach/machine.h>
 #include <machine/machine_routines.h>
 #include <string.h>
 #include <host/memory.h>
 #include <host/fault.h>
+#include <host/guest.h>
 
 static struct pmap kernel_pmap_store;
 const pmap_t kernel_pmap = &kernel_pmap_store;
@@ -89,10 +96,163 @@ ml_get_booter_memory_size(void)
     return gPhysSize;
 }
 
+/* VM consumes this geometry even though host translations have no hardware
+ * page tables. Preserve the pinned ARM 16 KiB sizes/indices. No hardware ops
+ * are installed: ARM TTE walking/ASID/MMIO code is not this pmap backend. */
+#if __ARM_MIXED_PAGE_SIZE__
+#error USERMODE supports only the fixed 16 KiB guest geometry
+#endif
+#define HOST_LEVEL(n, valid, mask, block) { \
+    .size = ARM_16K_TT_L##n##_SIZE, .offmask = ARM_16K_TT_L##n##_OFFMASK, \
+    .shift = ARM_16K_TT_L##n##_SHIFT, .index_mask = ARM_16K_TT_L##n##_INDEX_MASK, \
+    .valid_mask = (valid), .type_mask = (mask), .type_block = (block) }
+const struct page_table_level_info pmap_table_level_info_16k[] = {
+    HOST_LEVEL(0, ARM_TTE_VALID, ARM_TTE_TYPE_MASK, ARM_TTE_TYPE_BLOCK),
+    HOST_LEVEL(1, ARM_TTE_VALID, ARM_TTE_TYPE_MASK, ARM_TTE_TYPE_BLOCK),
+    HOST_LEVEL(2, ARM_TTE_VALID, ARM_TTE_TYPE_MASK, ARM_TTE_TYPE_BLOCK),
+    HOST_LEVEL(3, ARM_PTE_TYPE_VALID, ARM_PTE_TYPE_MASK, ARM_TTE_TYPE_L3BLOCK),
+};
+#undef HOST_LEVEL
+const struct page_table_attr pmap_pt_attr_16k = {
+    .pta_level_info = pmap_table_level_info_16k,
+    .pta_ops = NULL,
+    .ap_ro = ARM_PTE_AP(AP_RORO), .ap_rw = ARM_PTE_AP(AP_RWRW),
+    .ap_rona = ARM_PTE_AP(AP_RONA), .ap_rwna = ARM_PTE_AP(AP_RWNA),
+    .ap_xn = ARM_PTE_PNX | ARM_PTE_NX, .ap_x = ARM_PTE_PNX,
+    .pta_root_level = PMAP_TT_L1_LEVEL, .pta_commpage_level = PMAP_TT_L2_LEVEL,
+    .pta_max_level = PMAP_TT_L3_LEVEL,
+    .pta_page_size = XNU_HOST_PAGE_SIZE, .pta_page_shift = 14,
+};
+const struct page_table_attr *const native_pt_attr = &pmap_pt_attr_16k;
+
+struct host_user_pmap {
+    struct pmap map;
+    struct xnu_host_guest *guest;
+    struct host_user_pmap *next;
+};
+static struct host_user_pmap *user_pmaps;
+
+/* Callers hold a pmap reference and disable preemption. The single virtual
+ * CPU cannot switch XNU threads while registry/engine ownership is changing. */
+static struct host_user_pmap **
+user_pmap_link(pmap_t pmap)
+{
+    assert(get_preemption_level() > 0);
+    struct host_user_pmap **link = &user_pmaps;
+    while (*link && &(*link)->map != pmap)
+        link = &(*link)->next;
+    return link;
+}
+
+static void
+require_pmap_locked(pmap_t pmap)
+{
+    assert(pmap != PMAP_NULL && os_atomic_load(&pmap->ref_count, relaxed) > 0);
+    if (pmap != kernel_pmap) {
+        struct host_user_pmap *user = *user_pmap_link(pmap);
+        assert(user && user->guest && pmap->type == PMAP_TYPE_USER);
+    }
+}
+
 void
 pmap_require(pmap_t pmap)
 {
-    assert(pmap == kernel_pmap); /* User pmaps are not allocated by this host yet. */
+    disable_preemption();
+    require_pmap_locked(pmap);
+    enable_preemption();
+}
+
+pmap_t
+pmap_create_options(ledger_t ledger, vm_map_size_t size, unsigned int flags)
+{
+    /* flags=0 is also used by commpage/submap construction; it does not
+     * enable AArch32 execution. Stage-2/4K/Rosetta/test modes are unsupported. */
+    if (size || (flags & ~PMAP_CREATE_64BIT))
+        return PMAP_NULL;
+    assert(startup_phase >= STARTUP_SUB_ZALLOC && PAGE_SIZE == XNU_HOST_PAGE_SIZE);
+    struct host_user_pmap *user = kalloc_type(struct host_user_pmap, Z_WAITOK | Z_ZERO);
+    if (!user)
+        return PMAP_NULL;
+    pmap_t pmap = &user->map;
+    pmap->min = 0;
+    pmap->max = 1ULL << (64 - T0SZ_BOOT);
+    pmap->type = PMAP_TYPE_USER;
+    pmap->is_64bit = (flags & PMAP_CREATE_64BIT) != 0;
+    pmap->nx_enabled = true;
+    pmap->nested_region_true_end = ~0ULL;
+#if ARM_PARAMETERIZED_PMAP
+    pmap->pmap_pt_attr = native_pt_attr;
+#endif
+#if MACH_ASSERT
+    memcpy(pmap->pmap_procname, "<nil>", sizeof("<nil>"));
+#endif
+    lck_rw_init(&pmap->rwlock, &host_pmap_lock_group, LCK_ATTR_NULL);
+    disable_preemption();
+    int error = xnu_host_guest_create(&user->guest);
+    if (!error) {
+        /* One ledger reference accompanies each pmap reference, including
+         * later references retained by other VM maps. No accounting is faked. */
+        ledger_reference(ledger);
+        pmap->ledger = ledger;
+        os_atomic_init(&pmap->ref_count, 1);
+        user->next = user_pmaps;
+        user_pmaps = user;
+    }
+    enable_preemption();
+    if (error) {
+        lck_rw_destroy(&pmap->rwlock, &host_pmap_lock_group);
+        kfree_type(struct host_user_pmap, user);
+        kprintf("host user pmap engine creation failed uc_err=%d\n", error);
+        return PMAP_NULL;
+    }
+    return pmap;
+}
+
+void
+pmap_reference(pmap_t pmap)
+{
+    if (pmap == PMAP_NULL)
+        return;
+    disable_preemption();
+    require_pmap_locked(pmap);
+    ledger_reference(pmap->ledger);
+    int32_t references = os_atomic_inc(&pmap->ref_count, relaxed);
+    if (references <= 1)
+        panic("host pmap reference overflow pmap=%p refs=%d", pmap, references);
+    enable_preemption();
+}
+
+void
+pmap_destroy(pmap_t pmap)
+{
+    if (pmap == PMAP_NULL)
+        return;
+    disable_preemption();
+    require_pmap_locked(pmap);
+    ledger_t ledger = pmap->ledger;
+    int32_t references = os_atomic_dec(&pmap->ref_count, release);
+    struct host_user_pmap *user = NULL;
+    if (references == 0) {
+        os_atomic_thread_fence(acquire);
+        if (pmap == kernel_pmap)
+            panic("host pmap attempt to destroy kernel pmap");
+        struct host_user_pmap **link = user_pmap_link(pmap);
+        user = *link;
+        assert(user && pmap->nested_pmap == PMAP_NULL);
+        /* A successful close requires no remaining engine mappings. Never
+         * discard mappings or ledger balances merely to free the object. */
+        int error = xnu_host_guest_destroy(user->guest);
+        if (error)
+            panic("host pmap final engine release failed pmap=%p uc_err=%d", pmap, error);
+        *link = user->next;
+        lck_rw_destroy(&pmap->rwlock, &host_pmap_lock_group);
+    } else if (references < 0) {
+        panic("host pmap reference underflow pmap=%p refs=%d", pmap, references);
+    }
+    enable_preemption();
+    if (user)
+        kfree_type(struct host_user_pmap, user);
+    ledger_dereference(ledger);
 }
 
 bool
@@ -218,6 +378,7 @@ void
 pmap_change_wiring(pmap_t pmap, vm_map_address_t address, boolean_t wired)
 {
     pmap_require(pmap);
+    assert(pmap == kernel_pmap); /* User wiring/accounting is not connected. */
     disable_preemption();
     int error = xnu_host_memory_change_wiring(address, wired);
     if (error)
@@ -277,6 +438,7 @@ pmap_query_resident(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end,
     if (pmap == PMAP_NULL)
         return 0;
     pmap_require(pmap);
+    assert(pmap == kernel_pmap); /* Never query host aliases for a user pmap. */
     assert(start >= XNU_HOST_KERNEL_BASE && start <= end && end <= XNU_HOST_KERNEL_LIMIT);
     assert(((start | end) & PAGE_MASK) == 0);
     mach_vm_size_t resident = 0;
@@ -613,6 +775,9 @@ xnu_host_pmap_bootstrap(void)
     kernel_pmap->ref_count = 1;
     kernel_pmap->nx_enabled = true;
     kernel_pmap->is_64bit = true;
+#if ARM_PARAMETERIZED_PMAP
+    kernel_pmap->pmap_pt_attr = native_pt_attr;
+#endif
     return 0;
 }
 

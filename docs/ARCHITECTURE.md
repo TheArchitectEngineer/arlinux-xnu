@@ -39,7 +39,14 @@ Darwin calls. An unresolved memory fault is never reported as resolved.
 | Instruction engine per user pmap | Isolated guest VA translations and user CPU execution |
 | Guest | ARM64 Mach-O instructions, later real dyld and iOS frameworks |
 
-XNU must still create/destroy each user pmap. The native engine now accepts
+XNU pmap ownership now uses a real kalloc_type object, original rwlock and
+atomic reference count, a paired ledger reference per pmap reference and one
+native engine. Final release requires an empty engine and releases resources
+only after successful engine close. This lifecycle has not executed. Fixed
+16 KiB geometry is provided using pinned ARM constants; it supplies VM geometry,
+not hardware TTE/ASID operations. Flags for unsupported modes are rejected.
+
+The native engine accepts
 only aligned frames in the initialized managed physical aperture and records
 each engine/VA/frame/protection association. Frame references are established
 before insertion and dropped only after completed unmapping. Physical reclaim
@@ -53,7 +60,7 @@ Engine mappings never MAP_FIXED guest addresses over the native process.
 Code translations are flushed before resume because XNU can modify shared
 physical bytes through another alias. Ref/mod tracking relies on native accesses
 to the protected physical aperture; this needs real fault/TCG validation. Task
-ledger accounting, wiring, replacement, user-pmap registration and COW remain
+ledger accounting, wiring, replacement and COW remain
 unfinished. The native alias integration is new and runtime-unverified; it does
 not by itself create a real XNU user pmap or runnable thread.
 

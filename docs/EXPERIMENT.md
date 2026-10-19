@@ -42,15 +42,19 @@ references and poison the engine; destroy requires all mappings removed. This
 is not user pmap creation, task accounting or a running process. Do not add an
 isolated engine mapping probe as acceptance; exercise the real XNU VM journey.
 
-Next work must connect real user pmap lifetime/mappings, actual thread saved
-state, machine return and original exception dispatch as one execution path.
-The pmap lifecycle must use real XNU allocation, ledger references/accounting,
-and the fixed 16 KiB geometry consumed by VM; an opaque engine handle alone is
-not a complete pmap. Physical-alias bookkeeping does not supply those semantics.
-Account for physical reverse aliases/ref-mod, user-copy validation and COW.
-Do not pick unrelated providers by missing-symbol counts. Original VM/scheduler/
-timer/idle paths remain runtime-unverified; compilation is not allocator or
-process execution. Native JIT calls must not schedule XNU while on their stack.
+New, not yet built: user pmap creation/reference/final release use real XNU
+typed allocation, rwlock, atomic refs, ledger refs and a per-pmap engine. Fixed
+16 KiB geometry comes from pinned ARM constants. Unsupported creation modes
+are rejected; final release cannot discard live mappings. No hardware page
+table ops are installed. Existing user insertion still returns unsupported,
+and host-only query/wiring paths explicitly reject user objects.
+
+Next connect actual mappings with task ledger accounting, wiring, replacement,
+ref/mod and user-copy/COW semantics, then actual thread saved state and original
+exception return/dispatch. Lifecycle ownership alone does not make user pmaps
+usable. Original VM/scheduler/timer/idle paths remain runtime-unverified.
+Native JIT calls must not schedule XNU while on their stack. Do not choose
+unrelated providers by unresolved-symbol counts or add successful placeholders.
 
 The first acceptance is supervisor plus child through original BSD exec/VFS:
 console output, XNU allocation/touch/free, normal child exit and real parent wait.
