@@ -13,6 +13,7 @@
 #include <usermode_vm.h>
 
 #include <host/context.h>
+#include <host/guest.h>
 #include <host/fault.h>
 #include <host/time.h>
 
@@ -169,6 +170,13 @@ main(int argc, char **argv)
         fprintf(stderr, "timer initialization: %s\n", strerror(error));
         return 1;
     }
+#ifdef XNU_HOST_BOOT_VM
+    error = xnu_host_guest_initialize();
+    if (error) {
+        fprintf(stderr, "guest CPU native stack initialization: %s\n", strerror(error));
+        return 1;
+    }
+#endif
     if (xnu_host_context_initialize(stack_base, stack_size, exception_base, exception_size))
         return 1;
 #ifdef XNU_HOST_BOOT_VM

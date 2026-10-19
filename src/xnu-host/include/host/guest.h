@@ -25,6 +25,8 @@ struct xnu_host_guest_event {
     unsigned int protection_fault;
     int size;
 };
+/* Allocate the one native CPU stack before booting XNU. Returns native errno. */
+int xnu_host_guest_initialize(void);
 /* Zero is success; errors are actual Unicorn uc_err values. Bad arguments
  * return UC_ERR_ARG. An event is valid only after a successful run call. */
 int xnu_host_guest_create(struct xnu_host_guest **result);

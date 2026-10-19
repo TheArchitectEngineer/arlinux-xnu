@@ -5,6 +5,8 @@ Research toward running XNU as a userspace kernel on Linux/Android.
 Darwin syscall shim. Historical host diagnostics executed limited XNU startup
 and shared mappings. The real VM executable still fails linkage; VM
 initialization, task creation and guest execution through XNU are unverified.
+The initial guest CPU backend now targets ARM64 instruction emulation; real XNU
+user-map and exception-return integration remain unfinished.
 
 Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
 software framebuffer. No 32-bit apps or Metal support. Proprietary Apple

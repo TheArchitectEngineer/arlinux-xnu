@@ -1,6 +1,11 @@
 /* Instruction transport only. Every stop returns to the real kernel caller;
  * callbacks never dispatch Darwin calls or reenter/schedule XNU from TCG. */
+#define _GNU_SOURCE
 #include <host/guest.h>
+#include <host/context.h>
+#include <errno.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include <usermode_vm.h>
 #include <unicorn/unicorn.h>
 #include <stdbool.h>
@@ -43,8 +48,8 @@ memory_stop(uc_engine *engine, uc_mem_type type, uint64_t address,
     return false;
 }
 
-int
-xnu_host_guest_create(struct xnu_host_guest **result)
+static int
+guest_create(struct xnu_host_guest **result)
 {
     if (!result)
         return UC_ERR_ARG;
@@ -70,8 +75,8 @@ xnu_host_guest_create(struct xnu_host_guest **result)
     return 0;
 }
 
-int
-xnu_host_guest_destroy(struct xnu_host_guest *guest)
+static int
+guest_destroy(struct xnu_host_guest *guest)
 {
     if (!guest || guest->running)
         return UC_ERR_ARG;
@@ -89,8 +94,8 @@ valid_page(struct xnu_host_guest *guest, uint64_t address)
         address <= UINT64_MAX - XNU_HOST_PAGE_SIZE;
 }
 
-int
-xnu_host_guest_map(struct xnu_host_guest *guest, unsigned long long address,
+static int
+guest_map(struct xnu_host_guest *guest, unsigned long long address,
     void *frame, unsigned int protection)
 {
     if (!valid_page(guest, address) || !frame || protection > UC_PROT_ALL ||
@@ -100,16 +105,16 @@ xnu_host_guest_map(struct xnu_host_guest *guest, unsigned long long address,
         protection, frame);
 }
 
-int
-xnu_host_guest_unmap(struct xnu_host_guest *guest, unsigned long long address)
+static int
+guest_unmap(struct xnu_host_guest *guest, unsigned long long address)
 {
     if (!valid_page(guest, address))
         return UC_ERR_ARG;
     return uc_mem_unmap(guest->engine, address, XNU_HOST_PAGE_SIZE);
 }
 
-int
-xnu_host_guest_protect(struct xnu_host_guest *guest, unsigned long long address,
+static int
+guest_protect(struct xnu_host_guest *guest, unsigned long long address,
     unsigned int protection)
 {
     if (!valid_page(guest, address) || protection > UC_PROT_ALL)
@@ -142,8 +147,8 @@ transfer_state(uc_engine *engine, struct xnu_host_guest_state *state, bool write
         uc_reg_read_batch(engine, regs, values, n);
 }
 
-int
-xnu_host_guest_run(struct xnu_host_guest *guest,
+static int
+guest_run(struct xnu_host_guest *guest,
     struct xnu_host_guest_state *state, unsigned long instructions,
     struct xnu_host_guest_event *event)
 {
@@ -183,4 +188,124 @@ xnu_host_guest_run(struct xnu_host_guest *guest,
         return error;
     *event = guest->event;
     return 0;
+}
+
+/* TCG and libc must not run on XNU's small, reference-tracked kernel stacks.
+ * One native CPU stack services all engines. It is allocated by host main,
+ * before XNU bootstrap, and guarded at both ends. No callbacks reenter XNU. */
+static unsigned long native_stack_top;
+static _Thread_local bool in_native;
+static _Thread_local struct {
+    enum { CREATE, DESTROY, MAP, UNMAP, PROTECT, RUN } operation;
+    struct xnu_host_guest *guest, **result;
+    unsigned long long address;
+    void *frame;
+    unsigned int protection;
+    struct xnu_host_guest_state *state;
+    unsigned long instructions;
+    struct xnu_host_guest_event *event;
+} request;
+
+int
+xnu_host_guest_initialize(void)
+{
+    if (native_stack_top)
+        return EALREADY;
+    long page = sysconf(_SC_PAGESIZE);
+    if (page <= 0)
+        return EINVAL;
+    const unsigned long bytes = 1024 * 1024;
+    if (bytes % (unsigned long)page)
+        return EINVAL;
+    void *mapping = mmap(NULL, bytes + 2 * page, PROT_NONE,
+        MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
+    if (mapping == MAP_FAILED)
+        return errno;
+    if (mprotect((char *)mapping + page, bytes, PROT_READ | PROT_WRITE)) {
+        int error = errno;
+        munmap(mapping, bytes + 2 * page);
+        return error;
+    }
+    native_stack_top = (unsigned long)mapping + page + bytes;
+    return 0;
+}
+
+static int
+perform(void)
+{
+    switch (request.operation) {
+    case CREATE: return guest_create(request.result);
+    case DESTROY: return guest_destroy(request.guest);
+    case MAP: return guest_map(request.guest, request.address, request.frame, request.protection);
+    case UNMAP: return guest_unmap(request.guest, request.address);
+    case PROTECT: return guest_protect(request.guest, request.address, request.protection);
+    case RUN: return guest_run(request.guest, request.state, request.instructions, request.event);
+    }
+    return UC_ERR_ARG;
+}
+
+static int
+dispatch(void)
+{
+    if (!native_stack_top)
+        return UC_ERR_RESOURCE;
+    in_native = true;
+    int error = xnu_host_run_on_stack(perform, native_stack_top);
+    in_native = false;
+    return error;
+}
+
+int
+xnu_host_guest_create(struct xnu_host_guest **result)
+{
+    if (in_native) return UC_ERR_ARG;
+    request.operation = CREATE; request.result = result;
+    return dispatch();
+}
+
+int
+xnu_host_guest_destroy(struct xnu_host_guest *guest)
+{
+    if (in_native) return UC_ERR_ARG;
+    request.operation = DESTROY; request.guest = guest;
+    return dispatch();
+}
+
+int
+xnu_host_guest_map(struct xnu_host_guest *guest, unsigned long long address,
+    void *frame, unsigned int protection)
+{
+    if (in_native) return UC_ERR_ARG;
+    request.operation = MAP; request.guest = guest; request.address = address;
+    request.frame = frame; request.protection = protection;
+    return dispatch();
+}
+
+int
+xnu_host_guest_unmap(struct xnu_host_guest *guest, unsigned long long address)
+{
+    if (in_native) return UC_ERR_ARG;
+    request.operation = UNMAP; request.guest = guest; request.address = address;
+    return dispatch();
+}
+
+int
+xnu_host_guest_protect(struct xnu_host_guest *guest, unsigned long long address,
+    unsigned int protection)
+{
+    if (in_native) return UC_ERR_ARG;
+    request.operation = PROTECT; request.guest = guest; request.address = address;
+    request.protection = protection;
+    return dispatch();
+}
+
+int
+xnu_host_guest_run(struct xnu_host_guest *guest,
+    struct xnu_host_guest_state *state, unsigned long instructions,
+    struct xnu_host_guest_event *event)
+{
+    if (in_native) return UC_ERR_ARG;
+    request.operation = RUN; request.guest = guest; request.state = state;
+    request.instructions = instructions; request.event = event;
+    return dispatch();
 }

@@ -65,8 +65,10 @@ The existing timerfd/eventfd transport provides cooperative kernel safe-point
 interrupt delivery, not asynchronous native C preemption. Its original XNU
 FIQ/timer/idle paths remain unexecuted. Guest direct counter reads and commpage
 must agree with the advertised XNU timebase; selecting an engine does not itself
-establish that contract. Engine JIT/native stack use also needs validation when
-invoked from real XNU kernel thread stacks.
+establish that contract. Engine operations switch to a guarded 1 MiB native CPU stack allocated before
+XNU startup, avoiding libc/TCG execution on XNU kernel thread stacks. Nested
+entry is rejected; no engine callback may schedule XNU. Stack switching and
+the actual guest path still require runtime validation.
 
 ## First execution journey
 
