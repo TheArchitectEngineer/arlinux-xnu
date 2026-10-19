@@ -21,6 +21,29 @@ cc "${flags[@]}" -c src/xnu-host/memory.c -o "$output/memory.o"
 cc "${flags[@]}" -c src/xnu-host/native_time.c -o "$output/native_time.o"
 cc "${flags[@]}" -c src/xnu-host/native_entropy.c -o "$output/native_entropy.o"
 cc "${flags[@]}" -c src/xnu-host/native_fault.c -o "$output/native_fault.o"
+# Native Linux calls must never resolve to same-named XNU implementations.
+# Inspect the actual objects, including future providers, before linking them.
+python3 - "$output" <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+
+output = Path(sys.argv[1])
+def symbols(objects, mode):
+    listing = subprocess.check_output(
+        ['nm', '-g', '--format=posix', mode, *map(str, objects)], text=True)
+    return {fields[0] for line in listing.splitlines()
+            if len(fields := line.split()) >= 2 and len(fields[1]) == 1}
+
+native = symbols(sorted(output.glob('*.o')), '--undefined-only')
+kernel = symbols(sorted(Path('build/kernel').glob('*.o')), '--defined-only')
+collisions = sorted(name for name in native & kernel
+                    if not name.startswith('xnu_host_'))
+report = output / 'native-kernel-collisions.txt'
+report.write_text('\n'.join(collisions) + ('\n' if collisions else 'No native/kernel ABI collisions.\n'))
+if collisions:
+    raise SystemExit('Native Linux imports collide with XNU definitions: ' + ', '.join(collisions))
+PY
 link_flags=(-no-pie -pthread -Wl,--gc-sections -Wl,-Ttext-segment="$base"
   -Wl,-T,src/xnu-host/startup.ld -Wl,-Map,"$output/link-map.txt")
 if [[ $stage == early ]]; then

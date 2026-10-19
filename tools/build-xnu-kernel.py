@@ -96,6 +96,9 @@ def main():
              '-DPAGE_SIZE_FIXED=1', '-DAPPLE=1', '-DKERNEL=1', '-DKERNEL_PRIVATE=1',
              '-DXNU_KERNEL_PRIVATE=1', '-DMACH_KERNEL_PRIVATE=1', '-DMACH_KERNEL=1',
              '-DPRIVATE=1', '-D__MACHO__=1', '-DCONFIG_USERMODE=1',
+             # Keep BSD syscall implementations out of Linux libc's namespace.
+             # Otherwise native fault probes bind fork/setrlimit to kernel ABIs.
+             '-Dfork=xnu_bsd_fork', '-Dsetrlimit=xnu_bsd_setrlimit',
              '-D__private_extern__=extern', *options, *['-I' + str(p) for p in includes]]
     if args.phase != 'compile':
         # MIG is a build-time compiler, not a replacement IPC implementation.
