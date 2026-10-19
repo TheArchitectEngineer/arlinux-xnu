@@ -28,6 +28,10 @@ the original MIG error reply and port-right consumption path. `uext_server` is
 IOUserServer C++ code, not a missing generated MIG server. Enabling the real
 provider retains the original dispatch. This is an explicitly unavailable device
 service, not a successful IOKit implementation. Runner verification is pending.
+Inspect existing experiment
+[39283576136](https://github.com/taowen/arlinux-xnu/actions/runs/39283576136),
+source `6f7ba97`, before another dispatch. A delayed observation never warrants
+resubmitting identical source.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
