@@ -69,7 +69,8 @@ def main():
         raise RuntimeError('MIG compiler source does not match its pin')
     mig_build = OUT / 'mig-tool'
     # Use Linux libc for the host tool and the actual XNU Mach ABI headers.
-    host_flags = ' '.join(['-D__arm64__=1', '-D__kernel_ptr_semantics=',
+    host_flags = ' '.join(['-D__arm64__=1', '-D_BSD_ARM__TYPES_H_=1',
+                           '-D__kernel_ptr_semantics=',
                            *['-idirafter ' + str(XNU / p) for p in
                              ['osfmk', 'bsd', 'EXTERNAL_HEADERS']]])
     run(['cmake', '-S', mig_source, '-B', mig_build,
@@ -82,7 +83,7 @@ def main():
     cpp_flags = [f for f in flags[1:] if f not in ['-c', '-g', '-O1']]
     for interface in ['vm_map', 'mach_vm', 'mach_port', 'task', 'thread_act',
                       'mach_host', 'host_priv', 'processor', 'processor_set',
-                      'memory_object', 'memory_object_control', 'upl', 'exc', 'mach_exc']:
+                      'memory_entry', 'upl', 'exc', 'mach_exc']:
         definition = XNU / 'osfmk/mach' / (interface + '.defs')
         preprocessed = mig_output / (interface + '.defs.i')
         with preprocessed.open('w') as stream:
