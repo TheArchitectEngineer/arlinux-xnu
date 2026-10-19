@@ -12,6 +12,7 @@
 extern char __executable_start[], _end[];
 static int physical_fd = -1;
 static unsigned int *kernel_pages;
+static unsigned char *kernel_protections;
 
 static int
 heap_address(unsigned long address)
@@ -59,7 +60,13 @@ xnu_host_memory_initialize(void)
     }
     kernel_pages = calloc((XNU_HOST_KERNEL_LIMIT - XNU_HOST_HEAP_BASE) /
         XNU_HOST_PAGE_SIZE, sizeof(*kernel_pages));
-    if (!kernel_pages) {
+    kernel_protections = calloc((XNU_HOST_KERNEL_LIMIT - XNU_HOST_HEAP_BASE) /
+        XNU_HOST_PAGE_SIZE, sizeof(*kernel_protections));
+    if (!kernel_pages || !kernel_protections) {
+        free(kernel_pages);
+        free(kernel_protections);
+        kernel_pages = NULL;
+        kernel_protections = NULL;
         error = ENOMEM;
         goto fail;
     }
@@ -88,6 +95,7 @@ xnu_host_memory_map(unsigned long address, unsigned int page, int protection)
     if (mapped == MAP_FAILED)
         return errno;
     kernel_pages[(address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE] = page;
+    kernel_protections[(address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE] = protection;
     if (protection & 4)
         __builtin___clear_cache((char *)address, (char *)address + XNU_HOST_PAGE_SIZE);
     return 0;
@@ -103,6 +111,24 @@ xnu_host_memory_unmap(unsigned long address)
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == MAP_FAILED)
         return errno;
     kernel_pages[(address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE] = 0;
+    kernel_protections[(address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE] = 0;
+    return 0;
+}
+
+int
+xnu_host_memory_protect(unsigned long address, int protection)
+{
+    if (physical_fd == -1 || !heap_address(address) || (protection & ~7))
+        return EINVAL;
+    unsigned long index = (address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE;
+    if (!kernel_pages[index])
+        return 0; /* Preserve holes in the reserved VA arena. */
+    protection &= kernel_protections[index]; /* pmap_protect only reduces rights. */
+    int native_protection = ((protection & 1) ? PROT_READ : 0) |
+        ((protection & 2) ? PROT_WRITE : 0) | ((protection & 4) ? PROT_EXEC : 0);
+    if (mprotect((void *)address, XNU_HOST_PAGE_SIZE, native_protection))
+        return errno;
+    kernel_protections[index] = protection;
     return 0;
 }
 

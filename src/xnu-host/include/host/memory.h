@@ -4,6 +4,7 @@
 int xnu_host_memory_initialize(void);
 int xnu_host_memory_map(unsigned long address, unsigned int page, int protection);
 int xnu_host_memory_unmap(unsigned long address);
+int xnu_host_memory_protect(unsigned long address, int protection);
 unsigned int xnu_host_memory_lookup(unsigned long address);
 int xnu_host_pmap_bootstrap(void);
 #endif

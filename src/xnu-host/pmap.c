@@ -84,6 +84,81 @@ pmap_enter(pmap_t pmap, vm_map_offset_t address, ppnum_t page, vm_prot_t protect
     return error ? KERN_FAILURE : KERN_SUCCESS;
 }
 
+kern_return_t
+pmap_enter_options(pmap_t pmap, vm_map_offset_t address, ppnum_t page,
+    vm_prot_t protection, vm_prot_t fault_type, unsigned int flags,
+    boolean_t wired, unsigned int options, void *arg)
+{
+    (void)options;
+    (void)arg;
+    return pmap_enter(pmap, address, page, protection, fault_type, flags, wired);
+}
+
+kern_return_t
+pmap_enter_options_addr(pmap_t pmap, vm_map_offset_t address, pmap_paddr_t physical,
+    vm_prot_t protection, vm_prot_t fault_type, unsigned int flags,
+    boolean_t wired, unsigned int options, void *arg)
+{
+    if (physical & PAGE_MASK)
+        return KERN_INVALID_ARGUMENT;
+    if (physical / PAGE_SIZE > (ppnum_t)~0u)
+        return KERN_INVALID_ARGUMENT;
+    return pmap_enter_options(pmap, address, physical / PAGE_SIZE, protection,
+        fault_type, flags, wired, options, arg);
+}
+
+static void
+kernel_mapping_range(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end)
+{
+    assert(pmap == kernel_pmap);
+    assert(start >= XNU_HOST_HEAP_BASE && start <= end && end <= XNU_HOST_KERNEL_LIMIT);
+    assert(((start | end) & PAGE_MASK) == 0);
+}
+
+void
+pmap_remove_options(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end, int options)
+{
+    (void)options;
+    kernel_mapping_range(pmap, start, end);
+    for (vm_map_offset_t address = start; address < end; address += PAGE_SIZE) {
+        if (xnu_host_memory_lookup(address)) {
+            int error = xnu_host_memory_unmap(address);
+            if (error)
+                panic("host pmap_remove address=%#llx error=%d", address, error);
+        }
+    }
+}
+
+void
+pmap_remove(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end)
+{
+    pmap_remove_options(pmap, start, end, 0);
+}
+
+void
+pmap_protect_options(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end,
+    vm_prot_t protection, unsigned int options, void *arg)
+{
+    (void)options;
+    (void)arg;
+    kernel_mapping_range(pmap, start, end);
+    if (protection == VM_PROT_NONE) {
+        pmap_remove(pmap, start, end);
+        return;
+    }
+    for (vm_map_offset_t address = start; address < end; address += PAGE_SIZE) {
+        int error = xnu_host_memory_protect(address, protection);
+        if (error)
+            panic("host pmap_protect address=%#llx error=%d", address, error);
+    }
+}
+
+void
+pmap_protect(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end, vm_prot_t protection)
+{
+    pmap_protect_options(pmap, start, end, protection, 0, NULL);
+}
+
 ppnum_t
 pmap_find_phys(pmap_t pmap, addr64_t address)
 {
@@ -177,9 +252,13 @@ xnu_host_pmap_bootstrap(void)
     assert(right[0] == 0 && right[PAGE_SIZE - 1] == 0);
     assert(copy[0] == 0x5a && copy[PAGE_SIZE - 1] == 0xa5);
     (pmap_zero_page)(second);
-    assert(xnu_host_memory_unmap(a) == 0 && xnu_host_memory_unmap(b) == 0);
+    pmap_protect(kernel_pmap, a, a + PAGE_SIZE, VM_PROT_READ);
+    right[0] = 0x33;
+    assert(left[0] == 0x33); /* The protected alias still shares the frame. */
+    right[0] = 0;
+    pmap_remove(kernel_pmap, a, b + PAGE_SIZE);
     assert(pmap_find_phys(kernel_pmap, a) == 0);
-    kprintf("XNU_HOST_PMAP shared-alias/copy/zero/unmap passed free_pages=%u (VM not initialized)\n",
+    kprintf("XNU_HOST_PMAP shared-alias/copy/zero/protect/unmap passed free_pages=%u (VM not initialized)\n",
         pmap_free_pages());
     return 0;
 }
