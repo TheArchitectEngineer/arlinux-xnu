@@ -42,19 +42,38 @@ compilation, a quiet screen or `no_panic_observed` alone is insufficient.
 Capture registers, framebuffer, exceptions, exact input hashes and receipts
 on failure too. No proprietary assets are needed for this first journey.
 
-First reference attempt
-[39310743662](https://github.com/taowen/arlinux-xnu/actions/runs/39310743662),
-root `364d639ba38438b7672648b4b16689a95f051217`: the full kernel built
-(SHA-256 `390016617d3ba3ceffeee6c3d2f6fc858a5d5cc8e36e0c233ed4b93a9c0f0844`),
-but our guest assembly used an unencodable CMP immediate and failed. No boot
-ran. Failure receipt SHA-256:
-`e84040a2b555261fff6aec1c8e318f95f6719bd8ab5b1a772e5671d324dcff89`.
-The guest now compares registers; its assembly runs before the expensive kernel
-build. Earlier run `39310550551` was explicitly cancelled because source review
-found our incorrect raw-Darwin fork discriminator (x1 identifies the child).
+Latest reference execution:
+[39311945725](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725),
+root `9ef397e1cd7d26c496b15cb0ada18d8badbfa6af`. Both compiler and actual boot
+jobs succeeded. The original XNU loader executed PID 1; guest output shows
+`child freed memory, exit 37` and `XNU JOURNEY PASS: memory COW exit wait`.
+The pass branch requires parent wait4 to return the child's PID and exact normal
+exit status, unchanged parent memory after child writes, and successful unmaps.
+PID 1 continued printing after real select sleeps. The 180-second final console
+snapshot decoded with zero unknown glyphs and no visible panic. It is a circular
+snapshot, not a complete event trace or proof against every earlier transient.
 
-Next: run the corrected reference stage, diagnose its actual first failure, and
-use the result to reassess the smallest viable userspace execution boundary.
+- Compiler receipt SHA-256:
+  `c07c44b204a34e5833d3e605a72b870b3116d648c2690c919969890fa1b6d609`.
+- Executed kernel SHA-256:
+  `d2e148a3982925554ee990810b7d7ec037aafcf93ac77dae7b801423f706d7b2`.
+- Executed Mach-O SHA-256:
+  `f884156eb2847161a41634c90c92d477f4ad2ac7983d5738ddc82b81fd380a74`.
+- Boot job `118266392988`, receipt SHA-256:
+  `06bbf549740ca1a0e09db1d99d1607222d970a811da7b82dd158c09b5bdca639`.
+
+Logs are retained in Actions and locally in `build/runs/39311945725` (text only).
+Runner artifacts contain the exact kernel, Mach-O, input hashes, framebuffer,
+registers, exception log and receipts. Earlier assembly failure `39310743662`
+and explicit cancellation `39310550551` remain preserved; neither ran a guest.
+
+This establishes that the pinned original kernel and freestanding journey work
+with the original CPU/MMU/exception environment. It does not validate any native
+usermode replacement. Next use this same executable and original boot/service
+ordering to assess the userspace boundary; adding missing link providers alone
+cannot establish that boundary. Preserve original memory/thread/exception
+semantics and require the same complete journey through the Linux-hosted XNU.
+
 The reference is not a working usermode kernel, dyld, frameworks or an iOS app.
 The complete objective remains genuine XNU process execution in Linux userspace,
 then real dyld/iOS frameworks and an actual app journey on Android.
@@ -65,7 +84,7 @@ then real dyld/iOS frameworks and an actual app journey on Android.
 | --- | --- | --- |
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
-| `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
+| `xnu-baseline` + `xnu-reference-boot` | [Full-system XNU exec, memory/COW, child exit and parent wait](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725) | Userspace XNU, dyld, iOS frameworks or apps |
 | `xnu-kernel` | [Selected real kernel graph compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39309052509) | Executable kernel or guest execution |
 | `xnu-link-inputs` | Run 39309052509: relocatable merge passes | Executable linkage or kernel boot |
 | `xnu-early-startup` | [Latest link fails on lock startup imports](https://github.com/taowen/arlinux-xnu/actions/runs/39270528453); prior raw diagnostics passed | VM initialization, tasks or guest execution |

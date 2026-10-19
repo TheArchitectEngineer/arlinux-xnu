@@ -1,13 +1,14 @@
 # ARLinux XNU experiment
 
 Research toward running XNU as a userspace kernel on Linux/Android.
-**No iOS app runs through XNU here yet.** The current Mach-O demo uses a small
-Darwin syscall shim. Historical host diagnostics executed limited XNU startup
-and shared mappings. The real VM executable still fails linkage; VM
-initialization, task creation and guest execution through XNU are unverified.
-The native-XNU/emulated-user CPU boundary is an unvalidated candidate. A
-full-system reference now attempts the same real process journey before further
-userspace machine-layer work; it does not establish userspace XNU compatibility.
+**No iOS app runs here yet.** A [full-system QEMU reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
+boots real XNU and executes a static ARM64 Mach-O through its own exec, VM,
+fork/COW, exit and wait paths. This is a reference, not userspace XNU.
+
+The native userspace XNU executable still fails linkage; its VM initialization,
+tasks and guest execution are unverified. The native-XNU/emulated-user CPU
+boundary remains an unvalidated candidate, now compared against the working
+original-kernel process journey rather than compilation results.
 
 Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
 software framebuffer. No 32-bit apps or Metal support. Proprietary Apple

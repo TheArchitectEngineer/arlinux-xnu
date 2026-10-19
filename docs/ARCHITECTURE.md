@@ -152,10 +152,15 @@ retain compiled startup registrations including phases after ZALLOC; omitted cal
 replaced by merely advancing startup_phase. This full bootstrap attempt still
 requires missing machine/service inputs and real runtime validation.
 
-## First execution journey
+## Required userspace execution journey
 
-Boot the real kernel, mount a file-backed image through real XNU VFS/filesystem
-services, and use original BSD exec/Mach-O loading. Start a supervisor and child;
+The [full-system reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
+completed this process journey with `guests/init.S`, original XNU exec/VM and the
+original CPU/MMU/exception environment. No native usermode replacement was
+involved. Use the same executable as the reference when evaluating that port.
+
+For userspace acceptance, boot the real kernel, mount a file-backed image through
+real XNU VFS/filesystem services, and use original BSD exec/Mach-O loading. Start a supervisor and child;
 the child writes a console FD, allocates/touches/frees memory, then exits with a
 known status observed through the supervisor's real wait. Keep PID 1 alive.
 There is no host Mach-O loader or replacement Darwin syscall dispatcher here.
