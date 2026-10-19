@@ -34,10 +34,17 @@ xnu_host_ticket_bootstrap(unsigned long address)
     for (int attempt = 0; attempt < 2; attempt++)
         assert(hw_lck_ticket_reserve_orig_allow_invalid(lock).lck_value == 0 &&
             lock->lck_value == seed.lck_value);
+    unsigned long readonly_count, readonly_alternate, unaligned_count, unaligned_alternate;
+    xnu_host_fault_statistics(&readonly_count, &readonly_alternate);
     assert(hw_lck_ticket_reserve_orig_allow_invalid((void *)(address + 1)).lck_value == 0);
+    xnu_host_fault_statistics(&unaligned_count, &unaligned_alternate);
     for (int attempt = 0; attempt < 2; attempt++)
         assert(hw_lck_ticket_reserve_orig_allow_invalid((void *)(address + PAGE_SIZE)).lck_value == 0);
     xnu_host_fault_statistics(&after, &alternate_after);
+    kprintf("XNU_HOST_TICKET recovery readonly=%lu/%lu unaligned=%lu/%lu unmapped=%lu/%lu (total/alternate)\n",
+        readonly_count - before, readonly_alternate - alternate_before,
+        unaligned_count - readonly_count, unaligned_alternate - readonly_alternate,
+        after - unaligned_count, alternate_after - unaligned_alternate);
     assert(after - before == 5 && alternate_after - alternate_before == 5);
     assert(pmap_enter(kernel_pmap, address, page, VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_NONE, 0, TRUE) == KERN_SUCCESS);
