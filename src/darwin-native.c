@@ -1,6 +1,6 @@
 /* Native Darwin ABI transport, inspired by tawcroot's TLS-independent systrap
  * runtime. Linux supplies these process/VM operations; this is not XNU boot.
- * Trusted static non-arm64e programs only. No security sandbox, dyld or JIT yet.
+ * Trusted non-arm64e inputs only. No security sandbox or general JIT support.
  */
 #define _GNU_SOURCE
 #include "darwin-native.h"
@@ -86,6 +86,9 @@ static long anonymous16(unsigned long size, int protection)
  * resolve inside the selected firmware root; only the explicit executable
  * retains its host path. This is path adaptation, not a security sandbox. */
 static int root_descriptor=-1;
+/* Process-local name for this task's VM capability. Only implemented VM traps
+ * accept it; other port/IPC operations remain unsupported, never successful. */
+#define CURRENT_TASK_PORT 0x103U
 static char executable_path[4096];
 static long guest_copy(void *local, unsigned long remote, unsigned long length, int write)
 {
@@ -185,6 +188,39 @@ static void dispatch(int signal, siginfo_t *info, void *context)
          * a real port namespace exists, port-returning traps fail with NULL;
          * other unsupported Mach operations return KERN_NOT_SUPPORTED. */
         unsigned long number=-(int64_t)trap;
+        if (number==28) {
+            r[0]=CURRENT_TASK_PORT;
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
+        if (number==10) {       /* _kernelrpc_mach_vm_allocate_trap */
+            uint64_t address=0;
+            unsigned long status=4; /* KERN_INVALID_ARGUMENT */
+            if (r[0]!=CURRENT_TASK_PORT) status=16; /* KERN_INVALID_TASK */
+            else if (guest_copy(&address,r[1],sizeof(address),0)) status=1;
+            else if ((r[3]&~0xff000001UL)==0 && (r[3]&1) && r[2]) {
+                long mapped=anonymous16(r[2],PROT_READ|PROT_WRITE);
+                if ((unsigned long)mapped>=(unsigned long)-4095) status=3;
+                else {
+                    address=mapped;
+                    status=guest_copy(&address,r[1],sizeof(address),1) ? 1 : 0;
+                    if (status) RAW(SYS_munmap,mapped,(r[2]+PAGE16-1)&~(PAGE16-1),0,0,0,0);
+                }
+            }
+            r[0]=status;
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
+        if (number==12) {       /* _kernelrpc_mach_vm_deallocate_trap */
+            unsigned long start=r[1]&~(PAGE16-1),offset=r[1]-start;
+            unsigned long size=r[2];
+            if (r[0]!=CURRENT_TASK_PORT) r[0]=16;
+            else if (size>(1UL<<32) || start+size+offset+PAGE16<start) r[0]=4;
+            else if (!size) r[0]=0;
+            else r[0]=RAW(SYS_munmap,start,(size+offset+PAGE16-1)&~(PAGE16-1),0,0,0,0) ? 1 : 0;
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
         if (number==3 || number==4) {
             /* ARM fast-time calls return a value, not kern_return_t/errno.
              * Use genuine nanosecond clocks, paired with timebase 1/1. */
