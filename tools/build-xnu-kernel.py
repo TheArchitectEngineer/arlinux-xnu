@@ -173,7 +173,8 @@ def main():
     # These are actual intended kernel objects. Do not replace them with dummy
     # implementations to turn the workflow green.
     units = [
-        'src/xnu-host/xnu_bootstrap.c', 'src/xnu-host/context.c',
+        'src/xnu-host/xnu_bootstrap.c', 'src/xnu-host/context.c', 'src/xnu-host/platform.c',
+        'pexpert/gen/device_tree.c',
         'src/xnu-host/xnu_vm_bootstrap.c', 'src/xnu-host/pmap.c', 'src/xnu-host/time.c',
         'src/xnu-host/entropy.c', 'src/xnu-host/image.c', 'src/xnu-host/ro_zone.c',
         'src/xnu-host/ticket.c', 'osfmk/arm64/usermode_ticket.S',
@@ -205,7 +206,8 @@ def main():
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
             'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
             'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb', 'vm_purgeable',
-            'vm32_user', 'vm_compressor', 'vm_compressor_pager', 'vm_compressor_algorithms', 'lz4']],
+            'vm32_user', 'vm_compressor', 'vm_compressor_pager', 'vm_compressor_algorithms',
+            'vm_compressor_backing_store', 'lz4']],
         'osfmk/arm64/WKdmCompress_16k.s', 'osfmk/arm64/WKdmDecompress_16k.s',
         'osfmk/arm64/WKdmData.s', 'src/xnu-host/codec_probe.c',
         'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm/arm_timer.c',

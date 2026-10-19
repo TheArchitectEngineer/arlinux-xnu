@@ -10,6 +10,7 @@
 #include <mach/machine.h>
 #include <machine/machine_routines.h>
 #include <pexpert/pexpert.h>
+#include <pexpert/device_tree.h>
 #include <host/memory.h>
 #include <host/time.h>
 #include <host/entropy.h>
@@ -18,6 +19,9 @@
 int
 xnu_host_kernel_early_startup(void)
 {
+    /* Linux supplies no Apple firmware tree. Original DT queries must report
+     * missing properties so original startup code retains its defaults. */
+    SecureDTInit(NULL, 0);
     assert(current_thread() == current_thread_volatile());
     assert(current_cpu_datap()->cpu_active_thread == current_thread());
     assert(current_cpu_datap()->cpu_number == 0);

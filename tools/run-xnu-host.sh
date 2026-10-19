@@ -53,6 +53,7 @@ link_flags=(-no-pie -pthread -Wl,--gc-sections -Wl,-Ttext-segment="$base"
   -Wl,-T,"$output/startup.ld" -Wl,-Map,"$output/link-map.txt")
 if [[ $stage == early ]]; then
   objects=(build/kernel/startup.o build/kernel/xnu_bootstrap.o build/kernel/context.o
+    build/kernel/platform.o build/kernel/device_tree.o
     build/kernel/pmap.o build/kernel/time.o build/kernel/rtclock.o
     build/kernel/OSAtomicOperations.o build/kernel/entropy.o build/kernel/image.o
     build/kernel/ticket.o build/kernel/usermode_ticket.o
