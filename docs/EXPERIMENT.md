@@ -35,27 +35,41 @@ Android app sandbox. Next connect a genuine dynamic userland: process startup,
 LC_LOAD_DYLINKER and executable mappings must be implemented rather than treating
 loader metadata as inert. Require a real program journey at each extension.
 
-New, not yet validated: ./build.sh build --mode dyld re-runs the native
-console journey, then obtains iPhone7,2 iOS 12.5.7 (16H81) from Apple's CDN on a
-Linux ARM64 runner. It verifies the complete IPSW SHA-256, uses Apple's manifest
-to select the filesystem, and extracts the real non-arm64e /usr/lib/dyld.
-Apple binaries stay transient; only input hashes, load commands and execution
-logs are uploaded. The runtime now accepts a Mach-O dylinker/ARM64 UNIXTHREAD
-entry, slides the interpreter, and constructs the initial app-header/argc/argv/
-envp/apple stack. It still lacks the wider dyld system interfaces. The run must
-show real startup or its actual fault/unsupported-call path, not substitute a
-handwritten loader and label it dyld. File/executable mmap and library services
-remain incomplete. The static journey remains a required predecessor.
+Real Apple dyld now executes natively. Run
+[39322206750](https://github.com/taowen/arlinux-xnu/actions/runs/39322206750),
+source `07bdb05356df16d50adf31b921a97e76ddf44877`, job `118298986787`, passed
+the native console prerequisite, prepared the exact iOS 12.5.7 (16H81) input,
+mapped the actual MH_DYLINKER and entered its ARM64 startup. Logs show Mach traps
+-28 (task_self) and -26 (reply_port), then SIGSEGV at PC 0x200041100 reading
+0xfffffc037: the legacy Darwin commpage kernel-page-shift byte. Startup is not
+complete, no library or App was loaded.
 
-First real-userland input attempt [39320874526](https://github.com/taowen/arlinux-xnu/actions/runs/39320874526)
-passed the native console prerequisite but did not execute dyld. The complete
-Apple IPSW SHA-256 matched. 7-Zip exposed the APFS compressed file's empty data
-fork and its alternate streams; the extracted dyld was zero bytes, and the
-Mach-O loader rejected it. Failure receipt SHA-256:
-`ec93ca4de939db0e368c90aab1ba2dbaed2023c357d9d4b1394a7d835f8e8dc0`.
-The input preparation now builds pinned unmodified apfs-fuse/LZFSE sources on
-the runner and reads the file through its read-only compressed-file decoder.
-This changed preparation and actual interpreter startup await verification.
+- IPSW SHA-256: `7c10ff0e4cdbe24f33012e47e8458a8ae8c858f2e3dbfce766c196f5d229cadb`.
+- OS DMG SHA-256: `7040c19bd5b62182ccf6449ca562bbeb6071f4e404138ace93c5f731d1a9e5a7`.
+- Real dyld: 567184 bytes, SHA-256 `5c5563ec91c78cfe060cb500e3ca8d764350572f124f98144bac175aa25655e9`.
+- Failure receipt: `f6e8e2b929cfb18fef6d90d1bbe38111cdd8ed3c2e83fb718d87ef233036d960`.
+- Local text evidence: build/runs/39322206750/dyld-job.log.
+
+Input preparation uses pinned apfs-fuse/LZFSE, entering the mount's root/
+directory as ios-sweet does. Earlier input failures (39320874526, 39321273273,
+39321919734) are preserved in Actions/local logs. The last one's APFS directory
+listing established the path error; 7-Zip alone had exposed an empty compressed
+file data fork. Apple files stay transient on the runner; upload only provenance
+and diagnostic logs, not firmware/dyld/framework binaries.
+
+The runtime now supplies a read-only legacy commpage with the declared 16 KiB
+geometry, one CPU, actual native memory/cache properties and optional features
+disabled. It distinguishes unsupported Mach trap results from BSD errno/carry;
+port-returning traps return NULL until an actual port namespace is implemented.
+Run [39322626159](https://github.com/taowen/arlinux-xnu/actions/runs/39322626159),
+source `aa2b013f29280084438bd4d45203cdc65f9ff209`, passed the static console and
+the earlier commpage access. Real dyld reached BSD thread_selfid (372), received
+ENOSYS and then trapped. Receipt SHA-256:
+`ed05477de2f85ea49bcff0f79185603c09d24b9451e948913007349162552630`.
+The next change maps that query to Linux's actual gettid, initializes guest TSD
+to NULL instead of leaking the host glibc TCB, and captures SIGTRAP/SIGFPE too.
+These changes await verification. File/executable mmap, Mach IPC and library
+loading remain incomplete; dyld has not reached the program's entry.
 
 Earlier native build failures remain in Actions and local text logs:
 39319498437 (cross-section ADR), 39319703701 (cstring layout), 39319854670 (host

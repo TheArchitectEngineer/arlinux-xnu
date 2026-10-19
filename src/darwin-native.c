@@ -104,6 +104,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case 3: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
     case 4: result = RAW(SYS_write,r[0],r[1],r[2],0,0,0); break;
     case 20: result = RAW(SYS_getpid,0,0,0,0,0,0); break;
+    case 372: result = RAW(SYS_gettid,0,0,0,0,0,0); break; /* thread_selfid */
     case 2:
         result = RAW(SYS_clone,SIGCHLD,0,0,0,0,0);
         if (!result) {
@@ -194,7 +195,7 @@ void darwin_native_prepare(void)
         perror("SIGSYS installation"); exit(1);
     }
     action.sa_sigaction=fault;
-    int failures[]={SIGSEGV,SIGILL,SIGBUS,SIGABRT};
+    int failures[]={SIGSEGV,SIGILL,SIGBUS,SIGABRT,SIGTRAP,SIGFPE};
     for (unsigned int i=0;i<sizeof(failures)/sizeof(failures[0]);i++) {
         if (sigaction(failures[i],&action,NULL)) { perror("fault handler"); exit(1); }
     }

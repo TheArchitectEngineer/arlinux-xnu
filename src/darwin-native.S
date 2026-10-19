@@ -20,6 +20,9 @@ darwin_raw_return:
 .global darwin_native_enter
 .type darwin_native_enter,%function
 darwin_native_enter:
+    // exec starts with no Darwin TSD until userland establishes it. Do not
+    // expose glibc's TCB to rewritten Darwin TSD reads. No libc calls follow.
+    msr tpidr_el0,xzr
     mov sp,x0
     mov x29,xzr
     mov x30,xzr
