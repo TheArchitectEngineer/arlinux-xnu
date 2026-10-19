@@ -1,7 +1,7 @@
 /* Host pmap primitives used by XNU's original vm_resident bootstrap.
  * This is not the ARM hardware page-table implementation. Linux owns mappings
  * and TLB/cache maintenance; XNU still owns VM objects/maps and page allocation.
- * User pmaps, reverse mappings and their accounting are not connected yet. */
+ * User pmaps and pmap accounting are not connected yet. */
 #include <arm/usermode_vm.h>
 #include <kern/assert.h>
 #include <kern/debug.h>
@@ -159,6 +159,45 @@ pmap_protect(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end, vm_prot_t 
     pmap_protect_options(pmap, start, end, protection, 0, NULL);
 }
 
+void
+pmap_page_protect_options(ppnum_t page, vm_prot_t protection,
+    unsigned int options, void *arg)
+{
+    (void)options;
+    (void)arg;
+    assert(page && page < frame_limit);
+    int error = xnu_host_memory_protect_page(page, protection);
+    if (error)
+        panic("host pmap_page_protect page=%u error=%d", page, error);
+}
+
+void
+pmap_page_protect(ppnum_t page, vm_prot_t protection)
+{
+    pmap_page_protect_options(page, protection, 0, NULL);
+}
+
+unsigned int
+(pmap_disconnect_options)(ppnum_t page, unsigned int options, void *arg)
+{
+    (void)options;
+    (void)arg;
+    assert(page && page < frame_limit);
+    unsigned int attributes = 0;
+    int error = xnu_host_memory_disconnect(page, &attributes);
+    if (error)
+        panic("host pmap_disconnect page=%u error=%d", page, error);
+    /* Conservative mapping history, not precise per-access dirty tracking. */
+    return ((attributes & XNU_HOST_PAGE_MODIFIED) ? VM_MEM_MODIFIED : 0) |
+        ((attributes & XNU_HOST_PAGE_REFERENCED) ? VM_MEM_REFERENCED : 0);
+}
+
+unsigned int
+(pmap_disconnect)(ppnum_t page)
+{
+    return (pmap_disconnect_options)(page, 0, NULL);
+}
+
 ppnum_t
 pmap_find_phys(pmap_t pmap, addr64_t address)
 {
@@ -253,12 +292,29 @@ xnu_host_pmap_bootstrap(void)
     assert(copy[0] == 0x5a && copy[PAGE_SIZE - 1] == 0xa5);
     (pmap_zero_page)(second);
     pmap_protect(kernel_pmap, a, a + PAGE_SIZE, VM_PROT_READ);
+    assert(xnu_host_memory_expect_fault(a, 1) == 0);
     right[0] = 0x33;
     assert(left[0] == 0x33); /* The protected alias still shares the frame. */
     right[0] = 0;
-    pmap_remove(kernel_pmap, a, b + PAGE_SIZE);
+    pmap_page_protect(first, VM_PROT_READ);
+    assert(left[0] == 0 && right[0] == 0);
+    assert(xnu_host_memory_expect_fault(b, 1) == 0);
+    /* Replacing an alias must detach it from the previous frame's chain. */
+    assert(pmap_enter(kernel_pmap, b, second, VM_PROT_READ | VM_PROT_WRITE,
+        VM_PROT_NONE, 0, TRUE) == KERN_SUCCESS);
+    right[0] = 0x7b;
+    assert(left[0] == 0 && copy[0] == 0x7b);
+    unsigned int attributes = (pmap_disconnect)(first);
+    assert((attributes & (VM_MEM_MODIFIED | VM_MEM_REFERENCED)) ==
+        (VM_MEM_MODIFIED | VM_MEM_REFERENCED));
     assert(pmap_find_phys(kernel_pmap, a) == 0);
-    kprintf("XNU_HOST_PMAP shared-alias/copy/zero/protect/unmap passed free_pages=%u (VM not initialized)\n",
+    assert(pmap_find_phys(kernel_pmap, b) == second && right[0] == 0x7b);
+    assert(xnu_host_memory_expect_fault(a, 0) == 0);
+    pmap_remove(kernel_pmap, b, b + PAGE_SIZE);
+    assert(pmap_find_phys(kernel_pmap, b) == 0 && copy[0] == 0x7b);
+    assert(xnu_host_memory_expect_fault(b, 0) == 0);
+    (pmap_zero_page)(second);
+    kprintf("XNU_HOST_PMAP shared-alias/copy/zero/protect/disconnect/fault passed free_pages=%u (VM not initialized)\n",
         pmap_free_pages());
     return 0;
 }
