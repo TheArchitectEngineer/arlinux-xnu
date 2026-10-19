@@ -132,7 +132,7 @@ jobs:
       - name: Install Apple filesystem reader
         run: |
           sudo apt-get update
-          sudo apt-get install -y 7zip llvm-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev
+          sudo apt-get install -y 7zip llvm-18 lldb-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev
       - name: Prepare pinned Apple userland and execute its actual dyld
         shell: bash
         run: |
@@ -151,6 +151,17 @@ jobs:
           status=0
           printf '+q' | timeout 30 build/native/macho-native --dyld build/ios-input/dyld build/native/console.macho > build/dyld/console.stdout 2> build/dyld/runtime.log || status=$?
           cat build/dyld/console.stdout build/dyld/runtime.log
+          exit "$status"
+      - name: Dynamically trace the actual failed dyld journey
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p build/dyld
+          printf '+q' > build/dyld/debugger.stdin
+          status=0
+          timeout 45 lldb-18 --batch -o 'command source -e false -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?
+          cat build/dyld/lldb.log
+          echo "LLDB_COMMAND_STATUS=$status"
           exit "$status"
       - name: Record experiment receipt
         if: always()
