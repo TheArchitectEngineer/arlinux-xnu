@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39246394588](https://github.com/taowen/arlinux-xnu/actions/runs/39246394588)
-at source `b71df00` compiled 158 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39251586602](https://github.com/taowen/arlinux-xnu/actions/runs/39251586602)
+at source `df67b7e` (XNU fork `8ca2a74`) compiled 158 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -29,10 +29,12 @@ Each start continued through the original `kernel_startup_bootstrap()` dispatche
 tunable, and exited normally. Each start also executed the original ARM rtclock
 conversion functions with a Linux nanosecond timebase and a real 1 ms absolute
 sleep, plus early/random-buffer/kmem-uniform calls backed by Linux `getrandom`.
-No random seed or output bytes are logged. All five downloaded jobs' files
-matched receipts. The original boolean generator is compiled but has not run.
+No random seed or output bytes are logged. All five jobs recorded receipts and
+uploaded their artifacts; Actions logs expose receipt and executable hashes.
+This run was inspected through runner logs without downloading binary archives.
+The original boolean generator is compiled but has not run.
 The early executable SHA-256 is
-`226972b20ed7472b609a945439e49aff57be5b16107d02ceff3e19f1e786d730`.
+`b9eccf6f1e400f8db18cabfb34d5b3f57cb7d8389ce88f7f1d737a58e2468dec`.
 
 ARM ticket reservation now performs real LDAXR/STXR operations with an explicit
 ELF recovery range. A Linux [signal handler](https://man7.org/linux/man-pages/man2/sigaction.2.html)
@@ -56,6 +58,11 @@ boot ID and maximum ID describe one virtual CPU, not Linux's host topology.
 Every start verifies these accessors, the early topology query after tunables,
 and a write/read/restore through the actual per-CPU pending-AST storage.
 This does not execute AST dispatch.
+The machine-info singleton reports the same one physical/logical virtual CPU.
+After Linux successfully creates physical backing, its memory-size fields and
+boot-memory query report that allocation's actual 256 MiB capacity. All eight
+starts verify the values. Kernel version fields await normal kernel version
+initialization; reporting capacity does not initialize XNU's VM allocator.
 That record now lives in the original per-CPU section. The ELF linker pads it
 to 16 KiB; all eight starts used XNU's original traversal macro and observed one
 master CPU, with no secondary replicas. Current-thread setup installs the master
@@ -93,7 +100,7 @@ the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps
 and pmap ledger/wiring accounting are not connected yet. Reference/dirty attributes record
 conservative mapping history, not precise accesses or cleared-bit tracking.
-The VM executable still fails linkage (281 distinct undefined references), before its original
+The VM executable still fails linkage (278 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
 
@@ -107,6 +114,9 @@ Separately, retained Mach IPC startup registration references the full MIG serve
 table, including processor control. Link-time dependencies from this table do
 not prove those services are needed before VM bootstrap; do not implement CPU
 hotplug or power management merely to satisfy that table.
+The original kernel-stack accessor now builds independently of DTrace, matching
+its unconditional declaration and the stack walker in task reference accounting.
+That missing import is resolved; the stack walker has not executed yet.
 
 Next: connect remaining machine/thread, kernel data layout, host pmap and BSD service dependencies,
 then execute the original VM bootstrap. Ticket reservation's recovery is now
