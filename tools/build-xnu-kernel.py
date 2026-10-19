@@ -209,6 +209,8 @@ def main():
         'bsd/kern/kern_fork.c', 'bsd/kern/kern_proc.c',
         'bsd/kern/kern_credential.c', 'bsd/kern/kern_prot.c',
         'bsd/kern/kern_resource.c', 'bsd/uxkern/ux_exception.c',
+        'bsd/kern/kern_authorization.c', 'bsd/kern/kern_priv.c',
+        'bsd/kern/kern_subr.c', 'bsd/kern/bsd_init.c',
     ]
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
