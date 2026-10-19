@@ -34,6 +34,11 @@ execute permission or creates a mapping in a hole. Physical-page protection now
 uses the original ARM selector: ALL leaves aliases alone, READ/READ|EXEC reduce
 rights, other requests remove aliases. Wiring is preserved. This requires runner
 compilation and actual VM runtime verification; no isolated probe is added.
+An accidental dispatch `39287502627` selected old source `8516c7a` after a push
+network failure; cancellation was requested. It does not validate the protection
+repair. The build entry now compares the selected local ref against GitHub's
+remote commit before dispatch, and refuses a mismatch. Inspect the next run's
+actual source and logs; do not use this old-source run as current evidence.
 
 Cache synchronization and fail-stop native mapping errors remain included.
 The cache operation covers the physical aperture and executable aliases,

@@ -18,6 +18,19 @@ def main():
         parser.error('--diagnostics applies only to build')
     repo = 'taowen/arlinux-xnu'
     if args.command == 'build':
+        # A failed push must not silently dispatch stale remote sources. Resolve
+        # the explicitly selected local ref, including when invoked elsewhere.
+        root = Path(__file__).resolve().parents[1]
+        expected = subprocess.check_output(
+            ['git', '-C', str(root), 'rev-parse', '--verify', args.ref + '^{commit}'],
+            text=True).strip()
+        remote = subprocess.check_output(
+            ['gh', 'api', 'repos/' + repo + '/commits/' + args.ref, '--jq', '.sha'],
+            text=True).strip()
+        if expected != remote:
+            raise SystemExit('Selected local ref is not pushed: ' + args.ref +
+                             ' local=' + expected + ' remote=' + remote)
+        print('Dispatching exact pushed source ' + expected, flush=True)
         command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'mode=' + args.mode]
         if args.diagnostics:
             command += ['-f', 'diagnostics=true']
