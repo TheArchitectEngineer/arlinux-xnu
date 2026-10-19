@@ -184,7 +184,7 @@ jobs:
           cp build/kernel/receipt.json build/link/compiler-receipt.json
           uname -a > build/link/environment.txt
           ld.lld-18 --version >> build/link/environment.txt
-          ld.lld-18 -r build/kernel/*.o -o build/link/xnu-host.partial.o
+          ld.lld-18 -r build/kernel/*.o -o build/link/xnu-host.partial.o 2>&1 | tee build/link/link.log
           llvm-readelf-18 --file-header --sections build/link/xnu-host.partial.o > build/link/elf.txt
           llvm-nm-18 --undefined-only --format=posix build/link/xnu-host.partial.o > build/link/unresolved-symbols.txt
           llvm-objdump-18 --disassemble --no-show-raw-insn build/link/xnu-host.partial.o > build/link/disassembly.txt

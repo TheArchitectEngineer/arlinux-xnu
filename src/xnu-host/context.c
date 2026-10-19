@@ -77,34 +77,6 @@ xnu_host_context_adopt_boot_thread(void)
     kprintf("XNU_HOST_CONTEXT adopted XNU thread_bootstrap thread=%p\n", thread);
 }
 
-int
-get_preemption_level(void)
-{
-    assert(host_thread != THREAD_NULL);
-    return (int)host_thread->machine.preemption_count;
-}
-
-unsigned int
-get_preemption_level_for_thread(thread_t thread)
-{
-    return thread->machine.preemption_count;
-}
-
-void
-_disable_preemption(void)
-{
-    assert(host_thread && host_thread->machine.preemption_count != ~0u);
-    host_thread->machine.preemption_count++;
-}
-
-void
-_enable_preemption(void)
-{
-    assert(host_thread && host_thread->machine.preemption_count);
-    host_thread->machine.preemption_count--;
-    /* Pending AST dispatch will be attached to the host scheduler event loop. */
-}
-
 boolean_t
 ml_get_interrupts_enabled(void)
 {
