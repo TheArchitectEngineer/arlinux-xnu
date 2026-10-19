@@ -143,6 +143,7 @@ jobs:
           chmod +x build/native/macho-native
           python3 tools/prepare-ios-userland.py 2>&1 | tee build/dyld/input.log
           llvm-objdump-18 --macho --private-headers build/ios-input/dyld > build/dyld/loader-commands.txt
+          llvm-nm-18 --numeric-sort --demangle build/ios-input/dyld > build/dyld/loader-symbols.txt
           status=0
           printf '+q' | timeout 30 build/native/macho-native --dyld build/ios-input/dyld build/native/console.macho > build/dyld/console.stdout 2> build/dyld/runtime.log || status=$?
           cat build/dyld/console.stdout build/dyld/runtime.log

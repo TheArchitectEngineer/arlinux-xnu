@@ -185,6 +185,10 @@ static void fault(int signal,siginfo_t *info,void *context)
     RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
     ucontext_t *uc=context;
     trace_call(signal,uc->uc_mcontext.pc,(uintptr_t)info->si_addr);
+    const char registers[]="DARWIN_FAULT_REGISTERS x0..x30\n";
+    RAW(SYS_write,2,registers,sizeof(registers)-1,0,0,0);
+    for (unsigned int i=0;i<31;i++)
+        trace_call(i,uc->uc_mcontext.pc,uc->uc_mcontext.regs[i]);
     RAW(SYS_exit_group,128+signal,0,0,0,0,0);
     __builtin_unreachable();
 }

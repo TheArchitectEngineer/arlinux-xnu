@@ -102,6 +102,15 @@ int main(int argc,char **argv)
         top=(top-length)&~15UL;
         memcpy((void *)top,program,length);
         uint64_t name=top;
+        char *absolute=realpath(program,NULL);
+        if (!absolute) die("canonical executable path");
+        size_t apple_length=strlen(absolute)+sizeof("executable_path=");
+        need(apple_length<8192,"Apple executable path too long");
+        top=(top-apple_length)&~15UL;
+        memcpy((void *)top,"executable_path=",16);
+        memcpy((void *)(top+16),absolute,strlen(absolute)+1);
+        free(absolute);
+        uint64_t apple=top;
         top-=8*8;
         uint64_t *words=(void *)top;
         words[0]=im.header_address;
@@ -109,7 +118,7 @@ int main(int argc,char **argv)
         words[2]=name;
         words[3]=0;             /* argv terminator */
         words[4]=0;             /* envp terminator */
-        words[5]=0;             /* apple terminator; expand as required */
+        words[5]=apple;
         words[6]=words[7]=0;
     }
     /* Zeroed argc/argv/env/apple terminators for this freestanding entry. */
