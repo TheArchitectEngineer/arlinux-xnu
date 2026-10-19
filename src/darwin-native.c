@@ -98,6 +98,32 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     }
     long result = -38;
     switch (r[16]) {
+    case 381: {                /* __mac_syscall: compatibility dyld policy only */
+        char policy[5];
+        struct iovec local={policy,sizeof(policy)},remote={(void *)r[0],sizeof(policy)};
+        long pid=RAW(SYS_getpid,0,0,0,0,0,0);
+        if (RAW(SYS_process_vm_readv,pid,&local,1,&remote,1,0)!=sizeof(policy)) {
+            result=-14; break;
+        }
+        if (r[1]!=90 || policy[0]!='A' || policy[1]!='M' || policy[2]!='F' ||
+            policy[3]!='I' || policy[4]) break;
+        /* Confirmed from the actual 650.3.4 wrapper: two uint64_t words,
+         * input flags and a POINTER to the uint64_t result, not inline output.
+         * This environment permits @paths, path variables, custom caches,
+         * fallback paths, diagnostic variables and failed insertions. It does
+         * not claim to implement Apple's AMFI authentication or other calls. */
+        uint64_t args[2];
+        local=(struct iovec){args,sizeof(args)};
+        remote=(struct iovec){(void *)r[2],sizeof(args)};
+        if (RAW(SYS_process_vm_readv,pid,&local,1,&remote,1,0)!=sizeof(args)) {
+            result=-14; break;
+        }
+        uint64_t permissions=0x3f;
+        local=(struct iovec){&permissions,sizeof(permissions)};
+        remote=(struct iovec){(void *)args[1],sizeof(permissions)};
+        result=RAW(SYS_process_vm_writev,pid,&local,1,&remote,1,0)==sizeof(permissions) ? 0 : -14;
+        break;
+    }
     case 500: {                 /* Darwin getentropy: success returns zero */
         if (r[1]>256) { result=-5; break; }
         unsigned long done=0;
