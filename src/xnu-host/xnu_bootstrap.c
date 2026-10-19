@@ -7,6 +7,7 @@
 #include <kern/startup.h>
 #include <pexpert/pexpert.h>
 #include <host/memory.h>
+#include <host/time.h>
 
 int
 xnu_host_kernel_early_startup(void)
@@ -16,6 +17,9 @@ xnu_host_kernel_early_startup(void)
     assert(current_cpu_datap()->cpu_number == 0);
     assert(exception_stack_pointer() != 0);
     int error = xnu_host_pmap_bootstrap();
+    if (error)
+        return error;
+    error = xnu_host_time_bootstrap();
     if (error)
         return error;
     kernel_startup_bootstrap();

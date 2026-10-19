@@ -148,7 +148,7 @@ def main():
     # implementations to turn the workflow green.
     units = [
         'src/xnu-host/xnu_bootstrap.c', 'src/xnu-host/context.c',
-        'src/xnu-host/xnu_vm_bootstrap.c', 'src/xnu-host/pmap.c',
+        'src/xnu-host/xnu_vm_bootstrap.c', 'src/xnu-host/pmap.c', 'src/xnu-host/time.c',
         # Core IPC structures used by Mach ports/messages and task initialization.
         *['osfmk/ipc/' + name + '.c' for name in [
             'ipc_space', 'mach_port', 'mach_msg', 'ipc_init', 'ipc_entry',
@@ -166,14 +166,14 @@ def main():
             'ast', 'sched_prim', 'sched_average', 'sched_traditional',
             'waitq', 'turnstile', 'timer_call', 'mpsc_queue', 'recount',
             'thread_act', 'thread_policy', 'task_policy', 'syscall_subr',
-            'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref']],
+            'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref', 'clock']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
             'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
             'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb', 'vm_purgeable',
             'vm32_user']],
-        'osfmk/arm/locks_arm.c', 'osfmk/arm64/pcb.c', 'osfmk/arm64/status.c',
+        'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm64/pcb.c', 'osfmk/arm64/status.c',
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
     ]

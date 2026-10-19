@@ -13,4 +13,6 @@
 #define __ARM_ARCH_8_0__ 1
 #define NO_MONITOR 1
 #define PRECISE_USER_KERNEL_TIME 0
+/* CLOCK_BOOTTIME supplies the platform continuous counter. */
+#define HAS_CONTINUOUS_HWCLOCK 1
 #endif
