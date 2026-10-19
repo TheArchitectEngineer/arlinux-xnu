@@ -18,7 +18,7 @@
   "virtualCpus": 1,
   "xnuKernel": {
     "repository": "taowen/xnu",
-    "commit": "50de8e61eee1a1785a4340a04910a6dfaf47d8f9",
+    "commit": "5dbac44578c588e5b3f4cc17a05a3aee88a169e0",
     "tag": "xnu-8796.141.3",
     "path": "third_party/xnu",
     "upstreamCommit": "1b191cb58250d0705d8a51287127505aa4bc0789",
@@ -37,5 +37,12 @@
     "upstreamRepository": "unicorn-engine/unicorn",
     "upstreamCommit": "8028ec436f2d9376525352dd38ed9ed6b9f6be10",
     "upstreamTag": "2.1.4"
+  },
+  "kernelFirehose": {
+    "repository": "apple-oss-distributions/libdispatch",
+    "commit": "cdb61e93e803d0093635f356753a9a30c09836db",
+    "path": "third_party/libdispatch",
+    "tag": "libdispatch-1415.140.2",
+    "distribution": "macos-135"
   }
 }

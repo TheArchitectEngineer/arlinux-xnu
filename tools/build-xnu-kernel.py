@@ -50,6 +50,10 @@ def main():
     revision = subprocess.check_output(['git', '-C', str(XNU), 'rev-parse', 'HEAD'], text=True).strip()
     if revision != lock['xnuKernel']['commit']:
         raise RuntimeError('XNU source does not match the declared submodule pin')
+    firehose = ROOT / lock['kernelFirehose']['path']
+    if subprocess.check_output(['git', '-C', str(firehose), 'rev-parse', 'HEAD'],
+                               text=True).strip() != lock['kernelFirehose']['commit']:
+        raise RuntimeError('Firehose source does not match the declared submodule pin')
     (OUT / 'sources.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
     generated = OUT / 'config'
     bsd_config = OUT / 'config-bsd'
@@ -98,7 +102,7 @@ def main():
     resource = subprocess.check_output([args.compiler, '-print-resource-dir'], text=True).strip()
     includes = [ROOT / 'src/xnu-host/include', generated, bsd_config, exported,
                 XNU / 'osfmk', XNU / 'bsd', XNU / 'libkern', XNU / 'osfmk/libsa',
-                XNU / 'pexpert', XNU / 'iokit', XNU / 'EXTERNAL_HEADERS', XNU]
+                XNU / 'pexpert', XNU / 'iokit', XNU / 'EXTERNAL_HEADERS', XNU, firehose]
     flags = [args.compiler, '--target=aarch64-linux-gnu', '-c', '-g', '-O1', '-ffreestanding',
              '-fno-builtin', '-fblocks', '-fno-common', '-ffunction-sections',
              '-fdata-sections', '-nostdinc', '-ferror-limit=8',
@@ -282,6 +286,8 @@ def main():
                 units.append('build/kernel/bsd/' + source[2:])
             else:
                 units.append(source)
+    # The original libfirehose_kernel target contains this single source.
+    units.append('third_party/libdispatch/src/firehose/firehose_buffer.c')
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
     units += ['build/kernel/mig/mach/' + name for name in
@@ -302,7 +308,7 @@ def main():
         # another or a machine-port object before linkage.
         name = unit.rsplit('.', 1)[0].replace('/', '__') if bsd_unit else Path(unit).stem
         obj = OUT / (name + '.o')
-        source_path = ROOT / unit if unit.startswith(('src/', 'build/')) else XNU / unit
+        source_path = ROOT / unit if unit.startswith(('src/', 'build/', 'third_party/')) else XNU / unit
         component_flags = []
         if source_path.suffix == '.s':
             component_flags += ['-x', 'assembler-with-cpp']
@@ -319,6 +325,15 @@ def main():
             component_flags += ['-UMACH_KERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE=1',
                                 '-DDRIVER_PRIVATE=1', '-D_KERNEL_BUILD=1',
                                 '-DKERNEL_BUILD=1', '-DBSD_BUILD=1', '-DLP64_DEBUG=0']
+        if unit == 'bsd/kern/subr_log.c':
+            component_flags += ['-DOS_FIREHOSE_SPI=1']
+        if unit.startswith('third_party/libdispatch/'):
+            # Original libfirehose_kernel.xcconfig kernel namespace and flags.
+            component_flags += ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',
+                                '-DLIBKERN_KERNEL_PRIVATE=1', '-DDISPATCH_USE_DTRACE=0',
+                                '-DOS_ATOMIC_CONFIG_MEMORY_ORDER_DEPENDENCY=1',
+                                '-DOS_ATOMIC_CONFIG_STARVATION_FREE_ONLY=0',
+                                '-I' + str(XNU / 'libkern/firehose')]
         if source_path.suffix == '.cpp':
             component_flags += ['-std=gnu++17', '-fno-exceptions', '-fno-rtti']
         # Match the upstream private osfmk vs exported BSD/libkern/pexpert

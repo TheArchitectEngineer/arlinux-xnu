@@ -9,24 +9,30 @@ journey with the CPU/MMU/exception environment intact. This does not replace the
 userspace-XNU goal, and a reference pass cannot satisfy that goal.
 
 Latest completed usermode attempt:
-[39315284120](https://github.com/taowen/arlinux-xnu/actions/runs/39315284120),
-root `51e03e8618abf692d02014f62a5a3dba6859e673`,
-XNU `50de8e61eee1a1785a4340a04910a6dfaf47d8f9` (see sources.lock.json for the authoritative pin).
+[39317095489](https://github.com/taowen/arlinux-xnu/actions/runs/39317095489),
+root `68a26891bcd85fb502db67124422c43674f464f9`,
+XNU `50de8e61eee1a1785a4340a04910a6dfaf47d8f9`.
 
-- Kernel compiler job `118275536017` passed. Receipt SHA-256:
-  `6501460f2dcc137c1c47f4e62a1fb5d756e301cf0b7dfceb0d2ed04e8feccf9f`.
-- Native/engine compilation and the ABI collision audit passed. Executable
-  linkage failed; examples are machine stack-boundary queries and original
-  bank/persona/entitlement dependencies. VM receipt SHA-256:
-  `4e5b5f65157a65f652b8493dd02c158fd2ca37c652ae2a1a76f219a23631dc33`.
-- Engine SHA-256:
-  `329f3fb3b771c3cb3777549b064e62e590e86d028a58af804f4f8e49c291a135`.
+- Compiler job `118281712864` failed. Receipt SHA-256:
+  `10ee94d39de81ae19d34d643556a45cd866dc7c2202ff922f4f4005873958775`.
+- The complete generated BSD graph exposed missing disabled-feature guards,
+  Mach-O-only checksum assembly relocations and the unstaged libdispatch
+  firehose header. The RAM-disk adapter also lacked the kprintf declaration.
+- The real guest image compiled, with the exact same SHA-256 as the passing
+  full-system reference below. This does not prove that native XNU can load it.
+- No native executable linked or kernel ran. Text logs:
+  `build/runs/39317095489/kernel-job.log`.
 
-Text logs: `build/runs/39315284120`. No executable linked or kernel ran.
-Earlier failures `39313910768` (unconditional TCP types without INET) and
-`39314591126` (missing BSD pty.h generation and metadata tier configuration)
-remain preserved in Git/Actions and local text logs. The fork fixes these
-configuration boundaries without enabling fictitious hardware/network support.
+The new fork fixes those BSD/ELF boundaries. The build now includes pinned
+Apple libdispatch `libdispatch-1415.140.2` (the same macos-135 distribution as
+XNU), including the original single-source libfirehose_kernel implementation.
+These changes await runner compilation and actual boot; no stub logging library
+or host syscall replacement is supplied.
+
+The native alternative remains open: tawcroot avoids host libc TLS in its
+interception runtime while guest ld.so owns TLS. Darwin TPIDRRO_EL0 reads still
+need adaptation. This does not establish that full instruction emulation is
+necessary; see ARCHITECTURE.md. No backend migration has been validated.
 
 Compiled, not executed: real memory-size globals, original BSD sizing/tunables
 and buffer VM registration, BSD-generated device counts/ioconf, original memory
@@ -37,7 +43,7 @@ Linux reads/writes use native TLS buffers rather than faultable kernel buffers.
 The user pmap/ledger/copyio/machine return/virtual TLS/exception/timer code also
 remains runtime-unvalidated. Compilation does not establish those contracts.
 
-New, not yet built: the kernel build now produces `guests/init.S` with the
+Built, not executed: the kernel build now produces `guests/init.S` with the
 same pinned upstream Mach-O/signature writer as the working reference. The
 native host reads opaque image bytes into owned zero-padded RAM-disk backing
 before entering XNU. For IOKIT=0 and secure-root policy disabled, platform BSD
@@ -51,7 +57,7 @@ PID 1 must remain alive: accept its controlled timeout only after two success he
 the completed memory/COW/exit/wait journey, with no explicit guest failure. An early
 zero exit or quiet boot cannot pass. This acceptance path is not yet exercised.
 
-New, not yet tested: consume the complete original BSD C/assembly source graph
+The failed compiler attempt consumes the complete original BSD C/assembly source graph
 from its generated Makefile instead of handpicking providers. Source-qualified
 object names prevent basename overwrites. Kernel linkage now prefixes actual
 kernel-defined symbols in object copies, retaining only the explicit xnu_host_

@@ -15,13 +15,24 @@ The
 syndrome/address registers, queried inside the interrupt hook. Exact fork/base
 sources are recorded in `sources.lock.json`; no build-time patch pile is used.
 This deliberately prioritizes controllable CPU state over native performance.
-Native ptrace execution is no longer the initial implementation target.
+This is not evidence that native execution is impossible or more expensive.
+The native alternative must be assessed before expanding the engine boundary.
 
 ARM64 UML's existing execution backend is a reference, not a drop-in XNU port.
 Its Linux guest TLS uses writable TPIDR_EL0. Apple's libsyscall directly reads
 TPIDRRO_EL0, which cannot be installed with Linux's ordinary NT_ARM_TLS regset.
 Intercepting SVC alone cannot intercept these legal register reads. Unicorn
 provides both registers without rewriting framework instructions.
+
+tawcroot already handles host/guest TLS coexistence by letting guest ld.so own
+TLS while its interception runtime avoids host libc TLS and uses raw syscalls.
+Its source does not virtualize Darwin TPIDRRO_EL0. Borrowing that runtime model
+and rewriting Darwin TLS register accesses is a native candidate, not a proven
+backend: executable mappings (including dyld/JIT), per-thread state and exception
+return must preserve the real program semantics. Neither seccomp SVC trapping
+nor TLS-free handler code alone supplies that register adaptation.
+See [tawcroot loader/TLS contract](https://github.com/taowen/tawc/blob/bee5ae2d216f6283a8a6e6b60f18e2a7b6d8451d/notes/tawcroot/status.md)
+and [raw syscall interface](https://github.com/taowen/tawc/blob/bee5ae2d216f6283a8a6e6b60f18e2a7b6d8451d/tawcroot/include/raw_sys.h).
 
 Primary implementation references:
 

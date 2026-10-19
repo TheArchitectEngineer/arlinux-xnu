@@ -7,3 +7,6 @@
 [submodule "third_party/unicorn"]
 	path = third_party/unicorn
 	url = https://github.com/taowen/unicorn.git
+[submodule "third_party/libdispatch"]
+	path = third_party/libdispatch
+	url = https://github.com/apple-oss-distributions/libdispatch.git

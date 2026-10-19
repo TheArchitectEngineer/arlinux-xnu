@@ -7,6 +7,7 @@
 #include <mach/kern_return.h>
 #include <mach/boolean.h>
 #include <kern/debug.h>
+#include <pexpert/pexpert.h>
 #include <host/boot_image.h>
 
 #if IOKIT || CONFIG_SECURE_BSD_ROOT
