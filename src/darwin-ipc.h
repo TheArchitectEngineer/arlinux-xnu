@@ -10,7 +10,10 @@
 static unsigned long host_send_refs,clock_send_refs[2];
 #define IPC_ENDPOINTS 64
 #define IPC_BYTES 1024
-struct ipc_endpoint { uint32_t name,generation; int used,kind,read_fd,write_fd; unsigned long send_refs; };
+struct ipc_endpoint {
+    uint32_t name,generation; int used,kind,read_fd,write_fd;
+    unsigned long send_refs; uint64_t context; uint32_t options;
+};
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
 static struct ipc_endpoint *ipc_find(uint32_t name)
@@ -32,10 +35,40 @@ static uint32_t ipc_reply_port(void)
         endpoint->generation=(endpoint->generation+1)&D_PORT_GENERATION_MASK;
         if (!endpoint->generation) endpoint->generation=1;
         endpoint->name=((i+D_REPLY_PORT_INDEX_BASE)<<D_PORT_NAME_INDEX_SHIFT)|endpoint->generation;
-        endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0; __atomic_store_n(&endpoint->used,2,__ATOMIC_RELEASE);
+        endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0;
+        endpoint->send_refs=0; endpoint->context=0; endpoint->options=0;
+        __atomic_store_n(&endpoint->used,2,__ATOMIC_RELEASE);
         return endpoint->name;
     }
     return 0;
+}
+static unsigned long ipc_port_construct(const unsigned long long *r,unsigned long pc)
+{
+    struct darwin_port_options options;
+    if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
+    if (guest_copy(&options,r[1],sizeof(options),0)) return D_KERN_INVALID_ADDRESS;
+    const char label[]="DARWIN_PORT_CONSTRUCT flags/qlimit/context follows\n";
+    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    trace_call(0,pc,options.flags); trace_call(1,pc,options.queue_limit); trace_call(2,pc,r[2]);
+    if (options.flags&~(D_MPO_CONTEXT_AS_GUARD|D_MPO_INSERT_SEND_RIGHT|D_MPO_STRICT) ||
+        options.reserved[0] || options.reserved[1]) return D_KERN_NOT_SUPPORTED;
+    if ((options.flags&D_MPO_STRICT) && !(options.flags&D_MPO_CONTEXT_AS_GUARD))
+        return D_KERN_INVALID_ARGUMENT;
+    uint32_t name=ipc_reply_port();
+    if (!name) return D_KERN_RESOURCE_SHORTAGE;
+    struct ipc_endpoint *endpoint=ipc_find(name);
+    endpoint->context=r[2]; endpoint->options=options.flags;
+    endpoint->send_refs=(options.flags&D_MPO_INSERT_SEND_RIGHT) ? 1 : 0;
+    /* The name owns a genuine Linux message queue and receive right. Generic
+     * sends are still rejected until their ownership rules are implemented;
+     * construction does not impersonate a remote XPC service. */
+    if (guest_copy(&name,r[3],sizeof(name),1)) {
+        RAW(SYS_close,endpoint->read_fd,0,0,0,0,0);
+        RAW(SYS_close,endpoint->write_fd,0,0,0,0,0);
+        __atomic_store_n(&endpoint->used,0,__ATOMIC_RELEASE);
+        return D_KERN_INVALID_ADDRESS;
+    }
+    return D_KERN_SUCCESS;
 }
 static uint32_t ipc_semaphore(unsigned int initial)
 {

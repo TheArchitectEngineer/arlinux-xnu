@@ -63,6 +63,7 @@ enum darwin_mach_trap {
     D_TRAP_VM_DEALLOCATE = 12,
     D_TRAP_VM_PROTECT = 14,
     D_TRAP_VM_MAP = 15,
+    D_TRAP_PORT_CONSTRUCT = 24,
     D_TRAP_PORT_DEALLOCATE = 18,
     D_TRAP_REPLY_PORT = 26,
     D_TRAP_THREAD_SELF = 27,
@@ -264,3 +265,11 @@ struct darwin_audit_token {
     uint32_t audit_uid,euid,egid,ruid,rgid,pid,session,idversion;
 };
 _Static_assert(sizeof(struct darwin_audit_token)==32,"Darwin audit token wire layout");
+
+/* XNU mach/port.h, LP64 mach_port_construct options. */
+enum darwin_port_options {
+    D_MPO_CONTEXT_AS_GUARD=1, D_MPO_INSERT_SEND_RIGHT=0x10,
+    D_MPO_STRICT=0x20
+};
+struct darwin_port_options { uint32_t flags,queue_limit; uint64_t reserved[2]; };
+_Static_assert(sizeof(struct darwin_port_options)==24,"Darwin port options wire layout");

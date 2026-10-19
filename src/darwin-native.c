@@ -255,6 +255,11 @@ static void dispatch(int signal, siginfo_t *info, void *context)
          * implemented process-local capabilities are returned; unsupported
          * operations return KERN_NOT_SUPPORTED. */
         unsigned long number=-(int64_t)trap;
+        if (number==D_TRAP_PORT_CONSTRUCT) {
+            r[0]=ipc_port_construct(r,uc->uc_mcontext.pc);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
         if (number==D_TRAP_HOST_CREATE_VOUCHER) {
             /* Standalone identity/accounting policy: no extra bank context.
              * This is the empty-base-voucher mode already supported by real
