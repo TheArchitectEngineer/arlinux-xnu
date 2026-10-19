@@ -9,48 +9,47 @@ journey with the CPU/MMU/exception environment intact. This does not replace the
 userspace-XNU goal, and a reference pass cannot satisfy that goal.
 
 Latest completed usermode attempt:
-[39309052509](https://github.com/taowen/arlinux-xnu/actions/runs/39309052509),
-root `67949d497238323a7111d7a6ce8640a6e5ecf120`,
-XNU `ac6d2d422d4232a01e8e01c564b63a50d0772870`,
-Unicorn `2bca534e6168c9096e326c1868279a5baed4f9b3`.
+[39315284120](https://github.com/taowen/arlinux-xnu/actions/runs/39315284120),
+root `51e03e8618abf692d02014f62a5a3dba6859e673`,
+XNU `50de8e61eee1a1785a4340a04910a6dfaf47d8f9` (see sources.lock.json for the authoritative pin).
 
-- Kernel compiler job `118253977259` succeeded. Receipt SHA-256:
-  `3a9323beab1ddf0fbe87e1096bc06390e88a36548eee694f01c6ff3293da2a47`.
-- Full service job `118254540494` failed executable linkage, including original
-  kernel_bootstrap dependencies `bsd_scale_setup` and `mem_size`. Receipt SHA-256:
-  `2055dae91a1f350b356ed34fd412430eb93194ccb357cd534e5b236f4ad28230`.
-- Native engine SHA-256:
+- Kernel compiler job `118275536017` passed. Receipt SHA-256:
+  `6501460f2dcc137c1c47f4e62a1fb5d756e301cf0b7dfceb0d2ed04e8feccf9f`.
+- Native/engine compilation and the ABI collision audit passed. Executable
+  linkage failed; examples are machine stack-boundary queries and original
+  bank/persona/entitlement dependencies. VM receipt SHA-256:
+  `4e5b5f65157a65f652b8493dd02c158fd2ca37c652ae2a1a76f219a23631dc33`.
+- Engine SHA-256:
   `329f3fb3b771c3cb3777549b064e62e590e86d028a58af804f4f8e49c291a135`.
-  Compilation and the ABI audit passed; neither establishes execution.
 
-Text logs: `build/runs/39309052509`. No executable linked, no real VM bootstrap
-completed, no XNU user process ran. Prior code for user pmap ownership/ledgers,
-copyio, machine return, virtual TLS, exception transport and timers remains
-runtime-unvalidated. The memory-size globals now report the real Linux physical backing, and the
-original unix_startup.c supplies BSD scaling/tunables/buffer VM registration.
-These changes have not yet executed and must not be described as fixing boot.
+Text logs: `build/runs/39315284120`. No executable linked or kernel ran.
+Earlier failures `39313910768` (unconditional TCP types without INET) and
+`39314591126` (missing BSD pty.h generation and metadata tier configuration)
+remain preserved in Git/Actions and local text logs. The fork fixes these
+configuration boundaries without enabling fictitious hardware/network support.
 
-Usermode follow-up `39313910768` failed compilation of the newly included
-original `unix_startup.c`: its unconditional TCP header requires a route type
-absent when INET is disabled. Compiler receipt SHA-256:
-`816906edd911f431beb36627e197b50af62808c01c1f6fc09f74fe5001f73ba1`.
-The fork now limits TCP includes/server tuning to INET and enables devfs/mockfs
-for the executable RAM-disk root. mockfs typed-allocation and virtual-disk pager
-fixes are adapted from the pinned ios-sweet patches 0021/0024, which ran in the
-reference. The native graph now includes original pseudo-device registration,
-RAM disk/terminal devices, specfs/devfs/mockfs and buffer I/O. These native paths
-are not executed; root-image delivery/platform discovery still need integration.
+Compiled, not executed: real memory-size globals, original BSD sizing/tunables
+and buffer VM registration, BSD-generated device counts/ioconf, original memory
+and terminal devices, specfs/devfs/mockfs and buffer I/O. mockfs typed allocation
+and virtual-disk pager fixes come from pinned ios-sweet patches 0021/0024.
+Original km/TTY/console ring code connects to a Linux headless terminal adapter;
+Linux reads/writes use native TLS buffers rather than faultable kernel buffers.
+The user pmap/ledger/copyio/machine return/virtual TLS/exception/timer code also
+remains runtime-unvalidated. Compilation does not establish those contracts.
 
-Follow-up `39314591126` compiled BSD sizing and the new RAM-disk/devfs/mockfs
-units, but failed on missing BSD-generated pty.h and the unconditional metadata
-throttle query's CONFIG_IOSCHED-only threshold. Compiler receipt SHA-256:
-`8091f10b2fbab1377f49a6e477bd2af1b15c6bc68642714bc986972d55c07a97`.
-Preparation now runs the original BSD configuration generator separately, so
-its source graph supplies device counts/ioconf; no handwritten pty header.
-The fork exposes the existing metadata threshold to the unconditional caller.
-Original km/console ring/TTY providers now target a Linux terminal endpoint;
-Linux I/O uses native TLS buffers, not faultable XNU kernel buffers. Neither
-this terminal adapter nor any of these native paths has executed yet.
+New, not yet built: the kernel build now produces `guests/init.S` with the
+same pinned upstream Mach-O/signature writer as the working reference. The
+native host reads opaque image bytes into owned zero-padded RAM-disk backing
+before entering XNU. For IOKIT=0 and secure-root policy disabled, platform BSD
+initialization registers original mdev0; root discovery returns its real device
+number. Original mockfs, paging and Mach-O exec must perform loading. This is
+not a native Mach-O loader or a Darwin syscall dispatcher, and supplies no IOKit
+registry/framework services. No device registration or mount has executed yet.
+
+The actual startup task passes this image as a declared, SHA-256 checked input.
+PID 1 must remain alive: accept its controlled timeout only after two observed
+completed memory/COW/exit/wait journeys, with no explicit guest failure. An early
+zero exit or quiet boot cannot pass. This acceptance path is not yet exercised.
 
 `build.sh build --mode baseline` now builds the pinned ios-sweet kernel plus
 `guests/init.S` on macOS, then boots that exact kernel in full-system QEMU on

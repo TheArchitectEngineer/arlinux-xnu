@@ -13,6 +13,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 XNU = ROOT / 'third_party/xnu'
@@ -186,6 +187,8 @@ def main():
     if args.phase == 'prepare':
         print('XNU configuration and MIG interfaces generated; no kernel objects compiled', flush=True)
         return
+    run([sys.executable, ROOT / 'tools/build-guest.py', '--output', OUT / 'guest',
+         '--compiler', args.compiler])
     # Name every original BSD syscall implementation from the generated ABI,
     # rather than adding ad-hoc renames as each new provider collides with libc.
     # Change external linkage, not C identifiers: macro substitution also
@@ -214,6 +217,7 @@ def main():
         'pexpert/gen/device_tree.c',
         'src/xnu-host/xnu_vm_bootstrap.c', 'src/xnu-host/pmap.c', 'src/xnu-host/time.c',
         'src/xnu-host/usercopy.c', 'src/xnu-host/userexec.c',
+        'src/xnu-host/root_device.c',
         'src/xnu-host/entropy.c', 'src/xnu-host/image.c', 'src/xnu-host/ro_zone.c',
         'src/xnu-host/ticket.c', 'osfmk/arm64/usermode_ticket.S',
         'src/xnu-host/copyio_probe.c', 'osfmk/arm64/copyio.c',
@@ -329,7 +333,8 @@ def main():
         obj = OUT / (name + '.o')
         source_path = ROOT / unit if unit.startswith(('src/', 'build/')) else XNU / unit
         component_flags = []
-        bsd_unit = unit.startswith(('bsd/', 'build/kernel/bsd/', 'build/kernel/config-bsd/'))
+        bsd_unit = (unit.startswith(('bsd/', 'build/kernel/bsd/', 'build/kernel/config-bsd/'))
+                    or unit == 'src/xnu-host/root_device.c')
         if source_path.suffix == '.s':
             component_flags += ['-x', 'assembler-with-cpp']
         if unit.startswith('libkern/'):

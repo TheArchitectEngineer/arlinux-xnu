@@ -47,6 +47,7 @@ cc "${flags[@]}" -c src/xnu-host/native_time.c -o "$output/native_time.o"
 cc "${flags[@]}" -c src/xnu-host/native_entropy.c -o "$output/native_entropy.o"
 cc "${flags[@]}" -c src/xnu-host/native_fault.c -o "$output/native_fault.o"
 cc "${flags[@]}" -c src/xnu-host/native_console.c -o "$output/native_console.o"
+cc "${flags[@]}" -c src/xnu-host/native_boot_image.c -o "$output/native_boot_image.o"
 # Native Linux calls must never resolve to same-named XNU implementations.
 # Inspect the actual objects, including future providers, before linking them.
 python3 - "$output" <<'PY'
@@ -99,17 +100,47 @@ else
   # exist, then let section GC remove only unreferenced non-registration code.
   objects=(-Wl,--whole-archive "$output/libxnu.a" -Wl,--no-whole-archive)
 fi
-cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "$output/native_console.o" "${engine_objects[@]}" "${objects[@]}" "${engine_link[@]}" \
+cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "$output/native_console.o" "$output/native_boot_image.o" "${engine_objects[@]}" "${objects[@]}" "${engine_link[@]}" \
   -o "$output/xnu-host" 2>&1 | tee "$output/link.log"
 file "$output/xnu-host" > "$output/file.txt"
 run_host() {
   local suffix=$1
   local status=0
-  timeout 30 "$output/xnu-host" startup_debug=1 \
+  local boot_inputs=()
+  if [[ $stage != early ]]; then
+    (cd build/kernel/guest && sha256sum -c SHA256SUMS)
+    cat build/kernel/guest/SHA256SUMS
+    boot_inputs=("root_image=$PWD/build/kernel/guest/init.macho" rd=md0)
+  fi
+  timeout 30 "$output/xnu-host" startup_debug=1 "${boot_inputs[@]}" \
     > "$output/stdout$suffix.txt" 2> "$output/stderr$suffix.txt" || status=$?
   # Preserve the actual failure and its output in Actions logs, not just in
   # an archive that would require downloading all objects to inspect a panic.
   cat "$output/stdout$suffix.txt" "$output/stderr$suffix.txt"
+  if [[ $stage != early ]]; then
+    # PID 1 must stay alive. A controlled timeout is accepted only after the
+    # real guest completed its memory/COW/exit/wait journey and woke again.
+    # An early zero exit, panic, empty output or generic quiet boot is failure.
+    python3 - "$output" "$status" <<'JOURNEY'
+import json
+from pathlib import Path
+import sys
+
+output = Path(sys.argv[1])
+status = int(sys.argv[2])
+console = (output / 'stdout.txt').read_bytes() + (output / 'stderr.txt').read_bytes()
+observations = console.count(b'XNU JOURNEY PASS: memory COW exit wait')
+passed = status == 124 and observations >= 2 and b'XNU JOURNEY FAIL' not in console
+result = {'execution': 'native Linux-hosted XNU with emulated ARM64 user instructions',
+          'processStatus': status, 'controlledTimeout': status == 124,
+          'completedJourneyObservations': observations, 'passed': passed}
+(output / 'journey.json').write_text(json.dumps(result, indent=2) + '\n')
+print(json.dumps(result), flush=True)
+if not passed:
+    raise SystemExit('Original XNU process journey not completed; inspect actual boot/failure logs')
+JOURNEY
+    return $?
+  fi
   return "$status"
 }
 run_host ""

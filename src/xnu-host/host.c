@@ -16,6 +16,7 @@
 #include <host/guest.h>
 #include <host/fault.h>
 #include <host/time.h>
+#include <host/boot_image.h>
 
 static int boot_argc;
 static char **boot_argv;
@@ -117,6 +118,18 @@ main(int argc, char **argv)
 {
     boot_argc = argc;
     boot_argv = argv;
+#ifdef XNU_HOST_BOOT_VM
+    const char *root_image = boot_value("root_image");
+    if (!root_image) {
+        fputs("Missing root_image=PATH for the original XNU VFS/exec journey\n", stderr);
+        return 1;
+    }
+    int image_error = xnu_host_boot_image_initialize(root_image);
+    if (image_error) {
+        fprintf(stderr, "root image initialization: %s\n", strerror(image_error));
+        return 1;
+    }
+#endif
     pthread_attr_t attributes;
     void *stack_base;
     size_t stack_size;
