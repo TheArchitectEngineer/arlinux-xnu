@@ -247,6 +247,10 @@ def main():
             # libkern/conf/Makefile.template uses the BSD/libkern namespace.
             component_flags = ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',
                                '-DLIBKERN_KERNEL_PRIVATE=1', '-DOSALLOCDEBUG=1']
+        if unit.startswith('pexpert/'):
+            # pexpert/conf/Makefile.template does not use osfmk's namespace.
+            component_flags += ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',
+                                '-DPEXPERT_KERNEL_PRIVATE=1']
         if unit.startswith('bsd/'):
             # bsd/conf/Makefile.template's namespace and build flags.
             component_flags += ['-UMACH_KERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE=1',
