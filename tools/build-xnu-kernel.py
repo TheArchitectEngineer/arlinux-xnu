@@ -201,7 +201,8 @@ def main():
             'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
             'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb', 'vm_purgeable',
             'vm32_user']],
-        'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm64/pcb.c',
+        'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm/arm_timer.c',
+        'osfmk/arm64/pcb.c',
         'osfmk/arm64/status.c', 'osfmk/arm64/machine_task.c',
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
@@ -212,7 +213,7 @@ def main():
         'bsd/kern/kern_resource.c', 'bsd/uxkern/ux_exception.c',
         'bsd/kern/kern_authorization.c', 'bsd/kern/kern_priv.c',
         'bsd/kern/kern_subr.c', 'bsd/kern/bsd_init.c',
-        'bsd/kern/kern_synch.c',
+        'bsd/kern/kern_synch.c', 'bsd/kern/kern_newsysctl.c',
     ]
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
