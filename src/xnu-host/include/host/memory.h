@@ -21,6 +21,8 @@ int xnu_host_memory_sync_code(unsigned int page);
 int xnu_host_memory_sync_attributes(unsigned int page);
 int xnu_host_memory_disconnect(unsigned int page, unsigned int *attributes);
 int xnu_host_memory_page_has_mappings(unsigned int page);
+unsigned int xnu_host_memory_frame_number(const void *frame);
+int xnu_host_memory_guest_reference(unsigned int page, int delta);
 int xnu_host_memory_attributes(unsigned int page, unsigned int *attributes);
 int xnu_host_memory_update_attributes(unsigned int page, unsigned int clear, unsigned int set);
 int xnu_host_memory_tracking_fault(unsigned long address, unsigned int access);

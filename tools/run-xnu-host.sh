@@ -43,7 +43,7 @@ ENGINE_PIN
   engine_link=(-L"$output/engine" -lunicorn '-Wl,-rpath,$ORIGIN/engine')
 fi
 cc "${flags[@]}" "${entry_flags[@]}" -c src/xnu-host/host.c -o "$output/host.o"
-cc "${flags[@]}" -c src/xnu-host/memory.c -o "$output/memory.o"
+cc "${flags[@]}" "${entry_flags[@]}" -c src/xnu-host/memory.c -o "$output/memory.o"
 cc "${flags[@]}" -c src/xnu-host/native_time.c -o "$output/native_time.o"
 cc "${flags[@]}" -c src/xnu-host/native_entropy.c -o "$output/native_entropy.o"
 cc "${flags[@]}" -c src/xnu-host/native_fault.c -o "$output/native_fault.o"

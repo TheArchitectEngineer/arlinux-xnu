@@ -3,6 +3,7 @@
 #define _GNU_SOURCE
 #include <host/guest.h>
 #include <host/context.h>
+#include <host/memory.h>
 #include <errno.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -13,12 +14,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct guest_mapping {
+    unsigned long long address;
+    unsigned int page, protection;
+    struct guest_mapping *next;
+};
+
 struct xnu_host_guest {
     uc_engine *engine;
     struct xnu_host_guest_event event;
-    bool running;
+    bool running, poisoned;
+    struct guest_mapping *mappings;
+    struct xnu_host_guest *next;
     uc_err stop_error;
 };
+
+static struct xnu_host_guest *guests;
 
 static void
 exception_stop(uc_engine *engine, uint32_t exception, void *opaque)
@@ -71,6 +82,8 @@ guest_create(struct xnu_host_guest **result)
         free(guest);
         return error;
     }
+    guest->next = guests;
+    guests = guest;
     *result = guest;
     return 0;
 }
@@ -78,31 +91,69 @@ guest_create(struct xnu_host_guest **result)
 static int
 guest_destroy(struct xnu_host_guest *guest)
 {
-    if (!guest || guest->running)
+    if (!guest || guest->running || guest->poisoned || guest->mappings)
+        return UC_ERR_ARG; /* XNU must remove mappings before final release. */
+    struct xnu_host_guest **link = &guests;
+    while (*link && *link != guest)
+        link = &(*link)->next;
+    if (!*link)
         return UC_ERR_ARG;
     uc_err error = uc_close(guest->engine);
+    if (error) {
+        guest->poisoned = true;
+        return error;
+    }
+    *link = guest->next;
     free(guest);
-    return error;
+    return 0;
 }
 
 static bool
 valid_page(struct xnu_host_guest *guest, uint64_t address)
 {
-    /* Low guest VA is isolated in the engine, never MAP_FIXED over host code.
-     * Exact task address bounds are enforced by XNU's user map, not invented here. */
-    return guest && !guest->running && !(address & (XNU_HOST_PAGE_SIZE - 1)) &&
+    return guest && !guest->running && !guest->poisoned &&
+        !(address & (XNU_HOST_PAGE_SIZE - 1)) &&
         address <= UINT64_MAX - XNU_HOST_PAGE_SIZE;
+}
+
+static struct guest_mapping **
+find_mapping(struct xnu_host_guest *guest, uint64_t address)
+{
+    struct guest_mapping **link = &guest->mappings;
+    while (*link && (*link)->address != address)
+        link = &(*link)->next;
+    return link;
 }
 
 static int
 guest_map(struct xnu_host_guest *guest, unsigned long long address,
     void *frame, unsigned int protection)
 {
-    if (!valid_page(guest, address) || !frame || protection > UC_PROT_ALL ||
-        ((uintptr_t)frame & (XNU_HOST_PAGE_SIZE - 1)))
+    if (!valid_page(guest, address) || protection > UC_PROT_ALL)
         return UC_ERR_ARG;
-    return uc_mem_map_ptr(guest->engine, address, XNU_HOST_PAGE_SIZE,
+    unsigned int page = xnu_host_memory_frame_number(frame);
+    if (!page)
+        return UC_ERR_ARG; /* Only real managed physical backing is accepted. */
+    struct guest_mapping **link = find_mapping(guest, address);
+    if (*link)
+        return UC_ERR_MAP; /* Replacement needs an explicit XNU removal. */
+    struct guest_mapping *mapping = calloc(1, sizeof(*mapping));
+    if (!mapping)
+        return UC_ERR_NOMEM; /* No engine mapping or page reference changed. */
+    if (xnu_host_memory_guest_reference(page, 1)) {
+        free(mapping);
+        return UC_ERR_RESOURCE;
+    }
+    *mapping = (struct guest_mapping){ .address = address, .page = page,
+        .protection = protection };
+    *link = mapping;
+    uc_err error = uc_mem_map_ptr(guest->engine, address, XNU_HOST_PAGE_SIZE,
         protection, frame);
+    if (error)
+        /* Keep the reference on uncertain native mutation. The caller must
+         * stop, never recycle this frame after a failed insertion. */
+        guest->poisoned = true;
+    return error;
 }
 
 static int
@@ -110,7 +161,22 @@ guest_unmap(struct xnu_host_guest *guest, unsigned long long address)
 {
     if (!valid_page(guest, address))
         return UC_ERR_ARG;
-    return uc_mem_unmap(guest->engine, address, XNU_HOST_PAGE_SIZE);
+    struct guest_mapping **link = find_mapping(guest, address);
+    if (!*link)
+        return UC_ERR_MAP;
+    uc_err error = uc_mem_unmap(guest->engine, address, XNU_HOST_PAGE_SIZE);
+    if (error) {
+        guest->poisoned = true;
+        return error;
+    }
+    struct guest_mapping *mapping = *link;
+    if (xnu_host_memory_guest_reference(mapping->page, -1)) {
+        guest->poisoned = true;
+        return UC_ERR_RESOURCE;
+    }
+    *link = mapping->next;
+    free(mapping);
+    return 0;
 }
 
 static int
@@ -119,7 +185,35 @@ guest_protect(struct xnu_host_guest *guest, unsigned long long address,
 {
     if (!valid_page(guest, address) || protection > UC_PROT_ALL)
         return UC_ERR_ARG;
-    return uc_mem_protect(guest->engine, address, XNU_HOST_PAGE_SIZE, protection);
+    struct guest_mapping *mapping = *find_mapping(guest, address);
+    if (!mapping)
+        return UC_ERR_MAP;
+    uc_err error = uc_mem_protect(guest->engine, address, XNU_HOST_PAGE_SIZE, protection);
+    if (error)
+        guest->poisoned = true;
+    else
+        mapping->protection = protection;
+    return error;
+}
+
+static int
+guest_page_protect(unsigned int page, unsigned int protection)
+{
+    for (struct xnu_host_guest *guest = guests; guest; guest = guest->next) {
+        struct guest_mapping *mapping = guest->mappings;
+        while (mapping) {
+            struct guest_mapping *next = mapping->next;
+            if (mapping->page == page) {
+                int error = protection ? guest_protect(guest, mapping->address,
+                    mapping->protection & protection) :
+                    guest_unmap(guest, mapping->address);
+                if (error)
+                    return error;
+            }
+            mapping = next;
+        }
+    }
+    return 0;
 }
 
 static uc_err
@@ -152,7 +246,7 @@ guest_run(struct xnu_host_guest *guest,
     struct xnu_host_guest_state *state, unsigned long instructions,
     struct xnu_host_guest_event *event)
 {
-    if (!guest || guest->running || !state || !event || !instructions ||
+    if (!guest || guest->running || guest->poisoned || !state || !event || !instructions ||
         (state->pc & 3) || (state->pstate & 0x1f)) /* AArch64 EL0t only. */
         return UC_ERR_ARG;
     uc_err error = transfer_state(guest->engine, state, true);
@@ -196,11 +290,11 @@ guest_run(struct xnu_host_guest *guest,
 static unsigned long native_stack_top;
 static _Thread_local bool in_native;
 static _Thread_local struct {
-    enum { CREATE, DESTROY, MAP, UNMAP, PROTECT, RUN } operation;
+    enum { CREATE, DESTROY, MAP, UNMAP, PROTECT, RUN, PAGE_PROTECT } operation;
     struct xnu_host_guest *guest, **result;
     unsigned long long address;
     void *frame;
-    unsigned int protection;
+    unsigned int protection, page;
     struct xnu_host_guest_state *state;
     unsigned long instructions;
     struct xnu_host_guest_event *event;
@@ -240,6 +334,7 @@ perform(void)
     case UNMAP: return guest_unmap(request.guest, request.address);
     case PROTECT: return guest_protect(request.guest, request.address, request.protection);
     case RUN: return guest_run(request.guest, request.state, request.instructions, request.event);
+    case PAGE_PROTECT: return guest_page_protect(request.page, request.protection);
     }
     return UC_ERR_ARG;
 }
@@ -307,5 +402,14 @@ xnu_host_guest_run(struct xnu_host_guest *guest,
     if (in_native) return UC_ERR_ARG;
     request.operation = RUN; request.guest = guest; request.state = state;
     request.instructions = instructions; request.event = event;
+    return dispatch();
+}
+
+int
+xnu_host_guest_page_protect(unsigned int page, unsigned int protection)
+{
+    if (in_native || !page || protection > UC_PROT_ALL)
+        return UC_ERR_ARG;
+    request.operation = PAGE_PROTECT; request.page = page; request.protection = protection;
     return dispatch();
 }

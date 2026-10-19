@@ -12,6 +12,9 @@
 #include <unistd.h>
 #include <usermode_vm.h>
 #include <host/memory.h>
+#ifdef XNU_HOST_BOOT_VM
+#include <host/guest.h>
+#endif
 
 extern char __executable_start[], _end[];
 static int physical_fd = -1;
@@ -25,6 +28,7 @@ struct mapping_link {
 };
 static struct mapping_link *kernel_links;
 static unsigned int physical_heads[XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE];
+static unsigned int physical_guest_references[XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE];
 static unsigned char physical_attributes[XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE];
 
 /* Linux has no userspace PTE access/dirty bits. After XNU clears them,
@@ -386,6 +390,18 @@ xnu_host_memory_protect_page(unsigned int page, int protection)
             return error;
         node = next;
     }
+#ifdef XNU_HOST_BOOT_VM
+    if (physical_guest_references[page - 1]) {
+        int error = xnu_host_guest_page_protect(page, protection);
+        if (error) {
+            fprintf(stderr, "guest physical protect page=%u protection=%d uc_err=%d\n",
+                page, protection, error);
+            return EIO;
+        }
+        if (!protection && physical_guest_references[page - 1])
+            return EBUSY;
+    }
+#endif
     return 0;
 }
 
@@ -409,7 +425,7 @@ xnu_host_memory_page_has_mappings(unsigned int page)
         page > XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE)
         return -EINVAL;
     /* The permanent physical view is backing access, not a reclaimable alias. */
-    return physical_heads[page - 1] != 0;
+    return physical_heads[page - 1] != 0 || physical_guest_references[page - 1] != 0;
 }
 
 int
@@ -517,4 +533,37 @@ xnu_host_memory_lookup(unsigned long address)
     if (!heap_address(address))
         return 0;
     return kernel_pages[(address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE];
+}
+
+/* Engine aliases retain managed frames even though Linux has no VA alias for
+ * their guest address. Only a completed engine unmap may drop a reference. */
+unsigned int
+xnu_host_memory_frame_number(const void *frame)
+{
+    unsigned long address = (unsigned long)frame;
+    if (physical_fd == -1 || address < XNU_HOST_PHYSICAL_VIEW ||
+        address >= XNU_HOST_PHYSICAL_VIEW + XNU_HOST_PHYSICAL_BYTES ||
+        (address & (XNU_HOST_PAGE_SIZE - 1)))
+        return 0;
+    return 1 + (address - XNU_HOST_PHYSICAL_VIEW) / XNU_HOST_PAGE_SIZE;
+}
+
+int
+xnu_host_memory_guest_reference(unsigned int page, int delta)
+{
+    if (physical_fd == -1 || !page ||
+        page > XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE ||
+        (delta != 1 && delta != -1))
+        return EINVAL;
+    unsigned int *references = &physical_guest_references[page - 1];
+    if (delta == 1) {
+        if (*references == UINT32_MAX)
+            return EOVERFLOW;
+        ++*references;
+    } else {
+        if (!*references)
+            return ERANGE;
+        --*references;
+    }
+    return 0;
 }

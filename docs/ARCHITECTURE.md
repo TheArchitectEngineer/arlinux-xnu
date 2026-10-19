@@ -39,14 +39,23 @@ Darwin calls. An unresolved memory fault is never reported as resolved.
 | Instruction engine per user pmap | Isolated guest VA translations and user CPU execution |
 | Guest | ARM64 Mach-O instructions, later real dyld and iOS frameworks |
 
-XNU must create/destroy each user pmap and map physical frames into its engine.
-Mapping accepts XNU-owned 16 KiB frame backing, never allocates substitute guest
-RAM, and never MAP_FIXEDs guest addresses over the native process. Protection
-and unmap operations must follow XNU's decisions. Backing lifetime, reverse
-aliases, ref/mod tracking, accounting and copy-on-write still require integration.
-Code translations are flushed before resume because XNU can modify the same
-physical bytes through another alias. This is conservative, not a performance
-claim. The adapter is not yet connected to user pmaps or runnable threads.
+XNU must still create/destroy each user pmap. The native engine now accepts
+only aligned frames in the initialized managed physical aperture and records
+each engine/VA/frame/protection association. Frame references are established
+before insertion and dropped only after completed unmapping. Physical reclaim
+checks include these aliases; physical protection/disconnect visit every engine.
+Reduction intersects existing rights. Destroying an engine with mappings is
+rejected. A failed native mutation poisons the engine and retains uncertain
+references: stop rather than recycling potentially mapped RAM. No subsequent
+operation may resume a poisoned engine.
+
+Engine mappings never MAP_FIXED guest addresses over the native process.
+Code translations are flushed before resume because XNU can modify shared
+physical bytes through another alias. Ref/mod tracking relies on native accesses
+to the protected physical aperture; this needs real fault/TCG validation. Task
+ledger accounting, wiring, replacement, user-pmap registration and COW remain
+unfinished. The native alias integration is new and runtime-unverified; it does
+not by itself create a real XNU user pmap or runnable thread.
 
 The machine return path must transfer the actual thread saved state, run its
 engine, and translate the reported event into original ARM exception handling:

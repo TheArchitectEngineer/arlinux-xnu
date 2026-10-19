@@ -27,10 +27,15 @@ struct xnu_host_guest_event {
 };
 /* Allocate the one native CPU stack before booting XNU. Returns native errno. */
 int xnu_host_guest_initialize(void);
-/* Zero is success; errors are actual Unicorn uc_err values. Bad arguments
+/* Zero is success; errors use Unicorn uc_err codes. Bad arguments
  * return UC_ERR_ARG. An event is valid only after a successful run call. */
 int xnu_host_guest_create(struct xnu_host_guest **result);
+/* Destroy requires no mappings. Native mutation errors poison the engine;
+ * retain its references and stop kernel execution rather than reclaiming RAM
+ * behind an uncertain mapping. No further operation may resume that engine. */
 int xnu_host_guest_destroy(struct xnu_host_guest *guest);
+/* Reduce/remove every engine alias of a managed physical frame. */
+int xnu_host_guest_page_protect(unsigned int page, unsigned int protection);
 int xnu_host_guest_map(struct xnu_host_guest *guest, unsigned long long address,
     void *frame, unsigned int protection);
 int xnu_host_guest_unmap(struct xnu_host_guest *guest, unsigned long long address);
