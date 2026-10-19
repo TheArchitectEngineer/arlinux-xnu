@@ -25,6 +25,8 @@ xnu_host_vm_bootstrap(void)
     timer_call_init();
     xnu_host_boot_phase("processor_bootstrap");
     processor_bootstrap();
+    xnu_host_boot_phase("timer_cpu_initialize");
+    xnu_host_timer_cpu_initialize();
     kprintf("XNU_VM_BOOTSTRAP begin\n");
     vm_mem_bootstrap();
     assert(startup_phase == STARTUP_SUB_ZALLOC);

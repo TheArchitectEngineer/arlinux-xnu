@@ -14,6 +14,7 @@
 #include <host/time.h>
 #include <arm/rtclock.h>
 #include <kern/cpu_data.h>
+#include <kern/timer_call.h>
 #include <arm64/usermode_context.h>
 #include <pexpert/pexpert.h>
 
@@ -250,6 +251,25 @@ xnu_host_context_adopt_boot_thread(void)
 
 extern void sleh_fiq(arm_saved_state_t *state);
 static bool host_timer_active;
+static bool host_timer_cpu_ready;
+
+void
+xnu_host_timer_cpu_initialize(void)
+{
+    assert(!host_timer_cpu_ready && startup_phase >= STARTUP_SUB_LOCKS);
+    assert(current_processor() != PROCESSOR_NULL && !host_interrupts_enabled);
+    /* Preserve the non-hardware timer initialization from original cpu_init /
+     * cpu_data_init. A zeroed queue is not an initialized XNU timer queue. */
+    timer_call_queue_init(&boot_cpu.rtclock_timer.queue);
+    boot_cpu.rtclock_timer.deadline = EndOfAllTime;
+    boot_cpu.rtclock_timer.has_expired = FALSE;
+    boot_cpu.rtcPop = EndOfAllTime;
+    boot_cpu.rtclock_datap = &RTClockData;
+    boot_cpu.cpu_decrementer = 0x7fffffff;
+    boot_cpu.cpu_running = TRUE;
+    host_timer_cpu_ready = true;
+}
+
 
 int
 xnu_host_timer_interrupt_active(void)
@@ -275,6 +295,7 @@ host_deliver_pending_timer(void)
         panic("host timer event read error=%d", -pending);
     if (!pending)
         return;
+    assert(host_timer_cpu_ready);
     /* This is a synchronous kernel safe-point interrupt frame, not a captured
      * Linux exception or a guest register set suitable for architectural return.
      * The ordinary C/stack-switch ABI preserves the interrupted kernel caller. */

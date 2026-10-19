@@ -9,35 +9,41 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39290674843](https://github.com/taowen/arlinux-xnu/actions/runs/39290674843),
-root `093d12fd8cfe2e16735fe37139e9adad2d0d7664`, fork `abe6e09`.
-Actual compiler job `118190644779` passed generic ARM processor selection,
-delay policy and saved-state PC integration. Compiler receipt SHA-256:
-`849a3f841d568630b48c1b2fd24dc9697db55af1680b294e05782675c2d27b94`.
+[39292159184](https://github.com/taowen/arlinux-xnu/actions/runs/39292159184),
+root `52f265cdd405122f1017034e98860f22cafa245b`, fork `abe6e09`.
+Actual compiler job `118195918974` passed original SLEH and kernel timer-event
+integration. Compiler receipt SHA-256:
+`3a5e5b2e5b517266f56ea153f2b20a0ec9132e6f1adcdb19b019ee94870700f9`.
 
-Actual VM job `118191180733` compiled native services and passed the
+Actual VM job `118196473118` compiled native timerfd operations and passed the
 native/kernel ABI collision audit, but executable linkage failed on remaining
 machine/pmap and service imports. Failure receipt SHA-256:
-`71fa04fac051de31c7d8c5626f8c2bf4c28aee6db2334da608771cf492fe82c9`.
+`5240048e75cf632bf4a63c60358522167fa6bdf6db81d1aadaea1acbf9651dad`.
 No new VM executable, initialization, real allocation, task or guest ran.
-Actual logs are retained under `build/runs/39290674843`; Actions retains complete
+Actual logs are retained under `build/runs/39292159184`; Actions retains complete
 receipts/output hashes. The run is terminal; do not redispatch identical source.
 
-The next source connects a real monotonic timerfd to decrementer programming,
-remaining-time and pending-event queries. Kernel interrupt-enable boundaries
-consume an expiry, install a software kernel-boundary interrupt frame, switch
-to the virtual CPU's exception stack and call original `sleh_fiq` (now in the
-compiled graph). Original SLEH/rtclock/timer queues own the actual callback path;
-preemption is pinned until interrupt state is restored and the IRQ stack is free.
-Urgent AST processing then happens on the original thread kernel stack.
-There is no asynchronous Linux signal handler or fabricated timer success.
+A real monotonic timerfd now supplies decrementer programming, remaining-time
+and pending-event queries. Kernel interrupt-enable boundaries consume an expiry,
+install a diagnostic software kernel-boundary frame, switch to the virtual CPU's
+exception stack and call original `sleh_fiq`. Original SLEH/rtclock/timer queues
+own callback dispatch; preemption is pinned until CPU interrupt state is restored
+and the IRQ stack is free. Urgent AST handling then uses the thread kernel stack.
+Both native and kernel code compiled; no timer delivery has run.
 
-This is cooperative kernel delivery, not arbitrary native instruction preemption.
-The boundary frame is diagnostic, not a guest architectural return state. Guest
-execution and idle waiting still need to feed timer events; blocked XNU threads
-are not woken merely by arming a timerfd. All new clock/IRQ operations require
-runner compilation and the real VM/guest runtime journey; no isolated timer
-probe has been added. See the explicit boundary in ARCHITECTURE.md.
+The next source fixes CPU initialization required by this path: after original
+timer_call_init/processor_bootstrap and before VM bootstrap, initialize the real
+per-CPU timer queue, EndOfAllTime deadlines, RTClockData link and actual running
+CPU state, following original ARM cpu_init/cpu_data_init. A due event before
+this initialization asserts instead of dispatching an uninitialized queue.
+Runner verification is pending.
+
+Delivery is cooperative at kernel safe points, not arbitrary native instruction
+preemption. The software frame is diagnostic, not a guest architectural return
+state. Guest execution and idle waiting still need event/interrupt integration;
+arming a timerfd alone does not wake a blocked XNU thread. All new paths require
+the real VM/guest journey. No isolated timer probe has been added; preserve the
+full execution objective. See ARCHITECTURE.md for the explicit boundary.
 
 `pmap_sync_page_attributes_phys` now has a native implementation distinct from
 instruction-cache synchronization: ARM64 DC CIVAC writes back and invalidates
