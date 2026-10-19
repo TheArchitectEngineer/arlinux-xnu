@@ -249,7 +249,7 @@ def main():
         # Genuine BSD process/FD/VFS execution and termination. These services
         # are required by the supervisor/child journey for either CPU backend.
         'bsd/kern/bsd_stubs.c', 'bsd/kern/kern_exit.c', 'bsd/kern/kern_sig.c',
-        'bsd/dev/arm/systemcalls.c',
+        'bsd/dev/arm/systemcalls.c', 'bsd/dev/munge.c',
         'build/kernel/bsd/init_sysent.c', 'build/kernel/bsd/syscalls.c',
         'bsd/kern/kern_exec.c', 'bsd/kern/mach_loader.c', 'bsd/kern/mach_fat.c',
         'bsd/kern/kern_descrip.c', 'bsd/kern/sys_generic.c', 'bsd/kern/sys_reason.c',
