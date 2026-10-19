@@ -62,7 +62,7 @@ def main():
         generated = OUT / 'config'
         generated.mkdir(exist_ok=True)
         env = dict(os.environ, SRCROOT=str(XNU), OBJROOT=str(OUT), SOURCE=str(XNU / "osfmk/conf"))
-        run(['tcsh', XNU / 'SETUP/config/doconf', '-c', '-cpu', 'arm64', '-soc', 'usermode',
+        run(['tcsh', XNU / 'SETUP/config/doconf', '-verbose', '-c', '-cpu', 'arm64', '-soc', 'usermode',
              '-platform', 'iPhoneOS', '-d', generated, '-s', XNU / 'osfmk/conf',
              '-m', XNU / 'config', lock['xnuKernel']['configuration']], env=env)
         exported = OUT / 'exported'
@@ -148,6 +148,7 @@ def main():
     # implementations to turn the workflow green.
     units = [
         'src/xnu-host/xnu_bootstrap.c', 'src/xnu-host/context.c',
+        'src/xnu-host/xnu_vm_bootstrap.c',
         # Core IPC structures used by Mach ports/messages and task initialization.
         *['osfmk/ipc/' + name + '.c' for name in [
             'ipc_space', 'mach_port', 'mach_msg', 'ipc_init', 'ipc_entry',

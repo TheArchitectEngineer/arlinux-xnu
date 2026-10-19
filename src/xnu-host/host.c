@@ -93,6 +93,9 @@ Assert(const char *file, int line, const char *expression)
 }
 
 extern int xnu_host_kernel_early_startup(void);
+#ifdef XNU_HOST_BOOT_VM
+extern int xnu_host_vm_bootstrap(void);
+#endif
 
 int
 main(int argc, char **argv)
@@ -127,5 +130,9 @@ main(int argc, char **argv)
     }
     if (xnu_host_context_initialize(stack_base, stack_size, exception_base, exception_size))
         return 1;
+#ifdef XNU_HOST_BOOT_VM
+    return xnu_host_vm_bootstrap();
+#else
     return xnu_host_kernel_early_startup();
+#endif
 }

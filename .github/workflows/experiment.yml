@@ -235,3 +235,38 @@ jobs:
           name: xnu-linux-arm64-early-startup
           path: build/startup/
           retention-days: 30
+  xnu-vm-startup:
+    if: inputs.mode == 'both' || inputs.mode == 'kernel'
+    needs: [xnu-kernel, xnu-early-startup]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: xnu-linux-arm64-kernel-port
+          path: build/kernel/
+      - name: Link and attempt actual XNU VM bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/vm
+          cp build/kernel/receipt.json build/vm/compiler-receipt.json
+          uname -a > build/vm/environment.txt
+          cc --version >> build/vm/environment.txt
+          cc -Wall -Wextra -Werror -O1 -g -pthread -Isrc/xnu-host/include -DXNU_HOST_BOOT_VM -ffunction-sections -fdata-sections -c src/xnu-host/host.c -o build/vm/host.o
+          ar rcs build/vm/libxnu.a build/kernel/*.o
+          cc -no-pie -pthread -Wl,--gc-sections -Wl,-T,src/xnu-host/startup.ld -Wl,-Map,build/vm/link-map.txt build/vm/host.o -Wl,--start-group build/vm/libxnu.a -Wl,--end-group -o build/vm/xnu-host 2>&1 | tee build/vm/link.log
+          file build/vm/xnu-host > build/vm/file.txt
+          timeout 30 build/vm/xnu-host startup_debug=1 > build/vm/stdout.txt 2> build/vm/stderr.txt
+          cat build/vm/stdout.txt build/vm/stderr.txt
+          (cd build/vm && sha256sum xnu-host > SHA256SUMS)
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/vm --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-linux-arm64-vm-startup
+          path: build/vm/
+          retention-days: 30
