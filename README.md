@@ -2,9 +2,9 @@
 
 Research toward running XNU as a userspace kernel on Linux/Android.
 **No iOS app runs through XNU here yet.** The current Mach-O demo uses a small
-Darwin syscall shim. The Linux host executes XNU's early startup dispatcher and
-a host pmap backed by shared Linux mappings. VM initialization, task creation
-and guest execution through XNU remain outstanding.
+Darwin syscall shim. Historical host diagnostics executed limited XNU startup
+and shared mappings. The real VM executable still fails linkage; VM
+initialization, task creation and guest execution through XNU are unverified.
 
 Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
 software framebuffer. No 32-bit apps or Metal support. Proprietary Apple
@@ -22,6 +22,9 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 ./build.sh status --run-id RUN_ID
 ./build.sh download --run-id RUN_ID
 ```
+
+[Execution design and unresolved ABI constraints](docs/ARCHITECTURE.md) defines
+the host/kernel/guest boundary.
 
 [Experiment contract and current blocker](docs/EXPERIMENT.md) explains what each
 result proves, how to resume work and how evidence is retained. Dependencies are

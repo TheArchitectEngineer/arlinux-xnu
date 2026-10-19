@@ -2,93 +2,45 @@
 
 ## Current handoff
 
-Question: can actual XNU task, Mach IPC and VM code run behind a Linux ARM64 host
-backend with 16 KiB guest pages? The next acceptance is a linked, initialized
-kernel backend servicing a guest through real XNU code. Object compilation is
-only the first gate; the existing syscall shim does not meet that acceptance.
+The objective is real XNU execution of ARM64 Mach-O, followed by dyld, genuine
+iOS frameworks and an app. [Execution design](ARCHITECTURE.md) now defines the
+host/kernel/guest ownership and unresolved ABI constraints. It is a proposed
+contract, not a working implementation. Continue from those constraints instead
+of using unresolved-symbol counts to choose the next subsystem.
 
-[Run 39270528453](https://github.com/taowen/arlinux-xnu/actions/runs/39270528453)
-at source `465cb2baa506952e4e27213471ab40a97e45d64b`, with XNU fork
-`2b48c14fe9151cb48424ea8a1d65b0bd834a783f`, compiled the selected graph. Both real
-VM and full-service executable links failed. The VM link still lacks pmap
-lifecycle/reference tracking, machine timer/AST delivery, tracing, process
-teardown and file-backed-memory providers. All six jobs retain failure/output
-receipts and SHA-256 manifests; no new runnable VM executable was produced.
+The last completed run is
+[39272737688](https://github.com/taowen/arlinux-xnu/actions/runs/39272737688)
+at root source `91deb53` with XNU fork `b981a1f`. Kernel compilation succeeded;
+VM, full-service and standalone early jobs failed. The real VM has never run.
+The previous diagnostic failure is preserved; it no longer blocks VM attempts.
+No task, real allocation, Mach/BSD dispatch or iOS app has been established.
+Runner logs/receipts retain exact revisions, outcomes and file hashes. There is
+no runnable VM executable to hash from this failed link.
 
-The isolated early diagnostic also fails linkage on `lck_grp_startup_init` and
-`lck_spin_startup_init`, pulled by original `kern/machine.c` lock registrations.
-This remains a visible failure. It no longer prevents the real VM job from
-attempting its own entry independently. Do not weaken original lock startup to
-restore a green isolated diagnostic.
+The source now includes permission-based reference/dirty tracking and original
+tracing/SFI providers. These have not been exercised by real XNU VM operations.
+Core gaps include user pmap lifecycle/activation, genuine guest execution and
+return, user-copy access, machine events, BSD/VFS setup and service dependencies.
+Do not add isolated samples or success stubs to hide these gaps.
 
-**No original VM initialization or guest execution has been observed.** Neither
-original `thread_bootstrap()` nor `vm_mem_bootstrap()` has executed. No real XNU
-allocation, task, guest exception, Mach/BSD call or iOS app is established.
-Symbol counts, compiled-unit counts and diagnostic passes are not acceptance
-milestones.
+Architecture review found a prerequisite absent from the original plan: Apple's
+TSD accessor directly reads `TPIDRRO_EL0`, while Linux/UML TLS controls
+`TPIDR_EL0`. Merely saving `thread->machine.cthread_self` cannot activate Darwin
+TLS. USERMODE now rejects that installation until an actual guest instruction/TLS
+adaptation exists. The non-USERMODE hardware path remains original. This is an
+explicit unsupported operation, not a successful framework port.
 
-The next gate is original VM initialization followed by `kalloc_data` allocation,
-zero/read/write verification and `kfree_data`, inside the real kernel entry.
-It must then advance to a genuine guest task and ARM64 Mach-O output/allocation/
-exit through XNU. A passing raw primitive or host syscall shim cannot substitute.
-Do not expand standalone diagnostic samples while this path remains blocked.
+Next: resolve the native execution/TLS contract, then implement the host helper,
+real XNU task/map association and dispatch/return paths together. Use ios-sweet's
+working service graph as the functional reference for kernel startup and later
+iOS services. Preserve exact source pins and compile on GitHub runners through
+`build.sh`. Existing early diagnostics, the host syscall shim and the bare-metal
+baseline are historical observations; none advances the guest execution gate.
 
-The VM entry now contains only required initialization: a reserved kernel stack,
-original bootstrap thread adoption, host memory/time/Device Tree setup, original
-startup hooks, `timer_call_init`, `processor_bootstrap`, then `vm_mem_bootstrap`.
-The ARM64 context backend saves/restores the real XNU kernel context and uses
-Linux TLS instead of EL1 current-thread registers. Its context-switch/continuation
-path is compiled but has not executed. The bootstrap stack is allocated before
-TUNABLES using the same stack-page boot argument and geometry as `stack_init`.
-
-The existing early diagnostic entry remains separate; its latest link is failing. It exercises host mappings,
-copy/ticket fault recovery, codecs, time and entropy; these results only help
-localize failures in those primitives. The VM path does not run these samples.
-The early executable's LOCKS phase does not prove core lock hooks executed.
-Linux owns native mappings, protection, TLB maintenance, clocks and entropy.
-Hardware privilege may be skipped or delegated where appropriate; EL1 emulation
-is not required. Guest memory, task and syscall semantics must still be real.
-
-Current backend limitations that affect the real path:
-
-- Kernel pmap mappings use a 256 MiB shared memfd and reverse alias chains.
-  User pmaps, ledger accounting and address-space activation are unimplemented.
-  Reference/dirty history is conservative, without cleared-bit fault tracking.
-- The ELF image, native brk, bootstrap stack, physical aperture and kernel heap
-  occupy separate arenas inside the positive kernel address window. Native
-  mapping failures retain overlapping `/proc/self/maps` entries.
-- ELF startup records retain all original hooks through ZALLOC for VM startup.
-  A separate full-link job retains every service registration from the same
-  kernel objects. Stage isolation is not proof that a stage runs.
-- Original compressor/pager, swap backend and WKdm16k/LZ4 code compile. Raw codec
-  diagnostics do not demonstrate a working compressed pager or swap I/O.
-- Scoped synchronous SIGSEGV/SIGBUS recovery serves ticket/copy primitives.
-  General kernel recovery, task isolation and guest Mach exceptions are pending.
-- Linux TLS uses `TPIDR_EL0`; ARM64 context switching also preserves EL0 FPCR.
-  Guest TSD activation, hardware breakpoints and timer delivery are pending.
-- Native/kernel ABI collision checks reject same-named imports. Kernel `fork`,
-  `setrlimit` and `abort` are namespaced so native Linux calls retain libc ABIs.
-- Original ARM scheduling/perfcontrol callbacks and machine-timeout initialization
-  are compiled. Lock budgets use the Linux nanosecond clock; they have not run
-  inside the real VM path. Kernel pmap enter/change-wiring now retains actual
-  per-mapping wired state; user-pmap ledgers remain pending.
-- Keep DEVELOPMENT with MACH_ASSERT: removing DEVELOPMENT alone broke upstream
-  assertion bookkeeping (run 39257044605); it was reverted, not papered over.
-
-Remaining link dependencies include pmap lifecycle, thread machine interfaces,
-tracing, process teardown and file-backed memory. Resolve real providers or
-implement the required Linux backend semantics, rather than generating success
-stubs to satisfy symbols. The build script is the authoritative source graph.
-
-X300 was observed on 2026-10-19 as ARM64 Android 17/API 37 with a 4 KiB Linux host
-page size. App-domain execution, ptrace and fixed-address mapping remain
-unverified; ADB shell observations are not Android app acceptance.
-
-Kernel mode has six jobs: Linux generates configuration/MIG interfaces; macOS
-Apple Clang cross-compiles Linux ELF; Linux reports link dependencies, executes
-early diagnostics, attempts real VM startup and checks full service linkage.
-Apple Clang is currently required for XNU allocator type-signature builtins.
-Compiler/Xcode versions are retained; this is not a Linux-only compiler chain.
+The first end-to-end acceptance is the genuine BSD/Mach guest journey specified
+in the design: supervisor plus child, console output, XNU allocation/touch/free,
+child exit and a real parent wait status. Kernel `kalloc_data` inside original VM
+initialization remains an intermediate observation, not the objective's end.
 
 ## Evidence boundaries
 
