@@ -36,7 +36,6 @@ static long native_memory_pressure(void)
     if (!error) error=native_meminfo_number(buffer,size,"MemAvailable:",13,&available);
     if (error) return error;
     if (!total || available>total || total>UINT64_MAX/100) return -EIO;
-    uint64_t percent=available*100/total;
-    return percent<=D_MEMORY_CRITICAL_PERCENT ? D_MEMORY_CRITICAL :
-           percent<=D_MEMORY_WARN_PERCENT ? D_MEMORY_WARN : D_MEMORY_NORMAL;
+    return available*100<=total*D_MEMORY_CRITICAL_PERCENT ? D_MEMORY_CRITICAL :
+           available*100<=total*D_MEMORY_WARN_PERCENT ? D_MEMORY_WARN : D_MEMORY_NORMAL;
 }

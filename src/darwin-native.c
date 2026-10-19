@@ -416,7 +416,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         break;
     }
     case D_SYS_KQUEUE: result=native_kqueue_create(); break;
-    case D_SYS_KEVENT_QOS: case D_SYS_BSDTHREAD_CTL:
+    case D_SYS_KEVENT_QOS: case D_SYS_KEVENT_ID: case D_SYS_BSDTHREAD_CTL:
     case D_SYS_PSYNCH_MUTEXWAIT: case D_SYS_PSYNCH_MUTEXDROP:
     case D_SYS_WORKQ_OPEN: case D_SYS_WORKQ_KERNRETURN: {
         static unsigned int requests;
@@ -424,12 +424,30 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             const char label[]="DARWIN_SCHEDULER_REQUEST syscall then argument-index/pc/value follows\n";
             RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,0);
-            unsigned int count=r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_QOS ? 8 :
+            unsigned int count=(r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_QOS ||
+                                r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_ID) ? 8 :
                 (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXWAIT ||
                  r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXDROP) ? 5 : 4;
             for (unsigned int i=0;i<count;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
+            if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_ID && r[2]) {
+                struct darwin_kevent_qos event;
+                if (!guest_copy(&event,r[1],sizeof(event),0)) {
+                    const char event_label[]="DARWIN_KEVENT_ID_CHANGE ident/filter/flags/qos/udata/fflags/xflags/data/ext follows\n";
+                    RAW(SYS_write,2,event_label,sizeof(event_label)-1,0,0,0);
+                    trace_call(0,uc->uc_mcontext.pc,event.ident);
+                    trace_call(1,uc->uc_mcontext.pc,(long)event.filter);
+                    trace_call(2,uc->uc_mcontext.pc,event.flags);
+                    trace_call(3,uc->uc_mcontext.pc,event.qos);
+                    trace_call(4,uc->uc_mcontext.pc,event.udata);
+                    trace_call(5,uc->uc_mcontext.pc,event.fflags);
+                    trace_call(6,uc->uc_mcontext.pc,event.xflags);
+                    trace_call(7,uc->uc_mcontext.pc,event.data);
+                    for (unsigned int i=0;i<4;i++) trace_call(8+i,uc->uc_mcontext.pc,event.ext[i]);
+                }
+            }
         }
         if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_QOS) result=native_kevent_qos(r,&uc->uc_sigmask);
+        else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_ID) result=-ENOTSUP;
         else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_CTL) result=native_thread_ctl(r);
         else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXWAIT ||
                  r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXDROP) result=native_psynch_mutex(r);
