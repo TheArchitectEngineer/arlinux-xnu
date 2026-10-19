@@ -61,15 +61,28 @@ The runtime now supplies a read-only legacy commpage with the declared 16 KiB
 geometry, one CPU, actual native memory/cache properties and optional features
 disabled. It distinguishes unsupported Mach trap results from BSD errno/carry;
 port-returning traps return NULL until an actual port namespace is implemented.
-Run [39322626159](https://github.com/taowen/arlinux-xnu/actions/runs/39322626159),
-source `aa2b013f29280084438bd4d45203cdc65f9ff209`, passed the static console and
-the earlier commpage access. Real dyld reached BSD thread_selfid (372), received
-ENOSYS and then trapped. Receipt SHA-256:
-`ed05477de2f85ea49bcff0f79185603c09d24b9451e948913007349162552630`.
-The next change maps that query to Linux's actual gettid, initializes guest TSD
-to NULL instead of leaking the host glibc TCB, and captures SIGTRAP/SIGFPE too.
-These changes await verification. File/executable mmap, Mach IPC and library
-loading remain incomplete; dyld has not reached the program's entry.
+Latest actual dyld attempt:
+[39323925031](https://github.com/taowen/arlinux-xnu/actions/runs/39323925031),
+source `63d436776abd630b85c0722f337fce59bf131913`, job `118304930948`.
+The static console passed again. Real dyld now passes the commpage page-size
+query, obtains a real thread ID, establishes its own TSD, and receives real
+kernel entropy twice. Supplying executable_path in the Apple startup array
+eliminated the preceding NULL dereference. It then calls __mac_syscall (381)
+and explicitly aborts with: amfi_check_dyld_policy_self() failed.
+
+- Receipt SHA-256: `5d54d75350be993ef9ad7a08a250a881bf1af37a0076607c3c0d646aa0eded07`.
+- Actual binary LC_SOURCE_VERSION: 650.3.4; load-command and symbol text are in
+  the evidence artifact, with fatal reason and full saved fault registers.
+- Local text log: build/runs/39323925031/dyld-job.log.
+
+Next inspect the pinned binary's exact AMFI wrapper argument/output ABI. A
+compatibility loading policy may be simplified, as the project allows; do not
+pretend a generic __mac_syscall success implements arbitrary policies. The
+workflow now records the specific wrapper disassembly for that diagnosis.
+Prior runtime failures remain at 39322626159 (thread_selfid), 39323003310
+(entropy), and 39323333648 (missing executable_path). These are no longer the
+current blocker. No dynamic library, application entry or UI has run. Mach IPC,
+file/executable mmap and the wider library/system interface remain incomplete.
 
 Earlier native build failures remain in Actions and local text logs:
 39319498437 (cross-section ADR), 39319703701 (cstring layout), 39319854670 (host
