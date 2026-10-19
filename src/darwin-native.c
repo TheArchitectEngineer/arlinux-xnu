@@ -223,6 +223,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 
 #include "darwin-ipc.h"
 #include "darwin-threads.h"
+#include "darwin-workqueue.h"
 
 static void dispatch(int signal, siginfo_t *info, void *context)
 {
@@ -380,6 +381,9 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         result=r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_REGISTER ? native_thread_register(r) : native_thread_create(r,&uc->uc_sigmask);
         break;
     }
+    case D_SYS_BSDTHREAD_CTL: result=native_thread_ctl(r); break;
+    case D_SYS_WORKQ_OPEN: case D_SYS_WORKQ_KERNRETURN:
+        result=native_workqueue(r,&uc->uc_sigmask); break;
     case D_SYS_BSDTHREAD_TERMINATE: result=native_thread_terminate(r); break;
     case D_SYS_ULOCK_WAIT: case D_SYS_ULOCK_WAKE:
         result=native_ulock(r);

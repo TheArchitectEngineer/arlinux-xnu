@@ -31,6 +31,9 @@ enum darwin_syscall {
     D_SYS_LSTAT64 = 340,
     D_SYS_BSDTHREAD_CREATE = 360,
     D_SYS_BSDTHREAD_TERMINATE = 361,
+    D_SYS_BSDTHREAD_CTL = 364,
+    D_SYS_WORKQ_OPEN = 367,
+    D_SYS_WORKQ_KERNRETURN = 368,
     D_SYS_BSDTHREAD_REGISTER = 366,
     D_SYS_THREAD_SELFID = 372,
     D_SYS_MAC_SYSCALL = 381,
@@ -186,3 +189,20 @@ struct darwin_pthread_registration {
 } __attribute__((packed));
 _Static_assert(sizeof(struct darwin_stat64)==144,"Darwin ARM64 stat64 wire layout");
 _Static_assert(sizeof(struct darwin_pthread_registration)==48,"Darwin pthread registration wire layout");
+
+/* libpthread-330 kern/kern_internal.h and XNU bsd/pthread/workqueue_syscalls.h.
+ * Deliberately omit KEVENT/WORKLOOP: ordinary callbacks use Linux threads. */
+enum darwin_workqueue_abi {
+    D_PTHREAD_FEATURE_DISPATCH = 0x01, D_PTHREAD_FEATURE_FINEPRIO = 0x02,
+    D_PTHREAD_FEATURE_CTL = 0x04, D_PTHREAD_FEATURE_SETSELF = 0x08,
+    D_PTHREAD_FEATURE_MAINTENANCE = 0x10, D_PTHREAD_FEATURE_DEFAULT = 0x40000000,
+    D_WQ_RETURN = 0x004, D_WQ_NEWSPISUPP = 0x010, D_WQ_REQTHREADS = 0x020,
+    D_WQ_EVENT_MANAGER_PRIORITY = 0x080, D_WQ_SHOULD_NARROW = 0x200,
+    D_WQ_PRIO_QOS = 0x4000, D_WQ_OVERCOMMIT = 0x10000,
+    D_WQ_NEWSPI = 0x40000, D_WQ_TSD_SET = 0x200000,
+    D_PRIORITY_OVERCOMMIT = 0x80000000U,
+    D_CTL_SET_QOS = 0x10, D_CTL_GET_QOS = 0x20, D_CTL_SET_SELF = 0x100,
+    D_CTL_MAX_PARALLELISM = 0x800,
+    D_SET_SELF_QOS = 1, D_SET_SELF_VOUCHER = 2,
+    D_SET_SELF_FIXED = 4, D_SET_SELF_TIMESHARE = 8
+};

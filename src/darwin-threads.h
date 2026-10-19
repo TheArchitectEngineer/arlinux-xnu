@@ -1,7 +1,7 @@
 /* Native Linux threads entering the registered, real Darwin pthread callback.
- * Initial scope: custom user stacks, no suspended/workqueue/QoS scheduling.
- * Registration feature result 0 declares the legacy basic ABI, not unavailable
- * modern kernel features. No host libc/TLS operation occurs after guest entry. */
+ * Custom stacks and ordinary workqueue callbacks use real Linux threads.
+ * QoS is best-effort Linux niceness; no realtime/kevent/workloop is advertised.
+ * No host libc/TLS operation occurs after guest entry. */
 #pragma once
 #include <linux/futex.h>
 #define NATIVE_THREADS 32
@@ -9,10 +9,13 @@ struct native_thread {
     uint64_t runtime_top,guest_sp,pthread,port,function,argument,flags;
     int tid,state; /* tid offset 56 is used by the clone trampoline. */
     uint64_t runtime_memory,signal_memory,refs,generation,initial_signal_mask;
+    uint64_t workqueue,stack_low;
+    uint32_t priority;
+    int launch_state;
 };
 _Static_assert(offsetof(struct native_thread,tid)==56,"native clone ABI");
 static struct native_thread native_threads[NATIVE_THREADS];
-static uint64_t thread_start_callback;
+static uint64_t thread_start_callback,workqueue_start_callback;
 static uint32_t registered_pthread_size,registered_tsd,registered_thread_slot;
 extern long darwin_clone_thread(struct native_thread *);
 extern char darwin_clone_return[];
@@ -61,6 +64,17 @@ void darwin_thread_boot(struct native_thread *thread)
     }
     uint64_t tls=thread->pthread+registered_tsd;
     if (registered_tsd) __asm__ volatile("msr tpidr_el0,%0" :: "r"(tls) : "memory");
+    /* Parent configures scheduling before any guest callback can run. Failed
+     * creation exits only this host thread, preserving the caller's errno. */
+    while (!__atomic_load_n(&thread->launch_state,__ATOMIC_ACQUIRE))
+        RAW(SYS_futex,&thread->launch_state,FUTEX_WAIT_PRIVATE,0,0,0,0);
+    if (thread->launch_state<0) {
+        RAW(SYS_exit,0,0,0,0,0,0); __builtin_unreachable();
+    }
+    if (thread->workqueue) {
+        darwin_thread_enter(thread->guest_sp,workqueue_start_callback,thread->pthread,thread->port,
+                            thread->stack_low,0,thread->flags,0);
+    }
     darwin_thread_enter(thread->guest_sp,thread_start_callback,thread->pthread,thread->port,
                         thread->function,thread->argument,thread->guest_sp,thread->flags);
 }
@@ -79,19 +93,21 @@ static long native_thread_register(const unsigned long long *r)
     if (data.version!=r[4] || tsd>r[2]-sizeof(uint64_t) ||
         slot>r[2]-tsd-sizeof(uint64_t)) return -EINVAL;
     registered_pthread_size=r[2]; registered_tsd=tsd; registered_thread_slot=slot;
-    /* Keep unspecified QoS/default mutex policy. No extra scheduler features. */
-    thread_start_callback=r[0];
-    return 0;
+    if (!r[1] || (r[1]&3) || r[1]>=D_GUEST_ADDRESS_LIMIT) return -EINVAL;
+    thread_start_callback=r[0]; workqueue_start_callback=r[1];
+    return D_PTHREAD_FEATURE_DISPATCH|D_PTHREAD_FEATURE_FINEPRIO|D_PTHREAD_FEATURE_CTL|
+           D_PTHREAD_FEATURE_SETSELF|D_PTHREAD_FEATURE_MAINTENANCE|D_PTHREAD_FEATURE_DEFAULT;
 }
-static long native_thread_create(const unsigned long long *r,const sigset_t *original_mask)
+static long native_thread_create_impl(const unsigned long long *r,const sigset_t *original_mask,
+                                      int workqueue,uint64_t stack_low)
 {
     if (!thread_start_callback) return -EINVAL;
     uint32_t flags=r[4];
-    /* Only ordinary inherited scheduling / default QoS is implemented. */
-    if ((flags&D_PTHREAD_START_QOS) &&
-        (((flags>>D_PTHREAD_QOS_SHIFT)&D_PTHREAD_QOS_MASK)!=D_PTHREAD_DEFAULT_QOS_BITS || (flags&D_PTHREAD_RELATIVE_PRIORITY_MASK)!=D_PTHREAD_ZERO_RELATIVE_PRIORITY)) return -ENOTSUP;
-    if (!(flags&D_PTHREAD_START_CUSTOM) || (flags&~(D_PTHREAD_START_CUSTOM|D_PTHREAD_START_QOS|D_PTHREAD_PRIORITY_MASK)) ||
-        (!(flags&D_PTHREAD_START_QOS) && (flags&D_PTHREAD_PRIORITY_MASK)) || !r[2] || (r[2]&15) || !r[3] || r[3]>D_GUEST_COMMPAGE-registered_pthread_size) return -ENOTSUP;
+    unsigned int qos_bits=(flags>>D_PTHREAD_QOS_SHIFT)&D_PTHREAD_QOS_MASK;
+    if (!workqueue && (flags&D_PTHREAD_START_QOS) &&
+        (!qos_bits || qos_bits>32 || (qos_bits&(qos_bits-1)) || (flags&255)<240)) return -ENOTSUP;
+    if (!workqueue && (!(flags&D_PTHREAD_START_CUSTOM) || (flags&~(D_PTHREAD_START_CUSTOM|D_PTHREAD_START_QOS|D_PTHREAD_PRIORITY_MASK)) ||
+        (!(flags&D_PTHREAD_START_QOS) && (flags&D_PTHREAD_PRIORITY_MASK)) || !r[2] || (r[2]&15) || !r[3] || r[3]>D_GUEST_COMMPAGE-registered_pthread_size)) return -ENOTSUP;
     uint64_t value;
     if (guest_copy(&value,r[2]-16,8,0) || guest_copy(&value,r[3],8,0)) return -EFAULT;
     native_reap_threads();
@@ -105,11 +121,14 @@ static long native_thread_create(const unsigned long long *r,const sigset_t *ori
         if ((unsigned long)alternate>=(unsigned long)-4095) {
             RAW(SYS_munmap,memory,D_THREAD_RUNTIME_STACK_SIZE,0,0,0,0); thread->state=0; return alternate;
         }
+        thread->launch_state=0;
         thread->runtime_memory=memory; thread->runtime_top=memory+D_THREAD_RUNTIME_STACK_SIZE;
         thread->signal_memory=alternate; thread->guest_sp=r[2]; thread->pthread=r[3];
         thread->function=r[0]; thread->argument=r[1]; thread->flags=r[4];
+        thread->workqueue=workqueue; thread->stack_low=stack_low;
+        thread->priority=workqueue ? ((1U<<((flags&0xff)-1+8))|255) : (flags&D_PTHREAD_PRIORITY_MASK);
         __builtin_memcpy(&thread->initial_signal_mask,original_mask,8);
-        if (registered_tsd) thread->flags|=D_PTHREAD_START_TSD_SET;
+        if (registered_tsd) thread->flags|=workqueue ? D_WQ_TSD_SET : D_PTHREAD_START_TSD_SET;
         thread->generation=(thread->generation+1)&D_PORT_GENERATION_MASK;
         if (!thread->generation) thread->generation=1;
         thread->port=((D_THREAD_PORT_INDEX_BASE+i)<<D_PORT_NAME_INDEX_SHIFT)|thread->generation; thread->refs=1; thread->tid=-1;
@@ -123,9 +142,29 @@ static long native_thread_create(const unsigned long long *r,const sigset_t *ori
             RAW(SYS_munmap,memory,D_THREAD_RUNTIME_STACK_SIZE,0,0,0,0); RAW(SYS_munmap,alternate,D_SIGNAL_STACK_SIZE,0,0,0,0);
             thread->state=0; return tid;
         }
+        if (workqueue || (flags&D_PTHREAD_START_QOS)) {
+            unsigned int qos=workqueue ? (flags&255) : (unsigned int)__builtin_ctz(qos_bits)+1;
+            int relative=workqueue ? 0 : (int)(flags&255)+1-256;
+            int nice=(qos>=4 ? 0 : 20-(int)qos*4)-relative;
+            if (nice>19) nice=19;
+            long error=RAW(SYS_setpriority,0,tid,nice,0,0,0);
+            if (error) {
+                thread->refs=0;
+                __atomic_store_n(&thread->state,3,__ATOMIC_RELEASE);
+                __atomic_store_n(&thread->launch_state,-1,__ATOMIC_RELEASE);
+                RAW(SYS_futex,&thread->launch_state,FUTEX_WAKE_PRIVATE,1,0,0,0);
+                return error;
+            }
+        }
+        __atomic_store_n(&thread->launch_state,1,__ATOMIC_RELEASE);
+        RAW(SYS_futex,&thread->launch_state,FUTEX_WAKE_PRIVATE,1,0,0,0);
         return r[3];
     }
     return -EAGAIN;
+}
+static long native_thread_create(const unsigned long long *r,const sigset_t *original_mask)
+{
+    return native_thread_create_impl(r,original_mask,0,0);
 }
 static long native_thread_terminate(const unsigned long long *r)
 {
@@ -133,6 +172,7 @@ static long native_thread_terminate(const unsigned long long *r)
     if (!thread || thread==native_threads || (r[0]&(D_GUEST_PAGE_SIZE-1)) || (r[1]&(D_GUEST_PAGE_SIZE-1)) || r[1]>D_VM_MAX_ALLOCATION) return -EINVAL;
     if (r[3]) return -ENOTSUP; /* custom-stack join semaphore requires separate path */
     if (r[1] && RAW(SYS_munmap,r[0],r[1],0,0,0,0)) return -EINVAL;
+    if (thread->workqueue) __atomic_store_n(&thread->refs,0,__ATOMIC_RELEASE);
     __atomic_store_n(&thread->state,3,__ATOMIC_RELEASE);
     RAW(SYS_exit,0,0,0,0,0,0); /* thread exit; never exit_group */
     __builtin_unreachable();

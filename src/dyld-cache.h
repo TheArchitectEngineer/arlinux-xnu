@@ -25,6 +25,7 @@ static int cache_contains(uint64_t address,uint64_t length,uint32_t protection)
     }
     return 0;
 }
+#include "dyld-cache-policy.h"
 static uint16_t cache_u16(const unsigned char *bytes)
 {
     uint16_t value; memcpy(&value,bytes,sizeof(value)); return value;
@@ -119,6 +120,7 @@ static uint64_t load_native_cache(const char *root)
     uint64_t *seen=calloc(header.images_count,sizeof(uint64_t));
     need(seen!=NULL,"cache image bookkeeping");
     size_t images=0,rewritten=0;
+    int dispatch_policy_applied=0;
     for (uint32_t i=0;i<header.images_count;i++) {
         struct cache_image image;
         memcpy(&image,file+header.images_offset+(uint64_t)i*sizeof(image),sizeof(image));
@@ -154,8 +156,15 @@ static uint64_t load_native_cache(const char *root)
             pos+=command.size;
         }
         need(pos==end,"cached command extent");
+        need(image.path_offset<size && memchr(file+image.path_offset,0,size-image.path_offset)!=NULL,
+             "cached image path bounds");
+        if (!strcmp((const char *)file+image.path_offset,"/usr/lib/system/libdispatch.dylib")) {
+            cache_dispatch_policy(file,size,image.address);
+            dispatch_policy_applied=1;
+        }
     }
     free(seen);
+    need(dispatch_policy_applied,"libdispatch native workqueue policy applied");
     for (unsigned int i=0;i<3;i++) {
         struct cache_map *m=cache_maps+i;
         if (m->prot&4) __builtin___clear_cache((void *)m->address,(void *)(m->address+m->size));
