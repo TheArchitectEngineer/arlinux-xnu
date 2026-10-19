@@ -131,6 +131,17 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 clock_send_refs[clock_id]++;
             }
         }
+        if (task && header->id==3409 && r[2]==36) {
+            uint32_t which; __builtin_memcpy(&which,request+32,4);
+            response[8]=4;
+            if (which==4) {
+                /* This task has no registered Bootstrap service. Querying the
+                 * empty slot succeeds and transfers MACH_PORT_NULL; it does
+                 * not invent an XPC/launchd server or claim any service works. */
+                out->bits|=0x80000000U; out->size=40;
+                response[6]=1; response[7]=0; response[8]=0; response[9]=17U<<16;
+            }
+        }
         if (task && header->id==3418 && r[2]==40) {
             uint32_t policy,value; __builtin_memcpy(&policy,request+32,4);
             __builtin_memcpy(&value,request+36,4);
