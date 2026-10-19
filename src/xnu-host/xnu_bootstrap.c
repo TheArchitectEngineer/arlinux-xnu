@@ -8,6 +8,7 @@
 #include <pexpert/pexpert.h>
 #include <host/memory.h>
 #include <host/time.h>
+#include <host/entropy.h>
 
 int
 xnu_host_kernel_early_startup(void)
@@ -20,6 +21,9 @@ xnu_host_kernel_early_startup(void)
     if (error)
         return error;
     error = xnu_host_time_bootstrap();
+    if (error)
+        return error;
+    error = xnu_host_entropy_bootstrap();
     if (error)
         return error;
     kernel_startup_bootstrap();
