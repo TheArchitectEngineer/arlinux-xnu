@@ -47,9 +47,18 @@ not a native Mach-O loader or a Darwin syscall dispatcher, and supplies no IOKit
 registry/framework services. No device registration or mount has executed yet.
 
 The actual startup task passes this image as a declared, SHA-256 checked input.
-PID 1 must remain alive: accept its controlled timeout only after two observed
-completed memory/COW/exit/wait journeys, with no explicit guest failure. An early
+PID 1 must remain alive: accept its controlled timeout only after two success heartbeats following
+the completed memory/COW/exit/wait journey, with no explicit guest failure. An early
 zero exit or quiet boot cannot pass. This acceptance path is not yet exercised.
+
+New, not yet tested: consume the complete original BSD C/assembly source graph
+from its generated Makefile instead of handpicking providers. Source-qualified
+object names prevent basename overwrites. Kernel linkage now prefixes actual
+kernel-defined symbols in object copies, retaining only the explicit xnu_host_
+bridge ABI; compiler receipt inputs stay unchanged. The native collision audit
+still runs afterwards. This generalizes the previously observed libm/kernel log
+ABI failure without C macros or a manually maintained library-function list.
+These changes do not implement missing machine services or establish boot.
 
 `build.sh build --mode baseline` now builds the pinned ios-sweet kernel plus
 `guests/init.S` on macOS, then boots that exact kernel in full-system QEMU on

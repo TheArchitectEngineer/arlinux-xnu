@@ -25,13 +25,16 @@ def run(command, cwd=ROOT, **kwargs):
     return subprocess.run(list(map(str, command)), cwd=cwd, check=True, **kwargs)
 
 
-def upstream_words(makefile, variable):
+def upstream_words(makefile, variable, *, source_paths=False):
     # These upstream declarations are literal filename lists, not Make recipes.
     text = makefile.read_text().replace('\\\n', ' ')
     match = re.search(r'^' + re.escape(variable) + r'\s*=([^\n]*)', text, re.M)
     if match is None:
         raise RuntimeError(f'Missing upstream declaration {variable} in {makefile}')
     words = match[1].partition('#')[0].split()
+    if source_paths:
+        # SETUP/config/mkmakefile.c emits this one literal root prefix.
+        words = [word.removeprefix('$(SOURCE_DIR)/') for word in words]
     if any('$' in word for word in words):
         raise RuntimeError(f'Nonliteral upstream declaration {variable}')
     return words
@@ -265,57 +268,20 @@ def main():
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
         'libkern/libclosure/runtime.cpp', 'libkern/libclosure/libclosuredata.c',
         'osfmk/prng/prng_random.c', 'osfmk/arm/counter.c',
-        'bsd/kern/kern_fork.c', 'bsd/kern/kern_proc.c',
-        'bsd/kern/kern_credential.c', 'bsd/kern/kern_prot.c',
-        'bsd/kern/kern_resource.c', 'bsd/uxkern/ux_exception.c',
-        'bsd/kern/kern_authorization.c', 'bsd/kern/kern_priv.c',
-        'bsd/kern/kern_subr.c', 'bsd/kern/bsd_init.c',
-        'bsd/kern/kern_synch.c', 'bsd/kern/kern_newsysctl.c',
-        # Genuine BSD process/FD/VFS execution and termination. These services
-        # are required by the supervisor/child journey for either CPU backend.
-        'bsd/kern/bsd_stubs.c', 'bsd/kern/kern_exit.c', 'bsd/kern/kern_sig.c',
-        # Preserve the original task death/shutdown state and configured memory
-        # pressure policy; these are not host success stubs or copied globals.
-        'osfmk/corpses/corpse.c', 'bsd/kern/kern_shutdown.c',
-        *['bsd/kern/' + name + '.c' for name in [
-            'kern_memorystatus', 'kern_memorystatus_freeze',
-            'kern_memorystatus_notify', 'kern_memorystatus_policy']],
-        'bsd/dev/arm/systemcalls.c', 'bsd/dev/munge.c',
-        'build/kernel/bsd/init_sysent.c', 'build/kernel/bsd/syscalls.c',
-        'bsd/kern/kern_exec.c', 'bsd/kern/mach_loader.c', 'bsd/kern/mach_fat.c',
-        'bsd/kern/kern_descrip.c', 'bsd/kern/kern_guarded.c',
-        'bsd/kern/sys_generic.c', 'bsd/kern/sys_reason.c',
-        'bsd/kern/kern_event.c', 'bsd/vm/vm_unix.c', 'osfmk/vm/bsd_vm.c',
-        # Original VFS path/operation dispatch and BSD virtual-memory calls:
-        # required by exec's vnode reads and the guest console/file journey.
-        # Original BSD process/FD/vnode limits shared by exec and VFS.
-        # kernel_bootstrap -> scale_setup -> original BSD limits/buffer setup.
-        # This also retains its real tunables and VM range registration.
-        'bsd/dev/unix_startup.c', 'bsd/conf/param.c', 'bsd/kern/kern_time.c',
-        'bsd/kern/subr_xxx.c', 'bsd/kern/kern_mman.c',
-        # Original device registration, RAM disk I/O and VFS paging are the
-        # same path exercised by the reference's executable RAM-disk root.
-        'build/kernel/config-bsd/ioconf.c',
-        'bsd/dev/arm64/conf.c', 'bsd/dev/arm/cons.c', 'bsd/dev/arm/km.c',
+        'osfmk/corpses/corpse.c', 'osfmk/vm/bsd_vm.c',
         'osfmk/console/serial_console.c', 'osfmk/console/serial_general.c',
-        'bsd/dev/memdev.c', 'bsd/dev/mem.c', 'bsd/dev/random/randomdev.c',
-        *['bsd/kern/' + name + '.c' for name in [
-            'tty', 'tty_compat', 'tty_conf', 'tty_dev', 'tty_ptmx', 'tty_pty',
-            'tty_subr', 'tty_tty']],
-        'bsd/miscfs/specfs/spec_vnops.c',
-        *['bsd/miscfs/devfs/' + name + '.c' for name in [
-            'devfs_tree', 'devfs_vnops', 'devfs_vfsops']],
-        *['bsd/miscfs/mockfs/' + name + '.c' for name in [
-            'mockfs_fsnode', 'mockfs_vnops', 'mockfs_vfsops']],
-        *['bsd/vfs/' + name + '.c' for name in [
-            'vfs_init', 'vfs_conf', 'vfs_lookup', 'vfs_subr', 'vfs_syscalls',
-            'vfs_support', 'vfs_vnops', 'vnode_if', 'vfs_bio']],
-        'bsd/pthread/pthread_shims.c', 'bsd/pthread/pthread_workqueue.c',
-        'bsd/kern/sys_ulock.c',
-        # Preserve real event filtering, early buffers and triage storage.
-        'bsd/kern/kdebug.c', 'bsd/kern/kdebug_common.c',
-        'bsd/kern/kdebug_triage.c', 'bsd/kern/kern_ktrace.c',
     ]
+    # Consume the original BSD configuration graph, not a growing handpicked
+    # subset of providers for undefined symbols. The original generator owns
+    # feature selection, all generic services and pseudo-device registrations.
+    for variable in ['CFILES', 'SFILES', 'CXXFILES']:
+        for source in upstream_words(bsd_config / 'Makefile', variable, source_paths=True):
+            if source == './ioconf.c':
+                units.append('build/kernel/config-bsd/ioconf.c')
+            elif source.startswith('./'):
+                units.append('build/kernel/bsd/' + source[2:])
+            else:
+                units.append(source)
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
     units += ['build/kernel/mig/mach/' + name for name in
@@ -329,12 +295,15 @@ def main():
               if name.endswith('.c')]
     commands, results = [], []
     for unit in units:
-        name = Path(unit).stem
+        bsd_unit = (unit.startswith(('bsd/', 'build/kernel/bsd/', 'build/kernel/config-bsd/'))
+                    or unit == 'src/xnu-host/root_device.c')
+        # BSD contains repeated basenames across directories. Give its objects
+        # source-qualified names so one configured provider cannot overwrite
+        # another or a machine-port object before linkage.
+        name = unit.rsplit('.', 1)[0].replace('/', '__') if bsd_unit else Path(unit).stem
         obj = OUT / (name + '.o')
         source_path = ROOT / unit if unit.startswith(('src/', 'build/')) else XNU / unit
         component_flags = []
-        bsd_unit = (unit.startswith(('bsd/', 'build/kernel/bsd/', 'build/kernel/config-bsd/'))
-                    or unit == 'src/xnu-host/root_device.c')
         if source_path.suffix == '.s':
             component_flags += ['-x', 'assembler-with-cpp']
         if unit.startswith('libkern/'):

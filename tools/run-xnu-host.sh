@@ -72,7 +72,22 @@ for library in (output / 'engine').glob('*.so.*'):
                                       '--format=posix', str(library)], text=True)
     native.update(line.split()[0].split('@')[0] for line in listing.splitlines()
                   if len(line.split()) >= 2)
-kernel = symbols(sorted(Path('build/kernel').glob('*.o')), '--defined-only')
+original_objects = sorted(Path('build/kernel').glob('*.o'))
+definitions = symbols(original_objects, '--defined-only')
+# Keep the explicit xnu_host_ bridge ABI. Isolate every other actual kernel
+# definition, including its references in other kernel objects, from host libc
+# and the CPU engine. Do this to copies: compiler receipt hashes stay valid.
+# Object linkage avoids C macros corrupting sysctl names/structure members.
+renames = output / 'kernel-symbol-namespace.txt'
+renames.write_text(''.join(f'{name} __arlinux_xnu_{name}\n'
+                          for name in sorted(definitions)
+                          if not name.startswith('xnu_host_')))
+kernel_objects = output / 'kernel-objects'
+kernel_objects.mkdir(exist_ok=True)
+for original in original_objects:
+    subprocess.run(['objcopy', '--redefine-syms=' + str(renames),
+                    str(original), str(kernel_objects / original.name)], check=True)
+kernel = symbols(sorted(kernel_objects.glob('*.o')), '--defined-only')
 collisions = sorted(name for name in native & kernel
                     if not name.startswith('xnu_host_'))
 report = output / 'native-kernel-collisions.txt'
@@ -93,8 +108,11 @@ if [[ $stage == early ]]; then
     build/kernel/copyio_probe.o build/kernel/usermode_copyio.o
     build/kernel/codec_probe.o build/kernel/WKdmCompress_16k.o
     build/kernel/WKdmDecompress_16k.o build/kernel/WKdmData.o build/kernel/lz4.o)
+  for index in "${!objects[@]}"; do
+    objects[$index]="$output/kernel-objects/$(basename "${objects[$index]}")"
+  done
 else
-  ar rcs "$output/libxnu.a" build/kernel/*.o
+  ar rcs "$output/libxnu.a" "$output"/kernel-objects/*.o
   # KEEP cannot extract otherwise-unreferenced archive members. Bring every
   # declared kernel object into the link so its startup/type registrations
   # exist, then let section GC remove only unreferenced non-registration code.
