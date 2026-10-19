@@ -11,6 +11,8 @@
 #include <kern/kalloc.h>
 #include <kern/ledger.h>
 #include <kern/task.h>
+#include <kern/thread.h>
+#include <vm/vm_map.h>
 #include <kern/startup.h>
 #include <os/atomic_private.h>
 #include <arm/pmap/pmap_pt_geometry.h>
@@ -26,6 +28,9 @@
 
 static struct pmap kernel_pmap_store;
 const pmap_t kernel_pmap = &kernel_pmap_store;
+/* One CPU's borrowed execution selection. The owning VM map controls lifetime. */
+static pmap_t selected_pmap = &kernel_pmap_store;
+static struct xnu_host_guest *selected_engine;
 unsigned long gVirtBase, gPhysBase, gPhysSize;
 uint64_t gDramBase, gDramSize;
 uint64_t max_mem, max_mem_actual, sane_size;
@@ -202,15 +207,49 @@ xnu_usermode_pmap_page(pmap_t pmap, vm_map_offset_t address,
     return true;
 }
 
+static void
+select_pmap_locked(pmap_t pmap)
+{
+    assert(get_preemption_level() > 0);
+    require_pmap_locked(pmap);
+    selected_pmap = pmap;
+    selected_engine = pmap == kernel_pmap ? NULL : (*user_pmap_link(pmap))->guest;
+    /* Linux owns kernel mappings; UC translations are per-engine and updated
+     * synchronously. No host TTBR or arbitrary low-VA mirror is involved. */
+    os_atomic_thread_fence(seq_cst);
+}
+
+void
+pmap_switch(pmap_t pmap)
+{
+    disable_preemption();
+    select_pmap_locked(pmap);
+    enable_preemption();
+}
+
+void
+pmap_switch_user(thread_t thread, vm_map_t map)
+{
+    assert(thread == current_thread() && map != VM_MAP_NULL);
+    disable_preemption();
+    require_pmap_locked(map->pmap);
+    /* Original PMAP_SWITCH_USER owns this assignment in vm_map_switch.
+     * It selects the actual map used by the following copyio/VM accesses. */
+    thread->map = map;
+    select_pmap_locked(map->pmap);
+    enable_preemption();
+}
+
 struct xnu_host_guest *
 xnu_usermode_pmap_engine(pmap_t pmap)
 {
-    /* The executing thread owns its current VM map/pmap across a CPU run.
-     * Native callbacks cannot switch XNU threads or destroy that map. */
     disable_preemption();
     require_pmap_locked(pmap);
     assert(pmap != kernel_pmap);
-    struct xnu_host_guest *guest = (*user_pmap_link(pmap))->guest;
+    if (selected_pmap != pmap)
+        select_pmap_locked(pmap); /* Initial/lazy user activation. */
+    struct xnu_host_guest *guest = selected_engine;
+    assert(guest != NULL);
     enable_preemption();
     return guest;
 }
@@ -548,6 +587,8 @@ pmap_destroy(pmap_t pmap)
         struct host_user_pmap **link = user_pmap_link(pmap);
         user = *link;
         assert(user && pmap->nested_pmap == PMAP_NULL && user->mappings == NULL);
+        if (selected_pmap == pmap)
+            select_pmap_locked(kernel_pmap); /* Drop a borrowed selection before free. */
         /* A successful close requires no remaining engine mappings. Never
          * discard mappings or ledger balances merely to free the object. */
         int error = xnu_host_guest_destroy(user->guest);

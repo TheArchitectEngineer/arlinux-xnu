@@ -48,6 +48,11 @@ only after successful engine close. This lifecycle has not executed. Fixed
 16 KiB geometry is provided using pinned ARM constants; it supplies VM geometry,
 not hardware TTE/ASID operations. Flags for unsupported modes are rejected.
 
+Machine pmap switching selects a borrowed per-map engine. PMAP_SWITCH_USER also
+updates the current thread map that original vm_map_switch/copyio use. Initial
+user return may select lazily; final release clears a borrowed selection before
+freeing it. This activation path remains unexecuted.
+
 The native engine accepts
 only aligned frames in the initialized managed physical aperture and records
 each engine/VA/frame/protection association. Frame references are established

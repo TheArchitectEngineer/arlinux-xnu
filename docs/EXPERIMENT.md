@@ -69,14 +69,24 @@ stop at NUL; atomic transfers use aligned single loads/stores. Wait-if-equals
 allows a spurious WFE-hint return, not a fake ulock completion. Native engine
 memory APIs never substitute for XNU permission checks.
 
-The first machine-return attempt
-[39306755796](https://github.com/taowen/arlinux-xnu/actions/runs/39306755796),
-root `204ed91d7690c4c0f2c4c9426eb8108b1b8aa311`, failed compilation because the
-new userexec.h included ARM state definitions before stdint.h. That include
-order is now fixed. Failure receipt SHA-256:
-`658fcafdcd2467935260f5ff0eb97261d29a230ec6883698bad6905cd1652c74`.
-No native/link/runtime job ran for that attempt. Logs are retained in
-`build/runs/39306755796`.
+Machine-return header repair was tested by
+[39307242888](https://github.com/taowen/arlinux-xnu/actions/runs/39307242888),
+root `01224736a54e41ddd933aa9273dbb0cb53287055`. Kernel, native return/event
+transport and the Unicorn extension compiled; the ABI audit passed. Executable
+linkage still failed, so no machine return or exception dispatch ran. Compiler
+receipt SHA-256:
+`8e4c9d93bf27d422b09ce6e2abb7999d910e433886fe172e31b40968f9c0bb8a`.
+VM failure receipt SHA-256:
+`3934a83285a40498b0ddc8ffcf56897ee655e0f0f33352dd990609432652d5bd`.
+Built fork library SHA-256:
+`329f3fb3b771c3cb3777549b064e62e590e86d028a58af804f4f8e49c291a135`.
+Logs: `build/runs/39307242888`. Prior header-type failure `39306755796`
+remains in Git/Actions and local logs, not a successful execution result.
+
+New, not yet built: pmap_switch selects the per-map engine; PMAP_SWITCH_USER
+updates the actual current thread map used by copyio, as in original VM.
+Selections are borrowed and cleared before final pmap release. Kernel mappings
+stay Linux-owned; guest VAs remain isolated in the selected engine.
 
 New machine-return code, not runtime-validated: original symbols now reset the consumed
 kernel stack and enter a real-thread CPU loop. It restores integer/FP/TLS state,
@@ -89,7 +99,7 @@ The pinned Unicorn fork adds read-only pending syndrome/address queries. The
 native hook captures real virtual CPU metadata for synchronous exceptions;
 internal events are unsupported. Flat mapping failures model leaf permission/
 translation errors. No arbitrary byte-pattern decoder or stale ESR/FAR bank is
-used. This fork extension and CPU return/IRQ/AST path have not executed.
+used. The fork extension and CPU return/IRQ/AST path compiled but have not executed.
 
 Next inspect this actual build, then follow the original kernel bootstrap/task/
 thread/service ordering toward the supervisor/child journey. The current VM
