@@ -77,7 +77,9 @@ loader = output / 'dyld'
 try:
     # Record the real mounted layout before assuming an OS-volume path.
     # A missing file must distinguish volume/path errors from decompression.
-    for relative in ['.', 'root', 'root/usr', 'root/usr/lib', 'root/usr/lib/dyld']:
+    for relative in ['.', 'root', 'root/usr', 'root/usr/lib', 'root/usr/lib/dyld',
+                     'root/usr/lib/libSystem.B.dylib', 'root/usr/lib/system',
+                     'root/System/Library/Caches/com.apple.dyld']:
         path = filesystem / relative
         try:
             status = path.lstat()
@@ -93,8 +95,12 @@ try:
     # apfs-fuse exposes APFS's root-parent inode at the mount point.
     # Like ios-sweet/tools/mkiosroot.sh, enter the real volume's root directory.
     shutil.copyfile(filesystem / 'root/usr/lib/dyld', loader)
-finally:
+except BaseException:
     run('fusermount3', '-u', filesystem)
+    raise
+# Keep the read-only firmware mounted for the real loader's subsequent reads.
+# The hosted runner owns its lifetime; no Apple binary is uploaded.
+print('APPLE_USERLAND_ROOT', filesystem / 'root', flush=True)
 record = {'firmware': source, 'verifiedFirmwareSHA256': actual,
           'osImage': member, 'osImageSHA256': sha(image),
           'apfsReader': reader, 'dyldBytes': loader.stat().st_size, 'dyldSHA256': sha(loader)}

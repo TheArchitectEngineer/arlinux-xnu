@@ -79,11 +79,13 @@ static void rewrite_tls(struct image *im)
 
 int main(int argc,char **argv)
 {
-    int dynamic=argc==4 && !strcmp(argv[1],"--dyld");
-    if (argc!=2 && !dynamic) { fprintf(stderr,"usage: macho-native [--dyld DYLD] ARM64_MACHO\n"); return 2; }
+    int dynamic=(argc==4 || argc==6) && !strcmp(argv[1],"--dyld");
+    const char *root=argc==6 && !strcmp(argv[3],"--root") ? argv[4] : NULL;
+    need(argc!=6 || root,"expected --root directory");
+    if (argc!=2 && !dynamic) { fprintf(stderr,"usage: macho-native [--dyld DYLD [--root DIRECTORY]] ARM64_MACHO\n"); return 2; }
     long host=sysconf(_SC_PAGESIZE);
     need(host>0 && (unsigned long)host<=PAGE16 && PAGE16%(unsigned long)host==0,"host page geometry");
-    const char *program=argv[dynamic ? 3 : 1];
+    const char *program=argv[argc-1];
     struct image im={0},dyld={0};
     load_image(program,&im,dynamic); map_guest(&im); rewrite_tls(&im);
     if (dynamic) {
@@ -123,6 +125,6 @@ int main(int argc,char **argv)
     }
     /* Zeroed argc/argv/env/apple terminators for this freestanding entry. */
     fprintf(stderr,"NATIVE_DARWIN_ENTRY entry=%#" PRIx64 " host_page=%ld (Linux services, not XNU boot)\n",im.entry,host);
-    darwin_native_prepare();
+    darwin_native_prepare(root,program);
     darwin_native_enter(top,dynamic ? dyld.entry : im.entry);
 }

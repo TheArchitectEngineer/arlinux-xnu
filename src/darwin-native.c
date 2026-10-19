@@ -20,6 +20,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <time.h>
+#include <fcntl.h>
+#include <linux/stat.h>
 
 extern long darwin_raw(long, long, long, long, long, long, long);
 extern char darwin_raw_return[];
@@ -39,6 +41,8 @@ static int darwin_error(long result)
     case 31: case 32: case 33: case 34: return (int)-result;
     case 11: return 35;           /* EAGAIN */
     case 38: return 78;           /* ENOSYS */
+    case 36: return 63;           /* ENAMETOOLONG */
+    case 75: return 84;           /* EOVERFLOW */
     case 95: return 45;           /* ENOTSUP */
     default: return 5;            /* unclassified Linux failure -> EIO */
     }
@@ -76,6 +80,93 @@ static long anonymous16(unsigned long size, int protection)
         __builtin_unreachable();
     }
     return (long)base;
+}
+
+/* Read-only filesystem access for genuine dyld dependencies. Darwin paths
+ * resolve inside the selected firmware root; only the explicit executable
+ * retains its host path. This is path adaptation, not a security sandbox. */
+static int root_descriptor=-1;
+static char executable_path[4096];
+static long guest_copy(void *local, unsigned long remote, unsigned long length, int write)
+{
+    struct iovec here={local,length},there={(void *)remote,length};
+    long pid=RAW(SYS_getpid,0,0,0,0,0,0);
+    long count=RAW(write ? SYS_process_vm_writev : SYS_process_vm_readv,pid,&here,1,&there,1,0);
+    return count==(long)length ? 0 : -14;
+}
+static long guest_path(unsigned long address,char *path)
+{
+    for (unsigned int i=0;i<4096;i++) {
+        if (guest_copy(path+i,address+i,1,0)) return -14;
+        if (!path[i]) return 0;
+    }
+    return -36; /* Linux ENAMETOOLONG, translated below */
+}
+static int path_directory(char **path)
+{
+    unsigned int i=0;
+    while ((*path)[i] && (*path)[i]==executable_path[i]) i++;
+    if (!(*path)[i] && !executable_path[i]) return AT_FDCWD;
+    if (root_descriptor>=0) {
+        if (**path=='/') (*path)++;
+        return root_descriptor;
+    }
+    return AT_FDCWD;
+}
+static long guest_open(unsigned long address,unsigned long flags)
+{
+    /* The firmware is read-only. Unsupported flag semantics are explicit. */
+    if (flags & ~(0x100UL|0x100000UL|0x1000000UL)) return -95;
+    char buffer[4096],*path=buffer;
+    long error=guest_path(address,buffer);
+    if (error) return error;
+    const char label[]="DARWIN_OPEN ";
+    unsigned int length=0; while (buffer[length]) length++;
+    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    RAW(SYS_write,2,buffer,length,0,0,0);
+    RAW(SYS_write,2,"\n",1,0,0,0);
+    int directory=path_directory(&path);
+    int options=O_RDONLY;
+    if (flags&0x100) options|=O_NOFOLLOW;
+    if (flags&0x100000) options|=O_DIRECTORY;
+    if (flags&0x1000000) options|=O_CLOEXEC;
+    return RAW(SYS_openat,directory,path,options,0,0,0);
+}
+/* XNU bsd/sys/stat.h __DARWIN_STRUCT_STAT64, ARM64 layout. statx avoids
+ * depending on the host libc struct-stat ABI inside the TLS-free handler. */
+struct darwin_stat64 {
+    int32_t device; uint16_t mode,links; uint64_t inode;
+    uint32_t uid,gid; int32_t rdevice,padding;
+    int64_t times[8];
+    int64_t size,blocks; int32_t blocksize; uint32_t flags,generation;
+    int32_t spare; int64_t qspare[2];
+};
+static long guest_stat(unsigned long argument,unsigned long destination,unsigned int kind)
+{
+    char buffer[4096],*path=buffer;
+    int directory,options=0;
+    if (kind==339) { directory=(int)argument; path=""; options=AT_EMPTY_PATH; }
+    else {
+        long error=guest_path(argument,buffer); if (error) return error;
+        directory=path_directory(&path);
+        if (kind==340) options=AT_SYMLINK_NOFOLLOW;
+    }
+    struct statx actual={0};
+    long error=RAW(SYS_statx,directory,path,options,STATX_BASIC_STATS|STATX_BTIME,&actual,0);
+    if (error) return error;
+    if (actual.stx_nlink>65535 || actual.stx_dev_major>255 || actual.stx_dev_minor>0xffffff ||
+        actual.stx_rdev_major>255 || actual.stx_rdev_minor>0xffffff) return -75;
+    struct darwin_stat64 out={0};
+    out.device=(actual.stx_dev_major<<24)|actual.stx_dev_minor;
+    out.rdevice=(actual.stx_rdev_major<<24)|actual.stx_rdev_minor;
+    out.mode=actual.stx_mode; out.links=actual.stx_nlink; out.inode=actual.stx_ino;
+    out.uid=actual.stx_uid; out.gid=actual.stx_gid;
+    out.times[0]=actual.stx_atime.tv_sec; out.times[1]=actual.stx_atime.tv_nsec;
+    out.times[2]=actual.stx_mtime.tv_sec; out.times[3]=actual.stx_mtime.tv_nsec;
+    out.times[4]=actual.stx_ctime.tv_sec; out.times[5]=actual.stx_ctime.tv_nsec;
+    out.times[6]=actual.stx_btime.tv_sec; out.times[7]=actual.stx_btime.tv_nsec;
+    out.size=actual.stx_size; out.blocks=actual.stx_blocks; out.blocksize=actual.stx_blksize;
+    return guest_copy(&out,destination,sizeof(out),1);
 }
 
 static void dispatch(int signal, siginfo_t *info, void *context)
@@ -182,6 +273,12 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         __builtin_unreachable();
     case 3: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
     case 4: result = RAW(SYS_write,r[0],r[1],r[2],0,0,0); break;
+    case 5: case 398: result=guest_open(r[0],r[1]); break;
+    case 6: case 399:
+        result=(int)r[0]==root_descriptor ? -9 : RAW(SYS_close,r[0],0,0,0,0,0); break;
+    case 153: case 414: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
+    case 199: result=RAW(SYS_lseek,r[0],r[1],r[2],0,0,0); break;
+    case 338: case 339: case 340: result=guest_stat(r[0],r[1],r[16]); break;
     case 20: result = RAW(SYS_getpid,0,0,0,0,0,0); break;
     case 372: result = RAW(SYS_gettid,0,0,0,0,0,0); break; /* thread_selfid */
     case 2:
@@ -243,8 +340,17 @@ static void fault(int signal,siginfo_t *info,void *context)
     __builtin_unreachable();
 }
 
-void darwin_native_prepare(void)
+void darwin_native_prepare(const char *root,const char *program)
 {
+    char *absolute=realpath(program,NULL);
+    if (!absolute || strlen(absolute)>=sizeof(executable_path)) {
+        fprintf(stderr,"Invalid guest executable path\n"); exit(1);
+    }
+    memcpy(executable_path,absolute,strlen(absolute)+1); free(absolute);
+    if (root) {
+        root_descriptor=open(root,O_PATH|O_DIRECTORY|O_CLOEXEC);
+        if (root_descriptor<0) { perror("Darwin filesystem root"); exit(1); }
+    }
     /* Legacy ARM64 Darwin commpage ABI. These are real properties of the
      * declared compatibility machine, not fabricated hardware capabilities.
      * Leave optional acceleration/timebase features disabled. XNU's ARM
