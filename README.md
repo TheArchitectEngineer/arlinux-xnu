@@ -8,7 +8,7 @@ preserved. Running an unchanged kernel is not a requirement.
 The current native ARM64 path adapts static Mach-O TLS reads and intercepts
 Darwin calls inside the process without depending on host libc TLS. Its first
 journey is an interactive console program with memory/COW, per-process TLS,
-input, normal exit and restart. Runner verification is pending. It is not dyld,
+input, normal exit and restart. [Runner verification passed](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457). It is not dyld,
 a framework-based app or a working Android integration.
 
 A [full-system XNU reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)

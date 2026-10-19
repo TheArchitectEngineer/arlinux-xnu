@@ -7,20 +7,39 @@ userland may be modified, and Linux-backed implementation is allowed. Native
 ARM64 execution is preferred where supported by evidence. Unmodified XNU boot
 is a comparison, not a prerequisite or an application acceptance gate.
 
-New native console journey: src/macho-native.c loads the actual Mach-O image,
-adapts marked instruction sections for TSD/CPU-register reads, and enters native
-ARM64 code. src/darwin-native.c handles Darwin BSD/platform calls through a
-TLS-independent SIGSYS/raw-syscall runtime. guests/console.S allocates/touches
-16 KiB pages, installs and reads guest TLS, forks with child TLS and COW changes,
-waits for normal child exit 37, checks parent state, handles +/q input, unmaps
-memory and exits normally. The runner launches it twice. This is pending runner
-verification, with no dyld, genuine frameworks, UI App or Android sandbox proof.
+Native console journey passed:
+[39320163457](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457),
+source `809b6abcb14e99224b4ae5c10cbdecce5510778c`, job `118291838758`.
+The runner executes ARM64 directly on Linux with 4 KiB host pages. Private image
+adaptation rewrote two instructions: the program's Darwin TSD and CPU-metadata
+reads. SIGSYS handlers continued working after guest TLS replaced host TLS.
 
-First native runner attempt [39319498437](https://github.com/taowen/arlinux-xnu/actions/runs/39319498437)
-failed guest assembly: Mach-O does not provide the cross-section ADR relocation
-used for console strings. The code now uses ADRP/PAGEOFF pairs. No guest ran.
-Failure receipt: `1b72b99bbc93d68c4ee423b33125a39681d5843bff63da79970ebb3f054724a6`.
-Local text log: build/runs/39319498437/native-job.log.
+The actual program allocates/touches two 16 KiB pages, forks, changes child TLS
+and memory, frees the child's mapping and normally exits 37. The parent checks
+the exact child PID/status, unchanged parent memory and TLS, performs a real
+protection call, consumes +/q input, prints counter=1, unmaps its memory and
+normally exits 0. The second independent process launch completes the same
+journey. Logs show the actual BSD/platform calls, both child exit 37 and parent
+exit 0; no host kill is used to simulate guest exit.
+
+- Guest console SHA-256: `813686803bb8f8dc470327bd036d05cbb1e37e43f9732352b46043d0672138c8`.
+- Native runtime SHA-256: `ff72fc4aa045cb46d47f4b2b207580951e569af81d4041997a01f548479a6f91`.
+- Receipt SHA-256: `fa8e2c69020824042346108d6dd100c2cc6517ccbcde9da6ea3af62f36980672`.
+- Text evidence: build/runs/39320163457/native-job.log. Exact binaries,
+  disassembly, per-launch stdout and syscall logs remain in the run artifact.
+
+This proves only the supplied freestanding console journey on the Linux runner.
+It does not prove a protection-fault journey, POSIX threads, Mach IPC, exceptions,
+dyld, genuine frameworks, arbitrary instruction rewriting, an iOS UI App or the
+Android app sandbox. Next connect a genuine dynamic userland: process startup,
+LC_LOAD_DYLINKER and executable mappings must be implemented rather than treating
+loader metadata as inert. Require a real program journey at each extension.
+
+Earlier native build failures remain in Actions and local text logs:
+39319498437 (cross-section ADR), 39319703701 (cstring layout), 39319854670 (host
+page signedness). No program ran in those attempts. The engine-dependent kernel
+candidate, execution bridge and build jobs have been removed; source history
+preserves prior experiments without keeping them in the current build graph.
 
 The full-system reference
 [39311945725](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
@@ -39,6 +58,7 @@ Actions. Reference success does not establish native usermode compatibility.
 
 | Experiment | Last established result | Does not establish |
 | --- | --- | --- |
+| `native-userland` | [Native console: VM/COW/TLS/input/normal exit/restart](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457) | dyld, genuine frameworks, iOS UI App or Android integration |
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` + `xnu-reference-boot` | [Full-system XNU exec, memory/COW, child exit and parent wait](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725) | Userspace XNU, dyld, iOS frameworks or apps |
