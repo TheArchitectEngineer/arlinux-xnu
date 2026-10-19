@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39252501502](https://github.com/taowen/arlinux-xnu/actions/runs/39252501502)
-at source `f94d9ab` (XNU fork `9cf7487`) compiled 161 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39256103670](https://github.com/taowen/arlinux-xnu/actions/runs/39256103670)
+at source `b6974c4` (XNU fork `0554506`) compiled 161 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -29,12 +29,12 @@ Each start continued through the original `kernel_startup_bootstrap()` dispatche
 tunable, and exited normally. Each start also executed the original ARM rtclock
 conversion functions with a Linux nanosecond timebase and a real 1 ms absolute
 sleep, plus early/random-buffer/kmem-uniform calls backed by Linux `getrandom`.
-No random seed or output bytes are logged. All five jobs recorded receipts and
+No random seed or output bytes are logged. All six jobs recorded receipts and
 uploaded their artifacts; Actions logs expose receipt and executable hashes.
 This run was inspected through runner logs without downloading binary archives.
 The original boolean generator is compiled but has not run.
 The early executable SHA-256 is
-`40dd9b21fed11f3736cc6247600b077b349f85e0f32c7729d41a7c8c85dddfb8`.
+`6424d5067a84c6a7254a9d92c87451f084665c273e5e6aafc8f2c461289fc7e3`.
 
 ARM ticket reservation now performs real LDAXR/STXR operations with an explicit
 ELF recovery range. A Linux [signal handler](https://man7.org/linux/man-pages/man2/sigaction.2.html)
@@ -115,9 +115,21 @@ the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps
 and pmap ledger/wiring accounting are not connected yet. Reference/dirty attributes record
 conservative mapping history, not precise accesses or cleared-bit tracking.
-The VM executable still fails linkage (272 distinct undefined references), before its original
+The staged VM executable still fails linkage (164 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
+
+ELF startup records are now separated by original XNU phase. VM startup retains
+every hook through ZALLOC, the last phase executed by `vm_mem_bootstrap`; a
+separate full-link job retains all phases from exactly the same compiled objects
+and still fails with 272 missing imports. Boot variables use ordinary individual
+ELF data sections, preventing the initial thread from retaining unrelated IPC
+callbacks just because Mach-O grouped them in the same boot-data section.
+The staged link no longer roots the processor-control MIG server table. This
+is dependency isolation, not successful VM execution. Remaining failures include
+context switching, pmap lifecycle, compressor and file-backed-memory services.
+The VM entry now requires real `kalloc_data` zero/write/read/free after original
+VM bootstrap before reporting allocation success; that check has not executed.
 
 The link-map audit found native Linux `fork` and `setrlimit` resolving to
 same-named BSD kernel implementations. Kernel compilation now namespaces those
@@ -143,23 +155,16 @@ BSD syscall prototypes use upstream unifdef/makesyscalls; public and kernel MIG
 interfaces follow their distinct upstream rules. Optional hooks follow the
 selected configuration, including networking and IOKit boundaries.
 
-Newly compiled providers cover Mach debug-port queries, message timers, scheduling
-policy, BSD sleep/wakeup, ARM timer queues and the sysctl registry. Their imports
-now resolve, but these providers are absent from the executed early subset.
-IOKit object descriptions explicitly return unsupported when IOKit is disabled;
-other Mach debug-port behavior remains original. Task lifecycle, actual timer
-programming/IRQ delivery, sysctl boot registration and guest switching remain
-unverified until the full VM executable links and runs.
-
 X300 observation (2026-10-19): Vivo X300/V2509A, ARM64, Android 17/API 37,
 Linux 6.12.58 with 4 KiB host pages (`getconf PAGE_SIZE=4096`, corroborated by
 procfs KernelPageSize/MMUPageSize). It is a candidate for Android 4 KiB-host /
 16 KiB-guest experiments. App-domain ptrace, execution/loading and fixed-address
 mapping have not been verified; the ADB shell observation does not prove them.
 
-Kernel mode has five jobs: Linux generates configuration/MIG interfaces; macOS
+Kernel mode has six jobs: Linux generates configuration/MIG interfaces; macOS
 Apple Clang cross-compiles Linux ELF; Linux separately reports link dependencies,
-executes early startup, and attempts VM startup. Apple Clang is currently required
+executes early startup, attempts staged VM startup and checks full service linkage.
+Apple Clang is currently required
 for XNU allocator type-signature/checking builtins. Compiler/Xcode versions are
 retained in artifacts; this is not yet a Linux-only compiler toolchain.
 
