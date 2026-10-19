@@ -16,6 +16,12 @@ waits for normal child exit 37, checks parent state, handles +/q input, unmaps
 memory and exits normally. The runner launches it twice. This is pending runner
 verification, with no dyld, genuine frameworks, UI App or Android sandbox proof.
 
+First native runner attempt [39319498437](https://github.com/taowen/arlinux-xnu/actions/runs/39319498437)
+failed guest assembly: Mach-O does not provide the cross-section ADR relocation
+used for console strings. The code now uses ADRP/PAGEOFF pairs. No guest ran.
+Failure receipt: `1b72b99bbc93d68c4ee423b33125a39681d5843bff63da79970ebb3f054724a6`.
+Local text log: build/runs/39319498437/native-job.log.
+
 The previous kernel candidate run
 [39318615195](https://github.com/taowen/arlinux-xnu/actions/runs/39318615195),
 root `4ca6ab1c137c655517d10013b2212edeefd75b5c`, compiled the full configured BSD

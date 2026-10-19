@@ -15,6 +15,7 @@
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <ucontext.h>
+#include <dlfcn.h>
 
 extern long darwin_raw(long, long, long, long, long, long, long);
 extern char darwin_raw_return[];
@@ -133,6 +134,16 @@ void darwin_native_prepare(void)
         perror("SIGSYS installation"); exit(1);
     }
     uintptr_t allowed = (uintptr_t)darwin_raw_return;
+    void *vdso = dlopen("linux-vdso.so.1",RTLD_NOW|RTLD_LOCAL);
+    uint32_t *sigreturn = vdso ? dlsym(vdso,"__kernel_rt_sigreturn") : NULL;
+    /* Linux ARM64's VDSO ABI is mov x8,#139; svc #0. Allow that exact
+     * return PC, not syscall number 139 at arbitrary guest PCs: Darwin x8 is
+     * not its syscall selector and may coincidentally contain that value. */
+    if (!sigreturn || sigreturn[0] != (0xd2800008U | (SYS_rt_sigreturn << 5)) ||
+        sigreturn[1] != 0xd4000001U) {
+        fprintf(stderr,"Unsupported ARM64 signal-return trampoline\n"); exit(1);
+    }
+    uintptr_t restored = (uintptr_t)(sigreturn+2);
     struct sock_filter code[] = {
         BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,arch)),
         BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,AUDIT_ARCH_AARCH64,1,0),
@@ -140,9 +151,11 @@ void darwin_native_prepare(void)
         BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)),
         BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)allowed,0,2),
         BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)+4),
-        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)(allowed>>32),3,0),
-        BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,nr)),
-        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,SYS_rt_sigreturn,1,0),
+        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)(allowed>>32),5,0),
+        BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)),
+        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)restored,0,2),
+        BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)+4),
+        BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)(restored>>32),1,0),
         BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_TRAP),
         BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_ALLOW),
     };

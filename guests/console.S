@@ -56,8 +56,10 @@ _start:
     mov x16,#74
     svc #0x80
     b.cs failure
-    adr x1,welcome
-    adr x2,welcome_end
+    adrp x1,welcome@PAGE
+    add x1,x1,welcome@PAGEOFF
+    adrp x2,welcome_end@PAGE
+    add x2,x2,welcome_end@PAGEOFF
     bl print
     mov x23,#0
 input:
@@ -80,8 +82,10 @@ input:
     b.ne digit
     mov x23,#0
 digit:
-    adr x1,counter
-    adr x2,counter_end
+    adrp x1,counter@PAGE
+    add x1,x1,counter@PAGEOFF
+    adrp x2,counter_end@PAGE
+    add x2,x2,counter_end@PAGEOFF
     bl print
     add w9,w23,#'0'
     strb w9,[x20,#33]
@@ -93,8 +97,10 @@ digit:
     b input
 finished:
     bl release
-    adr x1,goodbye
-    adr x2,goodbye_end
+    adrp x1,goodbye@PAGE
+    add x1,x1,goodbye@PAGEOFF
+    adrp x2,goodbye_end@PAGE
+    add x2,x2,goodbye_end@PAGEOFF
     bl print
     mov x0,#0
     b exit
