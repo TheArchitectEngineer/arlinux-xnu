@@ -165,6 +165,10 @@ def main():
         syscall_headers.mkdir(exist_ok=True)
         for mode in ['proto', 'header']:
             run(['sh', XNU / 'bsd/kern/makesyscalls.sh', master, mode], cwd=syscall_headers)
+        # The same upstream generator owns the actual dispatch table/names.
+        # Headers alone do not connect a Darwin call to its implementation.
+        for mode in ['table', 'names']:
+            run(['sh', XNU / 'bsd/kern/makesyscalls.sh', master, mode], cwd=bsd_generated)
     if args.phase == 'prepare':
         print('XNU configuration and MIG interfaces generated; no kernel objects compiled', flush=True)
         return
@@ -242,6 +246,8 @@ def main():
         # Genuine BSD process/FD/VFS execution and termination. These services
         # are required by the supervisor/child journey for either CPU backend.
         'bsd/kern/bsd_stubs.c', 'bsd/kern/kern_exit.c', 'bsd/kern/kern_sig.c',
+        'bsd/dev/arm/systemcalls.c',
+        'build/kernel/bsd/init_sysent.c', 'build/kernel/bsd/syscalls.c',
         'bsd/kern/kern_exec.c', 'bsd/kern/mach_loader.c', 'bsd/kern/mach_fat.c',
         'bsd/kern/kern_descrip.c', 'bsd/kern/sys_generic.c', 'bsd/kern/sys_reason.c',
         'bsd/kern/kern_event.c', 'bsd/vm/vm_unix.c', 'osfmk/vm/bsd_vm.c',
@@ -277,7 +283,7 @@ def main():
             # pexpert/conf/Makefile.template does not use osfmk's namespace.
             component_flags += ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',
                                 '-DPEXPERT_KERNEL_PRIVATE=1']
-        if unit.startswith('bsd/'):
+        if unit.startswith(('bsd/', 'build/kernel/bsd/')):
             # bsd/conf/Makefile.template's namespace and build flags.
             component_flags += ['-UMACH_KERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE=1',
                                 '-DDRIVER_PRIVATE=1', '-D_KERNEL_BUILD=1',
