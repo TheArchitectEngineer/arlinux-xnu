@@ -9,47 +9,43 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39286940550](https://github.com/taowen/arlinux-xnu/actions/runs/39286940550),
-root `bddb5ce9794b306e31dfc8636af751f3405db592`, fork `abe6e09`.
-Actual compiler job `118176675539` passed the native mapping failure-policy
-integration. Compiler receipt SHA-256:
-`c0d734a3fb6adba3f9665939955bc54ef886608f832a3aad8375343ed46a4562`.
+[39287650186](https://github.com/taowen/arlinux-xnu/actions/runs/39287650186),
+root `f314bf1e90970613365919947f9fb165b295351a`, fork `abe6e09`.
+Actual compiler job `118179808305` passed the protection-semantics correction.
+Compiler receipt SHA-256:
+`5a7a6db141a2e4b79e50d9e0b6a903bccfcc57f409ce3ffb8f09e79c9f82b9c3`.
 
-Actual VM job `118177389916` compiled the native services and passed the
+Actual VM job `118180493501` compiled native services and passed the
 native/kernel ABI collision audit, but executable linkage failed on machine/pmap
 and further service imports. Failure receipt SHA-256:
-`47d3a3fc1857d016f3509c48621e190c4bad3ec61cef399c21e0d97454421bd8`.
+`0a93e822e75bb426ad8d87af83f41f8357e46aea317d6fdef5c8561e01a713e3`.
 No new VM executable, initialization, real allocation, task or guest ran.
-Actual logs are retained under `build/runs/39286940550`; Actions retains complete
-receipts/output hashes. VM output is terminal even if GET metadata stays queued.
+Actual logs are retained under `build/runs/39287650186`; Actions retains complete
+receipts/output hashes. The VM output is terminal even if GET metadata lags.
 Do not redispatch identical source.
 
-The next source repairs protection semantics at the original vm_map_protect /
-ARM pmap boundary. Ordinary writable requests leave mappings unchanged, so VM
-can handle subsequent write faults and COW. An explicit PROTECT_IMMEDIATE request
-can restore kernel write permission; like original ARM pmap it also marks the
-physical page referenced/modified and updates tracking permissions for all its
-aliases. Immediate non-write requests mark referenced. Neither path grants new
-execute permission or creates a mapping in a hole. Physical-page protection now
-uses the original ARM selector: ALL leaves aliases alone, READ/READ|EXEC reduce
-rights, other requests remove aliases. Wiring is preserved. This requires runner
-compilation and actual VM runtime verification; no isolated probe is added.
-An accidental dispatch `39287502627` selected old source `8516c7a` after a push
-network failure; GitHub confirmed it cancelled. It does not validate the protection
-repair. The build entry now compares the selected local ref against GitHub's
-remote commit before dispatch, and refuses a mismatch. Inspect the next run's
-actual source and logs; do not use this old-source run as current evidence.
-The current submitted experiment is
-[39287650186](https://github.com/taowen/arlinux-xnu/actions/runs/39287650186),
-source `f314bf1e90970613365919947f9fb165b295351a`. Inspect this exact run's
-compiler and VM logs before another dispatch. No mapping/protection runtime
-result is established yet.
+Protection semantics now compile: ordinary writable requests preserve mappings
+for VM's later fault/COW handling; explicit PROTECT_IMMEDIATE can restore kernel
+write access and updates referenced/modified tracking across physical aliases.
+Neither mode grants new execute permission or maps a hole; wiring survives.
+Physical-page protect uses original ARM's selector. No runtime protection,
+compressor or COW journey has executed.
 
-Cache synchronization and fail-stop native mapping errors remain included.
-The cache operation covers the physical aperture and executable aliases,
-restoring tracked permissions after maintenance. Its runtime behavior is still
-unverified. Physical cache-attribute/DMA synchronization remains unimplemented.
-Reference: [GCC ARM64 cache runtime](https://github.com/gcc-mirror/gcc/blob/releases/gcc-13/libgcc/config/aarch64/sync-cache.c).
+The next source adds original `arm/status_shared.c` used by the existing unified
+thread-state API, plus `bsd/kern/sys_ulock.c` for real wait/wake syscalls already
+retained by sysent. Preserve their actual validation, turnstiles, wait and wake
+behavior. Shared legacy register conversions are an internal ABI dependency,
+not support for 32-bit app execution. The real libpthread kernel provider is
+still not registered, and neither these calls nor pthread have run through XNU.
+Runner verification of these additions is pending.
+
+Dispatch now compares the selected local ref with its GitHub commit before
+submitting. Both real entry paths were observed: pushed `f314bf1` dispatched,
+and unpushed `20c23ff` was refused with no run created. Earlier accidental
+old-source run `39287502627` was confirmed cancelled. This fixes dispatch source
+selection, not guest execution. Cache synchronization and fail-stop native
+mapping errors also remain compiled but unverified at runtime; physical
+cache-attribute/DMA synchronization remains unimplemented.
 
 The NOENTER correction from `72f6733` is included: original VM fault capacity
 requests no longer attempt to map physical page zero. This has compiled, but

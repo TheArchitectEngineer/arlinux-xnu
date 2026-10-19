@@ -242,7 +242,8 @@ def main():
         'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm/arm_timer.c',
         'osfmk/arm/machine_routines_common.c',
         'osfmk/arm64/pcb.c', 'osfmk/arm64/loose_ends.c',
-        'osfmk/arm64/status.c', 'osfmk/arm64/machine_task.c',
+        'osfmk/arm64/status.c', 'osfmk/arm/status_shared.c',
+        'osfmk/arm64/machine_task.c',
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
         'libkern/libclosure/runtime.cpp', 'libkern/libclosure/libclosuredata.c',
@@ -277,6 +278,7 @@ def main():
             'vfs_init', 'vfs_conf', 'vfs_lookup', 'vfs_subr', 'vfs_syscalls',
             'vfs_support', 'vfs_vnops', 'vnode_if']],
         'bsd/pthread/pthread_shims.c', 'bsd/pthread/pthread_workqueue.c',
+        'bsd/kern/sys_ulock.c',
         # Preserve real event filtering, early buffers and triage storage.
         'bsd/kern/kdebug.c', 'bsd/kern/kdebug_common.c',
         'bsd/kern/kdebug_triage.c', 'bsd/kern/kern_ktrace.c',
