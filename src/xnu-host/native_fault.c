@@ -16,6 +16,8 @@
 
 extern char xnu_host_ticket_fault_start[], xnu_host_ticket_fault_end[];
 extern char xnu_host_ticket_fault_return[];
+extern char xnu_host_copyio_fault_start[], xnu_host_copyio_fault_end[];
+extern char xnu_host_copyio_fault_return[];
 static uintptr_t alternate_start, alternate_end;
 static volatile sig_atomic_t recoveries, alternate_recoveries;
 static volatile sig_atomic_t segv_recoveries, bus_recoveries;
@@ -37,8 +39,12 @@ fault_handler(int signal_number, siginfo_t *information, void *context)
     int saved_errno = errno;
     ucontext_t *state = context;
     uintptr_t pc = state->uc_mcontext.pc;
-    if (information->si_code > 0 && pc >= (uintptr_t)xnu_host_ticket_fault_start &&
-        pc < (uintptr_t)xnu_host_ticket_fault_end) {
+    uintptr_t recovery = 0;
+    if (pc >= (uintptr_t)xnu_host_ticket_fault_start && pc < (uintptr_t)xnu_host_ticket_fault_end)
+        recovery = (uintptr_t)xnu_host_ticket_fault_return;
+    else if (pc >= (uintptr_t)xnu_host_copyio_fault_start && pc < (uintptr_t)xnu_host_copyio_fault_end)
+        recovery = (uintptr_t)xnu_host_copyio_fault_return;
+    if (information->si_code > 0 && recovery) {
         char marker;
         uintptr_t stack = (uintptr_t)&marker;
         if (recoveries < SIG_ATOMIC_MAX)
@@ -50,7 +56,7 @@ fault_handler(int signal_number, siginfo_t *information, void *context)
         if (stack >= alternate_start && stack < alternate_end &&
             alternate_recoveries < SIG_ATOMIC_MAX)
             alternate_recoveries++;
-        state->uc_mcontext.pc = (uintptr_t)xnu_host_ticket_fault_return;
+        state->uc_mcontext.pc = recovery;
         errno = saved_errno;
         return; /* Linux sigreturn restores registers, SP and the signal mask. */
     }

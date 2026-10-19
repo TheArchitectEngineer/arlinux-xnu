@@ -51,7 +51,8 @@ if [[ $stage == early ]]; then
   objects=(build/kernel/startup.o build/kernel/xnu_bootstrap.o build/kernel/context.o
     build/kernel/pmap.o build/kernel/time.o build/kernel/rtclock.o
     build/kernel/OSAtomicOperations.o build/kernel/entropy.o build/kernel/image.o
-    build/kernel/ticket.o build/kernel/usermode_ticket.o)
+    build/kernel/ticket.o build/kernel/usermode_ticket.o
+    build/kernel/copyio_probe.o build/kernel/usermode_copyio.o)
 else
   ar rcs "$output/libxnu.a" build/kernel/*.o
   objects=(-Wl,--start-group "$output/libxnu.a" -Wl,--end-group)

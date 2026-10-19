@@ -177,6 +177,8 @@ def main():
         'src/xnu-host/xnu_vm_bootstrap.c', 'src/xnu-host/pmap.c', 'src/xnu-host/time.c',
         'src/xnu-host/entropy.c', 'src/xnu-host/image.c', 'src/xnu-host/ro_zone.c',
         'src/xnu-host/ticket.c', 'osfmk/arm64/usermode_ticket.S',
+        'src/xnu-host/copyio_probe.c', 'osfmk/arm64/copyio.c',
+        'osfmk/arm64/usermode_copyio.S',
         # Core IPC structures used by Mach ports/messages and task initialization.
         *['osfmk/ipc/' + name + '.c' for name in [
             'ipc_space', 'mach_port', 'mach_msg', 'ipc_init', 'ipc_entry',

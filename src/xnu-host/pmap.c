@@ -17,6 +17,8 @@ const pmap_t kernel_pmap = &kernel_pmap_store;
 unsigned long gVirtBase, gPhysBase, gPhysSize;
 uint64_t gDramBase, gDramSize;
 uint64_t max_mem, max_mem_actual, sane_size;
+const vm_map_address_t physmap_base = XNU_HOST_PHYSICAL_VIEW;
+const vm_map_address_t physmap_end = XNU_HOST_PHYSICAL_VIEW + XNU_HOST_PHYSICAL_BYTES;
 static ppnum_t next_frame;
 static ppnum_t frame_limit;
 
@@ -434,6 +436,7 @@ xnu_host_pmap_bootstrap(void)
     right[0] = 0x7b;
     assert(left[0] == 0 && copy[0] == 0x7b);
     xnu_host_ticket_bootstrap(b);
+    xnu_host_copyio_bootstrap(b);
     unsigned int attributes = (pmap_disconnect)(first);
     assert((attributes & (VM_MEM_MODIFIED | VM_MEM_REFERENCED)) ==
         (VM_MEM_MODIFIED | VM_MEM_REFERENCED));
