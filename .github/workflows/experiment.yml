@@ -207,6 +207,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/download-artifact@v4
         with:
           name: xnu-linux-arm64-kernel-port
@@ -214,18 +216,8 @@ jobs:
       - name: Link and execute actual XNU early startup (not VM or guest boot)
         shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p build/startup
-          cp build/kernel/receipt.json build/startup/compiler-receipt.json
-          uname -a > build/startup/environment.txt
-          cc --version >> build/startup/environment.txt
-          cc -Wall -Wextra -Werror -O1 -g -pthread -Isrc/xnu-host/include -ffunction-sections -fdata-sections -c src/xnu-host/host.c -o build/startup/host.o
-          cc -no-pie -pthread -Wl,--gc-sections -Wl,-T,src/xnu-host/startup.ld build/startup/host.o build/kernel/startup.o build/kernel/xnu_bootstrap.o build/kernel/context.o -o build/startup/xnu-host 2>&1 | tee build/startup/link.log
-          file build/startup/xnu-host > build/startup/file.txt
-          timeout 30 build/startup/xnu-host startup_debug=1 > build/startup/stdout.txt 2> build/startup/stderr.txt
-          cat build/startup/stdout.txt build/startup/stderr.txt
-          (cd build/startup && sha256sum xnu-host > SHA256SUMS)
-          echo 'Executed upstream XNU early initialization only. VM/tasks/guest execution remain outstanding.' >> "$GITHUB_STEP_SUMMARY"
+          bash tools/run-xnu-host.sh early
+          echo 'Executed host pmap bring-up and upstream XNU early initialization only. VM/tasks/guest execution remain outstanding.' >> "$GITHUB_STEP_SUMMARY"
       - name: Record experiment receipt
         if: always()
         run: python3 tools/experiment-receipt.py --directory build/startup --outcome '${{ job.status }}'
@@ -242,6 +234,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/download-artifact@v4
         with:
           name: xnu-linux-arm64-kernel-port
@@ -249,18 +243,7 @@ jobs:
       - name: Link and attempt actual XNU VM bootstrap
         shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p build/vm
-          cp build/kernel/receipt.json build/vm/compiler-receipt.json
-          uname -a > build/vm/environment.txt
-          cc --version >> build/vm/environment.txt
-          cc -Wall -Wextra -Werror -O1 -g -pthread -Isrc/xnu-host/include -DXNU_HOST_BOOT_VM -ffunction-sections -fdata-sections -c src/xnu-host/host.c -o build/vm/host.o
-          ar rcs build/vm/libxnu.a build/kernel/*.o
-          cc -no-pie -pthread -Wl,--gc-sections -Wl,-T,src/xnu-host/startup.ld -Wl,-Map,build/vm/link-map.txt build/vm/host.o -Wl,--start-group build/vm/libxnu.a -Wl,--end-group -o build/vm/xnu-host 2>&1 | tee build/vm/link.log
-          file build/vm/xnu-host > build/vm/file.txt
-          timeout 30 build/vm/xnu-host startup_debug=1 > build/vm/stdout.txt 2> build/vm/stderr.txt
-          cat build/vm/stdout.txt build/vm/stderr.txt
-          (cd build/vm && sha256sum xnu-host > SHA256SUMS)
+          bash tools/run-xnu-host.sh vm
       - name: Record experiment receipt
         if: always()
         run: python3 tools/experiment-receipt.py --directory build/vm --outcome '${{ job.status }}'
