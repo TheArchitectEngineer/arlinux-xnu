@@ -4,8 +4,10 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdint.h>
+#include <sys/mman.h>
 #include <ucontext.h>
 #include <unistd.h>
+#include <usermode_vm.h>
 #include <host/fault.h>
 
 #if !defined(__aarch64__)
@@ -96,4 +98,25 @@ xnu_host_fault_statistics(unsigned long *recovered, unsigned long *alternate)
 {
     *recovered = (unsigned long)recoveries;
     *alternate = (unsigned long)alternate_recoveries;
+}
+
+int
+xnu_host_fault_bus_mapping(unsigned long *address)
+{
+    int fd = memfd_create("xnu-fault-bus-diagnostic", MFD_CLOEXEC);
+    if (fd == -1)
+        return errno;
+    /* Deliberately keep the file empty. Mapping succeeds, access is beyond EOF. */
+    void *mapping = mmap(NULL, XNU_HOST_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    int error = mapping == MAP_FAILED ? errno : 0;
+    close(fd);
+    if (!error)
+        *address = (unsigned long)mapping;
+    return error;
+}
+
+int
+xnu_host_fault_bus_unmap(unsigned long address)
+{
+    return munmap((void *)address, XNU_HOST_PAGE_SIZE) ? errno : 0;
 }

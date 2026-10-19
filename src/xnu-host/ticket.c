@@ -7,6 +7,7 @@
 #include <pexpert/pexpert.h>
 #include <host/fault.h>
 #include <host/memory.h>
+#include <string.h>
 
 extern hw_lck_ticket_t hw_lck_ticket_reserve_orig_allow_invalid(hw_lck_ticket_t *lock);
 
@@ -27,6 +28,15 @@ xnu_host_ticket_bootstrap(unsigned long address)
     uint32_t invalid = lock->lck_value;
     assert(hw_lck_ticket_reserve_orig_allow_invalid(lock).lck_value == 0 &&
         lock->lck_value == invalid);
+    /* A valid-looking, writable unaligned word must be rejected unchanged.
+     * Some hosts permit its exclusive load, so a hardware fault is not a guard. */
+    void *misaligned = (void *)(address + 9);
+    uint32_t saved_unaligned;
+    memcpy(&saved_unaligned, misaligned, sizeof(saved_unaligned));
+    memcpy(misaligned, &seed, sizeof(seed));
+    assert(hw_lck_ticket_reserve_orig_allow_invalid(misaligned).lck_value == 0);
+    assert(memcmp(misaligned, &seed, sizeof(seed)) == 0);
+    memcpy(misaligned, &saved_unaligned, sizeof(saved_unaligned));
     *lock = seed;
     pmap_protect(kernel_pmap, address, address + PAGE_SIZE, VM_PROT_READ);
     unsigned long before, alternate_before, after, alternate_after;
@@ -40,11 +50,21 @@ xnu_host_ticket_bootstrap(unsigned long address)
     xnu_host_fault_statistics(&unaligned_count, &unaligned_alternate);
     for (int attempt = 0; attempt < 2; attempt++)
         assert(hw_lck_ticket_reserve_orig_allow_invalid((void *)(address + PAGE_SIZE)).lck_value == 0);
+    unsigned long unmapped_count, unmapped_alternate, bus_address;
+    xnu_host_fault_statistics(&unmapped_count, &unmapped_alternate);
+    assert(xnu_host_fault_bus_mapping(&bus_address) == 0);
+    assert(hw_lck_ticket_reserve_orig_allow_invalid((void *)bus_address).lck_value == 0);
+    assert(xnu_host_fault_bus_unmap(bus_address) == 0);
     xnu_host_fault_statistics(&after, &alternate_after);
-    kprintf("XNU_HOST_TICKET recovery readonly=%lu/%lu unaligned=%lu/%lu unmapped=%lu/%lu (total/alternate)\n",
+    kprintf("XNU_HOST_TICKET recovery readonly=%lu/%lu unaligned=%lu/%lu unmapped=%lu/%lu bus=%lu/%lu (total/alternate)\n",
         readonly_count - before, readonly_alternate - alternate_before,
         unaligned_count - readonly_count, unaligned_alternate - readonly_alternate,
-        after - unaligned_count, alternate_after - unaligned_alternate);
+        unmapped_count - unaligned_count, unmapped_alternate - unaligned_alternate,
+        after - unmapped_count, alternate_after - unmapped_alternate);
+    assert(readonly_count - before == 2 && readonly_alternate - alternate_before == 2);
+    assert(unaligned_count == readonly_count && unaligned_alternate == readonly_alternate);
+    assert(unmapped_count - unaligned_count == 2 && unmapped_alternate - unaligned_alternate == 2);
+    assert(after - unmapped_count == 1 && alternate_after - unmapped_alternate == 1);
     assert(after - before == 5 && alternate_after - alternate_before == 5);
     assert(pmap_enter(kernel_pmap, address, page, VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_NONE, 0, TRUE) == KERN_SUCCESS);
@@ -55,6 +75,6 @@ xnu_host_ticket_bootstrap(unsigned long address)
     lock->lck_value = saved;
     kprintf("XNU_HOST_FAULT diagnostic: expect unhandled child SIGSEGV\n");
     assert(xnu_host_memory_expect_unhandled_fault(address + PAGE_SIZE) == 0);
-    kprintf("XNU_HOST_TICKET atomic/invalid/readonly/unaligned/unmapped/wrap passed recovered=%lu alternate=%lu (VM not initialized)\n",
+    kprintf("XNU_HOST_TICKET atomic/invalid/readonly/unaligned/unmapped/bus/wrap passed recovered=%lu alternate=%lu (VM not initialized)\n",
         after - before, alternate_after - alternate_before);
 }
