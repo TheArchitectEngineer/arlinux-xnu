@@ -102,8 +102,9 @@ int main(int argc,char **argv)
                 dyld.entry,dyld.header_address,dyld.slide);
     }
     uint64_t cache_base=root ? load_native_cache(root) : 0;
-    void *stack=mmap(NULL,1024*1024,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
-    if (stack==MAP_FAILED) die("guest stack");
+    long stack_address=darwin_native_memory(1024*1024,PROT_READ|PROT_WRITE);
+    if ((unsigned long)stack_address>=(unsigned long)-4095) { errno=-stack_address; die("guest stack"); }
+    void *stack=(void *)stack_address;
     uint64_t top=((uintptr_t)stack+1024*1024-128)&~15UL;
     if (dynamic) {
         size_t length=strlen(program)+1;

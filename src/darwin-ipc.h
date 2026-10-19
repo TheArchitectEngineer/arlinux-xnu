@@ -1,5 +1,5 @@
 /* Initial process-local Mach service transport, with real kernel queues.
- * Implements the observed non-complex Host priority-info request only.
+ * Implements observed Host/Clock queries and semaphore creation.
  * Queued replies remain observable by later receive calls; send success never
  * stands in for a fabricated receive. General descriptor/port transfer, port
  * sets, notifications and cross-process namespace semantics are not provided. */

@@ -100,7 +100,7 @@ jobs:
           clang-18 --target=arm64-apple-ios12.0 -ffreestanding -fno-stack-protector -O1 -g -c guests/dynamic-console.c -o build/native/console-dynamic.o
           ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/console-dynamic.o -needed_library guests/libSystem.tbd -o build/native/console-dynamic.macho
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
-          cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -c src/darwin-native.c -o build/native/runtime.o
+          cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -mno-outline-atomics -c src/darwin-native.c -o build/native/runtime.o
           cc -c src/darwin-native.S -o build/native/entry.o
           cc -Wall -Wextra -Werror -O2 -g src/macho-native.c build/native/runtime.o build/native/entry.o -ldl -o build/native/macho-native
           # Two complete independent launches of the interactive program, not

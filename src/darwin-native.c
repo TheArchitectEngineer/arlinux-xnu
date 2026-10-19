@@ -65,6 +65,11 @@ static void trace_call(unsigned long number,unsigned long pc,unsigned long resul
     RAW(SYS_write,2,line,n,0,0,0);
 }
 
+/* Legacy ARM64 iOS packs class pointers into a 36-bit user address space.
+ * Keep every guest allocation below its commpage, independently of Linux's
+ * much higher automatic mmap placement. The atomic cursor also reserves
+ * disjoint ranges before future concurrent allocation is enabled. */
+static unsigned long guest_next=0x300000000UL;
 static long anonymous_aligned(unsigned long size,int protection,unsigned long mask)
 {
     /* Until executable mapping rewrite is implemented, never grant unadapted
@@ -74,7 +79,19 @@ static long anonymous_aligned(unsigned long size,int protection,unsigned long ma
     unsigned long alignment=mask+1;
     if (alignment<PAGE16) alignment=PAGE16;
     size = (size + PAGE16 - 1) & ~(PAGE16 - 1);
-    long raw = RAW(SYS_mmap,0,size+alignment,protection,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    long raw=-12;
+    for (unsigned int attempt=0;attempt<128;attempt++) {
+        unsigned long requested=__atomic_fetch_add(&guest_next,size+alignment,__ATOMIC_RELAXED);
+        if (requested>=0xfffffc000UL || size+alignment>0xfffffc000UL-requested) return -12;
+        raw=RAW(SYS_mmap,requested,size+alignment,protection,
+                MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
+        if (raw==-17) continue; /* Preserve existing mappings, choose another range. */
+        if ((unsigned long)raw >= (unsigned long)-4095) return raw;
+        if ((unsigned long)raw!=requested) {
+            RAW(SYS_munmap,raw,size+alignment,0,0,0,0); return -95;
+        }
+        break;
+    }
     if ((unsigned long)raw >= (unsigned long)-4095) return raw;
     unsigned long base = ((unsigned long)raw + alignment - 1) & ~(alignment - 1);
     unsigned long prefix = base - raw, suffix = alignment - prefix;
@@ -86,7 +103,7 @@ static long anonymous_aligned(unsigned long size,int protection,unsigned long ma
     return (long)base;
 }
 
-static long anonymous16(unsigned long size,int protection)
+long darwin_native_memory(unsigned long size,int protection)
 {
     return anonymous_aligned(size,protection,PAGE16-1);
 }
@@ -407,7 +424,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         if (r[0] || r[3] != 0x1002 || r[4] != (unsigned long)-1 || r[5]) {
             result = -95; break;
         }
-        result = anonymous16(r[1],r[2]);
+        result = darwin_native_memory(r[1],r[2]);
         break;
     case 0x80000000:
         if (r[3] == 2) {

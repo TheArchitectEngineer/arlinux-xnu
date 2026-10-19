@@ -44,11 +44,29 @@ is explicitly disabled as a loading policy; verified firmware SHA-256 and
 mapping/relocation state are recorded independently. This replaces the kernel's
 cache-loading responsibility rather than faking its completion.
 
-Real libSystem/pthread initializers now execute. Their next unsupported request
-is host_info(HOST_PRIORITY_INFO); Host/reply port state and Mach IPC are not yet
-implemented. See docs/EXPERIMENT.md for the exact source/run/hash and remaining
-acceptance gaps. Cache symbolication preserves actual image and nearest-symbol
+Real libSystem/pthread/libc initializers now execute. The observed Host
+priority query, Clock service lookup and semaphore creation have passed their
+clients' checks. See docs/EXPERIMENT.md for the exact source/run/hash and
+remaining acceptance gaps. Cache symbolication preserves actual image and nearest-symbol
 metadata from the same input without uploading Apple executable contents.
+
+## Initial Mach services
+
+Process-local reply rights have distinct names and Linux SOCK_SEQPACKET queues.
+The observed combined send/receive exchanges enqueue a MIG response and then
+receive it through the real queue. Unknown service routines get a MIG error;
+unknown destination names get transport errors. Host priority ranges describe
+the Darwin ABI policy, not implemented realtime scheduling. Host and Clock send
+references are tracked; Clock service replies transfer a registered service
+right using the normal complex descriptor format. Clock time uses Linux clocks.
+
+The observed semaphore-create request allocates an actual Linux eventfd counter.
+Signal/wait/timed-wait support is implemented, but it has not passed a complete
+multithreaded user journey; contended FIFO ordering and concurrent namespace
+mutation remain unverified. General descriptors, out-of-line memory, port sets,
+notifications, arbitrary rights transfer and cross-process namespace semantics
+are still outside the implemented transport. These limitations remain failures,
+not empty successful replies.
 
 ## Preserve behavior, permit implementation changes
 
