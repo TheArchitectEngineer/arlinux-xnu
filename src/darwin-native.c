@@ -194,6 +194,22 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
             return;
         }
+        if (number==31 || number==32) {
+            /* Retain the actual startup request before adding any MIG service.
+             * Header and fixed argument words only, bounded to this diagnostic. */
+            uint32_t words[16]={0};
+            unsigned long length=r[2]<sizeof(words) ? r[2] : sizeof(words);
+            if (length && !guest_copy(words,r[0],length,0)) {
+                const char label[]="DARWIN_MACH_REQUEST word-index/pc/value follows\n";
+                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                for (unsigned int i=0;i<length/4;i++) trace_call(i,uc->uc_mcontext.pc,words[i]);
+            }
+            /* No receiver exists yet for NULL/unknown destination rights.
+             * mach_msg returns transport errors, never kern_return_t 46. */
+            r[0]=0x10000003U; /* MACH_SEND_INVALID_DEST */
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
         if (number==10 || number==15) { /* current-task anonymous allocate/map */
             uint64_t address=0;
             unsigned long status=4; /* KERN_INVALID_ARGUMENT */
