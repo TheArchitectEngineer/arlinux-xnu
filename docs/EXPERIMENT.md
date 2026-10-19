@@ -2,123 +2,51 @@
 
 ## Current handoff
 
-The execution contract is now pinned ARM64 instruction emulation with real XNU
-services; native ptrace is no longer the initial target. See
-[ARCHITECTURE.md](ARCHITECTURE.md). No genuine XNU guest process has run.
+The native-XNU/Unicorn-user hybrid is an **unvalidated architecture candidate**,
+not an established implementation route. Further machine-layer expansion is
+held behind an execution reference: run the original kernel and a real process
+journey with the CPU/MMU/exception environment intact. This does not replace the
+userspace-XNU goal, and a reference pass cannot satisfy that goal.
 
-The native adapter transfers integer/FP/SIMD/PSTATE/TLS state, maps XNU-owned
-16 KiB frame backing and reports exception/memory/slice stops. It implements no
-Darwin syscall or Mach-O loader. Engine operations now switch to a guarded native
-CPU stack allocated before XNU startup, avoiding libc/TCG use of small XNU kernel
-thread stacks. That stack integration compiled in the latest run but has not executed. The new return path now restores virtual TPIDRRO from the PCB, but has not run.
+Latest completed usermode attempt:
+[39309052509](https://github.com/taowen/arlinux-xnu/actions/runs/39309052509),
+root `67949d497238323a7111d7a6ce8640a6e5ecf120`,
+XNU `ac6d2d422d4232a01e8e01c564b63a50d0772870`,
+Unicorn `2bca534e6168c9096e326c1868279a5baed4f9b3`.
 
-Latest completed run:
-[39303186380](https://github.com/taowen/arlinux-xnu/actions/runs/39303186380),
-root `766b14c8a4ab8d007cf43c5ef48c1805ed403506`, XNU `355e0c6e9767a88e58749e2e1f6817d316a4f4b7`,
-Unicorn `8028ec436f2d9376525352dd38ed9ed6b9f6be10`.
+- Kernel compiler job `118253977259` succeeded. Receipt SHA-256:
+  `3a9323beab1ddf0fbe87e1096bc06390e88a36548eee694f01c6ff3293da2a47`.
+- Full service job `118254540494` failed executable linkage, including original
+  kernel_bootstrap dependencies `bsd_scale_setup` and `mem_size`. Receipt SHA-256:
+  `2055dae91a1f350b356ed34fd412430eb93194ccb357cd534e5b236f4ad28230`.
+- Native engine SHA-256:
+  `329f3fb3b771c3cb3777549b064e62e590e86d028a58af804f4f8e49c291a135`.
+  Compilation and the ABI audit passed; neither establishes execution.
 
-- Compiler job `118233738297` passed; receipt SHA-256
-  `e5c65c875c53f79fd8292e26d0448eb892a15c823cd77493f3706a1aea0c56cf`.
-- VM job `118234406591` built the native adapter and ARM64 engine and passed
-  the native/kernel ABI audit. Executable linkage still failed on genuine kernel
-  machine/pmap/service imports. Receipt SHA-256
-  `5ad9c8b3c398e9ae6df81dd44123294becab8382a341a204fba9ad2c806ee532`.
-- Built `libunicorn.so.2` SHA-256
-  `f1175a539cbc884127a03e554c224e155f9746a1f0e698a42b2b108d66cb70d3`.
-  This proves neither engine execution nor XNU bootstrap.
+Text logs: `build/runs/39309052509`. No executable linked, no real VM bootstrap
+completed, no XNU user process ran. Prior code for user pmap ownership/ledgers,
+copyio, machine return, virtual TLS, exception transport and timers remains
+runtime-unvalidated. A local memory-size globals edit is also unvalidated; it
+must not be presented as fixing kernel boot.
 
-Logs are in `build/runs/39303186380`. The prior engine run `39295473899`
-exposed a kernel/native ABI hazard: XNU diagnostic `log(int, format, ...)`
-encountered the engine's transitive libm `log(double)`. Kernel external linkage
-is now `xnu_kernel_log`, and the misleading libm DSO error no longer masks the
-actual missing imports. Do not fix such errors by blindly linking libc libraries.
+`build.sh build --mode baseline` now builds the pinned ios-sweet kernel plus
+`guests/init.S` on macOS, then boots that exact kernel in full-system QEMU on
+Linux ARM64. Upstream mockfs serves the static Mach-O RAM disk as
+`/sbin/launchd`; original XNU exec starts PID 1. The program opens the real
+console, mmaps/touches two 16 KiB pages, forks, modifies/frees the child's
+mapping, exits 37, checks parent wait4 status and COW isolation, frees the
+parent mapping and stays alive. It uses no host Darwin syscall shim.
 
-Compiled, not runtime-validated: engine aliases now retain managed frames;
-physical reclaim checks, protection and disconnect include those aliases. Only
-known managed backing is accepted. Native mutation failures retain uncertain
-references and poison the engine; destroy requires all mappings removed. This
-is not user pmap creation, task accounting or a running process. Do not add an
-isolated engine mapping probe as acceptance; exercise the real XNU VM journey.
+The reference must show the completed journey in the decoded guest console;
+compilation, a quiet screen or `no_panic_observed` alone is insufficient.
+Capture registers, framebuffer, exceptions, exact input hashes and receipts
+on failure too. No proprietary assets are needed for this first journey.
 
-User pmap ownership and geometry compiled in the latest run but did not execute.
-Creation/reference/final release use real XNU typed allocation, rwlock, atomic
-refs, ledger refs and a per-pmap engine. Unsupported creation modes are rejected;
-final release cannot discard live mappings. No hardware page table ops exist.
-User queries read engine metadata. No XNU pmap ownership/query path has run.
-
-Compiled, not runtime-validated: resident insertion/replacement/removal/protection and
-wiring now update real task ledger terms (phys_mem, internal/external, alternate,
-footprint, wired). Physical protect/disconnect synchronizes XNU mapping records
-and ledger debit after native completion, with preemption still disabled.
-NOENTER reserves XNU/native metadata without mapping page zero; NOWAIT uses
-nonblocking XNU allocation. Only allocation failure before uncertain native
-mutation is retryable; later failures stop rather than release possibly mapped
-frames. Same-frame reentry retains existing accounting classification.
-
-Reusable/compressed mappings and unsupported cache/mapping options remain
-explicitly unsupported. They must not be silently billed as ordinary resident
-pages. Native reverse aliases and XNU records/ledger terms need the real VM
-journey to validate consistency. No isolated mapping sample/test is added.
-
-Compiled, not runtime-validated: the fork routes validated USERMODE byte/string/atomic
-copies to a kernel VM transport. A permitted resident mapping is accessed with
-preemption disabled; otherwise original vm_fault resolves the page/protection/
-COW and the mapping is revalidated before physical access. Public validation,
-kernel-to-kernel handling and non-USERMODE behavior remain original. Strings
-stop at NUL; atomic transfers use aligned single loads/stores. Wait-if-equals
-allows a spurious WFE-hint return, not a fake ulock completion. Native engine
-memory APIs never substitute for XNU permission checks.
-
-Machine-return header repair was tested by
-[39307242888](https://github.com/taowen/arlinux-xnu/actions/runs/39307242888),
-root `01224736a54e41ddd933aa9273dbb0cb53287055`. Kernel, native return/event
-transport and the Unicorn extension compiled; the ABI audit passed. Executable
-linkage still failed, so no machine return or exception dispatch ran. Compiler
-receipt SHA-256:
-`8e4c9d93bf27d422b09ce6e2abb7999d910e433886fe172e31b40968f9c0bb8a`.
-VM failure receipt SHA-256:
-`3934a83285a40498b0ddc8ffcf56897ee655e0f0f33352dd990609432652d5bd`.
-Built fork library SHA-256:
-`329f3fb3b771c3cb3777549b064e62e590e86d028a58af804f4f8e49c291a135`.
-Logs: `build/runs/39307242888`. Prior header-type failure `39306755796`
-remains in Git/Actions and local logs, not a successful execution result.
-
-New, not yet built: pmap_switch selects the per-map engine; PMAP_SWITCH_USER
-updates the actual current thread map used by copyio, as in original VM.
-Selections are borrowed and cleared before final pmap release. Kernel mappings
-stay Linux-owned; guest VAs remain isolated in the selected engine.
-
-New machine-return code, not runtime-validated: original symbols now reset the consumed
-kernel stack and enter a real-thread CPU loop. It restores integer/FP/TLS state,
-handles original user ASTs, runs a bounded pmap engine slice and passes synchronous
-events to original sleh_synchronous. Clocks poll with actual user saved state;
-kernel safe points retain kernel diagnostic frames. PCB TSD setters install
-virtual TPIDRRO on next resume. No native Linux TLS register is overwritten.
-
-The pinned Unicorn fork adds read-only pending syndrome/address queries. The
-native hook captures real virtual CPU metadata for synchronous exceptions;
-internal events are unsupported. Flat mapping failures model leaf permission/
-translation errors. No arbitrary byte-pattern decoder or stale ESR/FAR bank is
-used. The fork extension and CPU return/IRQ/AST path compiled but have not executed.
-
-New, not yet built: the default entry now calls original kernel_bootstrap,
-after original ARM pre-VM timer/processor preparation, instead of exiting after
-an allocator sample. VM and full-link jobs extract every declared archive member (KEEP alone cannot
-extract unreferenced members), then retain all compiled startup entries rather
-than only phases through ZALLOC. Original VM/task/thread/service ordering must
-actually execute, not be mimicked by setting startup_phase.
-
-Next follow that actual boot call graph toward the supervisor/child journey.
-Missing machine/service inputs, root filesystem/console/exec and nested/commpage
-paths remain. Copy-fault recovery metadata, debug and timebase behavior also need work.
-Do not substitute a CPU sample or a syscall shim for the real process journey.
-
-The first acceptance is supervisor plus child through original BSD exec/VFS:
-console output, XNU allocation/touch/free, normal child exit and real parent wait.
-Kernel kalloc alone is intermediate. Later gates remain dyld, genuine iOS
-frameworks/display/input and an actual app journey. No Apple userland assets or
-working root filesystem have been supplied or tested here. Keep the objective
-intact and do not replace it with engine samples or successful placeholders.
+Next: execute the new reference stage, diagnose its actual first failure, and
+use the result to reassess the smallest viable userspace execution boundary.
+The reference is not a working usermode kernel, dyld, frameworks or an iOS app.
+The complete objective remains genuine XNU process execution in Linux userspace,
+then real dyld/iOS frameworks and an actual app journey on Android.
 
 ## Evidence boundaries
 
@@ -127,10 +55,10 @@ intact and do not replace it with engine samples or successful placeholders.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | [Selected real kernel graph compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39303186380) | Executable kernel or guest execution |
-| `xnu-link-inputs` | Run 39303186380: relocatable merge passes | Executable linkage or kernel boot |
+| `xnu-kernel` | [Selected real kernel graph compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39309052509) | Executable kernel or guest execution |
+| `xnu-link-inputs` | Run 39309052509: relocatable merge passes | Executable linkage or kernel boot |
 | `xnu-early-startup` | [Latest link fails on lock startup imports](https://github.com/taowen/arlinux-xnu/actions/runs/39270528453); prior raw diagnostics passed | VM initialization, tasks or guest execution |
-| `xnu-vm-startup` | [Executable link fails; native engine compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39303186380) | VM bootstrap or guest execution |
+| `xnu-vm-startup` | [Executable link fails; native engine compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39309052509) | VM bootstrap or guest execution |
 
 These are historical observations at their runs' source revisions, not promises
 about current HEAD. No Android app-sandbox journey or third-party iOS app has

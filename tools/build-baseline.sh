@@ -3,10 +3,12 @@ set -euo pipefail
 # Read the same pinned source used by experiment receipts before changing directory.
 SWEET_REPO=$(python3 -c 'import json; print(json.load(open("sources.lock.json"))["iosSweet"]["repository"])')
 SWEET_SHA=$(python3 -c 'import json; print(json.load(open("sources.lock.json"))["iosSweet"]["commit"])')
+DXB_REPOSITORY=$(python3 -c 'import json; print(json.load(open("sources.lock.json"))["darwinXnuBuild"]["repository"])')
+DXB_COMMIT=$(python3 -c 'import json; print(json.load(open("sources.lock.json"))["darwinXnuBuild"]["commit"])')
 mkdir -p build/baseline
 cd build/baseline
-export DXB_REPO=https://github.com/blacktop/darwin-xnu-build
-export DXB_SHA=663906528d1cd5ea8fde7de6f16de73db9511549
+export DXB_REPO="https://github.com/$DXB_REPOSITORY"
+export DXB_SHA="$DXB_COMMIT"
 export MACOS_VERSION=13.5 KERNEL_CONFIG=DEVELOPMENT MACHINE_CONFIG=SWEET
 git init -q sweet
 git -C sweet fetch --depth 1 "https://github.com/$SWEET_REPO.git" "$SWEET_SHA"
@@ -36,4 +38,12 @@ xcrun --find iig
 mkdir -p ../../out-baseline
 find dxb/fakeroot/System/Library/Kernels -maxdepth 1 -type f -name 'kernel.*' -exec cp {} ../../out-baseline/ \;
 file ../../out-baseline/kernel.* > ../../out-baseline/file.txt
-(cd ../../out-baseline && shasum -a 256 kernel.* > SHA256SUMS)
+# Use the upstream static Mach-O/signature writer, not a host loader. The
+# resulting executable itself is mockfs's RAM disk served as /sbin/launchd.
+clang --target=arm64-apple-ios16.0 -c ../../guests/init.S -o ../../out-baseline/init.o
+python3 sweet/tools/mkinit.py ../../out-baseline/init.o ../../out-baseline/init.macho
+mkdir -p ../../out-baseline/reference-tools
+for source in adt.py mkadt.py mkpayload.py qemu-sweet.py; do
+    cp "sweet/tools/$source" "../../out-baseline/reference-tools/$source"
+done
+(cd ../../out-baseline && shasum -a 256 kernel.* init.macho reference-tools/*.py > SHA256SUMS)

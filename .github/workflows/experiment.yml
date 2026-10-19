@@ -106,6 +106,36 @@ jobs:
           name: xnu-arm64-baremetal-baseline
           path: out-baseline/
           retention-days: 30
+  xnu-reference-boot:
+    if: inputs.mode == 'both' || inputs.mode == 'baseline'
+    needs: xnu-baseline
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: xnu-arm64-baremetal-baseline
+          path: out-baseline/
+      - name: Install full-system ARM64 execution and symbol tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm llvm
+      - name: Execute original XNU process journey (reference only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reference
+          bash tools/run-baseline.sh 2>&1 | tee build/reference/run.log
+      - name: Record reference receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/reference --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-arm64-full-system-reference
+          path: build/reference/
+          retention-days: 30
   xnu-kernel-headers:
     if: inputs.mode == 'both' || inputs.mode == 'kernel'
     runs-on: ubuntu-24.04-arm

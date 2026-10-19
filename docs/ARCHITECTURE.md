@@ -4,9 +4,13 @@ This is an implementation contract, not working iOS compatibility. No genuine
 XNU guest process has run. ARM64, 16 KiB guest pages and one virtual CPU remain
 fixed. All compilation and execution use `build.sh` on GitHub runners.
 
-## Selected execution boundary
+## Unvalidated execution candidate
 
-Use a pinned Unicorn 2.1.4-based ARM64 engine for guest user instructions. The
+The current candidate uses a pinned Unicorn 2.1.4-based ARM64 engine for guest
+user instructions. It has not linked or run a real XNU process. Before expanding
+this machine layer, establish the original-kernel full-system process reference
+through `build.sh build --mode baseline`. A reference pass is not a usermode pass.
+The
 [taowen fork](https://github.com/taowen/unicorn) adds read-only pending exception
 syndrome/address registers, queried inside the interrupt hook. Exact fork/base
 sources are recorded in `sources.lock.json`; no build-time patch pile is used.

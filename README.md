@@ -5,8 +5,9 @@ Research toward running XNU as a userspace kernel on Linux/Android.
 Darwin syscall shim. Historical host diagnostics executed limited XNU startup
 and shared mappings. The real VM executable still fails linkage; VM
 initialization, task creation and guest execution through XNU are unverified.
-The initial guest CPU backend now targets ARM64 instruction emulation; real XNU
-user-map and exception-return integration remain unfinished.
+The native-XNU/emulated-user CPU boundary is an unvalidated candidate. A
+full-system reference now attempts the same real process journey before further
+userspace machine-layer work; it does not establish userspace XNU compatibility.
 
 Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
 software framebuffer. No 32-bit apps or Metal support. Proprietary Apple
@@ -20,7 +21,7 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 ```bash
 ./build.sh build --mode host       # explicit historical host/shim diagnostics
 ./build.sh build                   # default: original XNU kernel bootstrap attempt
-./build.sh build --mode baseline   # ios-sweet bare-metal build
+./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
 ./build.sh status --run-id RUN_ID
 ./build.sh download --run-id RUN_ID
 ```
