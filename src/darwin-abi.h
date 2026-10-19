@@ -267,7 +267,7 @@ struct darwin_audit_token {
 _Static_assert(sizeof(struct darwin_audit_token)==32,"Darwin audit token wire layout");
 
 /* XNU mach/port.h, LP64 mach_port_construct options. */
-enum darwin_port_options {
+enum darwin_port_option_flags {
     D_MPO_CONTEXT_AS_GUARD=1, D_MPO_INSERT_SEND_RIGHT=0x10,
     D_MPO_STRICT=0x20
 };
