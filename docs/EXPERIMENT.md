@@ -25,12 +25,16 @@ iOS app ran, and no new VM executable was produced. Its failure receipt SHA-256 
 Actual compiler and VM logs are retained locally under `build/runs/39280428800`;
 Actions retains full receipts/output hashes and logs.
 
-The current submitted experiment is
+The VFS integration attempt
 [39281481188](https://github.com/taowen/arlinux-xnu/actions/runs/39281481188)
-at `ff0c1a9`, adding original VFS path/vnode dispatch, BSD mapping operations
-and unsupported-call handlers from upstream. Its result is pending. This follows
-the real exec/console/file path; do not substitute host shim handlers or fabricated
-successful filesystem operations. Inspect this exact run after allocation.
+at `ff0c1a918514426961e3a85930f170e2475473ee` failed compilation in original
+`vfs_lookup.c`: the symlink length check referenced `CN_WANTSRSRCFORK` with named
+streams disabled. Actual compiler job `118156650754` retained failure receipt
+SHA-256 `a5f839357787bdd16faff76239e3f3942980d8bfcb6993b8fe18a10e32ee43be`.
+Fork `09d71614b4e7bb9d24c3d5ca72a36d7c4a5da9fc` guards only the resource-fork suffix length by
+its existing `NAMEDRSRCFORK` configuration. Ordinary symlink length checking
+remains active. The repaired source still requires runner compilation and the
+real VM journey; filesystem operations have not run.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
