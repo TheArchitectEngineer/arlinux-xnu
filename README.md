@@ -2,7 +2,8 @@
 
 Research toward running XNU as a userspace kernel on Linux/Android.
 **No iOS app runs through XNU here yet.** The current Mach-O demo uses a small
-Darwin syscall shim; actual XNU kernel integration is still blocked at compilation.
+Darwin syscall shim. Eight real XNU units compile as Linux ARM64 ELF; a linked,
+initialized host kernel is still outstanding.
 
 Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
 software framebuffer. No 32-bit apps or Metal support. Proprietary Apple
@@ -15,7 +16,7 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 
 ```bash
 ./build.sh build --mode host       # Linux host probe + freestanding Mach-O
-./build.sh build --mode kernel     # actual XNU compilation; currently failing
+./build.sh build --mode kernel     # actual XNU objects + Linux link-dependency report
 ./build.sh build --mode baseline   # ios-sweet bare-metal build
 ./build.sh status --run-id RUN_ID
 ./build.sh download --run-id RUN_ID

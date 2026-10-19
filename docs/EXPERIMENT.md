@@ -7,12 +7,27 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-The current kernel attempt fails during compilation. Start from the per-unit
-compiler logs and `compile_commands.json` in [run 39215694311](https://github.com/taowen/arlinux-xnu/actions/runs/39215694311).
-Observed blockers include the new host platform's processor configuration,
-architecture wrapper headers, generated configuration and missing MIG headers.
-Resolve these using actual upstream configuration/generators and a maintained
-source fork where required; do not replace kernel behavior with success stubs.
+[Run 39218516888](https://github.com/taowen/arlinux-xnu/actions/runs/39218516888)
+compiled all eight selected real XNU units (task/thread, exception, Mach IPC and
+VM) into AArch64 ELF and combined them on Linux using a relocatable link.
+Downloaded artifacts matched their receipt hashes. The result is **not an
+executable**: its link report contains 800 unresolved symbols. Many are other
+XNU components not yet in the build, rather than host services to reimplement.
+
+Next: use `unresolved-symbols.txt` and the real source call graph to bring in the
+required XNU initialization/allocator/IPC/VM dependencies, then implement the
+Linux memory, current-thread, exception and scheduling backends. Audit ARM64
+privileged operations before attempting execution. Do not create hundreds of
+success stubs to satisfy the linker. Acceptance remains an initialized backend
+servicing the guest through real XNU, not a successful relocatable link.
+
+The kernel mode has three explicit stages: Linux generates upstream config and
+MIG interfaces; macOS Apple Clang cross-compiles Linux ELF; Linux combines the
+objects and reports unresolved symbols. Apple Clang is currently required for
+XNU's allocator type-signature/checking builtins. Stock Linux Clang 18 compiled
+`ipc_space.c` but failed on these builtins in other units. They were not replaced
+with dummy values. The compiler/Xcode versions are retained in artifacts; this
+is a hosted cross-build, not yet a Linux-only compiler toolchain.
 
 ## Evidence boundaries
 
@@ -21,7 +36,8 @@ source fork where required; do not replace kernel behavior with success stubs.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | Real XNU source compilation attempted; failing | Linked/initialized kernel or guest execution |
+| `xnu-kernel` | [Eight actual XNU units compiled as Linux AArch64 ELF](https://github.com/taowen/arlinux-xnu/actions/runs/39218516888) | Complete kernel, initialization or guest execution |
+| `xnu-link-inputs` | Same run: relocatable merge; 800 unresolved symbols retained | Executable linkage, boot or a functioning host backend |
 
 These are historical observations at their runs' source revisions, not promises
 about current HEAD. No Android app-sandbox journey or third-party iOS app has
