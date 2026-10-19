@@ -62,27 +62,35 @@ geometry, one CPU, actual native memory/cache properties and optional features
 disabled. It distinguishes unsupported Mach trap results from BSD errno/carry;
 port-returning traps return NULL until an actual port namespace is implemented.
 Latest actual dyld attempt:
-[39323925031](https://github.com/taowen/arlinux-xnu/actions/runs/39323925031),
-source `63d436776abd630b85c0722f337fce59bf131913`, job `118304930948`.
-The static console passed again. Real dyld now passes the commpage page-size
-query, obtains a real thread ID, establishes its own TSD, and receives real
-kernel entropy twice. Supplying executable_path in the Apple startup array
-eliminated the preceding NULL dereference. It then calls __mac_syscall (381)
-and explicitly aborts with: amfi_check_dyld_policy_self() failed.
+[39324631352](https://github.com/taowen/arlinux-xnu/actions/runs/39324631352),
+source `ac85b4bbbd356f78b2ba74a82fc8052bdc8716ae`, job `118307325181`.
+The static console passed. Real dyld now passes page-size discovery, thread ID,
+TSD setup, kernel entropy, the executable_path startup parameter and its explicit
+AMFI loading-policy query. It then terminates with the real reason:
+libdyld.dylib support not present for LC_MAIN.
 
-- Receipt SHA-256: `5d54d75350be993ef9ad7a08a250a881bf1af37a0076607c3c0d646aa0eded07`.
-- Actual binary LC_SOURCE_VERSION: 650.3.4; load-command and symbol text are in
-  the evidence artifact, with fatal reason and full saved fault registers.
-- Local text log: build/runs/39323925031/dyld-job.log.
+Receipt SHA-256:
+`827f3bd0e681fb0e6f0acaed4fe017cc11347d8496f899c6a0994b09e72bae90`.
+The AMFI wrapper ABI was confirmed from the pinned binary in run 39324314641:
+mac policy AMFI, call 90, input flags plus an output-address word. The implemented
+flags describe this environment's permissive loading policy, not Apple signature
+verification. Other policy calls remain unsupported. Actual binary version is
+650.3.4. Local evidence: build/runs/39324631352/dyld-job.log.
 
-Next inspect the pinned binary's exact AMFI wrapper argument/output ABI. A
-compatibility loading policy may be simplified, as the project allows; do not
-pretend a generic __mac_syscall success implements arbitrary policies. The
-workflow now records the specific wrapper disassembly for that diagnosis.
-Prior runtime failures remain at 39322626159 (thread_selfid), 39323003310
-(entropy), and 39323333648 (missing executable_path). These are no longer the
-current blocker. No dynamic library, application entry or UI has run. Mach IPC,
-file/executable mmap and the wider library/system interface remain incomplete.
+Next provide the real libSystem/libdyld dependency and shared-cache path. Keep
+the real LC_MAIN requirement: changing the fixture entry to avoid libdyld would
+not establish the required dynamic application environment. No dynamic library,
+application entry or UI has run. Mach IPC, file/executable mmap and wider system
+interfaces remain incomplete.
+
+The latest trace also showed zero-extended ARM fast-time selectors (0xfffffffd)
+were falling through the BSD handler. The new code normalizes the selector as
+XNU does, supplies actual MONOTONIC/BOOTTIME nanosecond clocks and timebase 1/1,
+and retains proper Mach return conventions. This correction awaits the next
+actual-dyld regression; no local probe or unit test substitutes for that journey.
+Earlier runtime failures remain preserved in Actions/local logs: missing
+commpage, thread_selfid, entropy, executable_path and AMFI policy. They are no
+longer the current library-loading blocker.
 
 Earlier native build failures remain in Actions and local text logs:
 39319498437 (cross-section ADR), 39319703701 (cstring layout), 39319854670 (host

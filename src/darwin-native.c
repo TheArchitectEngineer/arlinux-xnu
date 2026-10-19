@@ -19,6 +19,7 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 
 extern long darwin_raw(long, long, long, long, long, long, long);
 extern char darwin_raw_return[];
@@ -87,11 +88,34 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         RAW(SYS_exit_group,126,0,0,0,0,0);
         __builtin_unreachable();
     }
-    if ((int64_t)r[16] < 0) {
+    int32_t trap=(int32_t)r[16];
+    if (trap<0 && (uint32_t)trap!=0x80000000U) {
         /* Mach traps do not use BSD's positive errno/carry convention. Until
          * a real port namespace exists, port-returning traps fail with NULL;
          * other unsupported Mach operations return KERN_NOT_SUPPORTED. */
-        unsigned long number=-(int64_t)r[16];
+        unsigned long number=-(int64_t)trap;
+        if (number==3 || number==4) {
+            /* ARM fast-time calls return a value, not kern_return_t/errno.
+             * Use genuine nanosecond clocks, paired with timebase 1/1. */
+            struct timespec now;
+            long error=RAW(SYS_clock_gettime,number==3 ? CLOCK_MONOTONIC : CLOCK_BOOTTIME,&now,0,0,0,0);
+            if (error) {
+                trace_call(r[16],uc->uc_mcontext.pc,error);
+                RAW(SYS_exit_group,125,0,0,0,0,0);
+                __builtin_unreachable();
+            }
+            r[0]=(uint64_t)now.tv_sec*1000000000ULL+now.tv_nsec;
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
+        if (number==89) {
+            const uint32_t scale[2]={1,1};
+            struct iovec local={(void *)scale,sizeof(scale)},remote={(void *)r[0],sizeof(scale)};
+            long size=RAW(SYS_process_vm_writev,RAW(SYS_getpid,0,0,0,0,0,0),&local,1,&remote,1,0);
+            r[0]=size==(long)sizeof(scale) ? 0 : 1; /* KERN_INVALID_ADDRESS */
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
         r[0]=(number>=26 && number<=29) ? 0 : 46;
         trace_call(r[16],uc->uc_mcontext.pc,r[0]);
         return;
@@ -102,7 +126,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         char policy[5];
         struct iovec local={policy,sizeof(policy)},remote={(void *)r[0],sizeof(policy)};
         long pid=RAW(SYS_getpid,0,0,0,0,0,0);
-        if (RAW(SYS_process_vm_readv,pid,&local,1,&remote,1,0)!=sizeof(policy)) {
+        if (RAW(SYS_process_vm_readv,pid,&local,1,&remote,1,0)!=(long)sizeof(policy)) {
             result=-14; break;
         }
         if (r[1]!=90 || policy[0]!='A' || policy[1]!='M' || policy[2]!='F' ||
@@ -115,13 +139,13 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         uint64_t args[2];
         local=(struct iovec){args,sizeof(args)};
         remote=(struct iovec){(void *)r[2],sizeof(args)};
-        if (RAW(SYS_process_vm_readv,pid,&local,1,&remote,1,0)!=sizeof(args)) {
+        if (RAW(SYS_process_vm_readv,pid,&local,1,&remote,1,0)!=(long)sizeof(args)) {
             result=-14; break;
         }
         uint64_t permissions=0x3f;
         local=(struct iovec){&permissions,sizeof(permissions)};
         remote=(struct iovec){(void *)args[1],sizeof(permissions)};
-        result=RAW(SYS_process_vm_writev,pid,&local,1,&remote,1,0)==sizeof(permissions) ? 0 : -14;
+        result=RAW(SYS_process_vm_writev,pid,&local,1,&remote,1,0)==(long)sizeof(permissions) ? 0 : -14;
         break;
     }
     case 500: {                 /* Darwin getentropy: success returns zero */
