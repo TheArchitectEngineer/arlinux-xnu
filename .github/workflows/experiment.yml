@@ -102,13 +102,15 @@ jobs:
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
           cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -c src/darwin-native.c -o build/native/runtime.o
           cc -c src/darwin-native.S -o build/native/entry.o
-          cc -Wall -Wextra -Werror -O2 -g src/macho-native.c build/native/runtime.o build/native/entry.o -o build/native/macho-native
+          cc -Wall -Wextra -Werror -O2 -g src/macho-native.c build/native/runtime.o build/native/entry.o -ldl -o build/native/macho-native
           # Two complete independent launches of the interactive program, not
           # a source assertion or isolated TLS probe. Runtime exit status is
           # the guest's real Linux-backed normal process exit status.
           for attempt in 1 2; do
-            printf '+q' | timeout 30 build/native/macho-native build/native/console.macho > build/native/console-$attempt.stdout 2> build/native/console-$attempt.log
+            status=0
+            printf '+q' | timeout 30 build/native/macho-native build/native/console.macho > build/native/console-$attempt.stdout 2> build/native/console-$attempt.log || status=$?
             cat build/native/console-$attempt.stdout build/native/console-$attempt.log
+            if [[ $status != 0 ]]; then exit "$status"; fi
           done
           (cd build/native && sha256sum macho-native console.macho > SHA256SUMS)
       - name: Record experiment receipt

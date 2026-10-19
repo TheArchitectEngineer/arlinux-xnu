@@ -40,6 +40,22 @@ static int darwin_error(long result)
     }
 }
 
+static void trace_call(unsigned long number,unsigned long pc,unsigned long result)
+{
+    /* Bounded, TLS/libc-free diagnosis. No guest buffers or credentials. */
+    char line[100];
+    const char *labels[] = {"DARWIN_CALL nr=0x"," pc=0x"," result=0x"};
+    unsigned long values[] = {number,pc,result};
+    const char hex[] = "0123456789abcdef";
+    unsigned int n=0;
+    for (unsigned int i=0;i<3;i++) {
+        for (const char *p=labels[i];*p;p++) line[n++]=*p;
+        for (int bit=60;bit>=0;bit-=4) line[n++]=hex[(values[i]>>bit)&15];
+    }
+    line[n++]='\n';
+    RAW(SYS_write,2,line,n,0,0,0);
+}
+
 static long anonymous16(unsigned long size, int protection)
 {
     /* Until executable mapping rewrite is implemented, never grant unadapted
@@ -71,6 +87,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     long result = -38;
     switch (r[16]) {
     case 1:
+        trace_call(r[16],uc->uc_mcontext.pc,r[0]&255);
         RAW(SYS_exit_group,r[0]&255,0,0,0,0,0);
         __builtin_unreachable();
     case 3: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
@@ -111,6 +128,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         } else result = -38;
         break;
     }
+    trace_call(r[16],uc->uc_mcontext.pc,result);
     if ((unsigned long)result >= (unsigned long)-4095) {
         r[0] = darwin_error(result);
         uc->uc_mcontext.pstate |= CARRY;

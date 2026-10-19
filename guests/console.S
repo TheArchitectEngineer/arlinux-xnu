@@ -149,7 +149,7 @@ exit:
     mov x16,#1
     svc #0x80
     brk #0
-.section __TEXT,__cstring,cstring_literals
+.section __TEXT,__const
 welcome:
     .ascii "Darwin console: memory/COW/TLS ready; + increments, q exits\n"
 welcome_end:
