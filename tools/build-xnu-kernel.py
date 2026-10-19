@@ -99,6 +99,7 @@ def main():
              # Keep BSD syscall implementations out of Linux libc's namespace.
              # Otherwise native fault probes bind fork/setrlimit to kernel ABIs.
              '-Dfork=xnu_bsd_fork', '-Dsetrlimit=xnu_bsd_setrlimit',
+             '-Dabort=xnu_kernel_abort',
              '-D__private_extern__=extern', *options, *['-I' + str(p) for p in includes]]
     if args.phase != 'compile':
         # MIG is a build-time compiler, not a replacement IPC implementation.
@@ -213,7 +214,7 @@ def main():
         'osfmk/arm64/WKdmData.s', 'src/xnu-host/codec_probe.c',
         'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm/arm_timer.c',
         'osfmk/arm/machine_routines_common.c',
-        'osfmk/arm64/pcb.c',
+        'osfmk/arm64/pcb.c', 'osfmk/arm64/loose_ends.c',
         'osfmk/arm64/status.c', 'osfmk/arm64/machine_task.c',
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
