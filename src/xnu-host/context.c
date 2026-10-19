@@ -17,6 +17,23 @@ xnu_host_current_thread(void)
     return host_thread;
 }
 
+/* Some XNU callers use the exported accessor rather than the locks.h macro. */
+thread_t
+(current_thread)(void)
+{
+    return host_thread;
+}
+
+void
+machine_set_current_thread(thread_t thread)
+{
+    assert(thread != THREAD_NULL);
+    thread->machine.CpuDatap = &boot_cpu;
+    boot_cpu.cpu_active_thread = thread;
+    boot_cpu.cpu_active_stack = thread->kernel_stack;
+    host_thread = thread;
+}
+
 vm_offset_t
 xnu_host_exception_stack_pointer(void)
 {
@@ -40,7 +57,7 @@ xnu_host_context_initialize(void *stack_base, unsigned long stack_size,
     boot_thread.machine.preemption_count = 1; /* early boot, scheduler not running */
     boot_thread.kernel_stack = (vm_offset_t)stack_base;
     boot_thread.state = TH_RUN;
-    host_thread = &boot_thread;
+    machine_set_current_thread(&boot_thread);
     host_interrupts_enabled = FALSE;
     kprintf("XNU_HOST_CONTEXT cpu=%d thread=%p preemption=%u stack=%lu exception=%lu\n",
         boot_cpu.cpu_number, host_thread, boot_thread.machine.preemption_count,
