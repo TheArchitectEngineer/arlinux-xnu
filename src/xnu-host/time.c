@@ -1,6 +1,7 @@
 /* Feed XNU's original ARM rtclock conversion code from Linux nanosecond clocks.
  * Timer interrupt delivery and scheduler context switching remain separate. */
 #include <arm/rtclock.h>
+#include <arm/cpu_data_internal.h>
 #include <kern/assert.h>
 #include <kern/clock.h>
 #include <kern/debug.h>
@@ -21,6 +22,16 @@ MACHINE_TIMEOUT_DEV_WRITEABLE(TLockTimeOut, "ticket-lock", NSEC_PER_SEC / 8,
     MACHINE_TIMEOUT_UNIT_TIMEBASE, NULL);
 MACHINE_TIMEOUT_DEV_WRITEABLE(MutexSpin, "mutex-spin", 10 * NSEC_PER_USEC,
     MACHINE_TIMEOUT_UNIT_TIMEBASE, NULL);
+
+boolean_t
+ml_delay_should_spin(uint64_t interval)
+{
+    /* Original ARM policy uses the virtual CPU's measured idle latency. When
+     * unknown (including early boot), original clock.c decides whether its
+     * interrupt/preemption context requires spinning or permits a real wait. */
+    uint64_t latency = current_cpu_datap()->cpu_idle_latency;
+    return latency && interval < latency;
+}
 
 boolean_t
 machine_timeout_suspended(void)

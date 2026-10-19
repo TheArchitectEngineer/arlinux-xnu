@@ -9,19 +9,27 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39288886790](https://github.com/taowen/arlinux-xnu/actions/runs/39288886790),
-root `54f00aaca32c34698d4d7ce0d5d79da7ff9d8f8d`, fork `abe6e09`.
-Actual compiler job `118184495117` passed physical-page data-cache synchronization
-integration. Compiler receipt SHA-256:
-`ede8bef249f411ff335e3232c302adb822e69cd3366959ea04d4e8084b5ff10c`.
+[39290167115](https://github.com/taowen/arlinux-xnu/actions/runs/39290167115),
+root `e1e78853d60cf1fbfa6a40d9c1d8db295874decc`, fork `abe6e09`.
+Actual compiler job `118188865620` passed physical-page interlocks and
+single-CPU metadata preemption protection. Compiler receipt SHA-256:
+`9add5899945a88db43f61b1ff07884e275e8e121214ce7ecad985f23d4d99a24`.
 
-Actual VM job `118185210355` compiled native ARM64 cache operations and passed
-the native/kernel ABI collision audit, but executable linkage still failed on
-machine/pmap and further service imports. Failure receipt SHA-256:
-`7ceba0379e9e49ec6b192d0a5f80fcfa978def897a781e3fa19e5b82217b6272`.
+Actual VM job `118189616914` compiled native services and passed the
+native/kernel ABI collision audit, but executable linkage failed on further
+machine/pmap and service imports. Failure receipt SHA-256:
+`c6874a3a70c4b076da81f4cbfa8973d21d6a83e64042fb1e04158e380b173424`.
 No new VM executable, initialization, real allocation, task or guest ran.
-Actual logs are retained under `build/runs/39288886790`; Actions retains complete
-receipts/output hashes. This run is terminal; do not redispatch identical source.
+Actual logs are retained under `build/runs/39290167115`; Actions retains complete
+receipts/output hashes. The run is terminal; do not redispatch identical source.
+
+The next source brings over generic ARM machine policy: retain the processor
+selected by XNU's scheduler, read the actual saved ARM64 PC for backtraces,
+and compare delay duration against the virtual CPU's idle-latency record.
+Unknown latency chooses the original conservative non-spin policy; original
+clock.c still checks interrupt/preemption context and chooses its real wait
+or spin path. This does not substitute host thread scheduling, fabricate a PC,
+or implement timer interrupt delivery. Runner verification remains pending.
 
 `pmap_sync_page_attributes_phys` now has a native implementation distinct from
 instruction-cache synchronization: ARM64 DC CIVAC writes back and invalidates
@@ -36,15 +44,13 @@ Reference: the pinned UML tree's
 [Linux cache-maintenance trap handler](https://github.com/zalexdev/linux-um-arm64/blob/32e5e10b81d8882bdaf77b71e4106a941840c750/arch/arm64/kernel/traps.c)
 supports DC CIVAC with fault propagation.
 
-The next source supplies original XNU spin interlocks per managed physical page,
-plus a separate backup lock for foreign/fictitious physical identifiers, matching
-ARM's lock selection. A LOCKS startup callback initializes the managed array
-only after lock-group/attribute startup. Native mapping, tracking and cache
-metadata mutations also disable original XNU preemption for their complete
-operation on the fixed one-CPU backend; error paths stop before rescheduling
-uncertain state. These are actual lock/preemption operations, not successful
-lock placeholders. Runtime initialization and VM fault interlocks remain
-unverified and require the real VM journey; no standalone lock probe is added.
+Physical-page interlocks use original XNU spinlocks per managed frame and a
+separate backup lock for foreign/fictitious identifiers, matching ARM selection.
+A LOCKS callback initializes the array after lock-group/attribute startup.
+Native mapping/tracking/cache mutations disable original XNU preemption through
+the complete operation on this one-CPU backend. These compiled in the above run,
+but lock initialization and VM fault interlocks have not run. No standalone
+lock probe or successful lock placeholder is introduced.
 
 Protection semantics remain compiled but unverified in a VM. Ordinary writable
 requests preserve mappings for later VM fault/COW handling; explicit immediate

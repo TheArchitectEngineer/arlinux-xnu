@@ -84,6 +84,23 @@ current_processor(void)
     return PERCPU_GET(processor);
 }
 
+/* Same generic ARM policy: the XNU scheduler's selected processor is retained.
+ * No host CPU identifier or Linux thread substitutes for the virtual processor. */
+processor_t
+machine_choose_processor(processor_set_t pset, processor_t processor)
+{
+    (void)pset;
+    return processor;
+}
+
+uint64_t
+ml_get_backtrace_pc(struct arm_saved_state *state)
+{
+    assert(state != NULL && is_saved_state64(state));
+    return get_saved_state_pc(state);
+}
+
+
 cpu_data_t *
 cpu_datap(int cpu)
 {
