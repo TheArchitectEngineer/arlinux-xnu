@@ -2,118 +2,44 @@
 
 ## Current handoff
 
-The native-XNU/Unicorn-user hybrid is an **unvalidated architecture candidate**,
-not an established implementation route. Further machine-layer expansion is
-held behind an execution reference: run the original kernel and a real process
-journey with the CPU/MMU/exception environment intact. This does not replace the
-userspace-XNU goal, and a reference pass cannot satisfy that goal.
+The active target is a Darwin/iOS compatibility environment. XNU and iOS
+userland may be modified, and Linux-backed implementation is allowed. Native
+ARM64 execution is preferred where supported by evidence. Unmodified XNU boot
+is a comparison, not a prerequisite or an application acceptance gate.
 
-Latest completed usermode attempt:
-[39317095489](https://github.com/taowen/arlinux-xnu/actions/runs/39317095489),
-root `68a26891bcd85fb502db67124422c43674f464f9`,
-XNU `50de8e61eee1a1785a4340a04910a6dfaf47d8f9`.
+New native console journey: src/macho-native.c loads the actual Mach-O image,
+adapts marked instruction sections for TSD/CPU-register reads, and enters native
+ARM64 code. src/darwin-native.c handles Darwin BSD/platform calls through a
+TLS-independent SIGSYS/raw-syscall runtime. guests/console.S allocates/touches
+16 KiB pages, installs and reads guest TLS, forks with child TLS and COW changes,
+waits for normal child exit 37, checks parent state, handles +/q input, unmaps
+memory and exits normally. The runner launches it twice. This is pending runner
+verification, with no dyld, genuine frameworks, UI App or Android sandbox proof.
 
-- Compiler job `118281712864` failed. Receipt SHA-256:
-  `10ee94d39de81ae19d34d643556a45cd866dc7c2202ff922f4f4005873958775`.
-- The complete generated BSD graph exposed missing disabled-feature guards,
-  Mach-O-only checksum assembly relocations and the unstaged libdispatch
-  firehose header. The RAM-disk adapter also lacked the kprintf declaration.
-- The real guest image compiled, with the exact same SHA-256 as the passing
-  full-system reference below. This does not prove that native XNU can load it.
-- No native executable linked or kernel ran. Text logs:
-  `build/runs/39317095489/kernel-job.log`.
+The previous kernel candidate run
+[39318615195](https://github.com/taowen/arlinux-xnu/actions/runs/39318615195),
+root `4ca6ab1c137c655517d10013b2212edeefd75b5c`, compiled the full configured BSD
+graph and the matching real libdispatch firehose implementation. Compiler job
+`118286849038` passed, receipt SHA-256:
+`be767233c1a04ccec259226c5198120fbc9ac7b4eb42bf65452707c65c13f8e7`.
+VM job `118287652980` failed executable linkage; receipt SHA-256:
+`c3c98e02203d66e471f0aa1185b829f70b5128f001600c86e054dbbd6a2d3678`.
+No native XNU executable or process ran. Logs: build/runs/39318615195.
+Keep this candidate available for useful code reuse; symbol completion is not
+the active application milestone.
 
-The new fork fixes those BSD/ELF boundaries. The build now includes pinned
-Apple libdispatch `libdispatch-1415.140.2` (the same macos-135 distribution as
-XNU), including the original single-source libfirehose_kernel implementation.
-These changes await runner compilation and actual boot; no stub logging library
-or host syscall replacement is supplied.
+The full-system reference
+[39311945725](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
+ran original XNU exec/VM/fork/COW/exit/wait with the static PID 1 journey:
 
-The native alternative remains open: tawcroot avoids host libc TLS in its
-interception runtime while guest ld.so owns TLS. Darwin TPIDRRO_EL0 reads still
-need adaptation. This does not establish that full instruction emulation is
-necessary; see ARCHITECTURE.md. No backend migration has been validated.
+- Kernel SHA-256: `d2e148a3982925554ee990810b7d7ec037aafcf93ac77dae7b801423f706d7b2`.
+- Mach-O SHA-256: `f884156eb2847161a41634c90c92d477f4ad2ac7983d5738ddc82b81fd380a74`.
+- Compiler receipt: `c07c44b204a34e5833d3e605a72b870b3116d648c2690c919969890fa1b6d609`.
+- Boot receipt: `06bbf549740ca1a0e09db1d99d1607222d970a811da7b82dd158c09b5bdca639`.
 
-Compiled, not executed: real memory-size globals, original BSD sizing/tunables
-and buffer VM registration, BSD-generated device counts/ioconf, original memory
-and terminal devices, specfs/devfs/mockfs and buffer I/O. mockfs typed allocation
-and virtual-disk pager fixes come from pinned ios-sweet patches 0021/0024.
-Original km/TTY/console ring code connects to a Linux headless terminal adapter;
-Linux reads/writes use native TLS buffers rather than faultable kernel buffers.
-The user pmap/ledger/copyio/machine return/virtual TLS/exception/timer code also
-remains runtime-unvalidated. Compilation does not establish those contracts.
-
-Built, not executed: the kernel build now produces `guests/init.S` with the
-same pinned upstream Mach-O/signature writer as the working reference. The
-native host reads opaque image bytes into owned zero-padded RAM-disk backing
-before entering XNU. For IOKIT=0 and secure-root policy disabled, platform BSD
-initialization registers original mdev0; root discovery returns its real device
-number. Original mockfs, paging and Mach-O exec must perform loading. This is
-not a native Mach-O loader or a Darwin syscall dispatcher, and supplies no IOKit
-registry/framework services. No device registration or mount has executed yet.
-
-The actual startup task passes this image as a declared, SHA-256 checked input.
-PID 1 must remain alive: accept its controlled timeout only after two success heartbeats following
-the completed memory/COW/exit/wait journey, with no explicit guest failure. An early
-zero exit or quiet boot cannot pass. This acceptance path is not yet exercised.
-
-The failed compiler attempt consumes the complete original BSD C/assembly source graph
-from its generated Makefile instead of handpicking providers. Source-qualified
-object names prevent basename overwrites. Kernel linkage now prefixes actual
-kernel-defined symbols in object copies, retaining only the explicit xnu_host_
-bridge ABI; compiler receipt inputs stay unchanged. The native collision audit
-still runs afterwards. This generalizes the previously observed libm/kernel log
-ABI failure without C macros or a manually maintained library-function list.
-These changes do not implement missing machine services or establish boot.
-
-`build.sh build --mode baseline` now builds the pinned ios-sweet kernel plus
-`guests/init.S` on macOS, then boots that exact kernel in full-system QEMU on
-Linux ARM64. Upstream mockfs serves the static Mach-O RAM disk as
-`/sbin/launchd`; original XNU exec starts PID 1. The program opens the real
-console, mmaps/touches two 16 KiB pages, forks, modifies/frees the child's
-mapping, exits 37, checks parent wait4 status and COW isolation, frees the
-parent mapping and stays alive. It uses no host Darwin syscall shim.
-
-The reference must show the completed journey in the decoded guest console;
-compilation, a quiet screen or `no_panic_observed` alone is insufficient.
-Capture registers, framebuffer, exceptions, exact input hashes and receipts
-on failure too. No proprietary assets are needed for this first journey.
-
-Latest reference execution:
-[39311945725](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725),
-root `9ef397e1cd7d26c496b15cb0ada18d8badbfa6af`. Both compiler and actual boot
-jobs succeeded. The original XNU loader executed PID 1; guest output shows
-`child freed memory, exit 37` and `XNU JOURNEY PASS: memory COW exit wait`.
-The pass branch requires parent wait4 to return the child's PID and exact normal
-exit status, unchanged parent memory after child writes, and successful unmaps.
-PID 1 continued printing after real select sleeps. The 180-second final console
-snapshot decoded with zero unknown glyphs and no visible panic. It is a circular
-snapshot, not a complete event trace or proof against every earlier transient.
-
-- Compiler receipt SHA-256:
-  `c07c44b204a34e5833d3e605a72b870b3116d648c2690c919969890fa1b6d609`.
-- Executed kernel SHA-256:
-  `d2e148a3982925554ee990810b7d7ec037aafcf93ac77dae7b801423f706d7b2`.
-- Executed Mach-O SHA-256:
-  `f884156eb2847161a41634c90c92d477f4ad2ac7983d5738ddc82b81fd380a74`.
-- Boot job `118266392988`, receipt SHA-256:
-  `06bbf549740ca1a0e09db1d99d1607222d970a811da7b82dd158c09b5bdca639`.
-
-Logs are retained in Actions and locally in `build/runs/39311945725` (text only).
-Runner artifacts contain the exact kernel, Mach-O, input hashes, framebuffer,
-registers, exception log and receipts. Earlier assembly failure `39310743662`
-and explicit cancellation `39310550551` remain preserved; neither ran a guest.
-
-This establishes that the pinned original kernel and freestanding journey work
-with the original CPU/MMU/exception environment. It does not validate any native
-usermode replacement. Next use this same executable and original boot/service
-ordering to assess the userspace boundary; adding missing link providers alone
-cannot establish that boundary. Preserve original memory/thread/exception
-semantics and require the same complete journey through the Linux-hosted XNU.
-
-The reference is not a working usermode kernel, dyld, frameworks or an iOS app.
-The complete objective remains genuine XNU process execution in Linux userspace,
-then real dyld/iOS frameworks and an actual app journey on Android.
+The final circular framebuffer snapshot showed the completed journey and zero
+unknown glyphs; it is not a complete event trace. Exact artifacts remain in
+Actions. Reference success does not establish native usermode compatibility.
 
 ## Evidence boundaries
 

@@ -1,14 +1,19 @@
 # ARLinux XNU experiment
 
-Research toward running XNU as a userspace kernel on Linux/Android.
-**No iOS app runs here yet.** A [full-system QEMU reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
-boots real XNU and executes a static ARM64 Mach-O through its own exec, VM,
-fork/COW, exit and wait paths. This is a reference, not userspace XNU.
+An experimental Darwin/iOS compatibility environment for ARLinux on
+Linux/Android. **No iOS app runs here yet.** XNU, dyld and iOS userland may be
+adapted or replaced with Linux-backed services where application semantics are
+preserved. Running an unchanged kernel is not a requirement.
 
-The native userspace XNU executable still fails linkage; its VM initialization,
-tasks and guest execution are unverified. The native-XNU/emulated-user CPU
-boundary remains an unvalidated candidate, now compared against the working
-original-kernel process journey rather than compilation results.
+The current native ARM64 path adapts static Mach-O TLS reads and intercepts
+Darwin calls inside the process without depending on host libc TLS. Its first
+journey is an interactive console program with memory/COW, per-process TLS,
+input, normal exit and restart. Runner verification is pending. It is not dyld,
+a framework-based app or a working Android integration.
+
+A [full-system XNU reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
+provides a behavior comparison. The separate monolithic userspace-XNU candidate
+still fails executable linkage; compilation is not application compatibility.
 
 Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
 software framebuffer. No 32-bit apps or Metal support. Proprietary Apple
@@ -21,7 +26,8 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 
 ```bash
 ./build.sh build --mode host       # explicit historical host/shim diagnostics
-./build.sh build                   # default: original XNU kernel bootstrap attempt
+./build.sh build                   # default: native Darwin console journey
+./build.sh build --mode kernel     # separate userspace-XNU candidate
 ./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
 ./build.sh status --run-id RUN_ID
 ./build.sh download --run-id RUN_ID
@@ -49,7 +55,11 @@ results do not establish guest execution.
 
 * [Unicorn Engine](https://github.com/unicorn-engine/unicorn): ARM64 instruction
   execution. [Our fork](https://github.com/taowen/unicorn) exposes pending CPU
-  exception metadata; XNU retains VM and Mach/BSD ownership.
+  exception metadata for the separate userspace-XNU candidate.
+* [wmww/tawc](https://github.com/wmww/tawc): the tawcroot in-process syscall
+  interception and host-libc-independent runtime model informed the native path.
+* [Apple Open Source](https://github.com/apple-oss-distributions): XNU and the
+  matching libdispatch kernel firehose implementation; licenses remain upstream.
 
 Preserved forks: [taowen/linux-um-arm64](https://github.com/taowen/linux-um-arm64)
 and [taowen/ios-sweet](https://github.com/taowen/ios-sweet). Fixed source commits

@@ -4,8 +4,8 @@ on:
     inputs:
       mode:
         type: choice
-        default: kernel
-        options: [both, host, baseline, kernel]
+        default: native
+        options: [both, host, baseline, kernel, native]
       diagnostics:
         description: Run standalone early diagnostics (not guest execution acceptance)
         type: boolean
@@ -76,6 +76,49 @@ jobs:
         with:
           name: linux-arm64-macho-userland
           path: build/macho/
+          retention-days: 30
+  native-userland:
+    if: inputs.mode == 'both' || inputs.mode == 'native'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ARM64 Mach-O compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 llvm-18
+      - name: Build and run native Darwin console journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/native
+          uname -a > build/native/environment.txt
+          getconf PAGE_SIZE >> build/native/environment.txt
+          cc --version >> build/native/environment.txt
+          clang-18 --version >> build/native/environment.txt
+          ld64.lld-18 --version >> build/native/environment.txt
+          clang-18 --target=arm64-apple-ios13.0 -c guests/console.S -o build/native/console.o
+          ld64.lld-18 -arch arm64 -platform_version ios 13.0 13.0 -no_adhoc_codesign -e _start build/native/console.o -o build/native/console.macho
+          llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
+          cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -c src/darwin-native.c -o build/native/runtime.o
+          cc -c src/darwin-native.S -o build/native/entry.o
+          cc -Wall -Wextra -Werror -O2 -g src/macho-native.c build/native/runtime.o build/native/entry.o -o build/native/macho-native
+          # Two complete independent launches of the interactive program, not
+          # a source assertion or isolated TLS probe. Runtime exit status is
+          # the guest's real Linux-backed normal process exit status.
+          for attempt in 1 2; do
+            printf '+q' | timeout 30 build/native/macho-native build/native/console.macho > build/native/console-$attempt.stdout 2> build/native/console-$attempt.log
+            cat build/native/console-$attempt.stdout build/native/console-$attempt.log
+          done
+          (cd build/native && sha256sum macho-native console.macho > SHA256SUMS)
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/native --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-arm64-native-darwin
+          path: build/native/
           retention-days: 30
   xnu-baseline:
     if: inputs.mode == 'both' || inputs.mode == 'baseline'

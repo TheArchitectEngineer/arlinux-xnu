@@ -8,7 +8,7 @@ import subprocess
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['build', 'status', 'download'])
-    parser.add_argument('--mode', choices=['both', 'host', 'baseline', 'kernel'], default='kernel')
+    parser.add_argument('--mode', choices=['both', 'host', 'baseline', 'kernel', 'native'], default='native')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--diagnostics', action='store_true',
