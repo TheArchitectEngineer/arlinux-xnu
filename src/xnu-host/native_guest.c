@@ -216,6 +216,33 @@ guest_page_protect(unsigned int page, unsigned int protection)
     return 0;
 }
 
+static int
+guest_query(struct xnu_host_guest *guest, unsigned long long start,
+    unsigned long long end, unsigned long long *resident)
+{
+    if (!guest || guest->running || guest->poisoned || !resident || start > end ||
+        ((start | end) & (XNU_HOST_PAGE_SIZE - 1)))
+        return UC_ERR_ARG;
+    unsigned long long bytes = 0;
+    for (struct guest_mapping *mapping = guest->mappings; mapping; mapping = mapping->next)
+        if (mapping->address >= start && mapping->address < end)
+            bytes += XNU_HOST_PAGE_SIZE;
+    *resident = bytes;
+    return 0;
+}
+
+static int
+guest_lookup(struct xnu_host_guest *guest, unsigned long long address,
+    unsigned int *page)
+{
+    if (!guest || guest->running || guest->poisoned || !page)
+        return UC_ERR_ARG;
+    address &= ~(XNU_HOST_PAGE_SIZE - 1ULL);
+    struct guest_mapping *mapping = *find_mapping(guest, address);
+    *page = mapping ? mapping->page : 0;
+    return 0;
+}
+
 static uc_err
 transfer_state(uc_engine *engine, struct xnu_host_guest_state *state, bool write)
 {
@@ -290,9 +317,10 @@ guest_run(struct xnu_host_guest *guest,
 static unsigned long native_stack_top;
 static _Thread_local bool in_native;
 static _Thread_local struct {
-    enum { CREATE, DESTROY, MAP, UNMAP, PROTECT, RUN, PAGE_PROTECT } operation;
+    enum { CREATE, DESTROY, MAP, UNMAP, PROTECT, RUN, PAGE_PROTECT, QUERY, LOOKUP } operation;
     struct xnu_host_guest *guest, **result;
-    unsigned long long address;
+    unsigned long long address, end, *resident;
+    unsigned int *found;
     void *frame;
     unsigned int protection, page;
     struct xnu_host_guest_state *state;
@@ -335,6 +363,8 @@ perform(void)
     case PROTECT: return guest_protect(request.guest, request.address, request.protection);
     case RUN: return guest_run(request.guest, request.state, request.instructions, request.event);
     case PAGE_PROTECT: return guest_page_protect(request.page, request.protection);
+    case QUERY: return guest_query(request.guest, request.address, request.end, request.resident);
+    case LOOKUP: return guest_lookup(request.guest, request.address, request.found);
     }
     return UC_ERR_ARG;
 }
@@ -411,5 +441,25 @@ xnu_host_guest_page_protect(unsigned int page, unsigned int protection)
     if (in_native || !page || protection > UC_PROT_ALL)
         return UC_ERR_ARG;
     request.operation = PAGE_PROTECT; request.page = page; request.protection = protection;
+    return dispatch();
+}
+
+int
+xnu_host_guest_query(struct xnu_host_guest *guest, unsigned long long start,
+    unsigned long long end, unsigned long long *resident)
+{
+    if (in_native) return UC_ERR_ARG;
+    request.operation = QUERY; request.guest = guest;
+    request.address = start; request.end = end; request.resident = resident;
+    return dispatch();
+}
+
+int
+xnu_host_guest_lookup(struct xnu_host_guest *guest, unsigned long long address,
+    unsigned int *page)
+{
+    if (in_native) return UC_ERR_ARG;
+    request.operation = LOOKUP; request.guest = guest;
+    request.address = address; request.found = page;
     return dispatch();
 }

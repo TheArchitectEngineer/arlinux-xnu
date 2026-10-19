@@ -438,7 +438,18 @@ pmap_query_resident(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end,
     if (pmap == PMAP_NULL)
         return 0;
     pmap_require(pmap);
-    assert(pmap == kernel_pmap); /* Never query host aliases for a user pmap. */
+    if (pmap != kernel_pmap) {
+        assert(start >= pmap->min && start <= end && end <= pmap->max);
+        assert(((start | end) & PAGE_MASK) == 0);
+        disable_preemption();
+        struct host_user_pmap *user = *user_pmap_link(pmap);
+        unsigned long long resident;
+        int error = xnu_host_guest_query(user->guest, start, end, &resident);
+        if (error)
+            panic("host user pmap query failed pmap=%p uc_err=%d", pmap, error);
+        enable_preemption();
+        return resident;
+    }
     assert(start >= XNU_HOST_KERNEL_BASE && start <= end && end <= XNU_HOST_KERNEL_LIMIT);
     assert(((start | end) & PAGE_MASK) == 0);
     mach_vm_size_t resident = 0;
@@ -470,6 +481,13 @@ void
 pmap_remove_options(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end, int options)
 {
     (void)options;
+    if (pmap != kernel_pmap) {
+        /* Empty ranges are real holes, so failed exec/map setup can unwind
+         * without inventing a removal. Nonempty removal needs ledger debit. */
+        if (pmap_query_resident(pmap, start, end, NULL))
+            panic("host user pmap nonempty removal/accounting not connected pmap=%p", pmap);
+        return;
+    }
     kernel_mapping_range(pmap, start, end);
     disable_preemption();
     for (vm_map_offset_t address = start; address < end; address += PAGE_SIZE) {
@@ -654,9 +672,21 @@ unsigned int
 ppnum_t
 pmap_find_phys(pmap_t pmap, addr64_t address)
 {
-    if (pmap != kernel_pmap)
+    if (pmap == PMAP_NULL)
         return 0;
-    return xnu_host_memory_lookup(address);
+    if (pmap == kernel_pmap)
+        return xnu_host_memory_lookup(address);
+    pmap_require(pmap);
+    if (address < pmap->min || address >= pmap->max)
+        return 0;
+    disable_preemption();
+    struct host_user_pmap *user = *user_pmap_link(pmap);
+    unsigned int page;
+    int error = xnu_host_guest_lookup(user->guest, address, &page);
+    if (error)
+        panic("host user pmap lookup failed pmap=%p va=%#llx uc_err=%d", pmap, address, error);
+    enable_preemption();
+    return page;
 }
 
 pmap_paddr_t

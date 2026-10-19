@@ -61,8 +61,10 @@ Code translations are flushed before resume because XNU can modify shared
 physical bytes through another alias. Ref/mod tracking relies on native accesses
 to the protected physical aperture; this needs real fault/TCG validation. Task
 ledger accounting, wiring, replacement and COW remain
-unfinished. The native alias integration is new and runtime-unverified; it does
-not by itself create a real XNU user pmap or runnable thread.
+unfinished. Native aliases and XNU pmap ownership remain runtime-unverified; they do not
+yet connect user insertion or a runnable thread. User physical/resident queries
+now read their engine metadata. Empty-range removal verifies that no mappings
+exist; nonempty removal is rejected until ledger debit is connected.
 
 The machine return path must transfer the actual thread saved state, run its
 engine, and translate the reported event into original ARM exception handling:

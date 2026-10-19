@@ -41,6 +41,12 @@ int xnu_host_guest_map(struct xnu_host_guest *guest, unsigned long long address,
 int xnu_host_guest_unmap(struct xnu_host_guest *guest, unsigned long long address);
 int xnu_host_guest_protect(struct xnu_host_guest *guest, unsigned long long address,
     unsigned int protection);
+/* Queries inspect this engine's real mapping metadata, never host VAs.
+ * A failed query has no valid output and must not be treated as an empty map. */
+int xnu_host_guest_query(struct xnu_host_guest *guest, unsigned long long start,
+    unsigned long long end, unsigned long long *resident);
+int xnu_host_guest_lookup(struct xnu_host_guest *guest, unsigned long long address,
+    unsigned int *page);
 int xnu_host_guest_run(struct xnu_host_guest *guest,
     struct xnu_host_guest_state *state, unsigned long instructions,
     struct xnu_host_guest_event *event);
