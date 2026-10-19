@@ -113,7 +113,7 @@ jobs:
       - name: Install Linux kernel port toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 llvm-18 flex bison tcsh unifdef
+          sudo apt-get install -y clang-18 llvm-18 flex bison tcsh unifdef cmake
       - name: Compile actual XNU for userspace host port
         shell: bash
         run: |

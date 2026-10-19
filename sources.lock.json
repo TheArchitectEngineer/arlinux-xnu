@@ -15,9 +15,15 @@
   "guestArchitecture": "arm64",
   "virtualCpus": 1,
   "xnuKernel": {
-    "repository": "apple-oss-distributions/xnu",
-    "commit": "1b191cb58250d0705d8a51287127505aa4bc0789",
+    "repository": "taowen/xnu",
+    "commit": "741238207380b5e1aad86f35c2716fdb6ed5082f",
     "tag": "xnu-8796.141.3",
-    "path": "third_party/xnu"
+    "path": "third_party/xnu",
+    "upstreamCommit": "1b191cb58250d0705d8a51287127505aa4bc0789"
+  },
+  "migCompiler": {
+    "repository": "darlinghq/darling-bootstrap_cmds",
+    "commit": "0f300a7a04bb1174a3b7db58b57d738aadc14e13",
+    "path": "third_party/bootstrap_cmds"
   }
 }

@@ -1,3 +1,6 @@
 [submodule "third_party/xnu"]
 	path = third_party/xnu
-	url = https://github.com/apple-oss-distributions/xnu.git
+	url = https://github.com/taowen/xnu.git
+[submodule "third_party/bootstrap_cmds"]
+	path = third_party/bootstrap_cmds
+	url = https://github.com/darlinghq/darling-bootstrap_cmds.git

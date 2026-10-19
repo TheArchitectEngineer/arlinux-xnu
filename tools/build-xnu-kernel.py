@@ -39,7 +39,7 @@ def main():
          *config_sources, 'parser.c', 'lexer.yy.c', '-o', 'config'], cwd=setup)
     generated = OUT / 'config'
     generated.mkdir(exist_ok=True)
-    env = dict(os.environ, SRCROOT=str(XNU), OBJROOT=str(OUT))
+    env = dict(os.environ, SRCROOT=str(XNU), OBJROOT=str(OUT), SOURCE=str(XNU / "osfmk/conf"))
     run(['tcsh', XNU / 'SETUP/config/doconf', '-c', '-cpu', 'arm64', '-soc', 'usermode',
          '-platform', 'iPhoneOS', '-d', generated, '-s', XNU / 'osfmk/conf',
          '-m', XNU / 'config', 'DEVELOPMENT'], env=env)
@@ -48,25 +48,52 @@ def main():
                        if line.startswith('export CONFIG_DEFINES ='))
     # The XNU config generator's definitions, not a hand-maintained header list.
     options = shlex.split(definitions)
-    include = OUT / 'include'
-    (include / 'mach').mkdir(parents=True, exist_ok=True)
-    for path, target in [(include / 'machine', XNU / 'osfmk/arm'),
-                         (include / 'mach/machine', XNU / 'osfmk/mach/arm')]:
-        if not path.exists():
-            path.symlink_to(target, target_is_directory=True)
     resource = subprocess.check_output(['clang-18', '-print-resource-dir'], text=True).strip()
-    includes = [ROOT / 'src/xnu-host/include', generated, include,
+    includes = [ROOT / 'src/xnu-host/include', generated,
                 XNU / 'osfmk', XNU / 'bsd', XNU / 'libkern', XNU / 'osfmk/libsa',
                 XNU / 'pexpert', XNU / 'iokit', XNU / 'EXTERNAL_HEADERS', XNU]
     flags = ['clang-18', '--target=aarch64-linux-gnu', '-c', '-g', '-O1', '-ffreestanding',
              '-fno-builtin', '-fblocks', '-fno-common', '-nostdinc', '-ferror-limit=8',
-             '-mbranch-protection=none', '-isystem', resource + '/include',
+             '-mbranch-protection=none', '-include', str(generated / 'meta_features.h'),
+             '-U__linux__', '-Ulinux', '-D__APPLE__=1', '-isystem', resource + '/include',
              '-D__arm64__=1', '-D__ARM64__=1', '-Darm64=1', '-DARM64=1',
              '-D__ARM_ARCH_8_0__=1', '-D__ARM64_ARCH_8__=1', '-D__ARM_16K_PG__=1',
              '-DPAGE_SIZE_FIXED=1', '-DAPPLE=1', '-DKERNEL=1', '-DKERNEL_PRIVATE=1',
              '-DXNU_KERNEL_PRIVATE=1', '-DMACH_KERNEL_PRIVATE=1', '-DMACH_KERNEL=1',
              '-DPRIVATE=1', '-D__MACHO__=1', '-DCONFIG_USERMODE=1',
              '-D__private_extern__=extern', *options, *['-I' + str(p) for p in includes]]
+    # MIG is a build-time compiler, not a replacement IPC implementation.
+    mig_source = ROOT / lock['migCompiler']['path']
+    mig_revision = subprocess.check_output(['git', '-C', str(mig_source), 'rev-parse', 'HEAD'], text=True).strip()
+    if mig_revision != lock['migCompiler']['commit']:
+        raise RuntimeError('MIG compiler source does not match its pin')
+    mig_build = OUT / 'mig-tool'
+    # Use Linux libc for the host tool and the actual XNU Mach ABI headers.
+    host_flags = ' '.join(['-D__arm64__=1', '-D__kernel_ptr_semantics=',
+                           *['-idirafter ' + str(XNU / p) for p in
+                             ['osfmk', 'bsd', 'EXTERNAL_HEADERS']]])
+    run(['cmake', '-S', mig_source, '-B', mig_build,
+         '-DCMAKE_C_COMPILER=clang-18', '-DCMAKE_C_FLAGS=' + host_flags])
+    run(['cmake', '--build', mig_build, '--target', 'migcom', '-j2'])
+    mig_output = OUT / 'mig/mach'
+    mig_output.mkdir(parents=True, exist_ok=True)
+    # Native preprocessing supplies the selected guest ABI and kernel options;
+    # the upstream MIG compiler consumes the resulting interface definitions.
+    cpp_flags = [f for f in flags[1:] if f not in ['-c', '-g', '-O1']]
+    for interface in ['vm_map', 'mach_vm', 'mach_port', 'task', 'thread_act',
+                      'mach_host', 'host_priv', 'processor', 'processor_set',
+                      'memory_object', 'memory_object_control', 'upl', 'exc', 'mach_exc']:
+        definition = XNU / 'osfmk/mach' / (interface + '.defs')
+        preprocessed = mig_output / (interface + '.defs.i')
+        with preprocessed.open('w') as stream:
+            run(['clang-18', '-E', '-x', 'c', *cpp_flags,
+                 '-DKERNEL_USER=1', '-D__MACH30__=1', definition], stdout=stream)
+        with preprocessed.open() as stream:
+            run([mig_build / 'migcom', '-novouchers',
+                 '-header', mig_output / (interface + '.h'),
+                 '-user', mig_output / (interface + '_user.c'),
+                 '-server', '/dev/null'], stdin=stream)
+    flags += ['-I' + str(OUT / 'mig')]
     # These are actual intended kernel objects. Do not replace them with dummy
     # implementations to turn the workflow green.
     units = ['osfmk/ipc/ipc_space.c', 'osfmk/ipc/mach_port.c', 'osfmk/ipc/mach_msg.c',
