@@ -5,16 +5,17 @@
 The active target is a modifiable Darwin/iOS compatibility environment on
 Linux/Android. Native ARM64, 16 KiB guest pages and one advertised CPU remain
 fixed. Original XNU boot is a behavioral reference, not an application gate.
-No iOS App, UI, actual pthread creation or Android integration has passed.
+No third-party iOS App, UI or Android integration has passed.
 
-Latest real journey:
-[39333644488](https://github.com/taowen/arlinux-xnu/actions/runs/39333644488),
-source `1439495a869f302eefdb4238a8468e9919d60d3b`, dyld job `118337789192`.
-The native console prerequisite passes both complete launches. The dynamic
-variant is now a normal C main using real write/read, malloc/free and
-pthread_create/join imports through a normal TAPI link interface. The stub
-provides no replacement implementation. Apple dyld 650.3.4 recognizes the actual
-cache, runs its system-library initializers and enters this C main.
+Latest completed real journey:
+[39336200293](https://github.com/taowen/arlinux-xnu/actions/runs/39336200293),
+source `07748b48224dade1c8003b62e7ef7b813b4cd7d1`, dyld job `118346403945`.
+The native console prerequisite passes both complete launches. Apple dyld
+650.3.4 loads the actual cached system libraries and enters a normal C main.
+Its imported pthread_create/join now execute a genuine Linux worker thread,
+observe its return value 37 and shared-memory value 42, process input and
+return 0 through real libSystem. Both independent dynamic launches complete
+with those results, including normal exit and relaunch of the same binaries.
 
 ### Verified execution
 
@@ -45,32 +46,33 @@ cache, runs its system-library initializers and enters this C main.
   Previously Linux auto-placement at 0xff6a2e0005c0 was masked by Objective-C
   to an unmapped 0x7f6a2e000580. The actual low-address run passes that point.
 - The genuine dynamic C main prints DYNAMIC_MAIN through real libSystem write,
-  obtains/touches memory through real malloc and frees it after reporting the
-  pthread_create failure. Its return reaches actual libdyld/libc exit glue;
-  the raw Darwin exit log and LLDB both show status 72, with no fault/host kill.
+  obtains/touches memory through real malloc, creates/joins a worker, verifies
+  DYNAMIC_THREAD joined value=37 memory=42, then handles input and prints
+  DYNAMIC_CONSOLE counter=1 normal return. No substitute pthread library is used.
+- Registered pthread callbacks run with per-thread guest TLS, private Linux
+  signal/runtime stacks and a real current-thread port. The child restores the
+  parent's pre-SIGSYS signal mask before entering guest code; inheriting the
+  temporary handler mask previously killed the child on its first trapped call.
+  Darwin ulocks use real Linux futex wait/wake, and thread termination uses
+  SYS_exit rather than ending the whole process.
 - LLDB resolves actual dyld symbols, hits a real policy-function breakpoint,
   reads registers, steps an instruction and captures the fatal library stack.
   Cache-frame symbolication uses the same firmware's real Mach-O/local symbol
   tables and records the nearest available symbol, not an invented function.
 
-### Current failure and next action
+### Current boundary and next action
 
-System initialization now reaches the real C program. The journey fails with
-DYNAMIC_FAILURE pthread_create and normally returns 72, rather than crashing
-in an initializer. The actual traces show bsdthread_register (366) and
-bsdthread_create (360) returning ENOSYS; thread_self is still NULL and Mach
-vm_protect (14) is unsupported. The completed Host/Clock/semaphore setup and
-low-address allocation no longer block entry. The job remains failed because
-thread creation/join, the program's input counter and successful exit/relaunch
-have not completed. Reaching main is a milestone, not acceptance.
+The real multithreaded console now completes, including input and normal exit.
+The ABI constants refactor separates guest definitions in darwin-abi.h from
+adapter policy in darwin-machine.h. Its regression passes two independent dynamic
+launches of the same binaries. Runtime logs and exit status remain authoritative.
 
-Next implement genuine native thread registration/start/exit with per-thread
-TLS and Linux signal-stack state, a real current-thread capability, required VM
-protection and join/synchronization behavior. Preserve actual thread results and
-memory visibility. General Mach descriptors, port sets, notifications and
-cross-process namespace behavior remain incomplete. A registered Clock's time
-query and semaphore waits are implemented but not yet proven by the completed
-multithreaded journey. No actual iOS UI App or ARLinux integration has run.
+This is an authored console, not a third-party iOS App. Next work must advance
+toward actual framework/display/input requirements and a named App journey.
+Workqueues, non-default QoS scheduling, general Mach descriptors, port sets,
+notifications and cross-process namespace behavior remain incomplete. Contended
+FIFO semaphore semantics and broad thread lifecycle coverage are not proven by
+this single worker. No actual iOS UI App or ARLinux integration has run.
 
 ### Reproducible inputs and evidence
 
@@ -80,15 +82,17 @@ multithreaded journey. No actual iOS UI App or ARLinux integration has run.
 - dyld SHA-256: `5c5563ec91c78cfe060cb500e3ca8d764350572f124f98144bac175aa25655e9`.
 - Cache: 1276837888 bytes, SHA-256 `a60a0653eb730f73b5d1de61a97e86e5a241f7a4ff00c83659f9eefb965cac6f`.
 - Dynamic C Mach-O SHA-256: `2b66ddec09f799b483a2e97b86b859ed5cc1e0474a9c6afb197dde17cf3327ca`.
-- Native runtime SHA-256: `2d05a59f6433ecd89d4e787b0451c589237d4f1b802bfa8ae8d9d4c13d7c6d36`.
-- Latest dyld receipt SHA-256: `f6ea882e7b5de1f22f5f93a0b3f9ba7c8211a08c581da900e826d068514e3902`.
-- Latest local text: build/runs/39333644488/dyld-job.log. Run artifacts retain
-  input/cache metadata, native hashes, runtime/LLDB logs and cache-frames.json.
-  LLDB confirms GUEST_EXIT_STATUS 72 and LLDB_COMMAND_STATUS 0: the normal
-  failure exit is retained without asking for registers of a dead process.
-  Both this run and 39333118207 reach main and fail on actual thread creation;
-  the program/runtime SHA-256 values are identical across the two builds.
-  Apple firmware, cache and executable files remain transient on the runner.
+- Native runtime SHA-256: `a4b010f189b6edf98b728d79519a5049a60230e2dbffb5f0e652fca4281eed46`.
+- Successful dyld receipt SHA-256:
+  `1c210c9872d50435a4a75eede5c180d1e2aa30634ccf61dfe321c8d21aef014f`.
+- Local text: build/runs/39336200293/dyld-job.log. Run artifacts retain verified
+  input/cache metadata, native executable hashes and runtime logs. Apple firmware,
+  cache and executable files remain transient on the runner.
+
+ABI reference sources also inspected locally: libpthread-330.250.2 commit
+`b4b8795e1d4030f45efe04947773b265240ce03c` and Libc-1272.250.1 commit
+`c175362543a5e715f0152c5f0164f12951346375`. Registration fields are read from
+actual userland metadata rather than assuming a specific pthread object layout.
 
 The cache format reference inspected locally is Apple dyld-655.1, source
 5fe128e4e6a5966ebe01bfaf3bbffdfb17da1390. It informs format interpretation;
@@ -112,6 +116,7 @@ Linux ARM64 runner using the root build.sh entry.
 | Experiment | Last established result | Does not establish |
 | --- | --- | --- |
 | `native-userland` | [Native console: VM/COW/TLS/input/normal exit/restart](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457) | dyld, genuine frameworks, iOS UI App or Android integration |
+| `dyld-userland` | [Real cached libSystem, malloc, pthread create/join, input, normal exit and independent relaunch](https://github.com/taowen/arlinux-xnu/actions/runs/39336200293) | Third-party App, UI frameworks or Android integration |
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` + `xnu-reference-boot` | [Full-system XNU exec, memory/COW, child exit and parent wait](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725) | Userspace XNU, dyld, iOS frameworks or apps |
