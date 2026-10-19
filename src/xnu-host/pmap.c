@@ -10,7 +10,7 @@
 #include <host/memory.h>
 
 static struct pmap kernel_pmap_store;
-pmap_t kernel_pmap = &kernel_pmap_store;
+const pmap_t kernel_pmap = &kernel_pmap_store;
 unsigned long gVirtBase, gPhysBase, gPhysSize;
 uint64_t gDramBase, gDramSize;
 uint64_t max_mem, max_mem_actual, sane_size;
