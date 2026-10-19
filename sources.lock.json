@@ -16,10 +16,11 @@
   "virtualCpus": 1,
   "xnuKernel": {
     "repository": "taowen/xnu",
-    "commit": "f4ff29507e538fdeb585e35bc2869c66021128d8",
+    "commit": "024c7673126ed6a4f290620964a645f8a47a86a8",
     "tag": "xnu-8796.141.3",
     "path": "third_party/xnu",
-    "upstreamCommit": "1b191cb58250d0705d8a51287127505aa4bc0789"
+    "upstreamCommit": "1b191cb58250d0705d8a51287127505aa4bc0789",
+    "configuration": "USERMODE"
   },
   "migCompiler": {
     "repository": "darlinghq/darling-bootstrap_cmds",

@@ -64,7 +64,7 @@ def main():
         env = dict(os.environ, SRCROOT=str(XNU), OBJROOT=str(OUT), SOURCE=str(XNU / "osfmk/conf"))
         run(['tcsh', XNU / 'SETUP/config/doconf', '-c', '-cpu', 'arm64', '-soc', 'usermode',
              '-platform', 'iPhoneOS', '-d', generated, '-s', XNU / 'osfmk/conf',
-             '-m', XNU / 'config', 'DEVELOPMENT'], env=env)
+             '-m', XNU / 'config', lock['xnuKernel']['configuration']], env=env)
         exported = OUT / 'exported'
         san = exported / 'san'
         san.mkdir(parents=True, exist_ok=True)
@@ -77,7 +77,7 @@ def main():
         version_header.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(XNU / 'libkern/libkern/version.h.template', version_header)
         run(['perl', XNU / 'config/newvers.pl', version_header],
-            env=dict(env, CURRENT_KERNEL_CONFIG_LC='development'))
+            env=dict(env, CURRENT_KERNEL_CONFIG_LC=lock['xnuKernel']['configuration'].lower()))
     makefile = (generated / 'Makefile').read_text()
     definitions = next(line.partition('=')[2] for line in makefile.splitlines()
                        if line.startswith('export CONFIG_DEFINES ='))
