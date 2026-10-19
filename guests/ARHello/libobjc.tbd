@@ -6,5 +6,5 @@ current-version: 1.0
 compatibility-version: 1.0
 exports:
   - archs: [ arm64 ]
-    symbols: [ _objc_msgSend, _objc_msgSendSuper2, __objc_empty_cache, _objc_autoreleasePoolPush, _objc_autoreleasePoolPop ]
+    symbols: [ _objc_alloc, _objc_msgSend, _objc_msgSendSuper2, __objc_empty_cache, _objc_autoreleasePoolPush, _objc_autoreleasePoolPop ]
 ...
