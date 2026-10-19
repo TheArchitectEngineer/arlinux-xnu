@@ -8,37 +8,35 @@ host/kernel/guest ownership and unresolved ABI constraints. It is a proposed
 contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
-The last completed run is
-[39276798684](https://github.com/taowen/arlinux-xnu/actions/runs/39276798684)
-at root source `c93d1fbab6539374186e03cbe7d708db7706f47e` with XNU fork `b171fc4`. Kernel compilation succeeded;
-VM, full-service and standalone early jobs failed. The real VM has never run.
-The previous diagnostic failure is preserved; it no longer blocks VM attempts.
-No task, real allocation, Mach/BSD dispatch or iOS app has been established.
+The latest observed real-kernel attempt is
+[39280428800](https://github.com/taowen/arlinux-xnu/actions/runs/39280428800),
+root `3a6734e976fc756ffa1d00de84de9c000567ab10`, fork `53adad2`.
+Its actual compiler job `118153570092` completed successfully, including original
+BSD process/FD/exit code, the generated syscall dispatch table and ARM argument
+converters. Its receipt SHA-256 is
+`19d5403025f60fa5a33f06b5e45e2ac48e8e32703239b44eb78dc3cc8546e53d`.
 
-The current source experiment is
-[39280428800](https://github.com/taowen/arlinux-xnu/actions/runs/39280428800)
-(`3a6734e`, fork `53adad2`), including the original BSD execution/FD/exit
-providers, ARM syscall dispatcher, generated `sysent` table and argument
-converters. Its compiler job is `118153570092`; the result is not yet available.
-Inspect that exact run/job, not a replacement dispatched for an observation timeout.
+The actual VM job `118155176711` passed the native/kernel ABI collision audit,
+but executable linkage failed on VFS, pmap, machine and further service imports.
+The original syscall table now retains actual BSD service dependencies. This is
+not working syscall dispatch. No VM, real allocation, task, guest exception or
+iOS app ran, and no new VM executable was produced. Its failure receipt SHA-256 is
+`1786d7be65e36940184fb3024e7d37a860d9ddcc87c0f0665862eec00cb47185`.
+Actual compiler and VM logs are retained locally under `build/runs/39280428800`;
+Actions retains full receipts/output hashes and logs.
 
-Actual compiler logs from `39278282418` exposed unsafe C macro renaming (sysctl
-identifier concatenation), missing PSYNCH argument layouts and an unguarded MACF
-launch-constraint call. The follow-up job `118152175378` in `39279886686` no
-longer reports those errors, but rejects the missing ARM64 argument-conversion
-configuration. The current source enables that original option and `munge.c`.
-This correction is submitted, not runtime-verified. Kernel syscall external names
-now use Clang's linkage rename pragma; C identifiers retain their original names.
+The current submitted experiment is
+[39281481188](https://github.com/taowen/arlinux-xnu/actions/runs/39281481188)
+at `ff0c1a9`, adding original VFS path/vnode dispatch, BSD mapping operations
+and unsupported-call handlers from upstream. Its result is pending. This follows
+the real exec/console/file path; do not substitute host shim handlers or fabricated
+successful filesystem operations. Inspect this exact run after allocation.
 
-GitHub's run/job metadata has lagged behind directly available compiler logs.
-If a run is still reported queued/in-progress, inspect its existing job IDs and
-available job logs before concluding that compilation never ran. The logs are
-retained under `build/runs/RUN_ID` locally; lack of a log is not a passing result.
-Earlier sources may be superseded/cancelled; only exact job output establishes
-what actually compiled. Do not classify a cancellation as execution success.
-
-The completed run's logs/receipts retain exact revisions, outcomes and file hashes. There is
-no runnable VM executable to hash from this failed link.
+GitHub run/job metadata has lagged behind directly available job logs. Inspect
+existing job IDs and available logs before concluding that compilation never ran.
+A queue, observation error, cancellation or missing log is never a passing result;
+none justifies resubmitting identical source. Earlier integration failures and
+repairs remain in Git/Actions rather than growing this handoff into a run diary.
 
 The source now includes permission-based reference/dirty tracking and original
 tracing/SFI providers. These have not been exercised by real XNU VM operations.
