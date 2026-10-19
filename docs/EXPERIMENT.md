@@ -36,6 +36,16 @@ Reference: the pinned UML tree's
 [Linux cache-maintenance trap handler](https://github.com/zalexdev/linux-um-arm64/blob/32e5e10b81d8882bdaf77b71e4106a941840c750/arch/arm64/kernel/traps.c)
 supports DC CIVAC with fault propagation.
 
+The next source supplies original XNU spin interlocks per managed physical page,
+plus a separate backup lock for foreign/fictitious physical identifiers, matching
+ARM's lock selection. A LOCKS startup callback initializes the managed array
+only after lock-group/attribute startup. Native mapping, tracking and cache
+metadata mutations also disable original XNU preemption for their complete
+operation on the fixed one-CPU backend; error paths stop before rescheduling
+uncertain state. These are actual lock/preemption operations, not successful
+lock placeholders. Runtime initialization and VM fault interlocks remain
+unverified and require the real VM journey; no standalone lock probe is added.
+
 Protection semantics remain compiled but unverified in a VM. Ordinary writable
 requests preserve mappings for later VM fault/COW handling; explicit immediate
 write requests update shared reference/modified tracking. Thread-state and ulock

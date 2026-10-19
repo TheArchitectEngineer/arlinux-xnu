@@ -5,6 +5,8 @@
 #include <arm/usermode_vm.h>
 #include <kern/assert.h>
 #include <kern/debug.h>
+#include <kern/locks.h>
+#include <kern/cpu_data.h>
 #include <vm/pmap.h>
 #include <mach/machine.h>
 #include <machine/machine_routines.h>
@@ -21,6 +23,48 @@ const vm_map_address_t physmap_base = XNU_HOST_PHYSICAL_VIEW;
 const vm_map_address_t physmap_end = XNU_HOST_PHYSICAL_VIEW + XNU_HOST_PHYSICAL_BYTES;
 static ppnum_t next_frame;
 static ppnum_t frame_limit;
+
+/* Retain real XNU lock/preemption behavior. There is one virtual CPU, so
+ * non-preemptible native metadata operations cannot race another XNU thread.
+ * VM's explicit physical-page interlocks still use distinct original locks. */
+static LCK_GRP_DECLARE(host_pmap_lock_group, "usermode-pmap");
+static LCK_SPIN_DECLARE(host_pmap_foreign_lock, &host_pmap_lock_group);
+static lck_spin_t host_page_locks[XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE];
+static bool host_page_locks_ready;
+
+__startup_func
+static void
+host_pmap_locks_initialize(void)
+{
+    assert(MAX_CPUS == 1 && next_frame != 0);
+    for (unsigned int index = 0; index < sizeof(host_page_locks) / sizeof(host_page_locks[0]); index++)
+        lck_spin_init(&host_page_locks[index], &host_pmap_lock_group, LCK_ATTR_NULL);
+    host_page_locks_ready = true;
+}
+STARTUP(LOCKS, STARTUP_RANK_LAST, host_pmap_locks_initialize);
+
+static lck_spin_t *
+host_physical_lock(ppnum_t page)
+{
+    assert(host_page_locks_ready);
+    /* As on original ARM, non-managed/fictitious physical identifiers share a
+     * separate backup interlock; they are not invented managed RAM frames. */
+    return page && page < frame_limit ? &host_page_locks[page - 1] :
+        &host_pmap_foreign_lock;
+}
+
+void
+pmap_lock_phys_page(ppnum_t page)
+{
+    lck_spin_lock(host_physical_lock(page));
+}
+
+void
+pmap_unlock_phys_page(ppnum_t page)
+{
+    lck_spin_unlock(host_physical_lock(page));
+}
+
 
 void
 fill32_nt(addr64_t address, vm_size_t size, uint32_t pattern)
@@ -127,10 +171,12 @@ pmap_enter(pmap_t pmap, vm_map_offset_t address, ppnum_t page, vm_prot_t protect
     (void)flags; /* Hardware cacheability is owned by Linux. */
     if (pmap != kernel_pmap)
         return KERN_NOT_SUPPORTED;
+    disable_preemption();
     int error = xnu_host_memory_map(address, page, protection, wired);
     if (error < 0)
         panic("host pmap_enter native mapping state address=%#llx page=%u error=%d",
             address, page, -error);
+    enable_preemption();
     return error ? KERN_FAILURE : KERN_SUCCESS;
 }
 
@@ -138,18 +184,22 @@ void
 pmap_sync_page_data_phys(ppnum_t page)
 {
     assert(page && page < frame_limit);
+    disable_preemption();
     int error = xnu_host_memory_sync_code(page);
     if (error)
         panic("host pmap_sync_page_data_phys page=%u error=%d", page, error);
+    enable_preemption();
 }
 
 void
 pmap_sync_page_attributes_phys(ppnum_t page)
 {
     assert(page && page < frame_limit);
+    disable_preemption();
     int error = xnu_host_memory_sync_attributes(page);
     if (error)
         panic("host pmap_sync_page_attributes_phys page=%u error=%d", page, error);
+    enable_preemption();
 }
 
 kern_return_t
@@ -168,10 +218,12 @@ void
 pmap_change_wiring(pmap_t pmap, vm_map_address_t address, boolean_t wired)
 {
     pmap_require(pmap);
+    disable_preemption();
     int error = xnu_host_memory_change_wiring(address, wired);
     if (error)
         panic("host pmap_change_wiring address=%#llx wired=%d error=%d",
             address, wired, error);
+    enable_preemption();
 }
 
 kern_return_t
@@ -257,6 +309,7 @@ pmap_remove_options(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end, int
 {
     (void)options;
     kernel_mapping_range(pmap, start, end);
+    disable_preemption();
     for (vm_map_offset_t address = start; address < end; address += PAGE_SIZE) {
         if (xnu_host_memory_lookup(address)) {
             int error = xnu_host_memory_unmap(address);
@@ -264,6 +317,7 @@ pmap_remove_options(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end, int
                 panic("host pmap_remove address=%#llx error=%d", address, error);
         }
     }
+    enable_preemption();
 }
 
 void
@@ -301,11 +355,13 @@ pmap_protect_options(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end,
         pmap_remove(pmap, start, end);
         return;
     }
+    disable_preemption();
     for (vm_map_offset_t address = start; address < end; address += PAGE_SIZE) {
         int error = xnu_host_memory_protect_options(address, protection, immediate);
         if (error)
             panic("host pmap_protect address=%#llx error=%d", address, error);
     }
+    enable_preemption();
 }
 
 void
@@ -330,9 +386,11 @@ pmap_page_protect_options(ppnum_t page, vm_prot_t protection,
     default:
         protection = VM_PROT_NONE;
     }
+    disable_preemption();
     int error = xnu_host_memory_protect_page(page, protection);
     if (error)
         panic("host pmap_page_protect page=%u error=%d", page, error);
+    enable_preemption();
 }
 
 void
@@ -369,9 +427,11 @@ boolean_t
 void
 pmap_set_modify(ppnum_t page)
 {
+    disable_preemption();
     int error = xnu_host_memory_update_attributes(page, 0, VM_MEM_MODIFIED);
     if (error)
         panic("host pmap_set_modify page=%u error=%d", page, error);
+    enable_preemption();
 }
 
 void
@@ -382,9 +442,11 @@ pmap_clear_refmod_options(ppnum_t page, unsigned int mask,
      * flush batching is unnecessary, even when the caller requests it. */
     (void)options;
     (void)argument;
+    disable_preemption();
     int error = xnu_host_memory_update_attributes(page, mask, 0);
     if (error)
         panic("host pmap_clear_refmod page=%u mask=%u error=%d", page, mask, error);
+    enable_preemption();
 }
 
 void
@@ -412,9 +474,11 @@ unsigned int
     (void)arg;
     assert(page && page < frame_limit);
     unsigned int attributes = 0;
+    disable_preemption();
     int error = xnu_host_memory_disconnect(page, &attributes);
     if (error)
         panic("host pmap_disconnect page=%u error=%d", page, error);
+    enable_preemption();
     return ((attributes & XNU_HOST_PAGE_MODIFIED) ? VM_MEM_MODIFIED : 0) |
         ((attributes & XNU_HOST_PAGE_REFERENCED) ? VM_MEM_REFERENCED : 0);
 }
