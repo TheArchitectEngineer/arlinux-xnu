@@ -5,12 +5,35 @@
 #include <arm/cpu_number.h>
 #include <kern/debug.h>
 #include <kern/thread.h>
+#include <kern/processor.h>
 #include <host/context.h>
 
 static struct thread boot_thread;
-static cpu_data_t boot_cpu;
+cpu_data_t PERCPU_DATA(cpu_data);
+struct percpu_base percpu_base;
+#define boot_cpu (*PERCPU_GET_MASTER(cpu_data))
 static __thread thread_t host_thread;
 static __thread boolean_t host_interrupts_enabled;
+
+vm_offset_t
+current_percpu_base(void)
+{
+    assert(host_thread != THREAD_NULL);
+    return host_thread->machine.pcpu_data_base;
+}
+
+vm_offset_t
+other_percpu_base(int cpu)
+{
+    assert(cpu == 0);
+    return (vm_offset_t)cpu_datap(cpu) - __PERCPU_ADDR(cpu_data);
+}
+
+processor_t
+current_processor(void)
+{
+    return PERCPU_GET(processor);
+}
 
 cpu_data_t *
 cpu_datap(int cpu)
@@ -44,6 +67,7 @@ machine_set_current_thread(thread_t thread)
 {
     assert(thread != THREAD_NULL);
     thread->machine.CpuDatap = &boot_cpu;
+    thread->machine.pcpu_data_base = 0; /* Master CPU uses the static ELF section. */
     boot_cpu.cpu_active_thread = thread;
     boot_cpu.cpu_active_stack = thread->kernel_stack;
     host_thread = thread;
@@ -62,6 +86,12 @@ xnu_host_context_initialize(void *stack_base, unsigned long stack_size,
     assert(MAX_CPUS == 1);
     assert(host_thread == THREAD_NULL);
     assert(stack_base && stack_size && exception_base && exception_size);
+    assert((vm_offset_t)&boot_cpu >= percpu_section_start() &&
+        (vm_offset_t)(&boot_cpu + 1) <= percpu_section_end());
+    percpu_base.size = percpu_section_size();
+    /* Original single-CPU layout: iterate the master slot once, no replicas. */
+    percpu_base.start = VM_MAX_KERNEL_ADDRESS;
+    percpu_base.end = 0;
     boot_cpu.cpu_number = 0;
     boot_cpu.cpu_active_thread = &boot_thread;
     boot_cpu.cpu_active_stack = (vm_offset_t)stack_base;
@@ -73,10 +103,19 @@ xnu_host_context_initialize(void *stack_base, unsigned long stack_size,
     boot_thread.kernel_stack = (vm_offset_t)stack_base;
     boot_thread.state = TH_RUN;
     machine_set_current_thread(&boot_thread);
+    assert(PERCPU_GET(cpu_data) == &boot_cpu && other_percpu_base(0) == 0);
+    unsigned int cpu_records = 0;
+    percpu_foreach(cpu, cpu_data) {
+        assert(cpu == &boot_cpu);
+        cpu_records++;
+    }
+    assert(cpu_records == 1);
     host_interrupts_enabled = FALSE;
     kprintf("XNU_HOST_CONTEXT cpu=%d thread=%p preemption=%u stack=%lu exception=%lu\n",
         boot_cpu.cpu_number, host_thread, boot_thread.machine.preemption_count,
         stack_size, exception_size);
+    kprintf("XNU_HOST_PERCPU section=[%#lx,%#lx) size=%lu records=%u (master CPU)\n",
+        percpu_section_start(), percpu_section_end(), percpu_base.size, cpu_records);
     return 0;
 }
 
