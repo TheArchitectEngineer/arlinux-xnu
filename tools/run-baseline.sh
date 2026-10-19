@@ -11,6 +11,7 @@ qemu-system-aarch64 --version >> "$output/environment.txt"
 llvm-nm --version >> "$output/environment.txt"
 (cd "$input" && sha256sum -c SHA256SUMS) | tee "$output/input-verification.txt"
 cp "$input/SHA256SUMS" "$output/input-SHA256SUMS"
+cat "$output/input-SHA256SUMS"
 kernel="$input/kernel.development.sweet"
 python3 "$input/reference-tools/mkadt.py" "$output/guest.adt" --qemu
 python3 "$input/reference-tools/mkpayload.py" "$kernel" "$output/guest.adt" "$output/payload.bin" \

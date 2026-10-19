@@ -55,7 +55,8 @@ _start:
     cmp x0, x21
     b.ne failure
     ldr w9, [sp]
-    cmp w9, #(37 << 8)          // normal exit, not a fatal signal
+    mov w10, #(37 << 8)
+    cmp w9, w10                 // normal exit, not a fatal signal
     b.ne failure
     ldr x9, [x20]
     cmp x9, #0x123              // child writes must have COW isolation

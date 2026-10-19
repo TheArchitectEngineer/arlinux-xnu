@@ -42,7 +42,18 @@ compilation, a quiet screen or `no_panic_observed` alone is insufficient.
 Capture registers, framebuffer, exceptions, exact input hashes and receipts
 on failure too. No proprietary assets are needed for this first journey.
 
-Next: execute the new reference stage, diagnose its actual first failure, and
+First reference attempt
+[39310743662](https://github.com/taowen/arlinux-xnu/actions/runs/39310743662),
+root `364d639ba38438b7672648b4b16689a95f051217`: the full kernel built
+(SHA-256 `390016617d3ba3ceffeee6c3d2f6fc858a5d5cc8e36e0c233ed4b93a9c0f0844`),
+but our guest assembly used an unencodable CMP immediate and failed. No boot
+ran. Failure receipt SHA-256:
+`e84040a2b555261fff6aec1c8e318f95f6719bd8ab5b1a772e5671d324dcff89`.
+The guest now compares registers; its assembly runs before the expensive kernel
+build. Earlier run `39310550551` was explicitly cancelled because source review
+found our incorrect raw-Darwin fork discriminator (x1 identifies the child).
+
+Next: run the corrected reference stage, diagnose its actual first failure, and
 use the result to reassess the smallest viable userspace execution boundary.
 The reference is not a working usermode kernel, dyld, frameworks or an iOS app.
 The complete objective remains genuine XNU process execution in Linux userspace,

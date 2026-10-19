@@ -13,6 +13,12 @@ export MACOS_VERSION=13.5 KERNEL_CONFIG=DEVELOPMENT MACHINE_CONFIG=SWEET
 git init -q sweet
 git -C sweet fetch --depth 1 "https://github.com/$SWEET_REPO.git" "$SWEET_SHA"
 git -C sweet checkout --detach FETCH_HEAD
+# Assemble the real journey before the expensive kernel build.
+mkdir -p ../../out-baseline
+# Use the upstream static Mach-O/signature writer, not a host loader. The
+# resulting executable itself is mockfs's RAM disk served as /sbin/launchd.
+clang --target=arm64-apple-ios16.0 -c ../../guests/init.S -o ../../out-baseline/init.o
+python3 sweet/tools/mkinit.py ../../out-baseline/init.o ../../out-baseline/init.macho
 ln -s sweet/xnu xnu
 git init -q dxb
 git -C dxb fetch -q --depth 1 "$DXB_REPO" "$DXB_SHA"
@@ -38,10 +44,6 @@ xcrun --find iig
 mkdir -p ../../out-baseline
 find dxb/fakeroot/System/Library/Kernels -maxdepth 1 -type f -name 'kernel.*' -exec cp {} ../../out-baseline/ \;
 file ../../out-baseline/kernel.* > ../../out-baseline/file.txt
-# Use the upstream static Mach-O/signature writer, not a host loader. The
-# resulting executable itself is mockfs's RAM disk served as /sbin/launchd.
-clang --target=arm64-apple-ios16.0 -c ../../guests/init.S -o ../../out-baseline/init.o
-python3 sweet/tools/mkinit.py ../../out-baseline/init.o ../../out-baseline/init.macho
 mkdir -p ../../out-baseline/reference-tools
 for source in adt.py mkadt.py mkpayload.py qemu-sweet.py; do
     cp "sweet/tools/$source" "../../out-baseline/reference-tools/$source"
