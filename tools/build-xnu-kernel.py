@@ -167,7 +167,8 @@ def main():
             'ast', 'sched_prim', 'sched_average', 'sched_traditional',
             'waitq', 'turnstile', 'timer_call', 'mpsc_queue', 'recount',
             'thread_act', 'thread_policy', 'task_policy', 'syscall_subr',
-            'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref', 'clock']],
+            'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref', 'clock',
+            'coalition', 'extmod_statistics', 'host_notify', 'counter_common']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
@@ -177,7 +178,8 @@ def main():
         'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm64/pcb.c', 'osfmk/arm64/status.c',
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
-        'osfmk/prng/prng_random.c',
+        'osfmk/prng/prng_random.c', 'osfmk/arm/counter.c',
+        'bsd/kern/kern_fork.c',
     ]
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
@@ -197,6 +199,11 @@ def main():
             # libkern/conf/Makefile.template uses the BSD/libkern namespace.
             component_flags = ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',
                                '-DLIBKERN_KERNEL_PRIVATE=1', '-DOSALLOCDEBUG=1']
+        if unit.startswith('bsd/'):
+            # bsd/conf/Makefile.template's namespace and build flags.
+            component_flags += ['-UMACH_KERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE=1',
+                                '-DDRIVER_PRIVATE=1', '-D_KERNEL_BUILD=1',
+                                '-DKERNEL_BUILD=1', '-DBSD_BUILD=1', '-DLP64_DEBUG=0']
         if source_path.suffix == '.cpp':
             component_flags += ['-std=gnu++17', '-fno-exceptions', '-fno-rtti']
         command = [*flags, *component_flags, str(source_path), '-o', str(obj)]
