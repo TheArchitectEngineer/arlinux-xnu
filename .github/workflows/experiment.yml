@@ -229,7 +229,7 @@ jobs:
           retention-days: 30
   xnu-vm-startup:
     if: inputs.mode == 'both' || inputs.mode == 'kernel'
-    needs: [xnu-kernel, xnu-early-startup]
+    needs: xnu-kernel
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
