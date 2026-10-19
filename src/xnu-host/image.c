@@ -3,6 +3,7 @@
 #include <arm/usermode_vm.h>
 #include <kern/assert.h>
 #include <kern/debug.h>
+#include <pexpert/pexpert.h>
 #include <host/image.h>
 
 extern char __executable_start[], _end[], __xnu_text_start[], __xnu_text_end[];
