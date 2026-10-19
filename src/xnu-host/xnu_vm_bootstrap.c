@@ -8,6 +8,7 @@
 #include <kern/kalloc.h>
 #include <kern/processor.h>
 #include <kern/timer_call.h>
+#include <sys/kdebug_kernel.h>
 
 extern int xnu_host_kernel_early_startup(void);
 
@@ -37,7 +38,7 @@ xnu_host_vm_bootstrap(void)
     for (vm_size_t i = 0; i < PAGE_SIZE; i++)
         assert(bytes[i] == (unsigned char)i);
     kfree_data(buffer, PAGE_SIZE);
-    kprintf("XNU_VM_ALLOCATION real kalloc_data zero/write/read/free passed bytes=%lu\n", PAGE_SIZE);
+    kprintf("XNU_VM_ALLOCATION real kalloc_data zero/write/read/free passed bytes=%lu\n", (unsigned long)PAGE_SIZE);
     kprintf("XNU_VM_BOOTSTRAP initialized (guest execution not connected)\n");
     return 0;
 }
