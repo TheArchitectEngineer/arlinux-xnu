@@ -9,17 +9,18 @@ process handle -s false -n false -p true SIGSYS
 
 # The host entry stop occurs after Mach-O mappings exist, before guest code.
 # Add the real Mach-O's symbols at the loader's declared slide.
-platform shell ls -l build/ios-input/dyld
-target modules add --arch arm64-apple-ios build/ios-input/dyld
-target modules load --file build/ios-input/dyld --slide 0x200000000
+script import os; target = lldb.debugger.GetSelectedTarget(); dyld_module = target.AddModule(os.path.abspath("build/ios-input/dyld"), "arm64-apple-ios", None); print("DYLD_SYMBOL_MODULE", dyld_module.IsValid()); assert dyld_module.IsValid(), "LLDB could not read the real Mach-O"
+script load_error = target.SetModuleLoadAddress(dyld_module, 0x200000000); print(load_error); assert load_error.Success(), "Cannot relocate dyld symbols"
 image list
 register read pc sp x0 x1
 thread backtrace all
 disassemble --frame --count 10
 breakpoint disable 1
-breakpoint set --name amfi_check_dyld_policy_self --name _amfi_check_dyld_policy_self
+script policy_bp = target.BreakpointCreateByName("amfi_check_dyld_policy_self"); print(policy_bp); assert policy_bp.GetNumResolvedLocations() > 0, "Policy breakpoint unresolved"
 continue
 
+# Require the expected breakpoint before stepping; a fatal BRK is not success.
+script thread = target.GetProcess().GetSelectedThread(); assert thread.GetStopReason() == lldb.eStopReasonBreakpoint and thread.GetStopReasonDataAtIndex(0) == policy_bp.GetID(), "Unexpected stop before policy"
 # Observe real policy input/output-pointer registers and step the actual code.
 register read pc sp x0 x1
 thread backtrace all

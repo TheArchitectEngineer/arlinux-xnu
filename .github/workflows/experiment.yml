@@ -159,7 +159,7 @@ jobs:
           mkdir -p build/dyld
           printf '+q' > build/dyld/debugger.stdin
           status=0
-          timeout 45 lldb-18 --batch -o 'command source -e false -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?
+          timeout 45 lldb-18 --batch -o 'command source -e true -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?
           cat build/dyld/lldb.log
           echo "LLDB_COMMAND_STATUS=$status"
           exit "$status"
