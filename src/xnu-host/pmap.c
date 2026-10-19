@@ -146,8 +146,19 @@ pmap_enter_options(pmap_t pmap, vm_map_offset_t address, ppnum_t page,
     vm_prot_t protection, vm_prot_t fault_type, unsigned int flags,
     boolean_t wired, unsigned int options, void *arg)
 {
-    (void)options;
     (void)arg;
+    if (pmap != kernel_pmap)
+        return KERN_NOT_SUPPORTED;
+    if (options & PMAP_OPTIONS_NOENTER) {
+        /* vm_fault retries with page=0 after dropping VM locks. The host
+         * reserves the entire kernel VA and its mapping metadata up front,
+         * so this capacity request needs no expansion and must not install
+         * or replace a physical mapping. User pmaps are still unsupported. */
+        if (address < XNU_HOST_HEAP_BASE || address >= XNU_HOST_KERNEL_LIMIT ||
+            (address & PAGE_MASK))
+            return KERN_INVALID_ARGUMENT;
+        return KERN_SUCCESS;
+    }
     return pmap_enter(pmap, address, page, protection, fault_type, flags, wired);
 }
 

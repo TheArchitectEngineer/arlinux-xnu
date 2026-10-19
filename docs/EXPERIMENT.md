@@ -9,26 +9,29 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed real-kernel attempt is
-[39283576136](https://github.com/taowen/arlinux-xnu/actions/runs/39283576136),
-root `6f7ba977761174aacdf75dd4fb7235f6d04b7767`, fork `644e9ef`.
-Actual compiler job `118163542251` compiled the disabled-DriverKit dispatch
-boundary. Compiler receipt SHA-256:
-`26084819757b9a2906f9287bbcc75f2b9d7bc31511cb8b2b679b09065934c481`.
+[39284001374](https://github.com/taowen/arlinux-xnu/actions/runs/39284001374),
+root `bc2d15ff623cc7bf86e233705de90c474a4ab9f1`, fork `644e9ef`.
+Actual compiler job `118165016525` compiled original shared-region, shared-cache
+and dyld pagers plus guarded FD lifecycle. Compiler receipt SHA-256:
+`152c13956810b2266d1c9a3b206d9219d8d3024449e41af634a1f57498e2e323`.
 
-Actual VM job `118164208745` passed the native/kernel ABI collision audit,
-but executable linkage still failed on machine/pmap, shared-region/FD and further
+Actual VM job `118165562230` passed the native/kernel ABI collision audit,
+but executable linkage still failed on machine/pmap, BSD shutdown and further
 services. Its failure receipt SHA-256:
-`d8ff24f232443d9b4ec28644204dc937dfecb88f1343a50579770088f14ce23b`.
+`a5645fa33ae8dc076d8d716945027b7995621820f106d3a3eaaa8e627195d264`.
 No VM initialization, real allocation, task or guest ran. Actual logs are retained
-under `build/runs/39283576136`; Actions retains receipts and output hashes.
+under `build/runs/39284001374`; Actions retains receipts and output hashes.
 
-The next source adds original `vm_shared_region`, `vm_shared_region_pager` and
-`vm_dyld_pager`, required by task creation/exec and the existing BSD shared-region
-calls. These retain actual memory-object paging, slide/fixup and COW mechanisms;
-compilation does not establish any of those runtime semantics. Original
-`kern_guarded.c` supplies the existing fileproc close/unguard lifecycle and guarded
-FD calls. No alternate exec loader, host paging service or successful device
-placeholder is introduced. Runner verification remains pending.
+Source review of the original VM fault retry exposed a host pmap semantic error:
+`PMAP_OPTIONS_NOENTER` passes physical page zero to request mapping-capacity
+expansion only. The host previously ignored the option and attempted a real
+mapping, returning failure. The repaired kernel-only path validates the address
+and acknowledges the capacity already reserved at host memory initialization,
+without touching mappings, permissions, wiring or page attributes. User pmaps
+still return KERN_NOT_SUPPORTED. Original reference: `arm/pmap/pmap.c` returns
+before PTE installation, and `vm/vm_fault.c` re-drives the fault afterwards.
+This repair requires runner verification through the real VM journey; no isolated
+mapping probe is added, and no guest execution claim follows from compilation.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
