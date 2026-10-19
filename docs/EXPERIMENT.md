@@ -7,12 +7,14 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39228876244](https://github.com/taowen/arlinux-xnu/actions/runs/39228876244)
-compiled 99 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39230487910](https://github.com/taowen/arlinux-xnu/actions/runs/39230487910)
+compiled 106 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 then the original `kernel_startup_bootstrap()` dispatcher and startup-debug
-tunable, and exited normally. All five downloaded jobs' files matched receipts.
+tunable, and exited normally. Each start also executed the original ARM rtclock
+conversion functions with a Linux nanosecond timebase and a real 1 ms absolute
+sleep (about 1.06 ms observed). All five downloaded jobs' files matched receipts.
 
 The host uses Linux TLS for XNU's current-thread access, native/alternative
 bootstrap stacks, and a 256 MiB memfd for physical backing. Guest pages are
@@ -23,24 +25,29 @@ view and kernel heap occupy separate arenas; earlier single-run success hid an
 ASLR-dependent collision. Every repeated start retains its actual native brk.
 Collision failures now retain overlapping `/proc/self/maps` entries as well.
 
-The merged disassembly has no `TPIDR_EL1` or DAIF register accesses. Privileged
-hardware operations may be skipped or delegated to Linux when execution does
-not need their native mechanism; full EL1 emulation is not required.
+The merged disassembly's system-register reads/writes now only use host TLS
+(`TPIDR_EL0`). The original ARM64 PCB/status code keeps guest thread state while
+skipping privileged debug-register writes, unused CurrentEL reads and immediate
+guest TSD activation in the host. Hardware breakpoints and guest TSD activation
+on entry are not implemented. Privileged hardware operations may be skipped or
+delegated to Linux when execution does not need their native mechanism; full
+EL1 emulation is not required.
 
 **VM, tasks, Mach/BSD dispatch and guest execution are not running.** The early
-executable links the dispatcher, host context, host pmap and entry, not the core
-VM allocator. Its startup table contains only the debug tunable; advancing to
+executable links the dispatcher, host context/pmap/time, original rtclock and
+required atomics, not the core VM allocator. Its startup table contains only
+the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps,
 reverse mappings and pmap accounting are not connected yet. The VM executable
-still fails linkage (468 distinct undefined references), before its original
+still fails linkage (443 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
 
-Next: connect remaining original providers (including task references and the
-C++ priority queue), then the machine/thread, BSD, time/entropy and remaining
-host pmap dependencies, and execute the original VM bootstrap. Selected objects
-already include scheduler/waitq/turnstile, SMR, task policy and VM interface
-wrappers; their full runtime use remains unverified.
+Next: provide Linux entropy and the remaining machine/thread, BSD process and
+host pmap dependencies, then execute the original VM bootstrap. Selected
+objects include original task references, C++ priority queues, ARM64 PCB/status,
+scheduler/waitq/turnstile, SMR, task policy and VM interface wrappers. Full task
+lifecycle, timer IRQ delivery and guest context switching remain unverified.
 
 Kernel mode has five jobs: Linux generates configuration/MIG interfaces; macOS
 Apple Clang cross-compiles Linux ELF; Linux separately reports link dependencies,
@@ -55,9 +62,9 @@ retained in artifacts; this is not yet a Linux-only compiler toolchain.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | [99 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39228876244) | Complete kernel or guest execution |
+| `xnu-kernel` | [106 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39230487910) | Complete kernel or guest execution |
 | `xnu-link-inputs` | Same run: relocatable merge passes, host TLS replaces privileged current-thread access | Executable linkage or kernel boot |
-| `xnu-early-startup` | Same run: eight process starts; host pmap operations plus original early dispatcher | Lock hooks, VM/tasks initialization or guest execution |
+| `xnu-early-startup` | Same run: eight starts; pmap operations, original rtclock conversion/delay and early dispatcher | Lock hooks, VM/tasks initialization or guest execution |
 | `xnu-vm-startup` | Same run: executable link fails; log and link map retained | VM bootstrap or guest execution |
 
 These are historical observations at their runs' source revisions, not promises
