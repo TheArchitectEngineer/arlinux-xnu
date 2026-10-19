@@ -17,7 +17,7 @@ enum darwin_syscall {
     D_SYS_WRITE = 4,
     D_SYS_OPEN = 5,
     D_SYS_ACCESS = 33, D_SYS_READ_NOCANCEL = 396, D_SYS_WRITE_NOCANCEL = 397,
-    D_SYS_PROC_INFO = 336,
+    D_SYS_PROC_INFO = 336, D_SYS_SYSCTLBYNAME = 274,
     D_SYS_CLOSE = 6,
     D_SYS_WAIT4 = 7,
     D_SYS_GETPID = 20,
@@ -250,3 +250,10 @@ struct darwin_proc_unique {
     int32_t idversion; uint32_t reserved2; uint64_t reserved3,reserved4;
 };
 _Static_assert(sizeof(struct darwin_proc_unique)==56,"Darwin process unique identity wire layout");
+
+/* Libc-1272 libdarwin/variant.c cached-status wire encoding. */
+#define D_OS_VARIANT_INITIAL_BITS UINT64_C(0x70000000f0000000)
+enum darwin_variant_status {
+    D_OS_VARIANT_STATUS_NO=2, D_OS_VARIANT_STATUS_WIDTH=2,
+    D_OS_VARIANT_STATUS_FIELDS=6
+};

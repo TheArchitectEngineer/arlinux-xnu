@@ -67,3 +67,30 @@ static long native_proc_info(const unsigned long long *r)
     error=guest_copy(&info,r[4],sizeof(info),1);
     return error ? error : (long)sizeof(info);
 }
+
+/* This compatibility machine is an ordinary production environment, with no
+ * AppleInternal/factory content or internal-security policy. Answer this actual
+ * read-only kernel node before libSystem's init can re-enter libdispatch via
+ * the fallback XPC parser for SystemVersion.plist. Unknown nodes still fail. */
+static long native_sysctlbyname(const unsigned long long *r)
+{
+    const char expected[]="kern.osvariant_status";
+    char name[128];
+    if (!r[1]) return -EINVAL;
+    if (r[1]>sizeof(name)) return -ENAMETOOLONG;
+    if (guest_copy(name,r[0],r[1],0)) return -EFAULT;
+    if (r[1]!=sizeof(expected)-1 && r[1]!=sizeof(expected)) return -ENOENT;
+    for (unsigned int i=0;i<sizeof(expected)-1;i++) if (name[i]!=expected[i]) return -ENOENT;
+    if (r[1]==sizeof(expected) && name[sizeof(expected)-1]) return -ENOENT;
+    if (r[4] || r[5]) return -EPERM;
+    uint64_t value=D_OS_VARIANT_INITIAL_BITS;
+    for (unsigned int i=0;i<D_OS_VARIANT_STATUS_FIELDS;i++)
+        value|=(uint64_t)D_OS_VARIANT_STATUS_NO<<(i*D_OS_VARIANT_STATUS_WIDTH);
+    uint64_t capacity;
+    if (!r[3] || guest_copy(&capacity,r[3],sizeof(capacity),0)) return -EFAULT;
+    uint64_t required=sizeof(value);
+    if (guest_copy(&required,r[3],sizeof(required),1)) return -EFAULT;
+    if (!r[2]) return 0;
+    if (capacity<sizeof(value)) return -ENOMEM;
+    return guest_copy(&value,r[2],sizeof(value),1);
+}

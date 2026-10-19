@@ -119,6 +119,12 @@ except BaseException:
 # Keep the read-only firmware mounted for the real loader's subsequent reads.
 # The hosted runner owns its lifetime; no Apple binary is uploaded.
 print('APPLE_USERLAND_ROOT', filesystem / 'root', flush=True)
+system_version = plistlib.loads((filesystem / 'root/System/Library/CoreServices/SystemVersion.plist').read_bytes())
+version_record = {key: system_version.get(key) for key in
+                  ('ProductName', 'ProductVersion', 'ProductBuildVersion', 'ReleaseType')}
+(evidence / 'system-version.json').write_text(json.dumps(version_record, indent=2) + '\n')
+print('APPLE_SYSTEM_VERSION ' + json.dumps(version_record), flush=True)
+
 record = {'firmware': source, 'verifiedFirmwareSHA256': actual,
           'osImage': member, 'osImageSHA256': sha(image),
           'apfsReader': reader, 'dyldBytes': loader.stat().st_size, 'dyldSHA256': sha(loader)}

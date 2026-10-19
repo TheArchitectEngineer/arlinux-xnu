@@ -512,6 +512,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         result=RAW(SYS_faccessat,directory,path,r[1],0,0,0);
         break;
     }
+    case D_SYS_SYSCTLBYNAME: result=native_sysctlbyname(r); break;
     case D_SYS_PROC_INFO: result=native_proc_info(r); break;
     case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_open(r[0],r[1]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
