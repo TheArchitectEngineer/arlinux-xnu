@@ -9,33 +9,29 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed real-kernel attempt is
-[39284001374](https://github.com/taowen/arlinux-xnu/actions/runs/39284001374),
-root `bc2d15ff623cc7bf86e233705de90c474a4ab9f1`, fork `644e9ef`.
-Actual compiler job `118165016525` compiled original shared-region, shared-cache
-and dyld pagers plus guarded FD lifecycle. Compiler receipt SHA-256:
-`152c13956810b2266d1c9a3b206d9219d8d3024449e41af634a1f57498e2e323`.
+[39284374578](https://github.com/taowen/arlinux-xnu/actions/runs/39284374578),
+root `72f6733d318925da820edd60c39020275af1138c`, fork `644e9ef`.
+Actual compiler job `118166318690` compiled the mapping-capacity-only correction
+for original `vm_fault` retry. Compiler receipt SHA-256:
+`590b401c327684dca064481000412aaca57212d90073d877c9d6747b3ccec670`.
+This does not verify fault retries at runtime.
 
-Actual VM job `118165562230` passed the native/kernel ABI collision audit,
+Actual VM job `118166870795` passed the native/kernel ABI collision audit,
 but executable linkage still failed on machine/pmap, BSD shutdown and further
 services. Its failure receipt SHA-256:
-`a5645fa33ae8dc076d8d716945027b7995621820f106d3a3eaaa8e627195d264`.
+`7a1f1f3266d9ac813a6dd9af6887e13eff56b1873ceb56a5275842dfff7fb94b`.
 No VM initialization, real allocation, task or guest ran. Actual logs are retained
-under `build/runs/39284001374`; Actions retains receipts and output hashes.
+under `build/runs/39284374578`; Actions retains receipts and output hashes.
 
-Source review of the original VM fault retry exposed a host pmap semantic error:
-`PMAP_OPTIONS_NOENTER` passes physical page zero to request mapping-capacity
-expansion only. The host previously ignored the option and attempted a real
-mapping, returning failure. The repaired kernel-only path validates the address
-and acknowledges the capacity already reserved at host memory initialization,
-without touching mappings, permissions, wiring or page attributes. User pmaps
-still return KERN_NOT_SUPPORTED. Original reference: `arm/pmap/pmap.c` returns
-before PTE installation, and `vm/vm_fault.c` re-drives the fault afterwards.
-This repair requires runner verification through the real VM journey; no isolated
-mapping probe is added, and no guest execution claim follows from compilation.
-Inspect existing experiment
-[39284374578](https://github.com/taowen/arlinux-xnu/actions/runs/39284374578),
-source `72f6733`, before another dispatch. Reuse this run handle through delayed
-metadata/log observations; never resubmit identical source because of a timeout.
+The next source integrates original `kern_shutdown.c` for its actual shutdown
+state and `proc_shutdown_exitcount` used by normal proc exit. It also adds the
+original corpse task lifecycle and all four configured memorystatus providers:
+process death, crash inspection and the already-enabled memory pressure policy
+must preserve actual task/resource transitions, rather than copied globals or
+success handlers. Original configuration lists corpse/shutdown as standard and
+the four pressure units for CONFIG_MEMORYSTATUS. No host reboot implementation
+or live device operation is added. Runner compilation and the real VM journey
+remain unverified for these additions.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.

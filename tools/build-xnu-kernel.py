@@ -251,6 +251,12 @@ def main():
         # Genuine BSD process/FD/VFS execution and termination. These services
         # are required by the supervisor/child journey for either CPU backend.
         'bsd/kern/bsd_stubs.c', 'bsd/kern/kern_exit.c', 'bsd/kern/kern_sig.c',
+        # Preserve the original task death/shutdown state and configured memory
+        # pressure policy; these are not host success stubs or copied globals.
+        'osfmk/corpses/corpse.c', 'bsd/kern/kern_shutdown.c',
+        *['bsd/kern/' + name + '.c' for name in [
+            'kern_memorystatus', 'kern_memorystatus_freeze',
+            'kern_memorystatus_notify', 'kern_memorystatus_policy']],
         'bsd/dev/arm/systemcalls.c', 'bsd/dev/munge.c',
         'build/kernel/bsd/init_sysent.c', 'build/kernel/bsd/syscalls.c',
         'bsd/kern/kern_exec.c', 'bsd/kern/mach_loader.c', 'bsd/kern/mach_fat.c',
