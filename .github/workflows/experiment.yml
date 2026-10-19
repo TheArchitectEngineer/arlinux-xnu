@@ -33,6 +33,38 @@ jobs:
         with:
           name: linux-arm64-host-substrate
           path: build/host/
+  macho-userland:
+    if: inputs.mode != 'baseline'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux Mach-O toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 llvm-18
+      - name: Build and execute the freestanding Darwin program
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/macho
+          cp sources.lock.json build/macho/
+          uname -a > build/macho/environment.txt
+          clang-18 --version >> build/macho/environment.txt
+          ld64.lld-18 --version >> build/macho/environment.txt
+          clang-18 --target=arm64-apple-ios13.0 -c guests/hello.S -o build/macho/hello.o
+          ld64.lld-18 -arch arm64 -platform_version ios 13.0 13.0 -static -no_pie -no_adhoc_codesign -e _start build/macho/hello.o -o build/macho/hello.macho
+          llvm-objdump-18 --macho --private-headers build/macho/hello.macho > build/macho/load-commands.txt
+          cc -Wall -Wextra -Werror -O2 -g src/macho-host.c -o build/macho/macho-host
+          file build/macho/macho-host build/macho/hello.macho | tee build/macho/file.txt
+          timeout 30 build/macho/macho-host build/macho/hello.macho > build/macho/guest.stdout 2> build/macho/host.log
+          cat build/macho/guest.stdout build/macho/host.log
+          (cd build/macho && sha256sum macho-host hello.macho > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-arm64-macho-userland
+          path: build/macho/
   xnu-baseline:
     if: inputs.mode != 'host'
     runs-on: macos-14
