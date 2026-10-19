@@ -25,8 +25,8 @@ enum ReferenceUI {
         guard let window = windows.first(where: {
             ($0[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier &&
             ($0[kCGWindowLayer as String] as? Int) == 0
-        }), let dictionary = window[kCGWindowBounds as String] as? CFDictionary,
-        let bounds = CGRect(dictionaryRepresentation: dictionary) else {
+        }), let dictionary = window[kCGWindowBounds as String] as? [String: Any],
+        let bounds = CGRect(dictionaryRepresentation: dictionary as CFDictionary) else {
             fatalError("No visible ARHello window")
         }
         // Catalyst's normal iPad-sized 1024-point window is scaled to the host.
