@@ -125,11 +125,20 @@ pmap_enter(pmap_t pmap, vm_map_offset_t address, ppnum_t page, vm_prot_t protect
 {
     (void)fault_type;
     (void)flags; /* Hardware cacheability is owned by Linux. */
-    (void)wired; /* Linux's shared memfd remains the physical backing store. */
     if (pmap != kernel_pmap)
         return KERN_NOT_SUPPORTED;
-    int error = xnu_host_memory_map(address, page, protection);
+    int error = xnu_host_memory_map(address, page, protection, wired);
     return error ? KERN_FAILURE : KERN_SUCCESS;
+}
+
+void
+pmap_change_wiring(pmap_t pmap, vm_map_address_t address, boolean_t wired)
+{
+    pmap_require(pmap);
+    int error = xnu_host_memory_change_wiring(address, wired);
+    if (error)
+        panic("host pmap_change_wiring address=%#llx wired=%d error=%d",
+            address, wired, error);
 }
 
 kern_return_t
@@ -288,6 +297,13 @@ pmap_find_phys(pmap_t pmap, addr64_t address)
     if (pmap != kernel_pmap)
         return 0;
     return xnu_host_memory_lookup(address);
+}
+
+pmap_paddr_t
+kvtophys(vm_offset_t address)
+{
+    ppnum_t page = pmap_find_phys(kernel_pmap, address);
+    return page ? (pmap_paddr_t)page * PAGE_SIZE + (address & PAGE_MASK) : 0;
 }
 
 vm_map_address_t

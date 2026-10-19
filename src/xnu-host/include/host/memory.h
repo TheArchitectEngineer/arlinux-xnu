@@ -2,8 +2,9 @@
 #define ARLINUX_XNU_HOST_MEMORY_H
 /* No Linux or XNU libc types cross this boundary. ppn 0 is never a frame. */
 int xnu_host_memory_initialize(void);
-int xnu_host_memory_map(unsigned long address, unsigned int page, int protection);
+int xnu_host_memory_map(unsigned long address, unsigned int page, int protection, int wired);
 int xnu_host_memory_unmap(unsigned long address);
+int xnu_host_memory_change_wiring(unsigned long address, int wired);
 int xnu_host_memory_protect(unsigned long address, int protection);
 enum {
     XNU_HOST_PAGE_MODIFIED = 1,

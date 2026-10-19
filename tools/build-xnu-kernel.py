@@ -193,7 +193,7 @@ def main():
             'ipc_host', 'ipc_mig', 'host', 'processor', 'kalloc', 'zalloc',
             'lock_group', 'locks', 'compact_id', 'lock_mtx', 'lock_rw', 'lock_ptr',
             'lock_ticket', 'ledger', 'kext_alloc', 'backtrace', 'btlog',
-            'timer', 'bsd_kern',
+            'timer', 'bsd_kern', 'kern_cdata',
             # Providers required by the actual VM/thread link, not host stubs.
             'ast', 'sched_prim', 'sched_average', 'sched_traditional', 'sched_dualq', 'priority',
             'waitq', 'turnstile', 'timer_call', 'mpsc_queue', 'recount',

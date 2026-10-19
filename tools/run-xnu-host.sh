@@ -72,15 +72,22 @@ if [[ $stage == full ]]; then
   echo 'Full startup registration graph linked; not executed.'
   exit 0
 fi
-timeout 30 "$output/xnu-host" startup_debug=1 > "$output/stdout.txt" 2> "$output/stderr.txt"
-cat "$output/stdout.txt" "$output/stderr.txt"
+run_host() {
+  local suffix=$1
+  local status=0
+  timeout 30 "$output/xnu-host" startup_debug=1 \
+    > "$output/stdout$suffix.txt" 2> "$output/stderr$suffix.txt" || status=$?
+  # Preserve the actual failure and its output in Actions logs, not just in
+  # an archive that would require downloading all objects to inspect a panic.
+  cat "$output/stdout$suffix.txt" "$output/stderr$suffix.txt"
+  return "$status"
+}
+run_host ""
 if [[ $stage == early ]]; then
   # A previous ASLR-dependent brk collision escaped a single successful startup.
   # Preserve every independent process start, including its actual native brk.
   for attempt in {2..8}; do
-    timeout 30 "$output/xnu-host" startup_debug=1 \
-      > "$output/stdout-$attempt.txt" 2> "$output/stderr-$attempt.txt"
-    cat "$output/stdout-$attempt.txt" "$output/stderr-$attempt.txt"
+    run_host "-$attempt"
   done
 fi
 (cd "$output" && sha256sum xnu-host > SHA256SUMS)

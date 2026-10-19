@@ -16,6 +16,9 @@ extern char __executable_start[], _end[];
 static int physical_fd = -1;
 static unsigned int *kernel_pages;
 static unsigned char *kernel_protections;
+/* Guest wiring belongs to the mapping, independently of Linux residency.
+ * Linux may manage the memfd's residency; XNU must retain its own wired state. */
+#define MAPPING_WIRED 8
 struct mapping_link {
     unsigned int previous, next; /* VA index plus one; zero terminates a chain. */
 };
@@ -149,7 +152,7 @@ fail:
 }
 
 int
-xnu_host_memory_map(unsigned long address, unsigned int page, int protection)
+xnu_host_memory_map(unsigned long address, unsigned int page, int protection, int wired)
 {
     if (physical_fd == -1 || !heap_address(address) || !page ||
         page > XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE || (protection & ~7))
@@ -164,7 +167,7 @@ xnu_host_memory_map(unsigned long address, unsigned int page, int protection)
     unsigned long index = (address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE;
     unlink_mapping(index);
     kernel_pages[index] = page;
-    kernel_protections[index] = protection;
+    kernel_protections[index] = protection | (wired ? MAPPING_WIRED : 0);
     link_mapping(index, page, protection);
     if (protection & 4)
         __builtin___clear_cache((char *)address, (char *)address + XNU_HOST_PAGE_SIZE);
@@ -194,12 +197,29 @@ xnu_host_memory_protect(unsigned long address, int protection)
     unsigned long index = (address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE;
     if (!kernel_pages[index])
         return 0; /* Preserve holes in the reserved VA arena. */
-    protection &= kernel_protections[index]; /* pmap_protect only reduces rights. */
+    protection &= kernel_protections[index] & 7; /* pmap_protect only reduces rights. */
     int native_protection = ((protection & 1) ? PROT_READ : 0) |
         ((protection & 2) ? PROT_WRITE : 0) | ((protection & 4) ? PROT_EXEC : 0);
     if (mprotect((void *)address, XNU_HOST_PAGE_SIZE, native_protection))
         return errno;
-    kernel_protections[index] = protection;
+    kernel_protections[index] = protection | (kernel_protections[index] & MAPPING_WIRED);
+    return 0;
+}
+
+int
+xnu_host_memory_change_wiring(unsigned long address, int wired)
+{
+    if (physical_fd == -1 || !heap_address(address))
+        return EINVAL;
+    unsigned long index = (address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE;
+    /* Like ARM pmap: unwiring a previously removed mapping is valid;
+     * wiring a hole is an error, never an invented resident page. */
+    if (!kernel_pages[index])
+        return wired ? ENOENT : 0;
+    if (wired)
+        kernel_protections[index] |= MAPPING_WIRED;
+    else
+        kernel_protections[index] &= ~MAPPING_WIRED;
     return 0;
 }
 
