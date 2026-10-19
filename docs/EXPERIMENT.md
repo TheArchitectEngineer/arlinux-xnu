@@ -38,6 +38,10 @@ behavior. Shared legacy register conversions are an internal ABI dependency,
 not support for 32-bit app execution. The real libpthread kernel provider is
 still not registered, and neither these calls nor pthread have run through XNU.
 Runner verification of these additions is pending.
+Inspect existing experiment
+[39288235552](https://github.com/taowen/arlinux-xnu/actions/runs/39288235552),
+source `52e53638fb40a2867c92205c41831c584497e72a`, before another dispatch;
+keep its run/job handles through observation delays.
 
 Dispatch now compares the selected local ref with its GitHub commit before
 submitting. Both real entry paths were observed: pushed `f314bf1` dispatched,
