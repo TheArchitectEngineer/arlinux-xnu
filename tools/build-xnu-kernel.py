@@ -205,6 +205,9 @@ def main():
     units += ['build/kernel/mig/mach/' + name for name in
               upstream_words(XNU / 'osfmk/mach/Makefile', 'MIG_KSSRC')
               if Path(name).with_suffix('.o').name in configured_objects]
+    units += ['build/kernel/mig/mach/' + name for name in
+              upstream_words(XNU / 'osfmk/mach/Makefile', 'MIG_KUSRC')
+              if Path(name).with_suffix('.o').name in configured_objects]
     units += ['build/kernel/mig/device/' + name for name in
               upstream_words(XNU / 'osfmk/device/Makefile', 'DEVICE_FILES')
               if name.endswith('.c')]
