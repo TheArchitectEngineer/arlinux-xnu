@@ -6,6 +6,10 @@
 #include <kern/debug.h>
 #include <kern/thread.h>
 #include <kern/processor.h>
+#include <kern/ast.h>
+#include <kern/startup.h>
+#include <mach/machine.h>
+#include <machine/machine_routines.h>
 #include <host/context.h>
 
 static struct thread boot_thread;
@@ -47,6 +51,45 @@ cpu_number(void)
 {
     assert(host_thread != THREAD_NULL);
     return current_cpu_datap()->cpu_number;
+}
+
+/* Describe the guest's one virtual CPU, not Linux's host topology. */
+unsigned int
+ml_get_cpu_count(void)
+{
+    return MAX_CPUS;
+}
+
+int
+ml_get_max_cpu_number(void)
+{
+    return MAX_CPUS - 1;
+}
+
+int
+ml_get_boot_cpu_number(void)
+{
+    return boot_cpu.cpu_number;
+}
+
+int
+ml_early_cpu_max_number(void)
+{
+    assert(startup_phase >= STARTUP_SUB_TUNABLES);
+    return ml_get_max_cpu_number();
+}
+
+cpu_type_t slot_type(int slot) { return cpu_datap(slot)->cpu_type; }
+cpu_subtype_t slot_subtype(int slot) { return cpu_datap(slot)->cpu_subtype; }
+cpu_threadtype_t slot_threadtype(int slot) { return cpu_datap(slot)->cpu_threadtype; }
+cpu_type_t cpu_type(void) { return current_cpu_datap()->cpu_type; }
+cpu_subtype_t cpu_subtype(void) { return current_cpu_datap()->cpu_subtype; }
+cpu_threadtype_t cpu_threadtype(void) { return current_cpu_datap()->cpu_threadtype; }
+
+ast_t *
+ast_pending(void)
+{
+    return &current_cpu_datap()->cpu_pending_ast;
 }
 
 thread_t
@@ -93,6 +136,9 @@ xnu_host_context_initialize(void *stack_base, unsigned long stack_size,
     percpu_base.start = VM_MAX_KERNEL_ADDRESS;
     percpu_base.end = 0;
     boot_cpu.cpu_number = 0;
+    boot_cpu.cpu_type = CPU_TYPE_ARM64;
+    boot_cpu.cpu_subtype = CPU_SUBTYPE_ARM64_ALL;
+    boot_cpu.cpu_threadtype = CPU_THREADTYPE_NONE;
     boot_cpu.cpu_active_thread = &boot_thread;
     boot_cpu.cpu_active_stack = (vm_offset_t)stack_base;
     boot_cpu.intstack_top = (vm_offset_t)exception_base + exception_size;
