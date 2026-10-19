@@ -232,6 +232,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
     return guest_copy(&out,destination,sizeof(out),1);
 }
 
+#include "darwin-process.h"
 #include "darwin-ipc.h"
 #include "darwin-threads.h"
 #include "darwin-psynch.h"
@@ -499,8 +500,19 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]&255);
         RAW(SYS_exit_group,r[0]&255,0,0,0,0,0);
         __builtin_unreachable();
-    case D_SYS_READ: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
-    case D_SYS_WRITE: result = RAW(SYS_write,r[0],r[1],r[2],0,0,0); break;
+    case D_SYS_READ: case D_SYS_READ_NOCANCEL: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
+    case D_SYS_WRITE: case D_SYS_WRITE_NOCANCEL: result = RAW(SYS_write,r[0],r[1],r[2],0,0,0); break;
+    case D_SYS_ACCESS: {
+        char buffer[4096],*path=buffer;
+        result=guest_path(r[0],buffer);
+        if (result) break;
+        if (r[1]&~(R_OK|W_OK|X_OK)) { result=-EINVAL; break; }
+        if (r[1]&W_OK) { result=-EROFS; break; }
+        int directory=path_directory(&path);
+        result=RAW(SYS_faccessat,directory,path,r[1],0,0,0);
+        break;
+    }
+    case D_SYS_PROC_INFO: result=native_proc_info(r); break;
     case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_open(r[0],r[1]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
         result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
@@ -600,7 +612,7 @@ static void fault(int signal,siginfo_t *info,void *context)
     __builtin_unreachable();
 }
 
-void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base)
+void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base,const unsigned char uuid[16])
 {
     /* One actual schedulable CPU, inherited by clone children. */
     cpu_set_t available,one;
@@ -611,6 +623,7 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     native_threads[0].tid=RAW(SYS_gettid,0,0,0,0,0,0);
     native_threads[0].state=2; native_threads[0].port=(D_THREAD_PORT_INDEX_BASE<<D_PORT_NAME_INDEX_SHIFT)|1; native_threads[0].refs=1;
     current_cache_base=cache_base;
+    memcpy(guest_executable_uuid,uuid,sizeof(guest_executable_uuid));
     char *absolute=realpath(program,NULL);
     if (!absolute || strlen(absolute)>=sizeof(executable_path)) {
         fprintf(stderr,"Invalid guest executable path\n"); exit(1);

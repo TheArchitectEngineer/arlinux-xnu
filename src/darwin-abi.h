@@ -16,6 +16,8 @@ enum darwin_syscall {
     D_SYS_READ = 3,
     D_SYS_WRITE = 4,
     D_SYS_OPEN = 5,
+    D_SYS_ACCESS = 33, D_SYS_READ_NOCANCEL = 396, D_SYS_WRITE_NOCANCEL = 397,
+    D_SYS_PROC_INFO = 336,
     D_SYS_CLOSE = 6,
     D_SYS_WAIT4 = 7,
     D_SYS_GETPID = 20,
@@ -240,3 +242,11 @@ enum darwin_mutex_voucher_abi {
 };
 struct darwin_voucher_recipe { uint32_t key,command,previous_voucher,content_size; };
 struct darwin_timeval { int64_t seconds; int32_t microseconds,padding; };
+
+/* XNU bsd/sys/proc_info.h; proc_info syscall's current-process PIDINFO flavor. */
+enum darwin_process_abi { D_PROC_CALL_PIDINFO=2, D_PROC_PIDUNIQIDENTIFIERINFO=17 };
+struct darwin_proc_unique {
+    uint8_t uuid[16]; uint64_t uniqueid,parent_uniqueid;
+    int32_t idversion; uint32_t reserved2; uint64_t reserved3,reserved4;
+};
+_Static_assert(sizeof(struct darwin_proc_unique)==56,"Darwin process unique identity wire layout");

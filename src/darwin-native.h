@@ -4,5 +4,5 @@
 long darwin_native_memory(unsigned long size,int protection);
 
 /* Single native guest process. No host libc use after guest TLS takes over. */
-void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base);
+void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base,const unsigned char uuid[16]);
 __attribute__((noreturn)) void darwin_native_enter(uint64_t stack, uint64_t entry);

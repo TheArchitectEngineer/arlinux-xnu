@@ -4,6 +4,7 @@
 #define LC_SEGMENT_64 0x19
 #define LC_MAIN 0x80000028U
 #define LC_UNIXTHREAD 5
+#define LC_UUID 0x1b
 #define NT_ARM_SYSTEM_CALL 0x404
 #define CARRY (1UL<<29)
 #define MAX_SEGMENTS 32
@@ -21,6 +22,7 @@ struct image {
     uint64_t entry;
     uint64_t header_address,slide;
     uint32_t filetype;
+    unsigned char uuid[16];
 };
 static int range(uint64_t offset,uint64_t length,uint64_t size) { return offset<=size && length<=size-offset; }
 static uint64_t round16(uint64_t size) { need(size<=UINT64_MAX-(PAGE16-1),"size overflow"); return (size+PAGE16-1)&~(PAGE16-1); }
@@ -70,6 +72,9 @@ static void load_image(const char *path,struct image *im,int dynamic) {
             memcpy(&thread_entry,im->bytes+pos+272,8);
             need(thread_entry<=UINT64_MAX-im->slide,"thread entry overflow");
             thread_entry+=im->slide;
+        } else if(cmd.cmd==LC_UUID) {
+            need(cmd.size==24,"invalid executable UUID command");
+            memcpy(im->uuid,im->bytes+pos+sizeof(cmd),sizeof(im->uuid));
         } else if(cmd.cmd==0xe) {
             // LLD emits /usr/lib/dyld metadata even without dependencies. The
             // freestanding diagnostic enters LC_MAIN directly, without dyld.
