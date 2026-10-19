@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Runner stage called only by the repository's build.sh workflow.
 set -euo pipefail
-stage=${1:?expected early or vm}
+stage=${1:?expected early, vm or full}
 case "$stage" in
   early) output=build/startup; entry_flags=() ;;
   vm) output=build/vm; entry_flags=(-DXNU_HOST_BOOT_VM) ;;
+  full) output=build/full; entry_flags=(-DXNU_HOST_BOOT_VM) ;;
   *) echo "Unknown XNU startup stage: $stage" >&2; exit 2 ;;
 esac
 mkdir -p "$output"
@@ -45,8 +46,11 @@ print(report.read_text(), end='')
 if collisions:
     raise SystemExit('Native Linux imports collide with XNU definitions: ' + ', '.join(collisions))
 PY
+link_stage=0
+if [[ $stage == vm ]]; then link_stage=1; fi
+cc -E -P -x c -DXNU_HOST_VM_STAGE="$link_stage" src/xnu-host/startup.ld > "$output/startup.ld"
 link_flags=(-no-pie -pthread -Wl,--gc-sections -Wl,-Ttext-segment="$base"
-  -Wl,-T,src/xnu-host/startup.ld -Wl,-Map,"$output/link-map.txt")
+  -Wl,-T,"$output/startup.ld" -Wl,-Map,"$output/link-map.txt")
 if [[ $stage == early ]]; then
   objects=(build/kernel/startup.o build/kernel/xnu_bootstrap.o build/kernel/context.o
     build/kernel/pmap.o build/kernel/time.o build/kernel/rtclock.o
@@ -60,6 +64,11 @@ fi
 cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "${objects[@]}" \
   -o "$output/xnu-host" 2>&1 | tee "$output/link.log"
 file "$output/xnu-host" > "$output/file.txt"
+if [[ $stage == full ]]; then
+  (cd "$output" && sha256sum xnu-host > SHA256SUMS)
+  echo 'Full startup registration graph linked; not executed.'
+  exit 0
+fi
 timeout 30 "$output/xnu-host" startup_debug=1 > "$output/stdout.txt" 2> "$output/stderr.txt"
 cat "$output/stdout.txt" "$output/stderr.txt"
 if [[ $stage == early ]]; then
