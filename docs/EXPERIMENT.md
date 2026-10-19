@@ -2,168 +2,88 @@
 
 ## Current handoff
 
-The active target is a Darwin/iOS compatibility environment. XNU and iOS
-userland may be modified, and Linux-backed implementation is allowed. Native
-ARM64 execution is preferred where supported by evidence. Unmodified XNU boot
-is a comparison, not a prerequisite or an application acceptance gate.
+The active target is a modifiable Darwin/iOS compatibility environment on
+Linux/Android. Native ARM64, 16 KiB guest pages and one advertised CPU remain
+fixed. Original XNU boot is a behavioral reference, not an application gate.
+No iOS App, UI, actual pthread creation or Android integration has passed.
 
-Native console journey passed:
-[39320163457](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457),
-source `809b6abcb14e99224b4ae5c10cbdecce5510778c`, job `118291838758`.
-The runner executes ARM64 directly on Linux with 4 KiB host pages. Private image
-adaptation rewrote two instructions: the program's Darwin TSD and CPU-metadata
-reads. SIGSYS handlers continued working after guest TLS replaced host TLS.
+Latest real journey:
+[39329708841](https://github.com/taowen/arlinux-xnu/actions/runs/39329708841),
+source `1f55cfdb041de0c79ea9033bf3274cc465dd7c8d`, dyld job `118324737399`.
+The native console prerequisite passes both complete launches. The dynamic
+variant declares a real libSystem dependency via a normal TAPI link interface;
+the stub provides no replacement implementation. Apple dyld 650.3.4 recognizes
+the actual cache and executes real libSystem/pthread initializer instructions.
 
-The actual program allocates/touches two 16 KiB pages, forks, changes child TLS
-and memory, frees the child's mapping and normally exits 37. The parent checks
-the exact child PID/status, unchanged parent memory and TLS, performs a real
-protection call, consumes +/q input, prints counter=1, unmaps its memory and
-normally exits 0. The second independent process launch completes the same
-journey. Logs show the actual BSD/platform calls, both child exit 37 and parent
-exit 0; no host kill is used to simulate guest exit.
+### Verified execution
 
-- Guest console SHA-256: `813686803bb8f8dc470327bd036d05cbb1e37e43f9732352b46043d0672138c8`.
-- Native runtime SHA-256: `ff72fc4aa045cb46d47f4b2b207580951e569af81d4041997a01f548479a6f91`.
-- Receipt SHA-256: `fa8e2c69020824042346108d6dd100c2cc6517ccbcde9da6ea3af62f36980672`.
-- Text evidence: build/runs/39320163457/native-job.log. Exact binaries,
-  disassembly, per-launch stdout and syscall logs remain in the run artifact.
+- The freestanding Mach-O console performs real 16 KiB VM operations, TLS,
+  fork/COW, exact child status 37, input, parent exit 0 and independent relaunch.
+  Original milestone: [39320163457](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457),
+  source `809b6abcb14e99224b4ae5c10cbdecce5510778c`.
+- Genuine iOS 12.5.7 dyld passes page geometry, TSD setup, entropy, executable
+  startup parameters, explicit permissive loading policy and real clocks.
+- The cache's three regions are genuinely mapped at their declared addresses
+  into private Linux mappings. Version-2 pointer chains are decoded at slide 0.
+  1439 Mach-O images are inspected and 4147 TLS instructions are adapted;
+  executable permissions are restored only after rewriting and cache flush.
+  Aliased image addresses are deduplicated to avoid rewriting an instruction
+  twice. This is not general proof for every code/data mixture or later JIT.
+- shared_region_check returns an address only after those mappings exist.
+  Apple signature authentication is explicitly disabled in this compatibility
+  policy; the firmware input is SHA-256 verified. No fake signature-registration
+  or shared-region success is used to substitute for mapping/relocation.
+- Current-task Mach VM allocate, deallocate and anonymous vm_map reach real
+  Linux memory operations. Unsupported targets, flags and map modes fail.
+- LLDB resolves actual dyld symbols, hits a real policy-function breakpoint,
+  reads registers, steps an instruction and captures the fatal library stack.
+  Cache-frame symbolication uses the same firmware's real Mach-O/local symbol
+  tables and records the nearest available symbol, not an invented function.
 
-This proves only the supplied freestanding console journey on the Linux runner.
-It does not prove a protection-fault journey, POSIX threads, Mach IPC, exceptions,
-dyld, genuine frameworks, arbitrary instruction rewriting, an iOS UI App or the
-Android app sandbox. Next connect a genuine dynamic userland: process startup,
-LC_LOAD_DYLINKER and executable mappings must be implemented rather than treating
-loader metadata as inert. Require a real program journey at each extension.
+### Current failure and next action
 
-Real Apple dyld now executes natively. Run
-[39322206750](https://github.com/taowen/arlinux-xnu/actions/runs/39322206750),
-source `07bdb05356df16d50adf31b921a97e76ddf44877`, job `118298986787`, passed
-the native console prerequisite, prepared the exact iOS 12.5.7 (16H81) input,
-mapped the actual MH_DYLINKER and entered its ARM64 startup. Logs show Mach traps
--28 (task_self) and -26 (reply_port), then SIGSEGV at PC 0x200041100 reading
-0xfffffc037: the legacy Darwin commpage kernel-page-shift byte. Startup is not
-complete, no library or App was loaded.
+Real initialization now stops inside /usr/lib/system/libsystem_pthread.dylib,
+nearest symbol __pthread_init + 828; its caller is libSystem_initializer + 96.
+The observed Mach request is ID 200, flavor 5, output count 8:
+host_info(HOST_PRIORITY_INFO). Host/reply ports are currently NULL and no Mach
+message receiver/service exists. The runtime records the bounded request and
+returns MACH_SEND_INVALID_DEST; the library then deliberately BRKs. This is
+not an unexplained instruction fault, library absence or cache mapping failure.
 
+Next implement actual process-local Host/reply rights, request/reply transport
+and this observed Host info service. Do not return a plausible successful reply
+without the corresponding port and message state. General Mach IPC, threads,
+synchronization and further initialization are still unimplemented. LC_MAIN
+remains required; the dynamic program has not reached its own entry point.
+
+### Reproducible inputs and evidence
+
+- Firmware: iPhone7,2 / iOS 12.5.7 / 16H81, from the Apple URL in sources.lock.json.
 - IPSW SHA-256: `7c10ff0e4cdbe24f33012e47e8458a8ae8c858f2e3dbfce766c196f5d229cadb`.
 - OS DMG SHA-256: `7040c19bd5b62182ccf6449ca562bbeb6071f4e404138ace93c5f731d1a9e5a7`.
-- Real dyld: 567184 bytes, SHA-256 `5c5563ec91c78cfe060cb500e3ca8d764350572f124f98144bac175aa25655e9`.
-- Failure receipt: `f6e8e2b929cfb18fef6d90d1bbe38111cdd8ed3c2e83fb718d87ef233036d960`.
-- Local text evidence: build/runs/39322206750/dyld-job.log.
+- dyld SHA-256: `5c5563ec91c78cfe060cb500e3ca8d764350572f124f98144bac175aa25655e9`.
+- Cache: 1276837888 bytes, SHA-256 `a60a0653eb730f73b5d1de61a97e86e5a241f7a4ff00c83659f9eefb965cac6f`.
+- Latest dyld receipt SHA-256: `adbaae535e2ee88ad353490edc9be0da8cb4417350a50e5d8531744bae46be16`.
+- Latest local text: build/runs/39329708841/dyld-job.log. Run artifacts retain
+  input/cache metadata, native hashes, runtime/LLDB logs and cache-frames.json.
+  Apple firmware, cache and executable files remain transient on the runner.
 
-Input preparation uses pinned apfs-fuse/LZFSE, entering the mount's root/
-directory as ios-sweet does. Earlier input failures (39320874526, 39321273273,
-39321919734) are preserved in Actions/local logs. The last one's APFS directory
-listing established the path error; 7-Zip alone had exposed an empty compressed
-file data fork. Apple files stay transient on the runner; upload only provenance
-and diagnostic logs, not firmware/dyld/framework binaries.
+The cache format reference inspected locally is Apple dyld-655.1, source
+5fe128e4e6a5966ebe01bfaf3bbffdfb17da1390. It informs format interpretation;
+the actual 650.3.4 binary/runtime evidence determines observed ABI behavior.
+The fcntl command 97 was observed before preloading existed (run 39328635511).
+Its variadic wrapper had not yet materialized its third argument in x2; this
+must not be mistaken for the raw syscall ABI. Preloading now replaces this
+kernel loading responsibility with genuine host mappings.
 
-The runtime now supplies a read-only legacy commpage with the declared 16 KiB
-geometry, one CPU, actual native memory/cache properties and optional features
-disabled. It distinguishes unsupported Mach trap results from BSD errno/carry;
-port-returning traps return NULL until an actual port namespace is implemented.
-Latest actual dyld attempt:
-[39324631352](https://github.com/taowen/arlinux-xnu/actions/runs/39324631352),
-source `ac85b4bbbd356f78b2ba74a82fc8052bdc8716ae`, job `118307325181`.
-The static console passed. Real dyld now passes page-size discovery, thread ID,
-TSD setup, kernel entropy, the executable_path startup parameter and its explicit
-AMFI loading-policy query. It then terminates with the real reason:
-libdyld.dylib support not present for LC_MAIN.
-
-Receipt SHA-256:
-`827f3bd0e681fb0e6f0acaed4fe017cc11347d8496f899c6a0994b09e72bae90`.
-The AMFI wrapper ABI was confirmed from the pinned binary in run 39324314641:
-mac policy AMFI, call 90, input flags plus an output-address word. The implemented
-flags describe this environment's permissive loading policy, not Apple signature
-verification. Other policy calls remain unsupported. Actual binary version is
-650.3.4. Local evidence: build/runs/39324631352/dyld-job.log.
-
-Next provide the real libSystem/libdyld dependency and shared-cache path. Keep
-the real LC_MAIN requirement: changing the fixture entry to avoid libdyld would
-not establish the required dynamic application environment. No dynamic library,
-application entry or UI has run. Mach IPC, file/executable mmap and wider system
-interfaces remain incomplete.
-
-The latest trace also showed zero-extended ARM fast-time selectors (0xfffffffd)
-were falling through the BSD handler. The new code normalizes the selector as
-XNU does, supplies actual MONOTONIC/BOOTTIME nanosecond clocks and timebase 1/1,
-and retains proper Mach return conventions. Actual dyld run 39325147072 verified
-increasing real clock values; the libdyld loading failure remains unchanged.
-Dynamic tracing now works on the actual Linux ARM64 journey:
-[39326720941](https://github.com/taowen/arlinux-xnu/actions/runs/39326720941),
-source `13c98b1b422550831ed56489cbe36db36cc6a6e2`, job `118314564978`.
-LLDB loads the exact Apple Mach-O symbols with its explicit ARM64/iOS triple
-and declared image slide. It stops before native entry, resolves and hits
-amfi_check_dyld_policy_self at 0x20003723c, observes input flags 0 and a live
-output pointer, and single-steps to 0x200037240. Continuing captures the actual
-SIGTRAP with symbols: abort_with_payload_wrapper_internal -> abort_with_payload
--> dyld::halt -> dyld::_main -> _dyld_start. The debugger then kills the stopped
-process only for cleanup; this is not normal application exit or acceptance.
-The original untraced run still fails with the LC_MAIN/libdyld reason.
-
-Receipt SHA-256:
-`7622ecc8becd25484d0da173efff671803312c0b1afaa98446e1415f3f3928e7`.
-The artifact retains lldb.log, runtime logs and startup output. Local text:
-build/runs/39326720941/dyld-job.log. macOS reference execution has not been
-validated; the active runtime depends on Linux seccomp/signals/syscalls and
-must be debugged there. A macOS reference can supplement this evidence but
-cannot establish that the Linux adaptation works.
-
-The dynamic fixture now declares /usr/lib/libSystem.B.dylib as a required
-runtime dependency using an ordinary link-time TAPI stub. The stub implements
-nothing; the actual library must come from the verified firmware. The original
-freestanding console remains a separate prerequisite and passed both launches.
-
-Latest actual dynamic journey:
-[39328108372](https://github.com/taowen/arlinux-xnu/actions/runs/39328108372),
-source `8bc4a91556cd04163f8f6c6e5522a1bbe4fd7ec0`, job `118319204246`.
-The read-only APFS root stays mounted for dyld filesystem operations. Its
-/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64 is genuinely opened,
-stat64 succeeds and pread returns 16384 bytes. libSystem.B.dylib and the system
-libraries are absent as standalone files; they must be loaded from the cache.
-The next fcntl call (BSD 92) remains unsupported. The near-version Apple dyld
-655.1 source identifies cache preflight signature registration here; its exact
-command/argument ABI still needs observation from the pinned 650.3.4 binary
-before implementation. No cache mapping or dynamic-library execution is proven.
-
-Previously the subsequent error formatting failed with "mkstringf, out of
-memory error" (run 39327634188). Current-task Mach VM allocate/deallocate traps
-now perform actual Linux mappings and preserve the 16 KiB guest geometry.
-Only the current task's VM capability is supported; this does not implement a
-general Mach port namespace or IPC. Both traps return success in the real dyld
-journey, which now preserves its original failure:
-Library not loaded: /usr/lib/libSystem.B.dylib; Reason: image not found.
-LLDB still captures the actual symbolized fatal stack. Receipt SHA-256:
-`81f04c832aeaf2fc0a7bff7fed7c9c21337b7f4b4fe22df08f3672e556a0f6b9`.
-Local text: build/runs/39328108372/dyld-job.log.
-
-Next implement the cache loading path, including explicit loading/signature
-policy, genuine mappings, pointer relocation and instruction adaptation before
-executing its libraries. Do not merely return successful signature or shared
-region results without the corresponding state. LC_MAIN remains required;
-no library, application entry or UI has executed yet.
-
-Earlier runtime failures remain preserved in Actions/local logs: missing
-commpage, thread_selfid, entropy, executable_path and AMFI policy. They are no
-longer the current library-loading blocker.
-
-Earlier native build failures remain in Actions and local text logs:
-39319498437 (cross-section ADR), 39319703701 (cstring layout), 39319854670 (host
-page signedness). No program ran in those attempts. The engine-dependent kernel
-candidate, execution bridge and build jobs have been removed; source history
-preserves prior experiments without keeping them in the current build graph.
-
-The full-system reference
-[39311945725](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
-ran original XNU exec/VM/fork/COW/exit/wait with the static PID 1 journey:
-
-- Kernel SHA-256: `d2e148a3982925554ee990810b7d7ec037aafcf93ac77dae7b801423f706d7b2`.
-- Mach-O SHA-256: `f884156eb2847161a41634c90c92d477f4ad2ac7983d5738ddc82b81fd380a74`.
-- Compiler receipt: `c07c44b204a34e5833d3e605a72b870b3116d648c2690c919969890fa1b6d609`.
-- Boot receipt: `06bbf549740ca1a0e09db1d99d1607222d970a811da7b82dd158c09b5bdca639`.
-
-The final circular framebuffer snapshot showed the completed journey and zero
-unknown glyphs; it is not a complete event trace. Exact artifacts remain in
-Actions. Reference success does not establish native usermode compatibility.
+Earlier milestones/failures remain in Actions and Git history: real dyld entry
+39322206750; missing thread ID/entropy/startup path/AMFI; real clocks
+39325147072; live debugger 39326720941; real cache reads and Mach VM allocation
+39328108372; cache initialization 39328927723; vm_map 39329330536. The original
+XNU full-system VM/COW/exit reference is run 39311945725, not Linux adaptation
+or application acceptance. The removed kernel candidate is preserved in Git.
+macOS reference tracing has not been validated; active execution is on the
+Linux ARM64 runner using the root build.sh entry.
 
 ## Evidence boundaries
 
