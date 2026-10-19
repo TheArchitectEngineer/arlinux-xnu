@@ -15,19 +15,36 @@ VM, full-service and standalone early jobs failed. The real VM has never run.
 The previous diagnostic failure is preserved; it no longer blocks VM attempts.
 No task, real allocation, Mach/BSD dispatch or iOS app has been established.
 
-Two source experiments are submitted and still queued at the last inspection:
-[39278282418](https://github.com/taowen/arlinux-xnu/actions/runs/39278282418)
-(`1ca2d6a`: BSD lifecycle providers and generated kernel syscall namespace) and
-[39278552554](https://github.com/taowen/arlinux-xnu/actions/runs/39278552554)
-(`b697a6e`: original BSD dispatch table/names and ARM syscall dispatcher).
-Inspect those exact runs after runner allocation; their queue is not a failure
-and is not grounds to resubmit the same source. No new runtime result exists.
+The current source experiment is
+[39280428800](https://github.com/taowen/arlinux-xnu/actions/runs/39280428800)
+(`3a6734e`, fork `53adad2`), including the original BSD execution/FD/exit
+providers, ARM syscall dispatcher, generated `sysent` table and argument
+converters. Its compiler job is `118153570092`; the result is not yet available.
+Inspect that exact run/job, not a replacement dispatched for an observation timeout.
+
+Actual compiler logs from `39278282418` exposed unsafe C macro renaming (sysctl
+identifier concatenation), missing PSYNCH argument layouts and an unguarded MACF
+launch-constraint call. The follow-up job `118152175378` in `39279886686` no
+longer reports those errors, but rejects the missing ARM64 argument-conversion
+configuration. The current source enables that original option and `munge.c`.
+This correction is submitted, not runtime-verified. Kernel syscall external names
+now use Clang's linkage rename pragma; C identifiers retain their original names.
+
+GitHub's run/job metadata has lagged behind directly available compiler logs.
+If a run is still reported queued/in-progress, inspect its existing job IDs and
+available job logs before concluding that compilation never ran. The logs are
+retained under `build/runs/RUN_ID` locally; lack of a log is not a passing result.
+Earlier sources may be superseded/cancelled; only exact job output establishes
+what actually compiled. Do not classify a cancellation as execution success.
 
 The completed run's logs/receipts retain exact revisions, outcomes and file hashes. There is
 no runnable VM executable to hash from this failed link.
 
 The source now includes permission-based reference/dirty tracking and original
 tracing/SFI providers. These have not been exercised by real XNU VM operations.
+Enabling virtual interrupts now follows original ARM urgent-AST handling before
+unmasking; local AST notification validates the one-CPU identity and idle queries
+read the actual processor state. These paths have not run in a real VM journey.
 Core gaps include user pmap lifecycle/activation, genuine guest execution and
 return, user-copy access, machine events, BSD/VFS setup and service dependencies.
 Do not add isolated samples or success stubs to hide these gaps.
