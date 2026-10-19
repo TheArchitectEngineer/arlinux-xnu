@@ -39,6 +39,10 @@ failed replacement and a failed post-install tracking/cache update leave native
 VA state unsuitable for assuming a clean failed insertion. The host must stop
 before VM can recycle a frame potentially still mapped. This follow-up requires
 runner verification; no isolated cache or mapping probe has been added.
+Inspect existing experiment
+[39286940550](https://github.com/taowen/arlinux-xnu/actions/runs/39286940550),
+source `bddb5ce`, before dispatching again. Keep this exact run handle through
+metadata delays, timeouts or transient log errors.
 
 Exported/private MIG header separation, original corpse/shutdown/pressure
 services and VM_PRESSURE_EVENTS remain included. Their compilation has passed;
