@@ -41,6 +41,17 @@ reference. The native graph now includes original pseudo-device registration,
 RAM disk/terminal devices, specfs/devfs/mockfs and buffer I/O. These native paths
 are not executed; root-image delivery/platform discovery still need integration.
 
+Follow-up `39314591126` compiled BSD sizing and the new RAM-disk/devfs/mockfs
+units, but failed on missing BSD-generated pty.h and the unconditional metadata
+throttle query's CONFIG_IOSCHED-only threshold. Compiler receipt SHA-256:
+`8091f10b2fbab1377f49a6e477bd2af1b15c6bc68642714bc986972d55c07a97`.
+Preparation now runs the original BSD configuration generator separately, so
+its source graph supplies device counts/ioconf; no handwritten pty header.
+The fork exposes the existing metadata threshold to the unconditional caller.
+Original km/console ring/TTY providers now target a Linux terminal endpoint;
+Linux I/O uses native TLS buffers, not faultable XNU kernel buffers. Neither
+this terminal adapter nor any of these native paths has executed yet.
+
 `build.sh build --mode baseline` now builds the pinned ios-sweet kernel plus
 `guests/init.S` on macOS, then boots that exact kernel in full-system QEMU on
 Linux ARM64. Upstream mockfs serves the static Mach-O RAM disk as

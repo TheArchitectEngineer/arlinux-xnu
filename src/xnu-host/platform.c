@@ -5,6 +5,15 @@
 #include <pexpert/device_tree.h>
 #include <string.h>
 
+int
+PE_current_console(PE_Video *info)
+{
+    /* Linux terminal backend: no boot framebuffer or pixel dimensions. The
+     * original km TTY retains its headless character-grid fallback. */
+    memset(info, 0, sizeof(*info));
+    return 0;
+}
+
 boolean_t
 PE_get_default(const char *name, void *destination, unsigned int capacity)
 {

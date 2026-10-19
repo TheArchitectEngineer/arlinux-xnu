@@ -48,6 +48,7 @@ def main():
         raise RuntimeError('XNU source does not match the declared submodule pin')
     (OUT / 'sources.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
     generated = OUT / 'config'
+    bsd_config = OUT / 'config-bsd'
     exported = OUT / 'exported'
     if args.phase != 'compile':
         setup = OUT / 'SETUP/config'
@@ -65,6 +66,14 @@ def main():
         run(['tcsh', XNU / 'SETUP/config/doconf', '-verbose', '-c', '-cpu', 'arm64', '-soc', 'usermode',
              '-platform', 'iPhoneOS', '-d', generated, '-s', XNU / 'osfmk/conf',
              '-m', XNU / 'config', lock['xnuKernel']['configuration']], env=env)
+        # BSD's own source declarations drive pseudo-device count headers
+        # (including pty.h) and its ioconf.c. The osfmk configuration alone
+        # cannot generate those headers; do not invent fixed counts here.
+        bsd_config.mkdir(exist_ok=True)
+        run(['tcsh', XNU / 'SETUP/config/doconf', '-verbose', '-c', '-cpu', 'arm64', '-soc', 'usermode',
+             '-platform', 'iPhoneOS', '-d', bsd_config, '-s', XNU / 'bsd/conf',
+             '-m', XNU / 'config', lock['xnuKernel']['configuration']],
+            env=dict(env, SOURCE=str(XNU / 'bsd/conf')))
         exported = OUT / 'exported'
         san = exported / 'san'
         san.mkdir(parents=True, exist_ok=True)
@@ -83,7 +92,7 @@ def main():
                        if line.startswith('export CONFIG_DEFINES ='))
     options = shlex.split(definitions)
     resource = subprocess.check_output([args.compiler, '-print-resource-dir'], text=True).strip()
-    includes = [ROOT / 'src/xnu-host/include', generated, exported,
+    includes = [ROOT / 'src/xnu-host/include', generated, bsd_config, exported,
                 XNU / 'osfmk', XNU / 'bsd', XNU / 'libkern', XNU / 'osfmk/libsa',
                 XNU / 'pexpert', XNU / 'iokit', XNU / 'EXTERNAL_HEADERS', XNU]
     flags = [args.compiler, '--target=aarch64-linux-gnu', '-c', '-g', '-O1', '-ffreestanding',
@@ -282,8 +291,9 @@ def main():
         'bsd/kern/subr_xxx.c', 'bsd/kern/kern_mman.c',
         # Original device registration, RAM disk I/O and VFS paging are the
         # same path exercised by the reference's executable RAM-disk root.
-        'build/kernel/config/ioconf.c',
-        'bsd/dev/arm64/conf.c', 'bsd/dev/arm/cons.c',
+        'build/kernel/config-bsd/ioconf.c',
+        'bsd/dev/arm64/conf.c', 'bsd/dev/arm/cons.c', 'bsd/dev/arm/km.c',
+        'osfmk/console/serial_console.c', 'osfmk/console/serial_general.c',
         'bsd/dev/memdev.c', 'bsd/dev/mem.c', 'bsd/dev/random/randomdev.c',
         *['bsd/kern/' + name + '.c' for name in [
             'tty', 'tty_compat', 'tty_conf', 'tty_dev', 'tty_ptmx', 'tty_pty',
@@ -319,6 +329,7 @@ def main():
         obj = OUT / (name + '.o')
         source_path = ROOT / unit if unit.startswith(('src/', 'build/')) else XNU / unit
         component_flags = []
+        bsd_unit = unit.startswith(('bsd/', 'build/kernel/bsd/', 'build/kernel/config-bsd/'))
         if source_path.suffix == '.s':
             component_flags += ['-x', 'assembler-with-cpp']
         if unit.startswith('libkern/'):
@@ -329,7 +340,7 @@ def main():
             # pexpert/conf/Makefile.template does not use osfmk's namespace.
             component_flags += ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',
                                 '-DPEXPERT_KERNEL_PRIVATE=1']
-        if unit.startswith(('bsd/', 'build/kernel/bsd/')) or unit == 'build/kernel/config/ioconf.c':
+        if bsd_unit:
             # bsd/conf/Makefile.template's namespace and build flags.
             component_flags += ['-UMACH_KERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE=1',
                                 '-DDRIVER_PRIVATE=1', '-D_KERNEL_BUILD=1',
@@ -339,7 +350,7 @@ def main():
         # Match the upstream private osfmk vs exported BSD/libkern/pexpert
         # include namespaces, including MIG headers shared by those consumers.
         mig_roots = [OUT / 'mig', OUT / 'mig-public']
-        if unit.startswith(('bsd/', 'build/kernel/bsd/', 'libkern/', 'pexpert/')) or unit == 'build/kernel/config/ioconf.c':
+        if bsd_unit or unit.startswith(('libkern/', 'pexpert/')):
             mig_roots.reverse()
         command = [*flags, *component_flags, *['-I' + str(p) for p in mig_roots],
                    str(source_path), '-o', str(obj)]

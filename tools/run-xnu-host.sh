@@ -46,6 +46,7 @@ cc "${flags[@]}" "${entry_flags[@]}" -c src/xnu-host/memory.c -o "$output/memory
 cc "${flags[@]}" -c src/xnu-host/native_time.c -o "$output/native_time.o"
 cc "${flags[@]}" -c src/xnu-host/native_entropy.c -o "$output/native_entropy.o"
 cc "${flags[@]}" -c src/xnu-host/native_fault.c -o "$output/native_fault.o"
+cc "${flags[@]}" -c src/xnu-host/native_console.c -o "$output/native_console.o"
 # Native Linux calls must never resolve to same-named XNU implementations.
 # Inspect the actual objects, including future providers, before linking them.
 python3 - "$output" <<'PY'
@@ -98,7 +99,7 @@ else
   # exist, then let section GC remove only unreferenced non-registration code.
   objects=(-Wl,--whole-archive "$output/libxnu.a" -Wl,--no-whole-archive)
 fi
-cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "${engine_objects[@]}" "${objects[@]}" "${engine_link[@]}" \
+cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "$output/native_console.o" "${engine_objects[@]}" "${objects[@]}" "${engine_link[@]}" \
   -o "$output/xnu-host" 2>&1 | tee "$output/link.log"
 file "$output/xnu-host" > "$output/file.txt"
 run_host() {
