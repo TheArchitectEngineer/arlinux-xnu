@@ -77,7 +77,7 @@ loader = output / 'dyld'
 try:
     # Record the real mounted layout before assuming an OS-volume path.
     # A missing file must distinguish volume/path errors from decompression.
-    for relative in ['.', 'usr', 'usr/lib', 'usr/lib/dyld']:
+    for relative in ['.', 'root', 'root/usr', 'root/usr/lib', 'root/usr/lib/dyld']:
         path = filesystem / relative
         try:
             status = path.lstat()
@@ -90,7 +90,9 @@ try:
             print('APFS_LAYOUT ' + json.dumps(entry), flush=True)
         except OSError as error:
             print('APFS_LAYOUT ' + json.dumps({'path': relative, 'error': str(error)}), flush=True)
-    shutil.copyfile(filesystem / 'usr/lib/dyld', loader)
+    # apfs-fuse exposes APFS's root-parent inode at the mount point.
+    # Like ios-sweet/tools/mkiosroot.sh, enter the real volume's root directory.
+    shutil.copyfile(filesystem / 'root/usr/lib/dyld', loader)
 finally:
     run('fusermount3', '-u', filesystem)
 record = {'firmware': source, 'verifiedFirmwareSHA256': actual,
