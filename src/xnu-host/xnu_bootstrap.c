@@ -3,6 +3,7 @@
 #include <arm/cpu_data.h>
 #include <arm/cpu_data_internal.h>
 #include <arm/cpu_number.h>
+#include <arm/rtclock.h>
 #include <kern/thread.h>
 #include <kern/assert.h>
 #include <kern/startup.h>
@@ -17,7 +18,7 @@
 #include <host/image.h>
 
 int
-xnu_host_kernel_early_startup(void)
+xnu_host_kernel_initialize(void)
 {
     /* Linux supplies no Apple firmware tree. Original DT queries must report
      * missing properties so original startup code retains its defaults. */
@@ -31,12 +32,6 @@ xnu_host_kernel_early_startup(void)
     assert(cpu_type() == CPU_TYPE_ARM64 && slot_type(0) == cpu_type());
     assert(cpu_subtype() == CPU_SUBTYPE_ARM64_ALL && slot_subtype(0) == cpu_subtype());
     assert(cpu_threadtype() == CPU_THREADTYPE_NONE && slot_threadtype(0) == cpu_threadtype());
-    /* Exercise the shared AST storage, without pretending to dispatch an AST. */
-    ast_t saved_ast = current_cpu_datap()->cpu_pending_ast;
-    assert(ast_pending() == &current_cpu_datap()->cpu_pending_ast);
-    *ast_pending() = saved_ast | AST_BSD;
-    assert(current_cpu_datap()->cpu_pending_ast == (saved_ast | AST_BSD));
-    *ast_pending() = saved_ast;
     assert(exception_stack_pointer() != 0);
     xnu_host_image_initialize();
     int error = xnu_host_pmap_bootstrap();
@@ -49,19 +44,35 @@ xnu_host_kernel_early_startup(void)
     assert(machine_info.memory_size == machine_info.max_mem);
     kprintf("XNU_HOST_MACHINE physical=%u logical=%u memory=%llu (Linux backing allocated)\n",
         machine_info.physical_cpu, machine_info.logical_cpu, machine_info.max_mem);
-    error = xnu_host_time_bootstrap();
-    if (error)
-        return error;
-    error = xnu_host_entropy_bootstrap();
-    if (error)
-        return error;
+    rtclock_early_init();
     kernel_startup_bootstrap();
     assert(startup_phase == STARTUP_SUB_LOCKS);
     assert(ml_early_cpu_max_number() == 0);
-    kprintf("XNU_HOST_TOPOLOGY cpus=%u boot=%d max=%d type=%#x subtype=%d threadtype=%d AST storage verified (dispatch not connected)\n",
+    kprintf("XNU_HOST_TOPOLOGY cpus=%u boot=%d max=%d type=%#x subtype=%d threadtype=%d\n",
         ml_get_cpu_count(), ml_get_boot_cpu_number(), ml_early_cpu_max_number(),
         cpu_type(), cpu_subtype(), cpu_threadtype());
     kprintf("XNU_EARLY_STARTUP phase=%u debug=%u (VM not initialized)\n",
         startup_phase, startup_debug);
     return 0;
+}
+
+/* Legacy diagnostic stage shares initialization, but is not part of VM boot. */
+int
+xnu_host_kernel_early_startup(void)
+{
+    int error = xnu_host_kernel_initialize();
+    if (error)
+        return error;
+    ast_t saved_ast = current_cpu_datap()->cpu_pending_ast;
+    assert(ast_pending() == &current_cpu_datap()->cpu_pending_ast);
+    *ast_pending() = saved_ast | AST_BSD;
+    assert(current_cpu_datap()->cpu_pending_ast == (saved_ast | AST_BSD));
+    *ast_pending() = saved_ast;
+    error = xnu_host_pmap_diagnostics();
+    if (error)
+        return error;
+    error = xnu_host_time_bootstrap();
+    if (error)
+        return error;
+    return xnu_host_entropy_bootstrap();
 }

@@ -399,8 +399,13 @@ xnu_host_pmap_bootstrap(void)
     kernel_pmap->ref_count = 1;
     kernel_pmap->nx_enabled = true;
     kernel_pmap->is_64bit = true;
+    return 0;
+}
 
-    /* Exercise the backend through its real pmap API before VM consumes it.
+int
+xnu_host_pmap_diagnostics(void)
+{
+    /* Diagnostic entry only; the real VM boot path never allocates test frames.
      * Two bootstrap frames stay reserved, like other early-boot allocations. */
     ppnum_t first, second;
     assert(pmap_next_page(&first) && pmap_next_page(&second));

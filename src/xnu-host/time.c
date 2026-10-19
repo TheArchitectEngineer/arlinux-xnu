@@ -40,7 +40,6 @@ ml_get_hwclock(void)
 int
 xnu_host_time_bootstrap(void)
 {
-    rtclock_early_init();
     mach_timebase_info_data_t info;
     clock_timebase_info(&info);
     assert(info.numer == 1 && info.denom == 1);

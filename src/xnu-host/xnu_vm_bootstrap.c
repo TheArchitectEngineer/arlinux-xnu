@@ -10,13 +10,13 @@
 #include <kern/timer_call.h>
 #include <sys/kdebug_kernel.h>
 
-extern int xnu_host_kernel_early_startup(void);
+extern int xnu_host_kernel_initialize(void);
 
 int
 xnu_host_vm_bootstrap(void)
 {
     xnu_host_context_adopt_boot_thread();
-    int result = xnu_host_kernel_early_startup();
+    int result = xnu_host_kernel_initialize();
     if (result)
         return result;
     /* Match ARM's pre-VM order: locks/tunables, timer infrastructure, then
