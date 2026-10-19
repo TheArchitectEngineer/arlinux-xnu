@@ -121,25 +121,44 @@ def main():
         senders = {name.removesuffix('_user.c') for name in upstream_words(mach_makefile, 'MIG_KUSRC')}
         senders |= {name.removesuffix('.h') for name in upstream_words(mach_makefile, 'MIG_UUHDRS')}
         servers = {name.removesuffix('_server.c') for name in upstream_words(mach_makefile, 'MIG_KSSRC')}
+        public_servers = {name.removesuffix('_server.h') for name in
+                          upstream_words(mach_makefile, 'MIG_USHDRS')} - servers
         device_interfaces = {Path(name).stem for name in
                              upstream_words(XNU / 'osfmk/device/Makefile', 'MIG_DEFS')}
-        families = [('mach', senders, servers), ('device', set(), device_interfaces)]
-        for family, sender_interfaces, server_interfaces in families:
+        families = [('mach', senders, servers, public_servers),
+                    ('device', set(), device_interfaces, set())]
+        for family, sender_interfaces, server_interfaces, public_headers in families:
             mig_output = OUT / 'mig' / family
             mig_output.mkdir(parents=True, exist_ok=True)
-            for side, interfaces in [('user', sender_interfaces), ('server', server_interfaces)]:
+            for side, interfaces in [('user', sender_interfaces), ('server', server_interfaces),
+                                     ('public', public_headers)]:
                 for interface in sorted(interfaces):
                     definition = XNU / 'osfmk' / family / (interface + '.defs')
                     preprocessed = mig_output / (interface + '_' + side + '.defs.i')
                     with preprocessed.open('w') as stream:
                         run(['clang-18', '-E', '-x', 'c', *cpp_flags,
-                             '-DKERNEL_' + side.upper() + '=1', '-D__MACH30__=1', definition], stdout=stream)
+                             *(['-DKERNEL_' + side.upper() + '=1'] if side != 'public' else []),
+                             '-D__MACH30__=1', definition], stdout=stream)
                     with preprocessed.open() as stream:
                         run([mig_build / 'migcom', '-novouchers',
                              '-header', mig_output / (interface + '.h') if side == 'user' else '/dev/null',
                              '-user', mig_output / (interface + '_user.c') if side == 'user' else '/dev/null',
-                             '-sheader', mig_output / (interface + '_server.h') if side == 'server' else '/dev/null',
+                             '-sheader', mig_output / (interface + '_server.h') if side != 'user' else '/dev/null',
                              '-server', mig_output / (interface + '_server.c') if side == 'server' else '/dev/null'], stdin=stream)
+        # Match bsd/sys/Makefile and MakeInc.rule: unifdef followed by the
+        # original syscall generator. Preserve the generated input and headers.
+        bsd_generated = OUT / 'bsd'
+        bsd_generated.mkdir(exist_ok=True)
+        master = bsd_generated / 'bsd.syscalls.master'
+        with master.open('w') as stream:
+            result = subprocess.run(['unifdef', str(XNU / 'bsd/kern/syscalls.master')],
+                                    stdout=stream)
+        if result.returncode not in (0, 1):
+            result.check_returncode()  # unifdef exit 1 means changed, not failed.
+        syscall_headers = exported / 'sys'
+        syscall_headers.mkdir(exist_ok=True)
+        for mode in ['proto', 'header']:
+            run(['sh', XNU / 'bsd/kern/makesyscalls.sh', master, mode], cwd=syscall_headers)
     if args.phase == 'prepare':
         print('XNU configuration and MIG interfaces generated; no kernel objects compiled', flush=True)
         return

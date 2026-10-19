@@ -7,6 +7,7 @@
 #include <kern/misc_protos.h>
 #include <libkern/crypto/rand.h>
 #include <sys/random.h>
+#include <pexpert/pexpert.h>
 #include <host/entropy.h>
 
 static void
