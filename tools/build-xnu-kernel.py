@@ -70,9 +70,9 @@ def main():
     mig_build = OUT / 'mig-tool'
     # Use Linux libc for the host tool and the actual XNU Mach ABI headers.
     host_flags = ' '.join(['-D__arm64__=1', '-D_BSD_ARM__TYPES_H_=1',
-                           '-D__kernel_ptr_semantics=',
+                           '-D__kernel_ptr_semantics=', '-D__LITTLE_ENDIAN__=1',
                            *['-idirafter ' + str(XNU / p) for p in
-                             ['osfmk', 'bsd', 'EXTERNAL_HEADERS']]])
+                             ['osfmk', 'bsd', 'libkern', 'EXTERNAL_HEADERS']]])
     run(['cmake', '-S', mig_source, '-B', mig_build,
          '-DCMAKE_C_COMPILER=clang-18', '-DCMAKE_C_FLAGS=' + host_flags])
     run(['cmake', '--build', mig_build, '--target', 'migcom', '-j2'])
