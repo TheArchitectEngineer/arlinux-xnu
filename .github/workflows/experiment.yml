@@ -4,8 +4,12 @@ on:
     inputs:
       mode:
         type: choice
-        default: both
+        default: kernel
         options: [both, host, baseline, kernel]
+      diagnostics:
+        description: Run standalone early diagnostics (not guest execution acceptance)
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -201,7 +205,7 @@ jobs:
           path: build/link/
           retention-days: 30
   xnu-early-startup:
-    if: inputs.mode == 'both' || inputs.mode == 'kernel'
+    if: (inputs.mode == 'both' || inputs.mode == 'kernel') && inputs.diagnostics
     needs: xnu-kernel
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10

@@ -16,8 +16,8 @@ The sole workstation entry is `./build.sh`, requiring Bash, Python 3 and an
 authenticated GitHub CLI. All compilation and execution use GitHub-hosted runners.
 
 ```bash
-./build.sh build --mode host       # Linux host probe + freestanding Mach-O
-./build.sh build --mode kernel     # actual XNU objects + Linux link-dependency report
+./build.sh build --mode host       # explicit historical host/shim diagnostics
+./build.sh build                   # default: real XNU compilation and VM startup attempt
 ./build.sh build --mode baseline   # ios-sweet bare-metal build
 ./build.sh status --run-id RUN_ID
 ./build.sh download --run-id RUN_ID
@@ -30,6 +30,9 @@ the host/kernel/guest boundary.
 result proves, how to resume work and how evidence is retained. Dependencies are
 pinned in [sources.lock.json](sources.lock.json); run logs and artifacts live in
 [GitHub Actions](https://github.com/taowen/arlinux-xnu/actions/workflows/experiment.yml).
+
+Standalone early diagnostics require `./build.sh build --diagnostics`; their
+results do not establish guest execution.
 
 ## Acknowledgements
 

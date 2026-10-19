@@ -14,7 +14,16 @@ at root source `c93d1fbab6539374186e03cbe7d708db7706f47e` with XNU fork `b171fc4
 VM, full-service and standalone early jobs failed. The real VM has never run.
 The previous diagnostic failure is preserved; it no longer blocks VM attempts.
 No task, real allocation, Mach/BSD dispatch or iOS app has been established.
-Runner logs/receipts retain exact revisions, outcomes and file hashes. There is
+
+Two source experiments are submitted and still queued at the last inspection:
+[39278282418](https://github.com/taowen/arlinux-xnu/actions/runs/39278282418)
+(`1ca2d6a`: BSD lifecycle providers and generated kernel syscall namespace) and
+[39278552554](https://github.com/taowen/arlinux-xnu/actions/runs/39278552554)
+(`b697a6e`: original BSD dispatch table/names and ARM syscall dispatcher).
+Inspect those exact runs after runner allocation; their queue is not a failure
+and is not grounds to resubmit the same source. No new runtime result exists.
+
+The completed run's logs/receipts retain exact revisions, outcomes and file hashes. There is
 no runnable VM executable to hash from this failed link.
 
 The source now includes permission-based reference/dirty tracking and original
@@ -106,3 +115,8 @@ lose their binaries. Do not silently replace expired evidence with a new build.
 
 Git stores source, pins and this short handoff. Actions stores run history and
 logs. Artifacts store bytes and provenance. These roles should stay separate.
+
+The default `build.sh build` now selects the real kernel path. Standalone early
+diagnostics require `--diagnostics`; host/shim and bare-metal runs require their
+explicit modes. The real VM and full-service links remain required attempts;
+optional diagnostics do not turn failed kernel execution into a passing result.
