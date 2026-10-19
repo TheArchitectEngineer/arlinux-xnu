@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39240562977](https://github.com/taowen/arlinux-xnu/actions/runs/39240562977)
-at source `7b8db51` compiled 150 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39243200101](https://github.com/taowen/arlinux-xnu/actions/runs/39243200101)
+at source `63476cc` compiled 152 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -32,7 +32,20 @@ sleep, plus early/random-buffer/kmem-uniform calls backed by Linux `getrandom`.
 No random seed or output bytes are logged. All five downloaded jobs' files
 matched receipts. The original boolean generator is compiled but has not run.
 The early executable SHA-256 is
-`753b7e17f49f86b7b0f67effc22d01be4b41d0763221286e82f32d439fb0549c`.
+`a2a6bb67e196c7e4b9538e7d8985655cbec1dc943315967d78b8c915caedb0f6`.
+
+ARM ticket reservation now performs real LDAXR/STXR operations with an explicit
+ELF recovery range. A Linux [signal handler](https://man7.org/linux/man-pages/man2/sigaction.2.html)
+redirects only synchronous faults in that range through the saved
+[signal context](https://man7.org/linux/man-pages/man2/sigreturn.2.html).
+Every start verified five recoveries on the alternative stack: four SIGSEGV
+(read-only and unmapped addresses, repeated) and one real SIGBUS (empty-file
+mapping). Valid tickets advance/wrap; invalid words and misaligned writable
+words are rejected unchanged. Alignment is checked explicitly because the host
+did not fault on the initial unaligned load. A diagnostic child faults outside
+the recovery range and must die from SIGSEGV; its intentional `unhandled pc=`
+line appears between the parent diagnostic markers in passing logs.
+General kernel recovery ranges and guest Mach exceptions remain unimplemented.
 
 The host uses Linux TLS for XNU's current-thread access, native/alternative
 bootstrap stacks, and a 256 MiB memfd for physical backing. The exported
@@ -69,20 +82,19 @@ delegated to Linux when execution does not need their native mechanism; full
 EL1 emulation is not required.
 
 **VM, tasks, Mach/BSD dispatch and guest execution are not running.** The early
-executable links the dispatcher, host context/pmap/time/entropy, original rtclock and
+executable links the dispatcher, host context/pmap/time/entropy/fault recovery, original rtclock and
 required atomics, not the core VM allocator. Its startup table contains only
 the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps
 and pmap ledger/wiring accounting are not connected yet. Reference/dirty attributes record
 conservative mapping history, not precise accesses or cleared-bit tracking.
-The VM executable still fails linkage (329 distinct undefined references), before its original
+The VM executable still fails linkage (328 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
 
 Next: connect remaining machine/thread, kernel data layout, host pmap and BSD service dependencies,
-then execute the original VM bootstrap. Ticket reservation on invalid addresses
-also requires host synchronous-fault recovery; the current child access-fault
-diagnostics do not implement kernel recovery or guest exception delivery.
+then execute the original VM bootstrap. Ticket reservation's recovery is now
+connected, while general kernel recovery and guest exception delivery are not.
 Selected objects now include original
 BSD process/read-only process data, fork/uthread, coalition, counters, host
 notifications and configured MIG senders. ARM's scheduler dispatch selects dualq;
@@ -123,9 +135,9 @@ retained in artifacts; this is not yet a Linux-only compiler toolchain.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | [150 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39240562977) | Complete kernel or guest execution |
+| `xnu-kernel` | [152 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39243200101) | Complete kernel or guest execution |
 | `xnu-link-inputs` | Same run: relocatable merge passes, host TLS replaces privileged current-thread access | Executable linkage or kernel boot |
-| `xnu-early-startup` | Same run: eight starts; ELF bounds, per-CPU traversal, page fill, aperture data updates and pmap access faults, original rtclock, Linux entropy and early dispatcher | Real RO-zone allocation/update, lock hooks, VM/tasks initialization or guest execution |
+| `xnu-early-startup` | Same run: eight starts; real ticket atomics + scoped SIGSEGV/SIGBUS recovery, fatal unmatched child, prior memory/time/entropy/per-CPU/image/dispatcher checks | General recovery/guest exceptions, real RO-zone allocation/update, lock hooks, VM/tasks initialization or guest execution |
 | `xnu-vm-startup` | Same run: executable link fails; log and link map retained | VM bootstrap or guest execution |
 
 These are historical observations at their runs' source revisions, not promises
