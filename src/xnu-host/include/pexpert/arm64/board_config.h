@@ -6,6 +6,8 @@
 #define MAX_CPU_CLUSTERS 1
 #define MAX_CPU_CLUSTER_PHY_ID 0
 #define MAX_L2_CLINE 6
+/* The userspace host has no direct hardware performance counters. */
+#define CORE_NCTRS 0
 #define __ARM_16K_PG__ 1
 #define __ARM64_ARCH_8__ 1
 #define __ARM_ARCH_8_0__ 1

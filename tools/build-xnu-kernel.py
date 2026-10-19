@@ -4,12 +4,14 @@
 Not a mock or a pass/fail source inspection. Compiler failures are retained and
 propagated. A compiled object is not a linked or booted userspace kernel.
 """
+import argparse
 import hashlib
 import json
 import os
 import re
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,45 +37,51 @@ def upstream_words(makefile, variable):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--phase', choices=['prepare', 'compile', 'all'], default='all')
+    parser.add_argument('--compiler', default='clang-18')
+    args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     lock = json.loads((ROOT / 'sources.lock.json').read_text())
     revision = subprocess.check_output(['git', '-C', str(XNU), 'rev-parse', 'HEAD'], text=True).strip()
     if revision != lock['xnuKernel']['commit']:
         raise RuntimeError('XNU source does not match the declared submodule pin')
     (OUT / 'sources.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
-    setup = OUT / 'SETUP/config'
-    setup.mkdir(parents=True, exist_ok=True)
-    source = XNU / 'SETUP/config'
-    run(['bison', '-y', '-d', '-o', 'parser.c', source / 'parser.y'], cwd=setup)
-    run(['flex', '--header-file=lexer.yy.h', '-o', 'lexer.yy.c', source / 'lexer.l'], cwd=setup)
-    config_sources = [source / (name + '.c') for name in
-                      ['externs', 'main', 'mkheaders', 'mkioconf', 'mkmakefile', 'openp', 'searchp']]
-    run(['clang-18', '-g', '-O0', '-DYY_NO_INPUT', '-I' + str(source), '-I.',
-         *config_sources, 'parser.c', 'lexer.yy.c', '-o', 'config'], cwd=setup)
     generated = OUT / 'config'
-    generated.mkdir(exist_ok=True)
-    env = dict(os.environ, SRCROOT=str(XNU), OBJROOT=str(OUT), SOURCE=str(XNU / "osfmk/conf"))
-    run(['tcsh', XNU / 'SETUP/config/doconf', '-c', '-cpu', 'arm64', '-soc', 'usermode',
-         '-platform', 'iPhoneOS', '-d', generated, '-s', XNU / 'osfmk/conf',
-         '-m', XNU / 'config', 'DEVELOPMENT'], env=env)
+    exported = OUT / 'exported'
+    if args.phase != 'compile':
+        setup = OUT / 'SETUP/config'
+        setup.mkdir(parents=True, exist_ok=True)
+        source = XNU / 'SETUP/config'
+        run(['bison', '-y', '-d', '-o', 'parser.c', source / 'parser.y'], cwd=setup)
+        run(['flex', '--header-file=lexer.yy.h', '-o', 'lexer.yy.c', source / 'lexer.l'], cwd=setup)
+        config_sources = [source / (name + '.c') for name in
+                          ['externs', 'main', 'mkheaders', 'mkioconf', 'mkmakefile', 'openp', 'searchp']]
+        run(['clang-18', '-g', '-O0', '-DYY_NO_INPUT', '-I' + str(source), '-I.',
+             *config_sources, 'parser.c', 'lexer.yy.c', '-o', 'config'], cwd=setup)
+        generated = OUT / 'config'
+        generated.mkdir(exist_ok=True)
+        env = dict(os.environ, SRCROOT=str(XNU), OBJROOT=str(OUT), SOURCE=str(XNU / "osfmk/conf"))
+        run(['tcsh', XNU / 'SETUP/config/doconf', '-c', '-cpu', 'arm64', '-soc', 'usermode',
+             '-platform', 'iPhoneOS', '-d', generated, '-s', XNU / 'osfmk/conf',
+             '-m', XNU / 'config', 'DEVELOPMENT'], env=env)
+        exported = OUT / 'exported'
+        san = exported / 'san'
+        san.mkdir(parents=True, exist_ok=True)
+        for component in ['memory', 'coverage']:
+            directory = XNU / 'san' / component
+            for variable in ['PRIVATE_XNUFILES', 'KERNELFILES', 'PRIVATE_KERNELFILES']:
+                for header in upstream_words(directory / 'Makefile', variable):
+                    shutil.copyfile(directory / header, san / header)
     makefile = (generated / 'Makefile').read_text()
     definitions = next(line.partition('=')[2] for line in makefile.splitlines()
                        if line.startswith('export CONFIG_DEFINES ='))
-    # The XNU config generator's definitions, not a hand-maintained header list.
     options = shlex.split(definitions)
-    exported = OUT / 'exported'
-    san = exported / 'san'
-    san.mkdir(parents=True, exist_ok=True)
-    for component in ['memory', 'coverage']:
-        directory = XNU / 'san' / component
-        for variable in ['PRIVATE_XNUFILES', 'KERNELFILES', 'PRIVATE_KERNELFILES']:
-            for header in upstream_words(directory / 'Makefile', variable):
-                (san / header).symlink_to(directory / header)
-    resource = subprocess.check_output(['clang-18', '-print-resource-dir'], text=True).strip()
+    resource = subprocess.check_output([args.compiler, '-print-resource-dir'], text=True).strip()
     includes = [ROOT / 'src/xnu-host/include', generated, exported,
                 XNU / 'osfmk', XNU / 'bsd', XNU / 'libkern', XNU / 'osfmk/libsa',
                 XNU / 'pexpert', XNU / 'iokit', XNU / 'EXTERNAL_HEADERS', XNU]
-    flags = ['clang-18', '--target=aarch64-linux-gnu', '-c', '-g', '-O1', '-ffreestanding',
+    flags = [args.compiler, '--target=aarch64-linux-gnu', '-c', '-g', '-O1', '-ffreestanding',
              '-fno-builtin', '-fblocks', '-fno-common', '-nostdinc', '-ferror-limit=8',
              '-mbranch-protection=none', '-include', str(generated / 'meta_features.h'),
              '-U__linux__', '-Ulinux', '-D__APPLE__=1', '-isystem', resource + '/include',
@@ -83,42 +91,46 @@ def main():
              '-DXNU_KERNEL_PRIVATE=1', '-DMACH_KERNEL_PRIVATE=1', '-DMACH_KERNEL=1',
              '-DPRIVATE=1', '-D__MACHO__=1', '-DCONFIG_USERMODE=1',
              '-D__private_extern__=extern', *options, *['-I' + str(p) for p in includes]]
-    # MIG is a build-time compiler, not a replacement IPC implementation.
-    mig_source = ROOT / lock['migCompiler']['path']
-    mig_revision = subprocess.check_output(['git', '-C', str(mig_source), 'rev-parse', 'HEAD'], text=True).strip()
-    if mig_revision != lock['migCompiler']['commit']:
-        raise RuntimeError('MIG compiler source does not match its pin')
-    mig_build = OUT / 'mig-tool'
-    # Use Linux libc for the host tool and the actual XNU Mach ABI headers.
-    host_flags = ' '.join(['-D__arm64__=1', '-D_BSD_ARM__TYPES_H_=1',
-                           '-D__kernel_ptr_semantics=', '-D__LITTLE_ENDIAN__=1',
-                           *['-idirafter ' + str(XNU / p) for p in
-                             ['osfmk', 'bsd', 'libkern', 'EXTERNAL_HEADERS']]])
-    run(['cmake', '-S', mig_source, '-B', mig_build,
-         '-DCMAKE_C_COMPILER=clang-18', '-DCMAKE_C_FLAGS=' + host_flags])
-    run(['cmake', '--build', mig_build, '--target', 'migcom', '-j2'])
-    mig_output = OUT / 'mig/mach'
-    mig_output.mkdir(parents=True, exist_ok=True)
-    # Native preprocessing supplies the selected guest ABI and kernel options;
-    # the upstream MIG compiler consumes the resulting interface definitions.
-    cpp_flags = [f for f in flags[1:] if f not in ['-c', '-g', '-O1']]
-    mach_makefile = XNU / 'osfmk/mach/Makefile'
-    senders = {name.removesuffix('_user.c') for name in upstream_words(mach_makefile, 'MIG_KUSRC')}
-    senders |= {name.removesuffix('.h') for name in upstream_words(mach_makefile, 'MIG_UUHDRS')}
-    servers = {name.removesuffix('_server.c') for name in upstream_words(mach_makefile, 'MIG_KSSRC')}
-    for side, interfaces in [('user', senders), ('server', servers)]:
-        for interface in sorted(interfaces):
-            definition = XNU / 'osfmk/mach' / (interface + '.defs')
-            preprocessed = mig_output / (interface + '_' + side + '.defs.i')
-            with preprocessed.open('w') as stream:
-                run(['clang-18', '-E', '-x', 'c', *cpp_flags,
-                     '-DKERNEL_' + side.upper() + '=1', '-D__MACH30__=1', definition], stdout=stream)
-            with preprocessed.open() as stream:
-                run([mig_build / 'migcom', '-novouchers',
-                     '-header', mig_output / (interface + '.h') if side == 'user' else '/dev/null',
-                     '-user', mig_output / (interface + '_user.c') if side == 'user' else '/dev/null',
-                     '-sheader', mig_output / (interface + '_server.h') if side == 'server' else '/dev/null',
-                     '-server', mig_output / (interface + '_server.c') if side == 'server' else '/dev/null'], stdin=stream)
+    if args.phase != 'compile':
+        # MIG is a build-time compiler, not a replacement IPC implementation.
+        mig_source = ROOT / lock['migCompiler']['path']
+        mig_revision = subprocess.check_output(['git', '-C', str(mig_source), 'rev-parse', 'HEAD'], text=True).strip()
+        if mig_revision != lock['migCompiler']['commit']:
+            raise RuntimeError('MIG compiler source does not match its pin')
+        mig_build = OUT / 'mig-tool'
+        # Use Linux libc for the host tool and the actual XNU Mach ABI headers.
+        host_flags = ' '.join(['-D__arm64__=1', '-D_BSD_ARM__TYPES_H_=1',
+                               '-D__kernel_ptr_semantics=', '-D__LITTLE_ENDIAN__=1',
+                               *['-idirafter ' + str(XNU / p) for p in
+                                 ['osfmk', 'bsd', 'libkern', 'EXTERNAL_HEADERS']]])
+        run(['cmake', '-S', mig_source, '-B', mig_build,
+             '-DCMAKE_C_COMPILER=clang-18', '-DCMAKE_C_FLAGS=' + host_flags])
+        run(['cmake', '--build', mig_build, '--target', 'migcom', '-j2'])
+        mig_output = OUT / 'mig/mach'
+        mig_output.mkdir(parents=True, exist_ok=True)
+        # Native preprocessing supplies the selected guest ABI and kernel options;
+        # the upstream MIG compiler consumes the resulting interface definitions.
+        cpp_flags = [f for f in flags[1:] if f not in ['-c', '-g', '-O1']]
+        mach_makefile = XNU / 'osfmk/mach/Makefile'
+        senders = {name.removesuffix('_user.c') for name in upstream_words(mach_makefile, 'MIG_KUSRC')}
+        senders |= {name.removesuffix('.h') for name in upstream_words(mach_makefile, 'MIG_UUHDRS')}
+        servers = {name.removesuffix('_server.c') for name in upstream_words(mach_makefile, 'MIG_KSSRC')}
+        for side, interfaces in [('user', senders), ('server', servers)]:
+            for interface in sorted(interfaces):
+                definition = XNU / 'osfmk/mach' / (interface + '.defs')
+                preprocessed = mig_output / (interface + '_' + side + '.defs.i')
+                with preprocessed.open('w') as stream:
+                    run(['clang-18', '-E', '-x', 'c', *cpp_flags,
+                         '-DKERNEL_' + side.upper() + '=1', '-D__MACH30__=1', definition], stdout=stream)
+                with preprocessed.open() as stream:
+                    run([mig_build / 'migcom', '-novouchers',
+                         '-header', mig_output / (interface + '.h') if side == 'user' else '/dev/null',
+                         '-user', mig_output / (interface + '_user.c') if side == 'user' else '/dev/null',
+                         '-sheader', mig_output / (interface + '_server.h') if side == 'server' else '/dev/null',
+                         '-server', mig_output / (interface + '_server.c') if side == 'server' else '/dev/null'], stdin=stream)
+    if args.phase == 'prepare':
+        print('XNU configuration and MIG interfaces generated; no kernel objects compiled', flush=True)
+        return
     flags += ['-I' + str(OUT / 'mig')]
     # These are actual intended kernel objects. Do not replace them with dummy
     # implementations to turn the workflow green.
