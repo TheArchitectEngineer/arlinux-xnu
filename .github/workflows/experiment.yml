@@ -287,28 +287,3 @@ jobs:
           name: xnu-linux-arm64-vm-startup
           path: build/vm/
           retention-days: 30
-  xnu-full-link:
-    if: inputs.mode == 'both' || inputs.mode == 'kernel'
-    needs: xnu-kernel
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - uses: actions/download-artifact@v4
-        with:
-          name: xnu-linux-arm64-kernel-port
-          path: build/kernel/
-      - name: Link full startup and service registration graph (not executed)
-        shell: bash
-        run: bash tools/run-xnu-host.sh full
-      - name: Record experiment receipt
-        if: always()
-        run: python3 tools/experiment-receipt.py --directory build/full --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: xnu-linux-arm64-full-link
-          path: build/full/
-          retention-days: 30

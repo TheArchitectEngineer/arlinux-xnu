@@ -26,8 +26,9 @@ Unicorn `2bca534e6168c9096e326c1868279a5baed4f9b3`.
 Text logs: `build/runs/39309052509`. No executable linked, no real VM bootstrap
 completed, no XNU user process ran. Prior code for user pmap ownership/ledgers,
 copyio, machine return, virtual TLS, exception transport and timers remains
-runtime-unvalidated. A local memory-size globals edit is also unvalidated; it
-must not be presented as fixing kernel boot.
+runtime-unvalidated. The memory-size globals now report the real Linux physical backing, and the
+original unix_startup.c supplies BSD scaling/tunables/buffer VM registration.
+These changes have not yet executed and must not be described as fixing boot.
 
 `build.sh build --mode baseline` now builds the pinned ios-sweet kernel plus
 `guests/init.S` on macOS, then boots that exact kernel in full-system QEMU on
@@ -140,5 +141,7 @@ logs. Artifacts store bytes and provenance. These roles should stay separate.
 
 The default `build.sh build` now selects the real kernel path. Standalone early
 diagnostics require `--diagnostics`; host/shim and bare-metal runs require their
-explicit modes. The real VM and full-service links remain required attempts;
-optional diagnostics do not turn failed kernel execution into a passing result.
+explicit modes. The VM startup task links the complete declared service graph and attempts
+execution. The former full-link job duplicated the exact same link and exited;
+it has been removed. Optional diagnostics do not turn failed kernel execution
+into a passing result.

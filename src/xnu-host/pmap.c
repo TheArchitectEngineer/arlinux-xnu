@@ -34,6 +34,8 @@ static struct xnu_host_guest *selected_engine;
 unsigned long gVirtBase, gPhysBase, gPhysSize;
 uint64_t gDramBase, gDramSize;
 uint64_t max_mem, max_mem_actual, sane_size;
+vm_size_t mem_size;
+uint64_t mem_actual;
 const vm_map_address_t physmap_base = XNU_HOST_PHYSICAL_VIEW;
 const vm_map_address_t physmap_end = XNU_HOST_PHYSICAL_VIEW + XNU_HOST_PHYSICAL_BYTES;
 static ppnum_t next_frame;
@@ -1188,6 +1190,11 @@ xnu_host_pmap_bootstrap(void)
     gDramBase = gPhysBase;
     gDramSize = gPhysSize;
     max_mem = max_mem_actual = sane_size = gPhysSize;
+    /* Original kernel_bootstrap/scale_setup consume ARM boot memory globals.
+     * Publish actual managed backing, with the legacy 32-bit view capped as
+     * in machine_routines_common.c, rather than leaving zero/default state. */
+    mem_actual = gPhysSize;
+    mem_size = MIN(gPhysSize, 0x80000000UL);
     machine_info.max_mem = gPhysSize;
     machine_info.memory_size = (uint32_t)MIN(gPhysSize, 0x80000000UL);
     next_frame = 1;

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Runner stage called only by the repository's build.sh workflow.
 set -euo pipefail
-stage=${1:?expected early, vm or full}
+stage=${1:?expected early or vm}
 case "$stage" in
   early) output=build/startup; entry_flags=() ;;
   vm) output=build/vm; entry_flags=(-DXNU_HOST_BOOT_VM) ;;
-  full) output=build/full; entry_flags=(-DXNU_HOST_BOOT_VM) ;;
   *) echo "Unknown XNU startup stage: $stage" >&2; exit 2 ;;
 esac
 mkdir -p "$output"
@@ -17,7 +16,7 @@ base=$(printf 'XNU_HOST_KERNEL_BASE\n' | cc -E -P -x c \
   -idirafter third_party/xnu/osfmk/arm -include usermode_vm.h -)
 flags=(-Wall -Wextra -Werror -O1 -g -pthread -Isrc/xnu-host/include
   -idirafter third_party/xnu/osfmk/arm -ffunction-sections -fdata-sections)
-# The guest CPU engine is a pinned, unmodified source dependency. It supplies
+# The guest CPU engine is a pinned fork dependency. It supplies
 # instructions/registers only; this does not add a substitute Darwin runtime.
 engine_objects=()
 engine_link=()
@@ -102,11 +101,6 @@ fi
 cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "$output/native_time.o" "$output/native_entropy.o" "$output/native_fault.o" "${engine_objects[@]}" "${objects[@]}" "${engine_link[@]}" \
   -o "$output/xnu-host" 2>&1 | tee "$output/link.log"
 file "$output/xnu-host" > "$output/file.txt"
-if [[ $stage == full ]]; then
-  (cd "$output" && sha256sum xnu-host > SHA256SUMS)
-  echo 'Full startup registration graph linked; not executed.'
-  exit 0
-fi
 run_host() {
   local suffix=$1
   local status=0
