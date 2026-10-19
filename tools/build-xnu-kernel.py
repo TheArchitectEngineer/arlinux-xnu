@@ -7,6 +7,7 @@ propagated. A compiled object is not a linked or booted userspace kernel.
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -19,6 +20,18 @@ OUT = ROOT / 'build/kernel'
 def run(command, cwd=ROOT, **kwargs):
     print('> ' + shlex.join(map(str, command)), flush=True)
     return subprocess.run(list(map(str, command)), cwd=cwd, check=True, **kwargs)
+
+
+def upstream_words(makefile, variable):
+    # These upstream declarations are literal filename lists, not Make recipes.
+    text = makefile.read_text().replace('\\\n', ' ')
+    match = re.search(r'^' + re.escape(variable) + r'\s*=([^\n]*)', text, re.M)
+    if match is None:
+        raise RuntimeError(f'Missing upstream declaration {variable} in {makefile}')
+    words = match[1].partition('#')[0].split()
+    if any('$' in word for word in words):
+        raise RuntimeError(f'Nonliteral upstream declaration {variable}')
+    return words
 
 
 def main():
@@ -48,8 +61,16 @@ def main():
                        if line.startswith('export CONFIG_DEFINES ='))
     # The XNU config generator's definitions, not a hand-maintained header list.
     options = shlex.split(definitions)
+    exported = OUT / 'exported'
+    san = exported / 'san'
+    san.mkdir(parents=True, exist_ok=True)
+    for component in ['memory', 'coverage']:
+        directory = XNU / 'san' / component
+        for variable in ['PRIVATE_XNUFILES', 'KERNELFILES', 'PRIVATE_KERNELFILES']:
+            for header in upstream_words(directory / 'Makefile', variable):
+                (san / header).symlink_to(directory / header)
     resource = subprocess.check_output(['clang-18', '-print-resource-dir'], text=True).strip()
-    includes = [ROOT / 'src/xnu-host/include', generated,
+    includes = [ROOT / 'src/xnu-host/include', generated, exported,
                 XNU / 'osfmk', XNU / 'bsd', XNU / 'libkern', XNU / 'osfmk/libsa',
                 XNU / 'pexpert', XNU / 'iokit', XNU / 'EXTERNAL_HEADERS', XNU]
     flags = ['clang-18', '--target=aarch64-linux-gnu', '-c', '-g', '-O1', '-ffreestanding',
@@ -81,19 +102,23 @@ def main():
     # Native preprocessing supplies the selected guest ABI and kernel options;
     # the upstream MIG compiler consumes the resulting interface definitions.
     cpp_flags = [f for f in flags[1:] if f not in ['-c', '-g', '-O1']]
-    for interface in ['vm_map', 'mach_vm', 'mach_port', 'task', 'thread_act',
-                      'mach_host', 'host_priv', 'processor', 'processor_set',
-                      'memory_entry', 'upl', 'exc', 'mach_exc']:
-        definition = XNU / 'osfmk/mach' / (interface + '.defs')
-        preprocessed = mig_output / (interface + '.defs.i')
-        with preprocessed.open('w') as stream:
-            run(['clang-18', '-E', '-x', 'c', *cpp_flags,
-                 '-DKERNEL_USER=1', '-D__MACH30__=1', definition], stdout=stream)
-        with preprocessed.open() as stream:
-            run([mig_build / 'migcom', '-novouchers',
-                 '-header', mig_output / (interface + '.h'),
-                 '-user', mig_output / (interface + '_user.c'),
-                 '-server', '/dev/null'], stdin=stream)
+    mach_makefile = XNU / 'osfmk/mach/Makefile'
+    senders = {name.removesuffix('_user.c') for name in upstream_words(mach_makefile, 'MIG_KUSRC')}
+    senders |= {name.removesuffix('.h') for name in upstream_words(mach_makefile, 'MIG_UUHDRS')}
+    servers = {name.removesuffix('_server.c') for name in upstream_words(mach_makefile, 'MIG_KSSRC')}
+    for side, interfaces in [('user', senders), ('server', servers)]:
+        for interface in sorted(interfaces):
+            definition = XNU / 'osfmk/mach' / (interface + '.defs')
+            preprocessed = mig_output / (interface + '_' + side + '.defs.i')
+            with preprocessed.open('w') as stream:
+                run(['clang-18', '-E', '-x', 'c', *cpp_flags,
+                     '-DKERNEL_' + side.upper() + '=1', '-D__MACH30__=1', definition], stdout=stream)
+            with preprocessed.open() as stream:
+                run([mig_build / 'migcom', '-novouchers',
+                     '-header', mig_output / (interface + '.h') if side == 'user' else '/dev/null',
+                     '-user', mig_output / (interface + '_user.c') if side == 'user' else '/dev/null',
+                     '-sheader', mig_output / (interface + '_server.h') if side == 'server' else '/dev/null',
+                     '-server', mig_output / (interface + '_server.c') if side == 'server' else '/dev/null'], stdin=stream)
     flags += ['-I' + str(OUT / 'mig')]
     # These are actual intended kernel objects. Do not replace them with dummy
     # implementations to turn the workflow green.
