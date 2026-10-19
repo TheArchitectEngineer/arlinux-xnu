@@ -32,4 +32,13 @@ cc "${link_flags[@]}" "$output/host.o" "$output/memory.o" "${objects[@]}" \
 file "$output/xnu-host" > "$output/file.txt"
 timeout 30 "$output/xnu-host" startup_debug=1 > "$output/stdout.txt" 2> "$output/stderr.txt"
 cat "$output/stdout.txt" "$output/stderr.txt"
+if [[ $stage == early ]]; then
+  # A previous ASLR-dependent brk collision escaped a single successful startup.
+  # Preserve every independent process start, including its actual native brk.
+  for attempt in {2..8}; do
+    timeout 30 "$output/xnu-host" startup_debug=1 \
+      > "$output/stdout-$attempt.txt" 2> "$output/stderr-$attempt.txt"
+    cat "$output/stdout-$attempt.txt" "$output/stderr-$attempt.txt"
+  done
+fi
 (cd "$output" && sha256sum xnu-host > SHA256SUMS)

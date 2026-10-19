@@ -31,7 +31,10 @@ xnu_host_memory_initialize(void)
         return ENOTSUP;
     unsigned long image_start = (unsigned long)__executable_start;
     unsigned long image_end = (unsigned long)_end;
-    if (image_start != XNU_HOST_KERNEL_BASE || image_end >= XNU_HOST_PHYSICAL_VIEW)
+    /* Keep at least 1 GiB above the image for Linux's randomized native brk.
+     * See Linux mm/util.c arch_randomize_brk; the XNU heap starts independently. */
+    if (image_start != XNU_HOST_KERNEL_BASE ||
+        image_end >= XNU_HOST_PHYSICAL_VIEW - 0x40000000UL)
         return ERANGE;
     /* The image arena also contains libc's randomized brk heap. Reserve only
      * the dedicated physical-view/VM arena, without replacing native mappings. */
@@ -39,8 +42,29 @@ xnu_host_memory_initialize(void)
     unsigned long length = XNU_HOST_KERNEL_LIMIT - reserve;
     void *region = mmap((void *)reserve, length, PROT_NONE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
-    if (region == MAP_FAILED)
-        return errno;
+    if (region == MAP_FAILED) {
+        int error = errno;
+        fprintf(stderr, "XNU_HOST_MEMORY reserve [%#lx,%#lx) failed error=%d image_end=%#lx brk=%p\n",
+            reserve, (unsigned long)XNU_HOST_KERNEL_LIMIT, error, image_end, sbrk(0));
+        FILE *maps = fopen("/proc/self/maps", "r");
+        if (maps) {
+            char line[1024];
+            while (fgets(line, sizeof(line), maps)) {
+                unsigned long start, end;
+                if (sscanf(line, "%lx-%lx", &start, &end) == 2 &&
+                    start < XNU_HOST_KERNEL_LIMIT && end > reserve)
+                    fprintf(stderr, "XNU_HOST_MEMORY conflict %s", line);
+            }
+            fclose(maps);
+        }
+        return error;
+    }
+    if (region != (void *)reserve) {
+        munmap(region, length);
+        return ENOTSUP; /* Never replace mappings without owning the exact VA. */
+    }
+    fprintf(stderr, "XNU_HOST_MEMORY image_end=%#lx native_brk=%p reserve_start=%#lx\n",
+        image_end, sbrk(0), reserve);
     int fd = memfd_create("xnu-physical", MFD_CLOEXEC);
     if (fd == -1) {
         int error = errno;
