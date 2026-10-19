@@ -36,6 +36,10 @@ pinned in [sources.lock.json](sources.lock.json); run logs and artifacts live in
   userland bring-up on Redmi Note 10 Pro. Our bare-metal baseline uses its pinned
   patches and upstream build recipe; credit belongs to its authors/contributors.
 
+Preserved forks: [taowen/linux-um-arm64](https://github.com/taowen/linux-um-arm64)
+and [taowen/ios-sweet](https://github.com/taowen/ios-sweet). Fixed source commits
+and upstream repositories are recorded in `sources.lock.json`.
+
 These projects make the research worth attempting, but cannot simply be combined.
 Older ARM64 apps with simple UI are a long-term hypothesis, not demonstrated
 compatibility. Preserve upstream attribution and licenses when reusing code.

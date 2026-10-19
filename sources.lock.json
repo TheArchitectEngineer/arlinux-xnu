@@ -1,11 +1,13 @@
 {
   "iosSweet": {
-    "repository": "dipa-studio/ios-sweet",
-    "commit": "fdad0de8dc0e75c5ea84762adc03f7232dc91f19"
+    "repository": "taowen/ios-sweet",
+    "commit": "fdad0de8dc0e75c5ea84762adc03f7232dc91f19",
+    "upstreamRepository": "dipa-studio/ios-sweet"
   },
   "linuxUmlReference": {
-    "repository": "zalexdev/linux-um-arm64",
-    "commit": "32e5e10b81d8882bdaf77b71e4106a941840c750"
+    "repository": "taowen/linux-um-arm64",
+    "commit": "32e5e10b81d8882bdaf77b71e4106a941840c750",
+    "upstreamRepository": "zalexdev/linux-um-arm64"
   },
   "darwinXnuBuild": {
     "repository": "blacktop/darwin-xnu-build",

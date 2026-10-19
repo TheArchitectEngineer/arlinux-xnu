@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Read the same pinned source used by experiment receipts before changing directory.
+SWEET_REPO=$(python3 -c 'import json; print(json.load(open("sources.lock.json"))["iosSweet"]["repository"])')
+SWEET_SHA=$(python3 -c 'import json; print(json.load(open("sources.lock.json"))["iosSweet"]["commit"])')
 mkdir -p build/baseline
 cd build/baseline
 export DXB_REPO=https://github.com/blacktop/darwin-xnu-build
 export DXB_SHA=663906528d1cd5ea8fde7de6f16de73db9511549
 export MACOS_VERSION=13.5 KERNEL_CONFIG=DEVELOPMENT MACHINE_CONFIG=SWEET
 git init -q sweet
-git -C sweet fetch --depth 1 https://github.com/dipa-studio/ios-sweet.git fdad0de8dc0e75c5ea84762adc03f7232dc91f19
+git -C sweet fetch --depth 1 "https://github.com/$SWEET_REPO.git" "$SWEET_SHA"
 git -C sweet checkout --detach FETCH_HEAD
 ln -s sweet/xnu xnu
 git init -q dxb
