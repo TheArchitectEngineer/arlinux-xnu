@@ -119,31 +119,35 @@ def main():
         cpp_flags = [f for f in flags[1:] if f not in ['-c', '-g', '-O1']]
         mach_makefile = XNU / 'osfmk/mach/Makefile'
         senders = {name.removesuffix('_user.c') for name in upstream_words(mach_makefile, 'MIG_KUSRC')}
-        senders |= {name.removesuffix('.h') for name in upstream_words(mach_makefile, 'MIG_UUHDRS')}
+        senders |= {name.removesuffix('.h') for name in upstream_words(mach_makefile, 'MIG_KUHDRS')}
+        public_senders = {name.removesuffix('.h') for name in
+                          upstream_words(mach_makefile, 'MIG_UUHDRS')} - senders
         servers = {name.removesuffix('_server.c') for name in upstream_words(mach_makefile, 'MIG_KSSRC')}
         public_servers = {name.removesuffix('_server.h') for name in
                           upstream_words(mach_makefile, 'MIG_USHDRS')} - servers
         device_interfaces = {Path(name).stem for name in
                              upstream_words(XNU / 'osfmk/device/Makefile', 'MIG_DEFS')}
-        families = [('mach', senders, servers, public_servers),
-                    ('device', set(), device_interfaces, set())]
-        for family, sender_interfaces, server_interfaces, public_headers in families:
+        families = [('mach', senders, servers, public_servers, public_senders),
+                    ('device', set(), device_interfaces, set(), set())]
+        for family, sender_interfaces, server_interfaces, public_headers, public_sender_headers in families:
             mig_output = OUT / 'mig' / family
             mig_output.mkdir(parents=True, exist_ok=True)
             for side, interfaces in [('user', sender_interfaces), ('server', server_interfaces),
-                                     ('public', public_headers)]:
+                                     ('public', public_headers),
+                                     ('public_user', public_sender_headers)]:
                 for interface in sorted(interfaces):
                     definition = XNU / 'osfmk' / family / (interface + '.defs')
                     preprocessed = mig_output / (interface + '_' + side + '.defs.i')
                     with preprocessed.open('w') as stream:
                         run(['clang-18', '-E', '-x', 'c', *cpp_flags,
-                             *(['-DKERNEL_' + side.upper() + '=1'] if side != 'public' else []),
+                             *(['-DKERNEL_' + side.upper() + '=1'] if side in ('user', 'server') else []),
                              '-D__MACH30__=1', definition], stdout=stream)
                     with preprocessed.open() as stream:
                         run([mig_build / 'migcom', '-novouchers',
-                             '-header', mig_output / (interface + '.h') if side == 'user' else '/dev/null',
+                             *(['-maxonstack', '1024'] if side == 'user' else []),
+                             '-header', mig_output / (interface + '.h') if side in ('user', 'public_user') else '/dev/null',
                              '-user', mig_output / (interface + '_user.c') if side == 'user' else '/dev/null',
-                             '-sheader', mig_output / (interface + '_server.h') if side != 'user' else '/dev/null',
+                             '-sheader', mig_output / (interface + '_server.h') if side in ('server', 'public') else '/dev/null',
                              '-server', mig_output / (interface + '_server.c') if side == 'server' else '/dev/null'], stdin=stream)
         # Match bsd/sys/Makefile and MakeInc.rule: unifdef followed by the
         # original syscall generator. Preserve the generated input and headers.
