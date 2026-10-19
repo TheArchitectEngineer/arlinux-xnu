@@ -206,6 +206,8 @@ def main():
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
         'osfmk/prng/prng_random.c', 'osfmk/arm/counter.c',
         'bsd/kern/kern_fork.c', 'bsd/kern/kern_proc.c',
+        'bsd/kern/kern_credential.c', 'bsd/kern/kern_prot.c',
+        'bsd/kern/kern_resource.c', 'bsd/uxkern/ux_exception.c',
     ]
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
