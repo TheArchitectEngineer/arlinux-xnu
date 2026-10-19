@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39235579710](https://github.com/taowen/arlinux-xnu/actions/runs/39235579710)
-at source `2da7369` compiled 137 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39236228165](https://github.com/taowen/arlinux-xnu/actions/runs/39236228165)
+at source `8cea843` compiled 137 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -23,12 +23,19 @@ sleep, plus early/random-buffer/kmem-uniform calls backed by Linux `getrandom`.
 No random seed or output bytes are logged. All five downloaded jobs' files
 matched receipts. The original boolean generator is compiled but has not run.
 The early executable SHA-256 is
-`c603d416e7bb9ef4dfb768491e7b6ad6bb787ebc9d84448fed6d3447150cc216`.
+`e532b107b69a2f6ff4e7e5c00940e6483055ec5ead20a190eb0b3ea1e200a351`.
 
 The host uses Linux TLS for XNU's current-thread access, native/alternative
 bootstrap stacks, and a 256 MiB memfd for physical backing. The exported
 CPU-number/data accessors return the actual single virtual
 CPU record; every early start checks its identity against current-thread state.
+That record now lives in the original per-CPU section. The ELF linker pads it
+to 16 KiB; all eight starts used XNU's original traversal macro and observed one
+master CPU, with no secondary replicas. Thread switches install the master
+per-CPU offset in the thread's machine state. Actual scheduling is not running.
+The linker script also binds/preserves compiler-generated fixed/variable kalloc
+views. Those boundary imports no longer fail the VM link, but the early binary
+has no core allocator views; their ingestion by real kalloc is still unverified.
 Guest pages are 16 KiB on this runner's 4 KiB host. The ELF image and XNU virtual addresses are
 inside a positive 128 GiB kernel window, preserving VM packed-pointer reach.
 Zone page encoding uses a tagged offset for this layout. Native brk, the physical
@@ -51,11 +58,11 @@ the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps
 and pmap accounting are not connected yet. Reference/dirty attributes record
 conservative mapping history, not precise accesses or cleared-bit tracking.
-The VM executable still fails linkage (384 distinct undefined references), before its original
+The VM executable still fails linkage (374 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
 
-Next: connect remaining machine/thread, ELF percpu/kalloc metadata, host pmap and BSD service dependencies,
+Next: connect remaining machine/thread, kernel image metadata, host pmap and BSD service dependencies,
 then execute the original VM bootstrap. Selected objects now include original
 BSD process/read-only process data, fork/uthread, coalition, counters, host
 notifications and configured MIG senders. ARM's scheduler dispatch selects dualq;
@@ -93,9 +100,9 @@ retained in artifacts; this is not yet a Linux-only compiler toolchain.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | [137 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39235579710) | Complete kernel or guest execution |
+| `xnu-kernel` | [137 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39236228165) | Complete kernel or guest execution |
 | `xnu-link-inputs` | Same run: relocatable merge passes, host TLS replaces privileged current-thread access | Executable linkage or kernel boot |
-| `xnu-early-startup` | Same run: eight starts; pmap block/reclaim/alias/disconnect and actual access faults, original rtclock, Linux entropy and early dispatcher | Lock hooks, VM/tasks initialization or guest execution |
+| `xnu-early-startup` | Same run: eight starts; original per-CPU traversal, pmap block/reclaim/alias/disconnect and actual access faults, original rtclock, Linux entropy and early dispatcher | Lock hooks, VM/tasks initialization or guest execution |
 | `xnu-vm-startup` | Same run: executable link fails; log and link map retained | VM bootstrap or guest execution |
 
 These are historical observations at their runs' source revisions, not promises
