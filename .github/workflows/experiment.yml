@@ -187,6 +187,7 @@ jobs:
           ld.lld-18 -r build/kernel/*.o -o build/link/xnu-host.partial.o
           llvm-readelf-18 --file-header --sections build/link/xnu-host.partial.o > build/link/elf.txt
           llvm-nm-18 --undefined-only --format=posix build/link/xnu-host.partial.o > build/link/unresolved-symbols.txt
+          llvm-objdump-18 --disassemble --no-show-raw-insn build/link/xnu-host.partial.o > build/link/disassembly.txt
           (cd build/link && sha256sum xnu-host.partial.o > SHA256SUMS)
           cat build/link/unresolved-symbols.txt
           echo 'Relocatable link only: unresolved kernel and host services remain; no executable or boot.' >> "$GITHUB_STEP_SUMMARY"

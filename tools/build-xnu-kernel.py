@@ -82,7 +82,8 @@ def main():
                 XNU / 'osfmk', XNU / 'bsd', XNU / 'libkern', XNU / 'osfmk/libsa',
                 XNU / 'pexpert', XNU / 'iokit', XNU / 'EXTERNAL_HEADERS', XNU]
     flags = [args.compiler, '--target=aarch64-linux-gnu', '-c', '-g', '-O1', '-ffreestanding',
-             '-fno-builtin', '-fblocks', '-fno-common', '-nostdinc', '-ferror-limit=8',
+             '-fno-builtin', '-fblocks', '-fno-common', '-ffunction-sections',
+             '-fdata-sections', '-nostdinc', '-ferror-limit=8',
              '-mbranch-protection=none', '-include', str(generated / 'meta_features.h'),
              '-U__linux__', '-Ulinux', '-D__APPLE__=1', '-isystem', resource + '/include',
              '-D__arm64__=1', '-D__ARM64__=1', '-Darm64=1', '-DARM64=1',
@@ -134,9 +135,24 @@ def main():
     flags += ['-I' + str(OUT / 'mig')]
     # These are actual intended kernel objects. Do not replace them with dummy
     # implementations to turn the workflow green.
-    units = ['osfmk/ipc/ipc_space.c', 'osfmk/ipc/mach_port.c', 'osfmk/ipc/mach_msg.c',
-             'osfmk/kern/task.c', 'osfmk/kern/thread.c', 'osfmk/kern/exception.c',
-             'osfmk/vm/vm_map.c', 'osfmk/vm/vm_user.c']
+    units = [
+        # Core IPC structures used by Mach ports/messages and task initialization.
+        *['osfmk/ipc/' + name + '.c' for name in [
+            'ipc_space', 'mach_port', 'mach_msg', 'ipc_init', 'ipc_entry',
+            'ipc_hash', 'ipc_object', 'ipc_port', 'ipc_pset', 'ipc_right',
+            'ipc_mqueue', 'ipc_kmsg', 'ipc_notify', 'ipc_importance',
+            'ipc_service_port', 'ipc_voucher', 'ipc_eventlink']],
+        # Real kernel initialization and allocation: no host malloc stand-ins.
+        *['osfmk/kern/' + name + '.c' for name in [
+            'startup', 'task', 'thread', 'exception', 'ipc_tt', 'ipc_kobject',
+            'ipc_host', 'ipc_mig', 'host', 'processor', 'kalloc', 'zalloc',
+            'lock_group', 'locks']],
+        # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
+        *['osfmk/vm/' + name + '.c' for name in [
+            'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
+            'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
+            'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb']],
+    ]
     commands, results = [], []
     for unit in units:
         name = Path(unit).stem
