@@ -414,9 +414,9 @@ void darwin_native_prepare(const char *root,const char *program)
         BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_TRAP),
         BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_ALLOW),
     };
-    struct sock_fprog program = {.len=sizeof(code)/sizeof(code[0]),.filter=code};
+    struct sock_fprog filter_program = {.len=sizeof(code)/sizeof(code[0]),.filter=code};
     if (prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0) ||
-        RAW(SYS_seccomp,SECCOMP_SET_MODE_FILTER,0,&program,0,0,0)) {
+        RAW(SYS_seccomp,SECCOMP_SET_MODE_FILTER,0,&filter_program,0,0,0)) {
         perror("native syscall filter"); exit(1);
     }
 }

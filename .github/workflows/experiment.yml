@@ -93,7 +93,7 @@ jobs:
           cc --version >> build/native/environment.txt
           clang-18 --version >> build/native/environment.txt
           ld64.lld-18 --version >> build/native/environment.txt
-          clang-18 --target=arm64-apple-ios13.0 -c guests/console.S -o build/native/console.o
+          clang-18 --target=arm64-apple-ios12.0 -c guests/console.S -o build/native/console.o
           ld64.lld-18 -arch arm64 -platform_version ios 13.0 13.0 -no_adhoc_codesign -e _start build/native/console.o -o build/native/console.macho
           # A standard link-time interface records a real runtime dependency.
           # It supplies no replacement implementation or fabricated exports.
