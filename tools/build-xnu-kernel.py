@@ -147,7 +147,7 @@ def main():
     # These are actual intended kernel objects. Do not replace them with dummy
     # implementations to turn the workflow green.
     units = [
-        'src/xnu-host/xnu_bootstrap.c',
+        'src/xnu-host/xnu_bootstrap.c', 'src/xnu-host/context.c',
         # Core IPC structures used by Mach ports/messages and task initialization.
         *['osfmk/ipc/' + name + '.c' for name in [
             'ipc_space', 'mach_port', 'mach_msg', 'ipc_init', 'ipc_entry',

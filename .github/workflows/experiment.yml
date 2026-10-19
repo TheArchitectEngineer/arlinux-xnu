@@ -219,8 +219,8 @@ jobs:
           cp build/kernel/receipt.json build/startup/compiler-receipt.json
           uname -a > build/startup/environment.txt
           cc --version >> build/startup/environment.txt
-          cc -Wall -Wextra -Werror -O1 -g -ffunction-sections -fdata-sections -c src/xnu-host/host.c -o build/startup/host.o
-          cc -no-pie -Wl,--gc-sections -Wl,-T,src/xnu-host/startup.ld build/startup/host.o build/kernel/startup.o build/kernel/xnu_bootstrap.o -o build/startup/xnu-host 2>&1 | tee build/startup/link.log
+          cc -Wall -Wextra -Werror -O1 -g -pthread -Isrc/xnu-host/include -ffunction-sections -fdata-sections -c src/xnu-host/host.c -o build/startup/host.o
+          cc -no-pie -pthread -Wl,--gc-sections -Wl,-T,src/xnu-host/startup.ld build/startup/host.o build/kernel/startup.o build/kernel/xnu_bootstrap.o build/kernel/context.o -o build/startup/xnu-host 2>&1 | tee build/startup/link.log
           file build/startup/xnu-host > build/startup/file.txt
           timeout 30 build/startup/xnu-host startup_debug=1 > build/startup/stdout.txt 2> build/startup/stderr.txt
           cat build/startup/stdout.txt build/startup/stderr.txt

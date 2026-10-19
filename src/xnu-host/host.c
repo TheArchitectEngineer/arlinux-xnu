@@ -1,11 +1,16 @@
 /* Linux-facing services for the userspace kernel. This translation unit uses
  * host libc; the kernel translation units use the pinned XNU headers. */
+#define _GNU_SOURCE
 #include <errno.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <host/context.h>
 
 static int boot_argc;
 static char **boot_argv;
@@ -94,5 +99,33 @@ main(int argc, char **argv)
 {
     boot_argc = argc;
     boot_argv = argv;
+    pthread_attr_t attributes;
+    void *stack_base;
+    size_t stack_size;
+    int error = pthread_getattr_np(pthread_self(), &attributes);
+    if (error) {
+        fprintf(stderr, "pthread_getattr_np: %s\n", strerror(error));
+        return 1;
+    }
+    error = pthread_attr_getstack(&attributes, &stack_base, &stack_size);
+    pthread_attr_destroy(&attributes);
+    if (error) {
+        fprintf(stderr, "pthread_attr_getstack: %s\n", strerror(error));
+        return 1;
+    }
+    /* These stacks live for the host process lifetime. */
+    size_t exception_size = 128 * 1024;
+    void *exception_base = malloc(exception_size);
+    if (!exception_base) {
+        perror("exception stack");
+        return 1;
+    }
+    stack_t alternate = { .ss_sp = exception_base, .ss_size = exception_size };
+    if (sigaltstack(&alternate, NULL)) {
+        perror("sigaltstack");
+        return 1;
+    }
+    if (xnu_host_context_initialize(stack_base, stack_size, exception_base, exception_size))
+        return 1;
     return xnu_host_kernel_early_startup();
 }
