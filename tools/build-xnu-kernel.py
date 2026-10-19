@@ -188,14 +188,16 @@ def main():
             'thread_act', 'thread_policy', 'task_policy', 'syscall_subr',
             'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref', 'clock',
             'coalition', 'extmod_statistics', 'host_notify', 'counter_common',
-            'clock_oldops', 'sync_sema', 'task_ident']],
+            'clock_oldops', 'sync_sema', 'task_ident', 'ipc_clock',
+            'affinity', 'thread_group', 'sched_multiq', 'ux_handler']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
             'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
             'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb', 'vm_purgeable',
             'vm32_user']],
-        'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm64/pcb.c', 'osfmk/arm64/status.c',
+        'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm64/pcb.c',
+        'osfmk/arm64/status.c', 'osfmk/arm64/machine_task.c',
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
         'osfmk/prng/prng_random.c', 'osfmk/arm/counter.c',
