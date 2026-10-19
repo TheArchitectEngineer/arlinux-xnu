@@ -321,6 +321,20 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     }
     long result = -38;
     switch (r[16]) {
+    case 360: case 366: {
+        const char label[]="DARWIN_THREAD_REQUEST argument-index/pc/value follows\n";
+        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        for (unsigned int i=0;i<6;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
+        if (r[16]==366 && r[4]>=8 && r[4]<=128) {
+            uint64_t metadata[16]={0};
+            if (!guest_copy(metadata,r[3],r[4],0)) {
+                const char record[]="DARWIN_THREAD_REGISTRATION word-index/pc/value follows\n";
+                RAW(SYS_write,2,record,sizeof(record)-1,0,0,0);
+                for (unsigned int i=0;i<r[4]/8;i++) trace_call(i,uc->uc_mcontext.pc,metadata[i]);
+            }
+        }
+        break;
+    }
     case 381: {                /* __mac_syscall: compatibility dyld policy only */
         char policy[5];
         struct iovec local={policy,sizeof(policy)},remote={(void *)r[0],sizeof(policy)};
