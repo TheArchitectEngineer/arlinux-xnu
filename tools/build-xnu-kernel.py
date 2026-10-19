@@ -96,9 +96,7 @@ def main():
              '-DPAGE_SIZE_FIXED=1', '-DAPPLE=1', '-DKERNEL=1', '-DKERNEL_PRIVATE=1',
              '-DXNU_KERNEL_PRIVATE=1', '-DMACH_KERNEL_PRIVATE=1', '-DMACH_KERNEL=1',
              '-DPRIVATE=1', '-D__MACHO__=1', '-DCONFIG_USERMODE=1',
-             # Keep BSD syscall implementations out of Linux libc's namespace.
-             # Otherwise native fault probes bind fork/setrlimit to kernel ABIs.
-             '-Dfork=xnu_bsd_fork', '-Dsetrlimit=xnu_bsd_setrlimit',
+             # Kernel abort must not replace the host libc termination path.
              '-Dabort=xnu_kernel_abort',
              '-D__private_extern__=extern', *options, *['-I' + str(p) for p in includes]]
     if args.phase != 'compile':
@@ -170,7 +168,22 @@ def main():
     if args.phase == 'prepare':
         print('XNU configuration and MIG interfaces generated; no kernel objects compiled', flush=True)
         return
-    flags += ['-I' + str(OUT / 'mig')]
+    # Name every original BSD syscall implementation from the generated ABI,
+    # rather than adding ad-hoc renames as each new provider collides with libc.
+    # This header is included only for kernel translation units, never native C.
+    proto = (exported / 'sys/sysproto.h').read_text()
+    syscall_names = sorted(set(re.findall(
+        r'^\s*(?:int|void)\s+([A-Za-z_]\w*)\s*\(\s*struct proc\s*\*', proto, re.M)))
+    if not syscall_names:
+        raise RuntimeError('No BSD syscall declarations in generated sysproto.h')
+    namespace = OUT / 'bsd-syscall-namespace.h'
+    namespace.write_text(
+        '/* Generated from pinned XNU sysproto.h; kernel objects only. */\n'
+        '#ifndef XNU_HOST_BSD_SYSCALL_NAMESPACE_H\n'
+        '#define XNU_HOST_BSD_SYSCALL_NAMESPACE_H\n' +
+        ''.join(f'#define {name} xnu_bsd_{name}\n' for name in syscall_names) +
+        '#endif\n')
+    flags += ['-include', str(namespace), '-I' + str(OUT / 'mig')]
     # These are actual intended kernel objects. Do not replace them with dummy
     # implementations to turn the workflow green.
     units = [
@@ -226,6 +239,13 @@ def main():
         'bsd/kern/kern_authorization.c', 'bsd/kern/kern_priv.c',
         'bsd/kern/kern_subr.c', 'bsd/kern/bsd_init.c',
         'bsd/kern/kern_synch.c', 'bsd/kern/kern_newsysctl.c',
+        # Genuine BSD process/FD/VFS execution and termination. These services
+        # are required by the supervisor/child journey for either CPU backend.
+        'bsd/kern/bsd_stubs.c', 'bsd/kern/kern_exit.c', 'bsd/kern/kern_sig.c',
+        'bsd/kern/kern_exec.c', 'bsd/kern/mach_loader.c', 'bsd/kern/mach_fat.c',
+        'bsd/kern/kern_descrip.c', 'bsd/kern/sys_generic.c', 'bsd/kern/sys_reason.c',
+        'bsd/kern/kern_event.c', 'bsd/vm/vm_unix.c', 'osfmk/vm/bsd_vm.c',
+        'bsd/pthread/pthread_shims.c', 'bsd/pthread/pthread_workqueue.c',
         # Preserve real event filtering, early buffers and triage storage.
         'bsd/kern/kdebug.c', 'bsd/kern/kdebug_common.c',
         'bsd/kern/kdebug_triage.c', 'bsd/kern/kern_ktrace.c',
