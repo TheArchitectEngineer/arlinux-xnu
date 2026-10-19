@@ -47,5 +47,11 @@
     "repository": "sgan81/apfs-fuse",
     "commit": "66b86bd525e8cb90f9012543be89b1f092b75cf3",
     "lzfseCommit": "e634ca58b4821d9f3d560cdc6df5dec02ffc93fd"
+  },
+  "playcoverReference": {
+    "repository": "PlayCover/PlayCover",
+    "commit": "c8cf79fce8e05c0f6e47a3f23cc75ce35fe67e03",
+    "license": "GPL-3.0",
+    "role": "Unmodified Mach-O conversion on the macOS reference runner; not a Linux runtime dependency"
   }
 }

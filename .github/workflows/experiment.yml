@@ -5,7 +5,7 @@ on:
       mode:
         type: choice
         default: native
-        options: [both, host, baseline, native, dyld, app]
+        options: [both, host, baseline, native, dyld, app, playcover]
 permissions:
   contents: read
 jobs:
@@ -74,7 +74,7 @@ jobs:
           path: build/macho/
           retention-days: 30
   native-userland:
-    if: inputs.mode == 'both' || inputs.mode == 'native' || inputs.mode == 'dyld' || inputs.mode == 'app'
+    if: inputs.mode == 'both' || inputs.mode == 'native' || inputs.mode == 'dyld' || inputs.mode == 'app' || inputs.mode == 'playcover'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
@@ -201,6 +201,36 @@ jobs:
         with:
           name: linux-arm64-apple-dyld-evidence
           path: build/dyld/
+          retention-days: 30
+  playcover-reference:
+    if: inputs.mode == 'app' || inputs.mode == 'playcover'
+    needs: native-userland
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64-native-darwin
+          path: build/native/
+      - name: Observe the same iOS app through PlayCover conversion on macOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd build/native && shasum -a 256 -c SHA256SUMS)
+          mkdir -p build/playcover
+          uname -a > build/playcover/environment.txt
+          sw_vers >> build/playcover/environment.txt
+          xcodebuild -version >> build/playcover/environment.txt
+          python3 tools/run-playcover-reference.py
+      - name: Record reference receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/playcover --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-arm64-playcover-reference
+          path: build/playcover/
           retention-days: 30
   xnu-baseline:
     if: inputs.mode == 'both' || inputs.mode == 'baseline'

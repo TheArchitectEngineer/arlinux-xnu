@@ -27,7 +27,8 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 ./build.sh build --mode host       # explicit historical host/shim diagnostics
 ./build.sh build                   # default: native Darwin console journey
 ./build.sh build --mode dyld       # real dyld/libSystem console journey
-./build.sh build --mode app        # ARHello 1.0 real UIKit startup attempt
+./build.sh build --mode app        # ARHello 1.0 on Linux + macOS reference
+./build.sh build --mode playcover  # same iOS binary, PlayCover conversion on macOS
 ./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
 ./build.sh status --run-id RUN_ID
 ./build.sh download --run-id RUN_ID
