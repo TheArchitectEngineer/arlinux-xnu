@@ -107,9 +107,16 @@ restores CPU interrupt state, then handles urgent ASTs on the kernel thread stac
 Its software boundary frame supplies diagnostic PC/SP/frame pointers; it is not
 a captured native exception or a guest register set for architectural return.
 
-Guest execution slices/stops and idle waiting must still feed this event source
-and deliver guest-aware interrupt state. Those paths are not implemented by
-arming a timer. Kernel delivery, accounting, callback expiry and restoration
+Host idle now resynchronizes original XNU deadlines and polls the timerfd plus
+an eventfd wake transport. Polling leaves clock events unread for original FIQ;
+return enables virtual interrupts and lets original queues/ASTs select work.
+Wake hints are coalesced, including eager deferred hints. Native syscall output
+objects use host TLS to avoid writing via Linux user-copy into reference-tracked
+XNU kernel stacks. This idle path still needs runtime validation.
+
+Guest execution slices/stops must still feed this event source and deliver
+guest-aware interrupt state. Host I/O callbacks are not implemented by posting
+a wake token. Kernel delivery, accounting, callback expiry and restoration
 still require the real runtime journey. Do not substitute a timerfd probe or
 Linux sleep for a blocked XNU thread's scheduler/timer wakeup.
 

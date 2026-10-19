@@ -9,6 +9,9 @@ int xnu_host_timer_initialize(void);
 int xnu_host_timer_program(unsigned int ticks);
 int xnu_host_timer_state(unsigned int *remaining, int *pending);
 int xnu_host_timer_take(void);
+/* One-CPU idle transport; wake coalesces notices, wait leaves timer unread. */
+int xnu_host_cpu_wake(void);
+int xnu_host_cpu_wait(void);
 /* Kernel-side latch while original FIQ handles an already consumed event. */
 int xnu_host_timer_interrupt_active(void);
 

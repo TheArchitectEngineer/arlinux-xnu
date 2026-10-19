@@ -8,12 +8,13 @@
 #include <unistd.h>
 #include <poll.h>
 #include <sys/timerfd.h>
+#include <sys/eventfd.h>
 #include <host/time.h>
 
 unsigned long long
 xnu_host_time_ns(int continuous)
 {
-    struct timespec time;
+    static _Thread_local struct timespec time;
     if (clock_gettime(continuous ? CLOCK_BOOTTIME : CLOCK_MONOTONIC, &time)) {
         perror("XNU host clock_gettime");
         abort();
@@ -38,8 +39,9 @@ xnu_host_sleep_until(unsigned long long deadline)
 
 /* One actual monotonic, one-shot clock event source for the one virtual CPU.
  * No asynchronous signal handler enters libc or XNU. Kernel interrupt-enable
- * boundaries consume events; guest execution/idle need their own safe points. */
+ * and idle boundaries consume events; guest execution safe points are pending. */
 static int decrementer_fd = -1;
+static int wake_fd = -1;
 
 int
 xnu_host_timer_initialize(void)
@@ -49,7 +51,14 @@ xnu_host_timer_initialize(void)
     int fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
     if (fd == -1)
         return errno;
+    int wake = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    if (wake == -1) {
+        int error = errno;
+        close(fd);
+        return error;
+    }
     decrementer_fd = fd;
+    wake_fd = wake;
     return 0;
 }
 
@@ -72,7 +81,8 @@ xnu_host_timer_state(unsigned int *remaining, int *pending)
 {
     if (decrementer_fd == -1 || !remaining || !pending)
         return EINVAL;
-    struct itimerspec event;
+    /* Linux writes native TLS, not a potentially reference-tracked XNU stack. */
+    static _Thread_local struct itimerspec event;
     if (timerfd_gettime(decrementer_fd, &event))
         return errno;
     unsigned long long ns = (unsigned long long)event.it_value.tv_sec *
@@ -96,7 +106,7 @@ xnu_host_timer_take(void)
 {
     if (decrementer_fd == -1)
         return -ENODEV;
-    uint64_t expirations;
+    static _Thread_local uint64_t expirations;
     ssize_t bytes;
     do {
         bytes = read(decrementer_fd, &expirations, sizeof(expirations));
@@ -106,4 +116,58 @@ xnu_host_timer_take(void)
     if (bytes != (ssize_t)sizeof(expirations) || !expirations)
         return -EIO;
     return 1;
+}
+
+int
+xnu_host_cpu_wake(void)
+{
+    if (wake_fd == -1)
+        return ENODEV;
+    const uint64_t notice = 1;
+    ssize_t bytes;
+    do {
+        bytes = write(wake_fd, &notice, sizeof(notice));
+    } while (bytes == -1 && errno == EINTR);
+    if (bytes == -1)
+        return errno == EAGAIN ? 0 : errno; /* A saturated counter is ready. */
+    return bytes == (ssize_t)sizeof(notice) ? 0 : EIO;
+}
+
+int
+xnu_host_cpu_wait(void)
+{
+    if (decrementer_fd == -1 || wake_fd == -1)
+        return ENODEV;
+    /* Keep syscall output in native TLS. Copies to XNU outputs use CPU stores,
+     * allowing the existing synchronous reference/dirty fault handler to run. */
+    static _Thread_local struct pollfd sources[2];
+    static _Thread_local uint64_t notices;
+    for (;;) {
+        sources[0] = (struct pollfd){ .fd = decrementer_fd, .events = POLLIN };
+        sources[1] = (struct pollfd){ .fd = wake_fd, .events = POLLIN };
+        int ready = poll(sources, 2, -1);
+        if (ready == -1) {
+            if (errno == EINTR)
+                continue;
+            return errno;
+        }
+        for (unsigned int i = 0; i < 2; i++) {
+            if (sources[i].revents & (POLLERR | POLLHUP | POLLNVAL))
+                return EIO;
+        }
+        if (sources[1].revents & POLLIN) {
+            ssize_t bytes;
+            do {
+                bytes = read(wake_fd, &notices, sizeof(notices));
+            } while (bytes == -1 && errno == EINTR);
+            if (bytes == -1 && errno != EAGAIN)
+                return errno;
+            if (bytes >= 0 && bytes != (ssize_t)sizeof(notices))
+                return EIO;
+            if (bytes == (ssize_t)sizeof(notices))
+                return 0;
+        }
+        if (sources[0].revents & POLLIN)
+            return 0; /* Original FIQ will consume the actual clock event. */
+    }
 }

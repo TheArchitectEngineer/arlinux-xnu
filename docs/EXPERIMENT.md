@@ -9,45 +9,40 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39292159184](https://github.com/taowen/arlinux-xnu/actions/runs/39292159184),
-root `52f265cdd405122f1017034e98860f22cafa245b`, fork `abe6e09`.
-Actual compiler job `118195918974` passed original SLEH and kernel timer-event
-integration. Compiler receipt SHA-256:
-`3a5e5b2e5b517266f56ea153f2b20a0ec9132e6f1adcdb19b019ee94870700f9`.
+[39292773110](https://github.com/taowen/arlinux-xnu/actions/runs/39292773110),
+root `ff949ec56aaedfb24610effe8b30c939d98bf40b`, fork `abe6e09`.
+Actual compiler job `118197748257` passed real per-CPU timer-queue initialization.
+Compiler receipt SHA-256:
+`7049ae3571ae8596a6fc7392363222946ed4754b32d4d300f2baac9c4f327872`.
 
-Actual VM job `118196473118` compiled native timerfd operations and passed the
+Actual VM job `118198349863` compiled native services and passed the
 native/kernel ABI collision audit, but executable linkage failed on remaining
 machine/pmap and service imports. Failure receipt SHA-256:
-`5240048e75cf632bf4a63c60358522167fa6bdf6db81d1aadaea1acbf9651dad`.
+`d74bce1a417b2a8f647370aa689f1e500a33f989fe388dec5f6c4c995b41782c`.
 No new VM executable, initialization, real allocation, task or guest ran.
-Actual logs are retained under `build/runs/39292159184`; Actions retains complete
+Actual logs are retained under `build/runs/39292773110`; Actions retains complete
 receipts/output hashes. The run is terminal; do not redispatch identical source.
 
-A real monotonic timerfd now supplies decrementer programming, remaining-time
-and pending-event queries. Kernel interrupt-enable boundaries consume an expiry,
-install a diagnostic software kernel-boundary frame, switch to the virtual CPU's
-exception stack and call original `sleh_fiq`. Original SLEH/rtclock/timer queues
-own callback dispatch; preemption is pinned until CPU interrupt state is restored
-and the IRQ stack is free. Urgent AST handling then uses the thread kernel stack.
-Both native and kernel code compiled; no timer delivery has run.
+The next source connects machine_idle to original timer_resync_deadlines and a
+real timerfd/eventfd poll. A queued urgent AST bypasses waiting. The wait consumes
+only wake notices, leaving clock expirations for original FIQ at interrupt
+unmask. Normal and deferred idle signals post real, coalesced wake tokens for
+the one virtual CPU; deferred hints are posted eagerly while XNU retains its
+scheduler state. No runnable thread, timeout result or scheduling decision is
+fabricated. Syscall output objects use native TLS rather than reference-tracked
+XNU kernel stacks; CPU stores transfer results back through normal fault handling.
+Runner verification and actual scheduler/timer wakeup journeys are pending.
 
-The next source fixes CPU initialization required by this path: after original
-timer_call_init/processor_bootstrap and before VM bootstrap, initialize the real
-per-CPU timer queue, EndOfAllTime deadlines, RTClockData link and actual running
-CPU state, following original ARM cpu_init/cpu_data_init. A due event before
-this initialization asserts instead of dispatching an uninitialized queue.
-Runner verification is pending.
-Inspect existing experiment
-[39292773110](https://github.com/taowen/arlinux-xnu/actions/runs/39292773110),
-source `ff949ec56aaedfb24610effe8b30c939d98bf40b`, before another dispatch.
-Keep this exact run through delayed status or log observations.
+The compiled timer transport uses real monotonic one-shot events and original
+sleh_fiq/rtclock/timer queues. A diagnostic software boundary frame and separate
+IRQ stack pin preemption until CPU interrupt state is restored; urgent ASTs then
+use the original thread stack. Real per-CPU queue initialization precedes VM.
+No callback expiry, IRQ delivery or queue initialization has run yet.
 
-Delivery is cooperative at kernel safe points, not arbitrary native instruction
-preemption. The software frame is diagnostic, not a guest architectural return
-state. Guest execution and idle waiting still need event/interrupt integration;
-arming a timerfd alone does not wake a blocked XNU thread. All new paths require
-the real VM/guest journey. No isolated timer probe has been added; preserve the
-full execution objective. See ARCHITECTURE.md for the explicit boundary.
+Delivery remains cooperative at kernel safe points. Guest execution slices/stops
+and guest-aware interrupt state are still missing. A wake transport is not host
+I/O callback delivery. All new paths require the real VM/guest journey; no isolated
+timer/idle probe has been added. See ARCHITECTURE.md for these boundaries.
 
 `pmap_sync_page_attributes_phys` now has a native implementation distinct from
 instruction-cache synchronization: ARM64 DC CIVAC writes back and invalidates

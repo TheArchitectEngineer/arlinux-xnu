@@ -15,6 +15,8 @@
 #include <arm/rtclock.h>
 #include <kern/cpu_data.h>
 #include <kern/timer_call.h>
+#include <kern/timer_queue.h>
+#include <arm/cpu_internal.h>
 #include <arm64/usermode_context.h>
 #include <pexpert/pexpert.h>
 
@@ -383,4 +385,41 @@ ml_get_power_state(boolean_t *in_interrupt, boolean_t *idle)
     processor_t processor = current_processor();
     *in_interrupt = ml_at_interrupt_context();
     *idle = processor != PROCESSOR_NULL && processor->state == PROCESSOR_IDLE;
+}
+
+/* Original processor_idle enters masked and expects interrupts enabled on
+ * return. Deadlines and runnable state remain owned by XNU, not Linux poll. */
+void
+machine_idle(void)
+{
+    assert(host_timer_cpu_ready && !host_interrupts_enabled);
+    assert(boot_cpu.cpu_int_state == NULL);
+    assert(current_processor() != PROCESSOR_NULL);
+    assert(current_processor()->state == PROCESSOR_IDLE);
+    timer_resync_deadlines();
+    /* A local urgent AST is already a reason to leave idle, even without a
+     * newly posted transport token. Let the original unmask path handle it. */
+    if (!(boot_cpu.cpu_pending_ast & AST_URGENT)) {
+        int error = xnu_host_cpu_wait();
+        if (error)
+            panic("host CPU idle wait error=%d", error);
+    }
+    (void)ml_set_interrupts_enabled(TRUE);
+}
+
+void
+machine_signal_idle(processor_t processor)
+{
+    assert(processor != PROCESSOR_NULL && processor == current_processor());
+    int error = xnu_host_cpu_wake();
+    if (error)
+        panic("host CPU idle signal error=%d", error);
+}
+
+void
+machine_signal_idle_deferred(processor_t processor)
+{
+    /* This transport posts wake hints eagerly; deferred/urgent scheduling
+     * state and the decision to leave idle remain owned by original XNU. */
+    machine_signal_idle(processor);
 }
