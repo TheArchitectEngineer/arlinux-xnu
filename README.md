@@ -51,3 +51,13 @@ the corrected diagnostic verifies the observable absence of close(fd)'s side eff
 
 This does not validate Android app sandbox behavior, XNU VM, Mach IPC, dyld,
 UIKit, or third-party iOS apps. Those remain subsequent milestones.
+
+The full [run 39213188337](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337)
+passed both jobs at commit `0c2d146`, dispatched and downloaded through `build.sh`.
+The baseline produced `kernel.development.sweet`, a Mach-O 64-bit ARM64 executable.
+SHA-256: `7157827c22a73d122be5d48664950a3dd38ec7ac381ca04075992ac083fc20ad`.
+Downloaded artifact bytes matched the runner's SHA256SUMS. The host-substrate
+probe also passed in the same workflow. This establishes hosted build feasibility
+and selected Linux host mechanisms, **not a userspace XNU kernel or iOS app runtime**.
+The baseline is not claimed to be bit-for-bit reproducible; upstream toolchain
+provisioning and kernel build metadata require further locking/normalization.
