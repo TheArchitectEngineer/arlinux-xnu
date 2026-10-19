@@ -130,6 +130,21 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 clock_send_refs[clock_id]++;
             }
         }
+        if (task && header->id==D_MIG_TASK_INFO && r[2]==40) {
+            uint32_t flavor,count;
+            __builtin_memcpy(&flavor,request+32,4); __builtin_memcpy(&count,request+36,4);
+            response[8]=D_KERN_INVALID_ARGUMENT;
+            if (flavor==D_TASK_AUDIT_TOKEN && count>=D_AUDIT_TOKEN_WORDS) {
+                struct darwin_audit_token token;
+                long error=native_current_audit_token(&token);
+                response[8]=error ? D_KERN_FAILURE : D_KERN_SUCCESS;
+                if (!error) {
+                    response[9]=D_AUDIT_TOKEN_WORDS;
+                    __builtin_memcpy(response+10,&token,sizeof(token));
+                    out->size=sizeof(response);
+                }
+            }
+        }
         if (task && header->id==D_MIG_TASK_GET_SPECIAL_PORT && r[2]==36) {
             uint32_t which; __builtin_memcpy(&which,request+32,4);
             response[8]=D_KERN_INVALID_ARGUMENT;

@@ -94,3 +94,41 @@ static long native_sysctlbyname(const unsigned long long *r)
     if (capacity<sizeof(value)) return -ENOMEM;
     return guest_copy(&value,r[2],sizeof(value),1);
 }
+
+static long native_linux_audit_number(const char *path,uint32_t *value)
+{
+    long fd=RAW(SYS_openat,AT_FDCWD,path,O_RDONLY|O_CLOEXEC,0,0,0);
+    /* No Linux audit facility means no assigned audit identity/session. */
+    if (fd==-ENOENT) { *value=UINT32_MAX; return 0; }
+    if (fd<0) return fd;
+    char text[32];
+    long length=RAW(SYS_read,fd,text,sizeof(text),0,0,0);
+    RAW(SYS_close,fd,0,0,0,0,0);
+    if (length<=0) return length<0 ? length : -EIO;
+    uint64_t number=0;
+    unsigned int digits=0;
+    for (long i=0;i<length;i++) {
+        if (text[i]=='\n') break;
+        if (text[i]<'0' || text[i]>'9') return -EIO;
+        number=number*10+(text[i]-'0');
+        if (number>UINT32_MAX) return -EOVERFLOW;
+        digits++;
+    }
+    if (!digits) return -EIO;
+    *value=number; return 0;
+}
+static long native_current_audit_token(struct darwin_audit_token *token)
+{
+    token->ruid=RAW(SYS_getuid,0,0,0,0,0,0);
+    token->euid=RAW(SYS_geteuid,0,0,0,0,0,0);
+    token->rgid=RAW(SYS_getgid,0,0,0,0,0,0);
+    token->egid=RAW(SYS_getegid,0,0,0,0,0,0);
+    token->pid=RAW(SYS_getpid,0,0,0,0,0,0);
+    uint64_t ticks=0; uint32_t parent;
+    long error=native_proc_start(token->pid,&ticks,&parent);
+    if (error) return error;
+    token->idversion=(uint32_t)ticks;
+    error=native_linux_audit_number("/proc/self/loginuid",&token->audit_uid);
+    if (error) return error;
+    return native_linux_audit_number("/proc/self/sessionid",&token->session);
+}

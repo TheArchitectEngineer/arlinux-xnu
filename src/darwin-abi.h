@@ -143,7 +143,7 @@ enum darwin_pthread_start {
 };
 enum darwin_mig_id {
     D_MIG_HOST_INFO = 200, D_MIG_HOST_GET_CLOCK = 206, D_MIG_CLOCK_GET_TIME = 1000,
-    D_MIG_TASK_GET_SPECIAL_PORT = 3409, D_MIG_SEMAPHORE_CREATE = 3418,
+    D_MIG_TASK_INFO = 3405, D_MIG_TASK_GET_SPECIAL_PORT = 3409, D_MIG_SEMAPHORE_CREATE = 3418,
     D_MIG_REPLY_ID_OFFSET = 100, D_MIG_BAD_ID = -303
 };
 enum darwin_mach_message {
@@ -162,6 +162,7 @@ enum darwin_mach_message {
 };
 enum darwin_service_abi {
     D_HOST_PRIORITY_INFO = 5, D_HOST_PRIORITY_INFO_COUNT = 8,
+    D_TASK_AUDIT_TOKEN = 15, D_AUDIT_TOKEN_WORDS = 8,
     D_TASK_BOOTSTRAP_PORT = 4, D_CLOCK_SYSTEM = 0, D_CLOCK_CALENDAR = 1,
     D_AMFI_DYLD_POLICY = 90,
     D_AMFI_ALLOW_AT_PATHS = 1, D_AMFI_ALLOW_PATH_ENV = 2, D_AMFI_ALLOW_CUSTOM_CACHE = 4,
@@ -257,3 +258,9 @@ enum darwin_variant_status {
     D_OS_VARIANT_STATUS_NO=2, D_OS_VARIANT_STATUS_WIDTH=2,
     D_OS_VARIANT_STATUS_FIELDS=6
 };
+
+/* XNU mach/message.h audit_token_t (bsd/security/audit identity ordering). */
+struct darwin_audit_token {
+    uint32_t audit_uid,euid,egid,ruid,rgid,pid,session,idversion;
+};
+_Static_assert(sizeof(struct darwin_audit_token)==32,"Darwin audit token wire layout");
