@@ -5,12 +5,12 @@ on:
       mode:
         type: choice
         default: both
-        options: [both, host, baseline]
+        options: [both, host, baseline, kernel]
 permissions:
   contents: read
 jobs:
   host-substrate:
-    if: inputs.mode != 'baseline'
+    if: inputs.mode == 'both' || inputs.mode == 'host'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
@@ -34,7 +34,7 @@ jobs:
           name: linux-arm64-host-substrate
           path: build/host/
   macho-userland:
-    if: inputs.mode != 'baseline'
+    if: inputs.mode == 'both' || inputs.mode == 'host'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
@@ -66,7 +66,7 @@ jobs:
           name: linux-arm64-macho-userland
           path: build/macho/
   xnu-baseline:
-    if: inputs.mode != 'host'
+    if: inputs.mode == 'both' || inputs.mode == 'baseline'
     runs-on: macos-14
     timeout-minutes: 120
     steps:
@@ -90,3 +90,28 @@ jobs:
         with:
           name: xnu-arm64-baremetal-baseline
           path: out-baseline/
+  xnu-kernel:
+    if: inputs.mode == 'both' || inputs.mode == 'kernel'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install Linux kernel port toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 llvm-18 flex bison tcsh unifdef
+      - name: Compile actual XNU for userspace host port
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/kernel
+          uname -a > build/kernel/environment.txt
+          clang-18 --version >> build/kernel/environment.txt
+          python3 tools/build-xnu-kernel.py 2>&1 | tee build/kernel/build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-linux-arm64-kernel-port
+          path: build/kernel/

@@ -13,5 +13,11 @@
   },
   "guestPageSize": 16384,
   "guestArchitecture": "arm64",
-  "virtualCpus": 1
+  "virtualCpus": 1,
+  "xnuKernel": {
+    "repository": "apple-oss-distributions/xnu",
+    "commit": "1b191cb58250d0705d8a51287127505aa4bc0789",
+    "tag": "xnu-8796.141.3",
+    "path": "third_party/xnu"
+  }
 }

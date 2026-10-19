@@ -58,6 +58,7 @@ To run only one experiment or inspect an exact run:
 ```bash
 ./build.sh build --mode host
 ./build.sh build --mode baseline
+./build.sh build --mode kernel
 ./build.sh status --run-id RUN_ID
 ```
 
@@ -142,3 +143,15 @@ The next kernel milestone is implementing XNU's host memory/task/exception
 backend and routing guest calls into actual XNU code. This shim is not that
 backend. Dynamic loading, real system libraries/frameworks, threads, guest VM
 allocation/COW and Android app-sandbox execution remain unimplemented/unverified.
+
+## Actual XNU host-port compilation
+
+`build --mode kernel` compiles the pinned Apple XNU 8796.141.3 sources in
+`third_party/xnu` for Linux ARM64 ELF. The upstream config generator produces
+kernel option headers; `src/xnu-host/include` begins the new single-CPU, 16 KiB
+host platform. The target includes real task/thread, Mach IPC, exception and VM
+translation units, not their syscall-shim substitutes. Compiler errors fail the
+job and are retained alongside compile commands and source pins. This target
+is under development: compiling objects is not linkage, a working host pmap,
+booted XNU or guest execution through the kernel. Do not substitute Darling's
+partial task/VM implementations and call that full XNU integration.
