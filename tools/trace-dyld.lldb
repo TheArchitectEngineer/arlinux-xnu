@@ -4,9 +4,9 @@ settings set auto-confirm true
 settings set target.disable-aslr false
 target create build/native/macho-native
 settings set target.run-args -- --dyld build/ios-input/dyld build/native/console.macho
-process handle -s false -n false -p true SIGSYS
 breakpoint set --name darwin_native_enter
 process launch -i build/dyld/debugger.stdin -o build/dyld/debugger.stdout -e build/dyld/debugger.runtime.log
+process handle -s false -n false -p true SIGSYS
 
 # The host entry stop occurs after Mach-O mappings exist, before guest code.
 # Add the real Mach-O's symbols at the loader's declared slide.
