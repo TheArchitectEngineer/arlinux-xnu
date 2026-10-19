@@ -183,7 +183,7 @@ def main():
         *['osfmk/kern/' + name + '.c' for name in [
             'startup', 'task', 'thread', 'exception', 'ipc_tt', 'ipc_kobject',
             'ipc_host', 'ipc_mig', 'host', 'processor', 'kalloc', 'zalloc',
-            'lock_group', 'locks', 'compact_id', 'lock_mtx', 'lock_rw',
+            'lock_group', 'locks', 'compact_id', 'lock_mtx', 'lock_rw', 'lock_ptr',
             'lock_ticket', 'ledger', 'kext_alloc', 'backtrace', 'btlog',
             'timer', 'bsd_kern',
             # Providers required by the actual VM/thread link, not host stubs.
@@ -204,6 +204,7 @@ def main():
         'osfmk/arm64/status.c', 'osfmk/arm64/machine_task.c',
         'libkern/os/refcnt.c', 'libkern/gen/OSAtomicOperations.c',
         'osfmk/bank/bank.c', 'libkern/c++/priority_queue.cpp',
+        'libkern/libclosure/runtime.cpp', 'libkern/libclosure/libclosuredata.c',
         'osfmk/prng/prng_random.c', 'osfmk/arm/counter.c',
         'bsd/kern/kern_fork.c', 'bsd/kern/kern_proc.c',
         'bsd/kern/kern_credential.c', 'bsd/kern/kern_prot.c',
