@@ -32,6 +32,10 @@ still return KERN_NOT_SUPPORTED. Original reference: `arm/pmap/pmap.c` returns
 before PTE installation, and `vm/vm_fault.c` re-drives the fault afterwards.
 This repair requires runner verification through the real VM journey; no isolated
 mapping probe is added, and no guest execution claim follows from compilation.
+Inspect existing experiment
+[39284374578](https://github.com/taowen/arlinux-xnu/actions/runs/39284374578),
+source `72f6733`, before another dispatch. Reuse this run handle through delayed
+metadata/log observations; never resubmit identical source because of a timeout.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
