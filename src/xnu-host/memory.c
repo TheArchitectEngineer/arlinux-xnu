@@ -281,20 +281,44 @@ xnu_host_memory_unmap(unsigned long address)
 }
 
 int
-xnu_host_memory_protect(unsigned long address, int protection)
+xnu_host_memory_protect_options(unsigned long address, int protection, int immediate)
 {
-    if (physical_fd == -1 || !heap_address(address) || (protection & ~7))
+    if (physical_fd == -1 || !heap_address(address) || (protection & ~7) ||
+        (immediate != 0 && immediate != 1))
         return EINVAL;
     unsigned long index = (address - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE;
-    if (!kernel_pages[index])
+    unsigned int page = kernel_pages[index];
+    if (!page)
         return 0; /* Preserve holes in the reserved VA arena. */
-    protection &= kernel_protections[index] & 7; /* pmap_protect only reduces rights. */
-    int native_protection = tracked_protection(protection,
-        physical_attributes[kernel_pages[index] - 1]);
+    int requested_write = protection & 2;
+    protection &= kernel_protections[index] & 7;
+    unsigned int attributes = physical_attributes[page - 1];
+    if (immediate) {
+        /* Original ARM immediate requests set referenced, and force-write
+         * additionally sets modified. Ordinary protection cannot upgrade COW.
+         * Even immediate mode never grants a new execute permission. */
+        attributes |= XNU_HOST_PAGE_REFERENCED;
+        if (requested_write) {
+            protection |= 3; /* ARM's writable mapping is readable as well. */
+            attributes |= XNU_HOST_PAGE_MODIFIED;
+        }
+    }
+    int native_protection = tracked_protection(protection, attributes);
     if (mprotect((void *)address, XNU_HOST_PAGE_SIZE, native_protection))
         return errno;
     kernel_protections[index] = protection | (kernel_protections[index] & MAPPING_WIRED);
+    if (immediate) {
+        physical_attributes[page - 1] = attributes;
+        /* Ref/mod tracking is physical-page state, shared by every alias. */
+        return apply_page_tracking(page);
+    }
     return 0;
+}
+
+int
+xnu_host_memory_protect(unsigned long address, int protection)
+{
+    return xnu_host_memory_protect_options(address, protection, 0);
 }
 
 int

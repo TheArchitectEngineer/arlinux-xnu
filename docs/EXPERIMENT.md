@@ -9,44 +9,37 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39286393400](https://github.com/taowen/arlinux-xnu/actions/runs/39286393400),
-root `be0e43a4cacea961c6f97c83f2a54d39ed1fd41c`, fork `abe6e09`.
-Actual compiler job `118174363760` passed, including executable-page cache
-synchronization callers. Compiler receipt SHA-256:
-`7400f617833ea8abe0b6eba85bd7fb631dc3edf0da7b94d375e7891e72bd575b`.
-
-Actual VM job `118175251720` compiled native Linux cache synchronization and
-passed the native/kernel ABI collision audit, but executable linkage failed on
-machine/pmap and further service imports. Failure receipt SHA-256:
-`ec8698da8f2442fab57006400f9903ccfe8c9fd4a7de7a33ce5838d6e4b7280b`.
-No new VM executable, initialization, real allocation, task or guest ran.
-Actual logs are retained under `build/runs/39286393400`; Actions retains complete
-receipts/output hashes. The run is terminal by actual job output. Do not
-redispatch its source because stale metadata still reports queued.
-
-The native cache operation uses the compiler runtime on the physical aperture
-and every executable alias. Temporary readable permissions permit cache
-maintenance under ref/dirty tracking or execute-only mappings, then original
-tracked permissions are restored without changing page attributes. Original
-`pmap_sync_page_data_phys` and `pmap_attribute_cache_sync` use this operation.
-Compilation does not establish runtime instruction coherence or permission
-restoration. Physical cache-attribute/DMA synchronization remains unimplemented.
-Reference: [GCC ARM64 cache runtime](https://github.com/gcc-mirror/gcc/blob/releases/gcc-13/libgcc/config/aarch64/sync-cache.c).
-
-Follow-up source also stops the kernel on a failed native MAP_FIXED attempt:
-only input-validation errors before that attempt remain retryable. Both a
-failed replacement and a failed post-install tracking/cache update leave native
-VA state unsuitable for assuming a clean failed insertion. The host must stop
-before VM can recycle a frame potentially still mapped. This follow-up requires
-runner verification; no isolated cache or mapping probe has been added.
-Inspect existing experiment
 [39286940550](https://github.com/taowen/arlinux-xnu/actions/runs/39286940550),
-source `bddb5ce`, before dispatching again. Keep this exact run handle through
-metadata delays, timeouts or transient log errors.
+root `bddb5ce9794b306e31dfc8636af751f3405db592`, fork `abe6e09`.
+Actual compiler job `118176675539` passed the native mapping failure-policy
+integration. Compiler receipt SHA-256:
+`c0d734a3fb6adba3f9665939955bc54ef886608f832a3aad8375343ed46a4562`.
 
-Exported/private MIG header separation, original corpse/shutdown/pressure
-services and VM_PRESSURE_EVENTS remain included. Their compilation has passed;
-none has completed an actual kernel lifecycle journey.
+Actual VM job `118177389916` compiled the native services and passed the
+native/kernel ABI collision audit, but executable linkage failed on machine/pmap
+and further service imports. Failure receipt SHA-256:
+`47d3a3fc1857d016f3509c48621e190c4bad3ec61cef399c21e0d97454421bd8`.
+No new VM executable, initialization, real allocation, task or guest ran.
+Actual logs are retained under `build/runs/39286940550`; Actions retains complete
+receipts/output hashes. VM output is terminal even if GET metadata stays queued.
+Do not redispatch identical source.
+
+The next source repairs protection semantics at the original vm_map_protect /
+ARM pmap boundary. Ordinary writable requests leave mappings unchanged, so VM
+can handle subsequent write faults and COW. An explicit PROTECT_IMMEDIATE request
+can restore kernel write permission; like original ARM pmap it also marks the
+physical page referenced/modified and updates tracking permissions for all its
+aliases. Immediate non-write requests mark referenced. Neither path grants new
+execute permission or creates a mapping in a hole. Physical-page protection now
+uses the original ARM selector: ALL leaves aliases alone, READ/READ|EXEC reduce
+rights, other requests remove aliases. Wiring is preserved. This requires runner
+compilation and actual VM runtime verification; no isolated probe is added.
+
+Cache synchronization and fail-stop native mapping errors remain included.
+The cache operation covers the physical aperture and executable aliases,
+restoring tracked permissions after maintenance. Its runtime behavior is still
+unverified. Physical cache-attribute/DMA synchronization remains unimplemented.
+Reference: [GCC ARM64 cache runtime](https://github.com/gcc-mirror/gcc/blob/releases/gcc-13/libgcc/config/aarch64/sync-cache.c).
 
 The NOENTER correction from `72f6733` is included: original VM fault capacity
 requests no longer attempt to map physical page zero. This has compiled, but

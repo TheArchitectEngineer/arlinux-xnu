@@ -267,15 +267,33 @@ void
 pmap_protect_options(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end,
     vm_prot_t protection, unsigned int options, void *arg)
 {
-    (void)options;
     (void)arg;
     kernel_mapping_range(pmap, start, end);
+    boolean_t immediate = (options & PMAP_OPTIONS_PROTECT_IMMEDIATE) != 0;
+    if (!immediate) {
+        /* Match original ARM's protection selector. Writable requests leave
+         * PTEs unchanged; VM handles any later write fault and COW itself. */
+        switch (protection) {
+        case VM_PROT_EXECUTE:
+            /* ARM's kernel PTE has no execute-only AP encoding. */
+            protection |= VM_PROT_READ;
+            break;
+        case VM_PROT_READ:
+        case VM_PROT_READ | VM_PROT_EXECUTE:
+            break;
+        case VM_PROT_READ | VM_PROT_WRITE:
+        case VM_PROT_ALL:
+            return;
+        default:
+            protection = VM_PROT_NONE;
+        }
+    }
     if (protection == VM_PROT_NONE) {
         pmap_remove(pmap, start, end);
         return;
     }
     for (vm_map_offset_t address = start; address < end; address += PAGE_SIZE) {
-        int error = xnu_host_memory_protect(address, protection);
+        int error = xnu_host_memory_protect_options(address, protection, immediate);
         if (error)
             panic("host pmap_protect address=%#llx error=%d", address, error);
     }
@@ -294,6 +312,15 @@ pmap_page_protect_options(ppnum_t page, vm_prot_t protection,
     (void)options;
     (void)arg;
     assert(page && page < frame_limit);
+    switch (protection) {
+    case VM_PROT_ALL:
+        return;
+    case VM_PROT_READ:
+    case VM_PROT_READ | VM_PROT_EXECUTE:
+        break;
+    default:
+        protection = VM_PROT_NONE;
+    }
     int error = xnu_host_memory_protect_page(page, protection);
     if (error)
         panic("host pmap_page_protect page=%u error=%d", page, error);
