@@ -254,6 +254,12 @@ def main():
         'bsd/kern/kern_exec.c', 'bsd/kern/mach_loader.c', 'bsd/kern/mach_fat.c',
         'bsd/kern/kern_descrip.c', 'bsd/kern/sys_generic.c', 'bsd/kern/sys_reason.c',
         'bsd/kern/kern_event.c', 'bsd/vm/vm_unix.c', 'osfmk/vm/bsd_vm.c',
+        # Original VFS path/operation dispatch and BSD virtual-memory calls:
+        # required by exec's vnode reads and the guest console/file journey.
+        'bsd/kern/subr_xxx.c', 'bsd/kern/kern_mman.c',
+        *['bsd/vfs/' + name + '.c' for name in [
+            'vfs_init', 'vfs_conf', 'vfs_lookup', 'vfs_subr', 'vfs_syscalls',
+            'vfs_support', 'vfs_vnops', 'vnode_if']],
         'bsd/pthread/pthread_shims.c', 'bsd/pthread/pthread_workqueue.c',
         # Preserve real event filtering, early buffers and triage storage.
         'bsd/kern/kdebug.c', 'bsd/kern/kdebug_common.c',
