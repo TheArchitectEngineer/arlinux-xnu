@@ -108,6 +108,40 @@ validated; the active runtime depends on Linux seccomp/signals/syscalls and
 must be debugged there. A macOS reference can supplement this evidence but
 cannot establish that the Linux adaptation works.
 
+The dynamic fixture now declares /usr/lib/libSystem.B.dylib as a required
+runtime dependency using an ordinary link-time TAPI stub. The stub implements
+nothing; the actual library must come from the verified firmware. The original
+freestanding console remains a separate prerequisite and passed both launches.
+
+Latest actual dynamic journey:
+[39328108372](https://github.com/taowen/arlinux-xnu/actions/runs/39328108372),
+source `8bc4a91556cd04163f8f6c6e5522a1bbe4fd7ec0`, job `118319204246`.
+The read-only APFS root stays mounted for dyld filesystem operations. Its
+/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64 is genuinely opened,
+stat64 succeeds and pread returns 16384 bytes. libSystem.B.dylib and the system
+libraries are absent as standalone files; they must be loaded from the cache.
+The next fcntl call (BSD 92) remains unsupported. The near-version Apple dyld
+655.1 source identifies cache preflight signature registration here; its exact
+command/argument ABI still needs observation from the pinned 650.3.4 binary
+before implementation. No cache mapping or dynamic-library execution is proven.
+
+Previously the subsequent error formatting failed with "mkstringf, out of
+memory error" (run 39327634188). Current-task Mach VM allocate/deallocate traps
+now perform actual Linux mappings and preserve the 16 KiB guest geometry.
+Only the current task's VM capability is supported; this does not implement a
+general Mach port namespace or IPC. Both traps return success in the real dyld
+journey, which now preserves its original failure:
+Library not loaded: /usr/lib/libSystem.B.dylib; Reason: image not found.
+LLDB still captures the actual symbolized fatal stack. Receipt SHA-256:
+`81f04c832aeaf2fc0a7bff7fed7c9c21337b7f4b4fe22df08f3672e556a0f6b9`.
+Local text: build/runs/39328108372/dyld-job.log.
+
+Next implement the cache loading path, including explicit loading/signature
+policy, genuine mappings, pointer relocation and instruction adaptation before
+executing its libraries. Do not merely return successful signature or shared
+region results without the corresponding state. LC_MAIN remains required;
+no library, application entry or UI has executed yet.
+
 Earlier runtime failures remain preserved in Actions/local logs: missing
 commpage, thread_selfid, entropy, executable_path and AMFI policy. They are no
 longer the current library-loading blocker.
