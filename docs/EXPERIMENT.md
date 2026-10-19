@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39244611652](https://github.com/taowen/arlinux-xnu/actions/runs/39244611652)
-at source `c8a0a04` compiled 158 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39246394588](https://github.com/taowen/arlinux-xnu/actions/runs/39246394588)
+at source `b71df00` compiled 158 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -32,7 +32,7 @@ sleep, plus early/random-buffer/kmem-uniform calls backed by Linux `getrandom`.
 No random seed or output bytes are logged. All five downloaded jobs' files
 matched receipts. The original boolean generator is compiled but has not run.
 The early executable SHA-256 is
-`a2a6bb67e196c7e4b9538e7d8985655cbec1dc943315967d78b8c915caedb0f6`.
+`226972b20ed7472b609a945439e49aff57be5b16107d02ceff3e19f1e786d730`.
 
 ARM ticket reservation now performs real LDAXR/STXR operations with an explicit
 ELF recovery range. A Linux [signal handler](https://man7.org/linux/man-pages/man2/sigaction.2.html)
@@ -51,6 +51,11 @@ The host uses Linux TLS for XNU's current-thread access, native/alternative
 bootstrap stacks, and a 256 MiB memfd for physical backing. The exported
 CPU-number/data accessors return the actual single virtual
 CPU record; every early start checks its identity against current-thread state.
+CPU type/subtype/thread type come from that record (ARM64/ALL/NONE); count,
+boot ID and maximum ID describe one virtual CPU, not Linux's host topology.
+Every start verifies these accessors, the early topology query after tunables,
+and a write/read/restore through the actual per-CPU pending-AST storage.
+This does not execute AST dispatch.
 That record now lives in the original per-CPU section. The ELF linker pads it
 to 16 KiB; all eight starts used XNU's original traversal macro and observed one
 master CPU, with no secondary replicas. Current-thread setup installs the master
@@ -88,9 +93,20 @@ the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps
 and pmap ledger/wiring accounting are not connected yet. Reference/dirty attributes record
 conservative mapping history, not precise accesses or cleared-bit tracking.
-The VM executable still fails linkage (318 distinct undefined references), before its original
+The VM executable still fails linkage (281 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
+
+The link-map audit found native Linux `fork` and `setrlimit` resolving to
+same-named BSD kernel implementations. Kernel compilation now namespaces those
+two syscall symbols; Linux probes retain libc calls. Both link stages inspect
+actual native imports against kernel definitions and reject ABI collisions,
+excluding the deliberately shared `xnu_host_` bridge. The latest run reports no
+collisions, and neither native call extracts a kernel archive member anymore.
+Separately, retained Mach IPC startup registration references the full MIG server
+table, including processor control. Link-time dependencies from this table do
+not prove those services are needed before VM bootstrap; do not implement CPU
+hotplug or power management merely to satisfy that table.
 
 Next: connect remaining machine/thread, kernel data layout, host pmap and BSD service dependencies,
 then execute the original VM bootstrap. Ticket reservation's recovery is now
