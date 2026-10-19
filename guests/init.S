@@ -40,10 +40,10 @@ _start:
     str x9, [x20]
     mov x9, #0x456
     str x9, [x20, #16384]
-    mov x16, #2                 // fork: child x0=0, parent x0=child pid
+    mov x16, #2                 // raw Darwin fork returns child flag in x1
     svc #0x80
     b.cs failure
-    cbz x0, child
+    cbnz x1, child
     mov x21, x0
     str wzr, [sp]
     mov x1, sp
