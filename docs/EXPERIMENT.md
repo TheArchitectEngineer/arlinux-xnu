@@ -9,29 +9,26 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed real-kernel attempt is
-[39282928929](https://github.com/taowen/arlinux-xnu/actions/runs/39282928929),
-root `0ef524daa3fc6f8c80b14c45f4163850f772f16c`, fork `27e48f5`.
-Actual compiler job `118161138025` compiled original BSD time/interval services
-and KPERF configuration guards. Compiler receipt SHA-256:
-`0b78046e98ab81c58585dfe451defe38959c53dcc571e74ca75332ac195e42e4`.
-
-Actual VM job `118161590240` passed the native/kernel ABI collision audit,
-but executable linkage still failed on machine/pmap, DriverKit and further
-services. Its failure receipt SHA-256:
-`0228eb195c736511187926878128a453b2ded9a0990e08d99eaf60af6c19f7eb`.
-No VM initialization, real allocation, task or guest ran. Actual logs are retained
-under `build/runs/39282928929`; Actions retains receipts and output hashes.
-
-Fork `644e9efde7cd8486eda792356bf77400f68cdc17` guards the direct DriverKit dispatch
-in `ipc_kobject_server`: with IOKit/C++ disabled, return KERN_NOT_SUPPORTED into
-the original MIG error reply and port-right consumption path. `uext_server` is
-IOUserServer C++ code, not a missing generated MIG server. Enabling the real
-provider retains the original dispatch. This is an explicitly unavailable device
-service, not a successful IOKit implementation. Runner verification is pending.
-Inspect existing experiment
 [39283576136](https://github.com/taowen/arlinux-xnu/actions/runs/39283576136),
-source `6f7ba97`, before another dispatch. A delayed observation never warrants
-resubmitting identical source.
+root `6f7ba977761174aacdf75dd4fb7235f6d04b7767`, fork `644e9ef`.
+Actual compiler job `118163542251` compiled the disabled-DriverKit dispatch
+boundary. Compiler receipt SHA-256:
+`26084819757b9a2906f9287bbcc75f2b9d7bc31511cb8b2b679b09065934c481`.
+
+Actual VM job `118164208745` passed the native/kernel ABI collision audit,
+but executable linkage still failed on machine/pmap, shared-region/FD and further
+services. Its failure receipt SHA-256:
+`d8ff24f232443d9b4ec28644204dc937dfecb88f1343a50579770088f14ce23b`.
+No VM initialization, real allocation, task or guest ran. Actual logs are retained
+under `build/runs/39283576136`; Actions retains receipts and output hashes.
+
+The next source adds original `vm_shared_region`, `vm_shared_region_pager` and
+`vm_dyld_pager`, required by task creation/exec and the existing BSD shared-region
+calls. These retain actual memory-object paging, slide/fixup and COW mechanisms;
+compilation does not establish any of those runtime semantics. Original
+`kern_guarded.c` supplies the existing fileproc close/unguard lifecycle and guarded
+FD calls. No alternate exec loader, host paging service or successful device
+placeholder is introduced. Runner verification remains pending.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.

@@ -227,6 +227,8 @@ def main():
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
             'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
+            # Task exec/shared cache use the original memory-object pagers.
+            'vm_shared_region', 'vm_shared_region_pager', 'vm_dyld_pager',
             'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb', 'vm_purgeable',
             'vm32_user', 'vm_compressor', 'vm_compressor_pager', 'vm_compressor_algorithms',
             'vm_compressor_backing_store', 'lz4']],
@@ -252,7 +254,8 @@ def main():
         'bsd/dev/arm/systemcalls.c', 'bsd/dev/munge.c',
         'build/kernel/bsd/init_sysent.c', 'build/kernel/bsd/syscalls.c',
         'bsd/kern/kern_exec.c', 'bsd/kern/mach_loader.c', 'bsd/kern/mach_fat.c',
-        'bsd/kern/kern_descrip.c', 'bsd/kern/sys_generic.c', 'bsd/kern/sys_reason.c',
+        'bsd/kern/kern_descrip.c', 'bsd/kern/kern_guarded.c',
+        'bsd/kern/sys_generic.c', 'bsd/kern/sys_reason.c',
         'bsd/kern/kern_event.c', 'bsd/vm/vm_unix.c', 'osfmk/vm/bsd_vm.c',
         # Original VFS path/operation dispatch and BSD virtual-memory calls:
         # required by exec's vnode reads and the guest console/file journey.
