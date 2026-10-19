@@ -163,3 +163,39 @@ jobs:
           name: xnu-linux-arm64-kernel-port
           path: build/kernel/
           retention-days: 30
+  xnu-link-inputs:
+    if: inputs.mode == 'both' || inputs.mode == 'kernel'
+    needs: xnu-kernel
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: xnu-linux-arm64-kernel-port
+          path: build/kernel/
+      - name: Inspect real kernel link dependencies on Linux (not executable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y lld-18 llvm-18
+          mkdir -p build/link
+          cp build/kernel/receipt.json build/link/compiler-receipt.json
+          uname -a > build/link/environment.txt
+          ld.lld-18 --version >> build/link/environment.txt
+          ld.lld-18 -r build/kernel/*.o -o build/link/xnu-host.partial.o
+          llvm-readelf-18 --file-header --sections build/link/xnu-host.partial.o > build/link/elf.txt
+          llvm-nm-18 --undefined-only --format=posix build/link/xnu-host.partial.o > build/link/unresolved-symbols.txt
+          (cd build/link && sha256sum xnu-host.partial.o > SHA256SUMS)
+          cat build/link/unresolved-symbols.txt
+          echo 'Relocatable link only: unresolved kernel and host services remain; no executable or boot.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/link --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-linux-arm64-link-dependencies
+          path: build/link/
+          retention-days: 30
