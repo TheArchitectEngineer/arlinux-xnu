@@ -40,6 +40,23 @@ result proves, how to resume work and how evidence is retained. Dependencies are
 pinned in [sources.lock.json](sources.lock.json); run logs and artifacts live in
 [GitHub Actions](https://github.com/taowen/arlinux-xnu/actions/workflows/experiment.yml).
 
+## IPA sources for compatibility research
+
+Sources checked on 2026-10-20; these are candidate inputs, not ARLinux
+compatibility results. Prefer older non-arm64e ARM64 versions for this experiment.
+
+| Channel | What is available |
+| --- | --- |
+| [Decrypt IPA Store](https://ipastore.app/) / [decrypt.day](https://decrypt.day/home) | Search by name, App ID or App Store URL; decryption requests and game listings. ipastore.app currently redirects to decrypt.day. |
+| [ARM Converter Decrypted App Store](https://armconverter.com/decryptedappstore/) | Decrypted IPA service listed by PlayCover; its web interface requires JavaScript. |
+| [IPA Archive index](https://github.com/ipaarchive/ipaarchive.github.io/blob/main/data/urls.json) | Historical package links, including entries labelled decrypted; inspect each package for its version and ARM64 architecture. |
+
+[PlayCover's download guide](https://docs.playcover.io/getting_started/download_ipa)
+also lists decrypt.day, ipastore.app and ARM Converter as external IPA sources.
+For an actual experiment, record the package URL, app/version, SHA-256, Mach-O
+architecture and encryption state. A decrypted IPA alone does not establish
+compatibility; this repository does not bundle third-party IPAs.
+
 ## Acknowledgements
 
 * [zalexdev/linux-um-arm64](https://github.com/zalexdev/linux-um-arm64): ARM64
