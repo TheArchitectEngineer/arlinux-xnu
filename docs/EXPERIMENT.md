@@ -9,31 +9,28 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed real-kernel attempt is
-[39281969773](https://github.com/taowen/arlinux-xnu/actions/runs/39281969773),
-root `1369967442a52628887b9c981aab743041bb4022`, fork `09d7161`.
-Actual compiler job `118158087513` compiled original VFS path/vnode dispatch,
-BSD file mappings and unsupported-call handlers after guarding a resource-fork
-suffix calculation with its existing `NAMEDRSRCFORK` configuration. Compiler
-receipt SHA-256:
-`b7b5916f1600afa3110c90af554277a71753b987f93e7a377d9ffab75134b746`.
-
-Actual VM job `118158478620` passed the native/kernel ABI collision audit,
-but executable linkage still failed on machine/pmap, BSD parameters and further
-services. Its failure receipt SHA-256:
-`0acc84dbe5788add717daf93992f421046484b9e574d2f22e781ddcd32e700ed`.
-No VM initialization, real allocation, task or guest ran. Actual logs are retained
-under `build/runs/39281969773`; Actions retains receipts and output hashes.
-
-The next source adds original `bsd/conf/param.c` for the process/FD/vnode limits
-used by the BSD lifecycle and VFS. Fork `574ac76c5bb0bfa8dd46ef12cc4dcb9919b6efcc` also
-allocates the real 16 KiB early trace buffer in static ELF storage: USERMODE has
-no bare-metal ARM `data.s` BOOTDATA reservation. Original trace recording remains
-intact; the static buffer is retained rather than freed as bootloader memory.
-Both changes still require runner verification and do not establish a working
-filesystem, tracing journey or VM. Inspect the existing submitted experiment
 [39282406671](https://github.com/taowen/arlinux-xnu/actions/runs/39282406671),
-source `91ed81d`, before dispatching any further build. Do not resubmit this
-source because queue metadata or a log read is delayed.
+root `91ed81d42a512c17c9209b0fd8011c74aaa31daa`, fork `574ac76`.
+Actual compiler job `118159350657` compiled the original BSD process/FD/vnode
+limits and the real static ELF early trace buffer. Compiler receipt SHA-256:
+`0ff362e7722eaabcad277aea6e9b66c29351832375e09484a6f5d732e638e148`.
+
+Actual VM job `118160103988` passed the native/kernel ABI collision audit,
+but executable linkage still failed on machine/pmap, BSD time and further
+services. Its failure receipt SHA-256:
+`6027fff3fa4f7beb76ee581a530d46e275899c68aa25c57a35e6fd9e21539eed`.
+No VM initialization, real allocation, task or guest ran. Actual logs are retained
+under `build/runs/39282406671`; Actions retains receipts and output hashes.
+
+The next source adds original `bsd/kern/kern_time.c`: the actual kevent/pselect
+path lacks its `timespec_is_valid` provider, and BSD time/interval calls belong
+to the same original implementation. Fork `27e48f543d6d420f7e2d50ae2909daabc13ad126`
+also protects the three kperf reset calls with the existing KPERF configuration.
+With KPERF disabled, user configuration returns ENOTSUP and internal kernel
+configuration asserts that KPERF was not requested; no pretend sampling/reset
+provider is added. Original kdebug reset/ownership behavior remains intact.
+These changes require runner verification and do not establish timekeeping,
+timer interrupt delivery or a working VM.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
