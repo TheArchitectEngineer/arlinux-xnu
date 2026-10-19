@@ -88,10 +88,27 @@ correct faulting/resume PC, error convention, carry flags and return state.
 Thread blocking/continuations stay in the original scheduler. A time slice must
 service pending kernel clock events before the next scheduled user execution.
 
-Kernel copyin/out must resolve the actual user map and its protections/COW.
-An engine memory-read/write API must not bypass XNU's copy validation. Guest
-kernel shared aliases and native Linux syscall buffers need explicit handling;
-Linux cannot fault in a protected buffer through the XNU SIGSEGV handler.
+USERMODE copyio now retains original copyio.c bounds/tag/zone/alignment checks
+and kernel-to-kernel handling, then copies isolated user memory through real
+pmap/VM state. A resident mapping must permit the actual read/write. Otherwise
+original vm_fault with THREAD_UNINT resolves permissions, pager faults and COW.
+The current thread retains its map as in original kernel copyio abort handling.
+After fault return, re-read the current map and pmap; never copy through a stale
+page/protection result. Physical access stays non-preemptible on this one CPU.
+Blocking faults in interrupt/preemption-disabled contexts are rejected as kernel
+errors. No engine memory-read/write API bypasses VM protection.
+
+Byte/string copies progress by page; strings stop at the first NUL and preserve
+EFAULT/ENAMETOOLONG length rules. Aligned atomic copies perform one 32/64-bit
+physical load/store. Wait-if-equals reads the real value; equal may finish as a
+spurious WFE hint, not as ulock completion. Original ulock scheduling still must
+be connected and validated. Page boundaries service cooperative IRQ safe points
+without unmasking a caller's masked interrupts. These paths are unexecuted.
+Architectural fault/recover metadata and exception return still need integration;
+this C transport does not synthesize a complete ARM exception frame.
+
+Linux syscall buffers and engine/libc calls must still use native storage: Linux
+user-copy cannot fault in a protected kernel buffer through XNU's SIGSEGV handler.
 
 The existing timerfd/eventfd transport provides cooperative kernel safe-point
 interrupt delivery, not asynchronous native C preemption. Its original XNU

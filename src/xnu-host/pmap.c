@@ -21,6 +21,7 @@
 #include <host/memory.h>
 #include <host/fault.h>
 #include <host/guest.h>
+#include <host/usercopy.h>
 
 static struct pmap kernel_pmap_store;
 const pmap_t kernel_pmap = &kernel_pmap_store;
@@ -181,6 +182,23 @@ user_mapping_link(struct host_user_pmap *user, vm_map_offset_t address)
     while (*link && (*link)->address != address)
         link = &(*link)->next;
     return link;
+}
+
+bool
+xnu_usermode_pmap_page(pmap_t pmap, vm_map_offset_t address,
+    vm_prot_t access, pmap_paddr_t *physical)
+{
+    assert(get_preemption_level() > 0 && physical != NULL);
+    require_pmap_locked(pmap);
+    if (pmap == kernel_pmap || address < pmap->min || address >= pmap->max)
+        return false;
+    struct host_user_pmap *user = *user_pmap_link(pmap);
+    struct host_user_mapping *mapping = *user_mapping_link(user,
+        address & ~((vm_map_offset_t)PAGE_MASK));
+    if (!mapping || (mapping->protection & access) != access)
+        return false;
+    *physical = (pmap_paddr_t)mapping->page * PAGE_SIZE + (address & PAGE_MASK);
+    return true;
 }
 
 static void

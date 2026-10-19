@@ -204,6 +204,7 @@ def main():
         'src/xnu-host/xnu_bootstrap.c', 'src/xnu-host/context.c', 'src/xnu-host/platform.c',
         'pexpert/gen/device_tree.c',
         'src/xnu-host/xnu_vm_bootstrap.c', 'src/xnu-host/pmap.c', 'src/xnu-host/time.c',
+        'src/xnu-host/usercopy.c',
         'src/xnu-host/entropy.c', 'src/xnu-host/image.c', 'src/xnu-host/ro_zone.c',
         'src/xnu-host/ticket.c', 'osfmk/arm64/usermode_ticket.S',
         'src/xnu-host/copyio_probe.c', 'osfmk/arm64/copyio.c',

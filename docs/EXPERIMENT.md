@@ -62,15 +62,21 @@ explicitly unsupported. They must not be silently billed as ordinary resident
 pages. Native reverse aliases and XNU records/ledger terms need the real VM
 journey to validate consistency. No isolated mapping sample/test is added.
 
-Next connect user-copy and VM/COW faults, actual thread saved state and original
-exception return/dispatch. Existing USERMODE copyio leaves still dereference
-native addresses; they cannot access the engine's isolated guest VA. Retain the
-original copyio validation and resolve through real XNU VM and owned pmap/frame
-state rather than bypassing VM protections with an engine memory-write API.
-Nested/shared-cache/commpage paths and service providers also remain. Keep task
-ledger operations on the XNU stack, never in a native engine callback. Original
-VM/scheduler/timer/idle paths remain runtime-unverified. Do not pick unrelated
-providers by unresolved-symbol counts or add successful placeholders.
+New, not yet built: the XNU fork routes validated USERMODE byte/string/atomic
+copies to a kernel VM transport. A permitted resident mapping is accessed with
+preemption disabled; otherwise original vm_fault resolves the page/protection/
+COW and the mapping is revalidated before physical access. Public validation,
+kernel-to-kernel handling and non-USERMODE behavior remain original. Strings
+stop at NUL; atomic transfers use aligned single loads/stores. Wait-if-equals
+allows a spurious WFE-hint return, not a fake ulock completion. Native engine
+memory APIs never substitute for XNU permission checks.
+
+Next inspect this revision's actual runner result and then connect original
+saved-state/exception return/dispatch, including fault recovery metadata. The
+new copy transport and resident mapping/ledger behavior still need real XNU
+execution. Nested/shared-cache/commpage paths and service providers remain.
+No isolated copy sample/test is added; the supervisor/child journey remains
+acceptance. Do not choose unrelated providers by unresolved-symbol counts.
 
 The first acceptance is supervisor plus child through original BSD exec/VFS:
 console output, XNU allocation/touch/free, normal child exit and real parent wait.
