@@ -187,7 +187,8 @@ def main():
             'waitq', 'turnstile', 'timer_call', 'mpsc_queue', 'recount',
             'thread_act', 'thread_policy', 'task_policy', 'syscall_subr',
             'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref', 'clock',
-            'coalition', 'extmod_statistics', 'host_notify', 'counter_common']],
+            'coalition', 'extmod_statistics', 'host_notify', 'counter_common',
+            'clock_oldops', 'sync_sema', 'task_ident']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',

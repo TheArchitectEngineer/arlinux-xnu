@@ -14,8 +14,7 @@ host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
 Child processes actually received SIGSEGV on writes to read-only aliases and
 reads after disconnect/removal; the parent retained the physical backing bytes.
-Each start continued through
-then the original `kernel_startup_bootstrap()` dispatcher and startup-debug
+Each start continued through the original `kernel_startup_bootstrap()` dispatcher and startup-debug
 tunable, and exited normally. Each start also executed the original ARM rtclock
 conversion functions with a Linux nanosecond timebase and a real 1 ms absolute
 sleep, plus early/random-buffer/kmem-uniform calls backed by Linux `getrandom`.
