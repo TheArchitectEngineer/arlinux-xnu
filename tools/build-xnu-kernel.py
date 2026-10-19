@@ -205,7 +205,7 @@ def main():
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
             'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
             'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb', 'vm_purgeable',
-            'vm32_user']],
+            'vm32_user', 'vm_compressor', 'vm_compressor_pager', 'vm_compressor_algorithms']],
         'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm/arm_timer.c',
         'osfmk/arm64/pcb.c',
         'osfmk/arm64/status.c', 'osfmk/arm64/machine_task.c',
