@@ -174,6 +174,8 @@ def main():
         return
     # Name every original BSD syscall implementation from the generated ABI,
     # rather than adding ad-hoc renames as each new provider collides with libc.
+    # Change external linkage, not C identifiers: macro substitution also
+    # rewrites SYSCTL_NODE token-pasting and structure member names.
     # This header is included only for kernel translation units, never native C.
     proto = (exported / 'sys/sysproto.h').read_text()
     syscall_names = sorted(set(re.findall(
@@ -185,7 +187,8 @@ def main():
         '/* Generated from pinned XNU sysproto.h; kernel objects only. */\n'
         '#ifndef XNU_HOST_BSD_SYSCALL_NAMESPACE_H\n'
         '#define XNU_HOST_BSD_SYSCALL_NAMESPACE_H\n' +
-        ''.join(f'#define {name} xnu_bsd_{name}\n' for name in syscall_names) +
+        ''.join(f'#pragma redefine_extname {name} xnu_bsd_{name}\n'
+                for name in syscall_names) +
         '#endif\n')
     flags += ['-include', str(namespace), '-I' + str(OUT / 'mig')]
     # These are actual intended kernel objects. Do not replace them with dummy
