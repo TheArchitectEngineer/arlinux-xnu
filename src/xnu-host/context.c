@@ -2,6 +2,7 @@
  * the Linux host owns the execution stack and the signal alternative stack. */
 #include <arm/cpu_data.h>
 #include <arm/cpu_data_internal.h>
+#include <arm/cpu_number.h>
 #include <kern/debug.h>
 #include <kern/thread.h>
 #include <host/context.h>
@@ -10,6 +11,20 @@ static struct thread boot_thread;
 static cpu_data_t boot_cpu;
 static __thread thread_t host_thread;
 static __thread boolean_t host_interrupts_enabled;
+
+cpu_data_t *
+cpu_datap(int cpu)
+{
+    assert(cpu == 0); /* This host has exactly one virtual CPU. */
+    return &boot_cpu;
+}
+
+int
+cpu_number(void)
+{
+    assert(host_thread != THREAD_NULL);
+    return current_cpu_datap()->cpu_number;
+}
 
 thread_t
 xnu_host_current_thread(void)

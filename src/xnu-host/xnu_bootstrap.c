@@ -2,6 +2,7 @@
  * VM, tasks, interrupts and Mach/BSD dispatch are subsequent bring-up stages. */
 #include <arm/cpu_data.h>
 #include <arm/cpu_data_internal.h>
+#include <arm/cpu_number.h>
 #include <kern/thread.h>
 #include <kern/assert.h>
 #include <kern/startup.h>
@@ -16,6 +17,7 @@ xnu_host_kernel_early_startup(void)
     assert(current_thread() == current_thread_volatile());
     assert(current_cpu_datap()->cpu_active_thread == current_thread());
     assert(current_cpu_datap()->cpu_number == 0);
+    assert(cpu_number() == 0 && cpu_datap(0) == current_cpu_datap());
     assert(exception_stack_pointer() != 0);
     int error = xnu_host_pmap_bootstrap();
     if (error)
