@@ -81,3 +81,27 @@ LLD emits a dyld path declaration even for this freestanding executable; the hos
 records that metadata and enters LC_MAIN directly. It does not implement or run dyld.
 No proprietary iOS programs are included. `build --mode host` runs both Linux
 experiments and leaves the unrelated bare-metal baseline disabled.
+
+### Mach-O execution evidence (2026-10-19)
+
+[Run 39214608040](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040)
+passed at commit `082cf9c`. Both the Linux host-substrate and Mach-O userland jobs
+passed. The bare-metal baseline was intentionally skipped because its inputs
+were unchanged. Native ARM64 instructions from `hello.macho` produced:
+
+```text
+Hello from ARM64 Mach-O on Linux (Darwin ABI)
+DARWIN_GUEST_EXIT status=0 syscalls=4 (host shim, not XNU)
+```
+
+The guest checks the write result, EBADF/carry error convention and a positive
+process identity before requesting Darwin exit(0). The supervisor maps two real
+Mach-O segments with a 16 KiB mapping granularity. Downloaded ELF and Mach-O bytes
+matched the runner's SHA256SUMS. Artifact `linux-arm64-macho-userland` contains
+both executables, the object file, load commands, environment, output and trace.
+Mach-O SHA-256: `5a8e61cb7e37acfbf7776f9cbc38aa6e6ee50b71625a71cd99f4869da5fbad46`.
+
+The next kernel milestone is implementing XNU's host memory/task/exception
+backend and routing guest calls into actual XNU code. This shim is not that
+backend. Dynamic loading, real system libraries/frameworks, threads, guest VM
+allocation/COW and Android app-sandbox execution remain unimplemented/unverified.
