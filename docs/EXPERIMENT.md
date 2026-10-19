@@ -8,30 +8,35 @@ host/kernel/guest ownership and unresolved ABI constraints. It is a proposed
 contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
-The latest observed real-kernel attempt is
+The latest observed attempt is
+[39284746610](https://github.com/taowen/arlinux-xnu/actions/runs/39284746610),
+root `a8e58098097e98c5f42f583e8b32890621363d98`, fork `644e9ef`.
+Actual compiler job `118167694122` failed in BSD shutdown and memory-pressure
+code. Failure receipt SHA-256:
+`d36c7110e49863949bf402d04502638976c53825e0d864f7d6424655e6566a4b`.
+Original corpse code compiled; the integrated graph did not. Actual log is
+retained under `build/runs/39284746610` and in Actions. No new executable, VM
+initialization, real allocation, task or guest execution was produced.
+
+Two concrete boundary errors explain this compilation failure. The original
+pressure implementation requires VM_PRESSURE_EVENTS alongside memorystatus;
+fork `abe6e0903b51554ed5fbdf0adfb67122a59b4702` enables that existing notification
+mechanism. Separately, our MIG generation incorrectly collapsed exported and
+private headers with the same name. The original `osfmk/mach/Makefile` explicitly
+keeps these views distinct; `exc_server.h` from the private view imported IPC
+internals into BSD's namespace through IOKit headers. Generation now writes all
+exported headers to `mig-public` without MACH_KERNEL_PRIVATE, and private
+sender/server headers to `mig`. osfmk prefers private headers with an exported
+fallback; BSD/libkern/pexpert prefer exported headers. No private typedef is
+fabricated and no server implementation is replaced. Both repairs require
+runner validation of the full graph and actual VM journey.
+
+The last real VM attempt remains
 [39284374578](https://github.com/taowen/arlinux-xnu/actions/runs/39284374578),
-root `72f6733d318925da820edd60c39020275af1138c`, fork `644e9ef`.
-Actual compiler job `118166318690` compiled the mapping-capacity-only correction
-for original `vm_fault` retry. Compiler receipt SHA-256:
-`590b401c327684dca064481000412aaca57212d90073d877c9d6747b3ccec670`.
-This does not verify fault retries at runtime.
-
-Actual VM job `118166870795` passed the native/kernel ABI collision audit,
-but executable linkage still failed on machine/pmap, BSD shutdown and further
-services. Its failure receipt SHA-256:
+source `72f6733`, job `118166870795`: ABI collision audit passed but executable
+linkage failed. Receipt SHA-256:
 `7a1f1f3266d9ac813a6dd9af6887e13eff56b1873ceb56a5275842dfff7fb94b`.
-No VM initialization, real allocation, task or guest ran. Actual logs are retained
-under `build/runs/39284374578`; Actions retains receipts and output hashes.
-
-The next source integrates original `kern_shutdown.c` for its actual shutdown
-state and `proc_shutdown_exitcount` used by normal proc exit. It also adds the
-original corpse task lifecycle and all four configured memorystatus providers:
-process death, crash inspection and the already-enabled memory pressure policy
-must preserve actual task/resource transitions, rather than copied globals or
-success handlers. Original configuration lists corpse/shutdown as standard and
-the four pressure units for CONFIG_MEMORYSTATUS. No host reboot implementation
-or live device operation is added. Runner compilation and the real VM journey
-remain unverified for these additions.
+The NOENTER repair compiled there, but no real VM fault retry ran.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.

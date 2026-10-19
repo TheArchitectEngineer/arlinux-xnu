@@ -123,26 +123,31 @@ def main():
         senders = {name.removesuffix('_user.c') for name in upstream_words(mach_makefile, 'MIG_KUSRC')}
         senders |= {name.removesuffix('.h') for name in upstream_words(mach_makefile, 'MIG_KUHDRS')}
         public_senders = {name.removesuffix('.h') for name in
-                          upstream_words(mach_makefile, 'MIG_UUHDRS')} - senders
+                          upstream_words(mach_makefile, 'MIG_UUHDRS')}
         servers = {name.removesuffix('_server.c') for name in upstream_words(mach_makefile, 'MIG_KSSRC')}
         public_servers = {name.removesuffix('_server.h') for name in
-                          upstream_words(mach_makefile, 'MIG_USHDRS')} - servers
+                          upstream_words(mach_makefile, 'MIG_USHDRS')}
         device_interfaces = {Path(name).stem for name in
                              upstream_words(XNU / 'osfmk/device/Makefile', 'MIG_DEFS')}
         families = [('mach', senders, servers, public_servers, public_senders),
                     ('device', set(), device_interfaces, set(), set())]
         for family, sender_interfaces, server_interfaces, public_headers, public_sender_headers in families:
-            mig_output = OUT / 'mig' / family
-            mig_output.mkdir(parents=True, exist_ok=True)
             for side, interfaces in [('user', sender_interfaces), ('server', server_interfaces),
                                      ('public', public_headers),
                                      ('public_user', public_sender_headers)]:
+                # osfmk/mach/Makefile deliberately emits two different headers
+                # with the same name: exported ABI and private kernel dispatch.
+                # Never subtract overlapping names or overwrite either view.
+                exported_interface = side in ('public', 'public_user')
+                mig_output = OUT / ('mig-public' if exported_interface else 'mig') / family
+                mig_output.mkdir(parents=True, exist_ok=True)
                 for interface in sorted(interfaces):
                     definition = XNU / 'osfmk' / family / (interface + '.defs')
                     preprocessed = mig_output / (interface + '_' + side + '.defs.i')
                     with preprocessed.open('w') as stream:
                         run(['clang-18', '-E', '-x', 'c', *cpp_flags,
-                             *(['-DKERNEL_' + side.upper() + '=1'] if side in ('user', 'server') else []),
+                             *(['-UMACH_KERNEL_PRIVATE'] if exported_interface else
+                               ['-DKERNEL_' + side.upper() + '=1']),
                              '-D__MACH30__=1', definition], stdout=stream)
                     with preprocessed.open() as stream:
                         run([mig_build / 'migcom', '-novouchers',
@@ -190,7 +195,7 @@ def main():
         ''.join(f'#pragma redefine_extname {name} xnu_bsd_{name}\n'
                 for name in syscall_names) +
         '#endif\n')
-    flags += ['-include', str(namespace), '-I' + str(OUT / 'mig')]
+    flags += ['-include', str(namespace)]
     # These are actual intended kernel objects. Do not replace them with dummy
     # implementations to turn the workflow green.
     units = [
@@ -310,7 +315,13 @@ def main():
                                 '-DKERNEL_BUILD=1', '-DBSD_BUILD=1', '-DLP64_DEBUG=0']
         if source_path.suffix == '.cpp':
             component_flags += ['-std=gnu++17', '-fno-exceptions', '-fno-rtti']
-        command = [*flags, *component_flags, str(source_path), '-o', str(obj)]
+        # Match the upstream private osfmk vs exported BSD/libkern/pexpert
+        # include namespaces, including MIG headers shared by those consumers.
+        mig_roots = [OUT / 'mig', OUT / 'mig-public']
+        if unit.startswith(('bsd/', 'build/kernel/bsd/', 'libkern/', 'pexpert/')):
+            mig_roots.reverse()
+        command = [*flags, *component_flags, *['-I' + str(p) for p in mig_roots],
+                   str(source_path), '-o', str(obj)]
         commands.append({'directory': str(ROOT), 'file': str(source_path), 'arguments': command})
         print('Compiling actual XNU:', unit, flush=True)
         completed = subprocess.run(command, capture_output=True, text=True)
