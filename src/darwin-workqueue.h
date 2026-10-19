@@ -1,9 +1,9 @@
 /* Ordinary libdispatch work items, executed by real registered pthread workers.
- * No kevent/workloop delivery or realtime scheduling is claimed. Workers exit
+ * Basic kevent delivery is provided by darwin-kqueue.h; workloops and realtime
+ * scheduling remain unsupported. Ordinary workers exit
  * after returning a batch; libpthread runs its actual cleanup/termination path.
  * This favors simple lifetime rules over XNU's idle-thread reuse policy. */
 #pragma once
-static int workqueue_opened,workqueue_registered;
 
 static int native_priority_qos(uint32_t priority)
 {
@@ -63,11 +63,12 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
     }
     switch (r[0]) {
     case D_WQ_NEWSPISUPP:
-        /* r[2] is the dispatch queue serial-number offset. A nonzero r[3]
-         * requests direct kevent delivery, which is intentionally unsupported. */
-        if (r[1] || r[2]>D_PTHREAD_MAX_SIZE || r[3]) return -ENOTSUP;
+        /* Direct delivery uses the real process workqueue kqueue below. */
+        if (r[1] || r[2]>D_PTHREAD_MAX_SIZE || (r[3]&~1UL)) return -ENOTSUP;
+        workqueue_has_kevents=r[3]&1;
         workqueue_registered=1;
         return 0;
+    case D_WQ_KEVENT_RETURN: return native_event_worker_return(r);
     case D_WQ_RETURN: {
         struct native_thread *thread=native_current_thread();
         if (!thread || !thread->workqueue || r[1] || r[2] || r[3]) return -EINVAL;

@@ -1,6 +1,6 @@
 /* Native Linux threads entering the registered, real Darwin pthread callback.
  * Custom stacks and ordinary workqueue callbacks use real Linux threads.
- * QoS is best-effort Linux niceness; no realtime/kevent/workloop is advertised.
+ * QoS is best-effort Linux niceness; realtime/workloop is not advertised.
  * No host libc/TLS operation occurs after guest entry. */
 #pragma once
 #include <linux/futex.h>
@@ -16,6 +16,9 @@ struct native_thread {
 _Static_assert(offsetof(struct native_thread,tid)==56,"native clone ABI");
 static struct native_thread native_threads[NATIVE_THREADS];
 static uint64_t thread_start_callback,workqueue_start_callback;
+static int workqueue_opened,workqueue_registered,workqueue_has_kevents;
+static __attribute__((noreturn)) void native_event_worker_start(struct native_thread *);
+static long native_event_worker_return(const unsigned long long *);
 static uint32_t registered_pthread_size,registered_tsd,registered_thread_slot;
 extern long darwin_clone_thread(struct native_thread *);
 extern char darwin_clone_return[];
@@ -71,6 +74,7 @@ void darwin_thread_boot(struct native_thread *thread)
     if (thread->launch_state<0) {
         RAW(SYS_exit,0,0,0,0,0,0); __builtin_unreachable();
     }
+    if (thread->workqueue==2) native_event_worker_start(thread);
     if (thread->workqueue) {
         darwin_thread_enter(thread->guest_sp,workqueue_start_callback,thread->pthread,thread->port,
                             thread->stack_low,0,thread->flags,0);
@@ -96,7 +100,8 @@ static long native_thread_register(const unsigned long long *r)
     if (!r[1] || (r[1]&3) || r[1]>=D_GUEST_ADDRESS_LIMIT) return -EINVAL;
     thread_start_callback=r[0]; workqueue_start_callback=r[1];
     return D_PTHREAD_FEATURE_DISPATCH|D_PTHREAD_FEATURE_FINEPRIO|D_PTHREAD_FEATURE_CTL|
-           D_PTHREAD_FEATURE_SETSELF|D_PTHREAD_FEATURE_MAINTENANCE|D_PTHREAD_FEATURE_DEFAULT;
+           D_PTHREAD_FEATURE_SETSELF|D_PTHREAD_FEATURE_MAINTENANCE|D_PTHREAD_FEATURE_DEFAULT|
+           D_PTHREAD_FEATURE_KEVENT;
 }
 static long native_thread_create_impl(const unsigned long long *r,const sigset_t *original_mask,
                                       int workqueue,uint64_t stack_low)
