@@ -30,6 +30,17 @@ runtime-unvalidated. The memory-size globals now report the real Linux physical 
 original unix_startup.c supplies BSD scaling/tunables/buffer VM registration.
 These changes have not yet executed and must not be described as fixing boot.
 
+Usermode follow-up `39313910768` failed compilation of the newly included
+original `unix_startup.c`: its unconditional TCP header requires a route type
+absent when INET is disabled. Compiler receipt SHA-256:
+`816906edd911f431beb36627e197b50af62808c01c1f6fc09f74fe5001f73ba1`.
+The fork now limits TCP includes/server tuning to INET and enables devfs/mockfs
+for the executable RAM-disk root. mockfs typed-allocation and virtual-disk pager
+fixes are adapted from the pinned ios-sweet patches 0021/0024, which ran in the
+reference. The native graph now includes original pseudo-device registration,
+RAM disk/terminal devices, specfs/devfs/mockfs and buffer I/O. These native paths
+are not executed; root-image delivery/platform discovery still need integration.
+
 `build.sh build --mode baseline` now builds the pinned ios-sweet kernel plus
 `guests/init.S` on macOS, then boots that exact kernel in full-system QEMU on
 Linux ARM64. Upstream mockfs serves the static Mach-O RAM disk as

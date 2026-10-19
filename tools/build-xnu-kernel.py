@@ -280,9 +280,22 @@ def main():
         # This also retains its real tunables and VM range registration.
         'bsd/dev/unix_startup.c', 'bsd/conf/param.c', 'bsd/kern/kern_time.c',
         'bsd/kern/subr_xxx.c', 'bsd/kern/kern_mman.c',
+        # Original device registration, RAM disk I/O and VFS paging are the
+        # same path exercised by the reference's executable RAM-disk root.
+        'build/kernel/config/ioconf.c',
+        'bsd/dev/arm64/conf.c', 'bsd/dev/arm/cons.c',
+        'bsd/dev/memdev.c', 'bsd/dev/mem.c', 'bsd/dev/random/randomdev.c',
+        *['bsd/kern/' + name + '.c' for name in [
+            'tty', 'tty_compat', 'tty_conf', 'tty_dev', 'tty_ptmx', 'tty_pty',
+            'tty_subr', 'tty_tty']],
+        'bsd/miscfs/specfs/spec_vnops.c',
+        *['bsd/miscfs/devfs/' + name + '.c' for name in [
+            'devfs_tree', 'devfs_vnops', 'devfs_vfsops']],
+        *['bsd/miscfs/mockfs/' + name + '.c' for name in [
+            'mockfs_fsnode', 'mockfs_vnops', 'mockfs_vfsops']],
         *['bsd/vfs/' + name + '.c' for name in [
             'vfs_init', 'vfs_conf', 'vfs_lookup', 'vfs_subr', 'vfs_syscalls',
-            'vfs_support', 'vfs_vnops', 'vnode_if']],
+            'vfs_support', 'vfs_vnops', 'vnode_if', 'vfs_bio']],
         'bsd/pthread/pthread_shims.c', 'bsd/pthread/pthread_workqueue.c',
         'bsd/kern/sys_ulock.c',
         # Preserve real event filtering, early buffers and triage storage.
@@ -316,7 +329,7 @@ def main():
             # pexpert/conf/Makefile.template does not use osfmk's namespace.
             component_flags += ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',
                                 '-DPEXPERT_KERNEL_PRIVATE=1']
-        if unit.startswith(('bsd/', 'build/kernel/bsd/')):
+        if unit.startswith(('bsd/', 'build/kernel/bsd/')) or unit == 'build/kernel/config/ioconf.c':
             # bsd/conf/Makefile.template's namespace and build flags.
             component_flags += ['-UMACH_KERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE=1',
                                 '-DDRIVER_PRIVATE=1', '-D_KERNEL_BUILD=1',
@@ -326,7 +339,7 @@ def main():
         # Match the upstream private osfmk vs exported BSD/libkern/pexpert
         # include namespaces, including MIG headers shared by those consumers.
         mig_roots = [OUT / 'mig', OUT / 'mig-public']
-        if unit.startswith(('bsd/', 'build/kernel/bsd/', 'libkern/', 'pexpert/')):
+        if unit.startswith(('bsd/', 'build/kernel/bsd/', 'libkern/', 'pexpert/')) or unit == 'build/kernel/config/ioconf.c':
             mig_roots.reverse()
         command = [*flags, *component_flags, *['-I' + str(p) for p in mig_roots],
                    str(source_path), '-o', str(obj)]
