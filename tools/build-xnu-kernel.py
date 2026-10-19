@@ -256,6 +256,8 @@ def main():
         'bsd/kern/kern_event.c', 'bsd/vm/vm_unix.c', 'osfmk/vm/bsd_vm.c',
         # Original VFS path/operation dispatch and BSD virtual-memory calls:
         # required by exec's vnode reads and the guest console/file journey.
+        # Original BSD process/FD/vnode limits shared by exec and VFS.
+        'bsd/conf/param.c',
         'bsd/kern/subr_xxx.c', 'bsd/kern/kern_mman.c',
         *['bsd/vfs/' + name + '.c' for name in [
             'vfs_init', 'vfs_conf', 'vfs_lookup', 'vfs_subr', 'vfs_syscalls',

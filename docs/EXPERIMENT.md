@@ -9,32 +9,28 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed real-kernel attempt is
-[39280428800](https://github.com/taowen/arlinux-xnu/actions/runs/39280428800),
-root `3a6734e976fc756ffa1d00de84de9c000567ab10`, fork `53adad2`.
-Its actual compiler job `118153570092` completed successfully, including original
-BSD process/FD/exit code, the generated syscall dispatch table and ARM argument
-converters. Its receipt SHA-256 is
-`19d5403025f60fa5a33f06b5e45e2ac48e8e32703239b44eb78dc3cc8546e53d`.
+[39281969773](https://github.com/taowen/arlinux-xnu/actions/runs/39281969773),
+root `1369967442a52628887b9c981aab743041bb4022`, fork `09d7161`.
+Actual compiler job `118158087513` compiled original VFS path/vnode dispatch,
+BSD file mappings and unsupported-call handlers after guarding a resource-fork
+suffix calculation with its existing `NAMEDRSRCFORK` configuration. Compiler
+receipt SHA-256:
+`b7b5916f1600afa3110c90af554277a71753b987f93e7a377d9ffab75134b746`.
 
-The actual VM job `118155176711` passed the native/kernel ABI collision audit,
-but executable linkage failed on VFS, pmap, machine and further service imports.
-The original syscall table now retains actual BSD service dependencies. This is
-not working syscall dispatch. No VM, real allocation, task, guest exception or
-iOS app ran, and no new VM executable was produced. Its failure receipt SHA-256 is
-`1786d7be65e36940184fb3024e7d37a860d9ddcc87c0f0665862eec00cb47185`.
-Actual compiler and VM logs are retained locally under `build/runs/39280428800`;
-Actions retains full receipts/output hashes and logs.
+Actual VM job `118158478620` passed the native/kernel ABI collision audit,
+but executable linkage still failed on machine/pmap, BSD parameters and further
+services. Its failure receipt SHA-256:
+`0acc84dbe5788add717daf93992f421046484b9e574d2f22e781ddcd32e700ed`.
+No VM initialization, real allocation, task or guest ran. Actual logs are retained
+under `build/runs/39281969773`; Actions retains receipts and output hashes.
 
-The VFS integration attempt
-[39281481188](https://github.com/taowen/arlinux-xnu/actions/runs/39281481188)
-at `ff0c1a918514426961e3a85930f170e2475473ee` failed compilation in original
-`vfs_lookup.c`: the symlink length check referenced `CN_WANTSRSRCFORK` with named
-streams disabled. Actual compiler job `118156650754` retained failure receipt
-SHA-256 `a5f839357787bdd16faff76239e3f3942980d8bfcb6993b8fe18a10e32ee43be`.
-Fork `09d71614b4e7bb9d24c3d5ca72a36d7c4a5da9fc` guards only the resource-fork suffix length by
-its existing `NAMEDRSRCFORK` configuration. Ordinary symlink length checking
-remains active. The repaired source still requires runner compilation and the
-real VM journey; filesystem operations have not run.
+The next source adds original `bsd/conf/param.c` for the process/FD/vnode limits
+used by the BSD lifecycle and VFS. Fork `574ac76c5bb0bfa8dd46ef12cc4dcb9919b6efcc` also
+allocates the real 16 KiB early trace buffer in static ELF storage: USERMODE has
+no bare-metal ARM `data.s` BOOTDATA reservation. Original trace recording remains
+intact; the static buffer is retained rather than freed as bootloader memory.
+Both changes still require runner verification and do not establish a working
+filesystem, tracing journey or VM.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
