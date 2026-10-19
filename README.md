@@ -2,8 +2,8 @@
 
 Research toward running XNU as a userspace kernel on Linux/Android.
 **No iOS app runs through XNU here yet.** The current Mach-O demo uses a small
-Darwin syscall shim. Eight real XNU units compile as Linux ARM64 ELF; a linked,
-initialized host kernel is still outstanding.
+Darwin syscall shim. The Linux host now executes XNU's early startup dispatcher;
+VM initialization, task creation and guest execution through XNU remain outstanding.
 
 Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
 software framebuffer. No 32-bit apps or Metal support. Proprietary Apple
