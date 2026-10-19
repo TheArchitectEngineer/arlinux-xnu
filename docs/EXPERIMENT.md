@@ -7,14 +7,25 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39265164164](https://github.com/taowen/arlinux-xnu/actions/runs/39265164164)
-at source `c91d515` (XNU fork `7ff463f06f32d144c6ccd62c0bbd5bd4a7b37dd6`)
-compiled the selected kernel graph and passed the existing early diagnostics.
-**The real VM executable failed linkage with 176 distinct unresolved imports.**
-Neither original `thread_bootstrap()` nor `vm_mem_bootstrap()` executed. No real
-XNU allocation, task, guest exception, Mach/BSD call or iOS app is established.
-The log is authoritative; symbol counts and compiled-unit counts are not
-acceptance milestones.
+[Run 39270528453](https://github.com/taowen/arlinux-xnu/actions/runs/39270528453)
+at source `465cb2baa506952e4e27213471ab40a97e45d64b`, with XNU fork
+`2b48c14fe9151cb48424ea8a1d65b0bd834a783f`, compiled the selected graph. Both real
+VM and full-service executable links failed. The VM link still lacks pmap
+lifecycle/reference tracking, machine timer/AST delivery, tracing, process
+teardown and file-backed-memory providers. All six jobs retain failure/output
+receipts and SHA-256 manifests; no new runnable VM executable was produced.
+
+The isolated early diagnostic also fails linkage on `lck_grp_startup_init` and
+`lck_spin_startup_init`, pulled by original `kern/machine.c` lock registrations.
+This remains a visible failure. It no longer prevents the real VM job from
+attempting its own entry independently. Do not weaken original lock startup to
+restore a green isolated diagnostic.
+
+**No original VM initialization or guest execution has been observed.** Neither
+original `thread_bootstrap()` nor `vm_mem_bootstrap()` has executed. No real XNU
+allocation, task, guest exception, Mach/BSD call or iOS app is established.
+Symbol counts, compiled-unit counts and diagnostic passes are not acceptance
+milestones.
 
 The next gate is original VM initialization followed by `kalloc_data` allocation,
 zero/read/write verification and `kfree_data`, inside the real kernel entry.
@@ -30,7 +41,7 @@ Linux TLS instead of EL1 current-thread registers. Its context-switch/continuati
 path is compiled but has not executed. The bootstrap stack is allocated before
 TUNABLES using the same stack-page boot argument and geometry as `stack_init`.
 
-The existing early diagnostic entry remains separate. It exercises host mappings,
+The existing early diagnostic entry remains separate; its latest link is failing. It exercises host mappings,
 copy/ticket fault recovery, codecs, time and entropy; these results only help
 localize failures in those primitives. The VM path does not run these samples.
 The early executable's LOCKS phase does not prove core lock hooks executed.
@@ -55,8 +66,12 @@ Current backend limitations that affect the real path:
   General kernel recovery, task isolation and guest Mach exceptions are pending.
 - Linux TLS uses `TPIDR_EL0`; ARM64 context switching also preserves EL0 FPCR.
   Guest TSD activation, hardware breakpoints and timer delivery are pending.
-- Native/kernel ABI collision checks reject same-named imports. BSD `fork` and
-  `setrlimit` are namespaced so native Linux calls cannot bind kernel ABIs.
+- Native/kernel ABI collision checks reject same-named imports. Kernel `fork`,
+  `setrlimit` and `abort` are namespaced so native Linux calls retain libc ABIs.
+- Original ARM scheduling/perfcontrol callbacks and machine-timeout initialization
+  are compiled. Lock budgets use the Linux nanosecond clock; they have not run
+  inside the real VM path. Kernel pmap enter/change-wiring now retains actual
+  per-mapping wired state; user-pmap ledgers remain pending.
 - Keep DEVELOPMENT with MACH_ASSERT: removing DEVELOPMENT alone broke upstream
   assertion bookkeeping (run 39257044605); it was reverted, not papered over.
 
@@ -82,9 +97,9 @@ Compiler/Xcode versions are retained; this is not a Linux-only compiler chain.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | [Selected real kernel graph compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39265164164) | Executable kernel or guest execution |
+| `xnu-kernel` | [Selected real kernel graph compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39270528453) | Executable kernel or guest execution |
 | `xnu-link-inputs` | Same run: relocatable merge passes | Executable linkage or kernel boot |
-| `xnu-early-startup` | Same run: existing isolated diagnostics pass | VM initialization, tasks or guest execution |
+| `xnu-early-startup` | [Latest link fails on lock startup imports](https://github.com/taowen/arlinux-xnu/actions/runs/39270528453); prior raw diagnostics passed | VM initialization, tasks or guest execution |
 | `xnu-vm-startup` | Same run: executable link fails; log and link map retained | VM bootstrap or guest execution |
 
 These are historical observations at their runs' source revisions, not promises
