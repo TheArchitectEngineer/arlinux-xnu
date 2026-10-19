@@ -81,7 +81,15 @@ static void load_image(const char *path,struct image *im) {
             struct entry_command e; memcpy(&e,im->bytes+pos,sizeof(e)); entryoff=e.entryoff;
         } else if(cmd.cmd==LC_UNIXTHREAD) {
             die("LC_UNIXTHREAD entry not implemented; use the LC_MAIN freestanding fixture");
-        } else if(cmd.cmd==0xc || cmd.cmd==0xe || cmd.cmd==0x80000018U || cmd.cmd==0x8000001fU) {
+        } else if(cmd.cmd==0xe) {
+            // LLD emits /usr/lib/dyld metadata even without dependencies. The
+            // freestanding diagnostic enters LC_MAIN directly, without dyld.
+            fprintf(stderr,"LC_LOAD_DYLINKER metadata: no dyld execution in this freestanding host\n");
+        } else if(cmd.cmd==0xb) {
+            need(cmd.size>=80,"truncated dynamic symbol table");
+            uint32_t undefined; memcpy(&undefined,im->bytes+pos+28,sizeof(undefined));
+            need(!undefined,"undefined dynamic symbols require dyld");
+        } else if(cmd.cmd==0xc || cmd.cmd==0x80000018U || cmd.cmd==0x8000001fU || cmd.cmd==0x80000023U) {
             die("dynamic loading is not implemented");
         } else if(cmd.cmd==0x80000022U) {
             // dyld_info: reject streams requiring a dynamic loader.
@@ -163,7 +171,7 @@ static int run_guest(struct image *im) {
                 int nr=-1; struct iovec io={&nr,sizeof(nr)};
                 if(ptrace(PTRACE_SETREGSET,child,(void *)NT_ARM_SYSTEM_CALL,&io)<0) die("suppress Linux syscall");
                 result=0; error=0;
-                fprintf(stderr,"Darwin syscall=%" PRIu64 " x0=%" PRIu64 "\n",r.regs[16],r.regs[0]);
+                fprintf(stderr,"Darwin syscall=%" PRIu64 " x0=%" PRIu64 "\n",(uint64_t)r.regs[16],(uint64_t)r.regs[0]);
                 switch(r.regs[16]) {
                 case 1: {
                     int code=(int)(r.regs[0]&255);
@@ -196,6 +204,6 @@ static int run_guest(struct image *im) {
 int main(int argc,char **argv) {
     if(argc!=2) { fprintf(stderr,"usage: macho-host FREESTANDING_ARM64_EXECUTABLE\n"); return 2; }
     long host=sysconf(_SC_PAGESIZE);
-    need(host>0 && host<=PAGE16 && PAGE16%host==0,"host pages must divide 16K");
+    need(host>0 && (unsigned long)host<=PAGE16 && PAGE16%(unsigned long)host==0,"host pages must divide 16K");
     struct image im={0}; load_image(argv[1],&im); return run_guest(&im);
 }

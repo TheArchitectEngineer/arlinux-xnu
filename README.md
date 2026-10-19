@@ -76,6 +76,8 @@ The fixture checks output length, EBADF with carry set, getpid and exit status.
 This is a custom Darwin host shim, not execution through XNU. Kernel integration
 is still outstanding. Use only the repository-owned freestanding diagnostic:
 the loader is not a security sandbox or a general Mach-O/dyld implementation.
-It rejects imported dylibs, a dynamic linker and nonempty bind/rebase streams.
+It rejects imported dylibs, undefined symbols and nonempty bind/rebase streams.
+LLD emits a dyld path declaration even for this freestanding executable; the host
+records that metadata and enters LC_MAIN directly. It does not implement or run dyld.
 No proprietary iOS programs are included. `build --mode host` runs both Linux
 experiments and leaves the unrelated bare-metal baseline disabled.

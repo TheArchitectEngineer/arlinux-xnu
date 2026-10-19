@@ -53,7 +53,7 @@ jobs:
           clang-18 --version >> build/macho/environment.txt
           ld64.lld-18 --version >> build/macho/environment.txt
           clang-18 --target=arm64-apple-ios13.0 -c guests/hello.S -o build/macho/hello.o
-          ld64.lld-18 -arch arm64 -platform_version ios 13.0 13.0 -static -no_pie -no_adhoc_codesign -e _start build/macho/hello.o -o build/macho/hello.macho
+          ld64.lld-18 -arch arm64 -platform_version ios 13.0 13.0 -no_adhoc_codesign -e _start build/macho/hello.o -o build/macho/hello.macho
           llvm-objdump-18 --macho --private-headers build/macho/hello.macho > build/macho/load-commands.txt
           cc -Wall -Wextra -Werror -O2 -g src/macho-host.c -o build/macho/macho-host
           file build/macho/macho-host build/macho/hello.macho | tee build/macho/file.txt
