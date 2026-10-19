@@ -212,10 +212,10 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         if (task && header->id==D_MIG_TASK_GET_SPECIAL_PORT && r[2]==36) {
             uint32_t which; __builtin_memcpy(&which,request+32,4);
             response[8]=D_KERN_INVALID_ARGUMENT;
-            if (which==D_TASK_BOOTSTRAP_PORT) {
-                /* This task has no registered Bootstrap service. Querying the
-                 * empty slot succeeds and transfers MACH_PORT_NULL; it does
-                 * not invent an XPC/launchd server or claim any service works. */
+            if (which==D_TASK_BOOTSTRAP_PORT || which==D_TASK_DEBUG_CONTROL_PORT) {
+                /* No Bootstrap or debug-control server is registered for this
+                 * task. Return the actual empty slot, as XNU does. Real
+                 * libdispatch explicitly accepts a NULL debug channel. */
                 out->bits|=D_MACH_MSG_COMPLEX; out->size=40;
                 response[6]=1; response[7]=0; response[8]=0; response[9]=D_MACH_TYPE_MOVE_SEND<<D_MACH_DESCRIPTOR_DISPOSITION_SHIFT;
             }

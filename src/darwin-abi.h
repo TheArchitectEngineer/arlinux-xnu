@@ -164,7 +164,8 @@ enum darwin_mach_message {
 enum darwin_service_abi {
     D_HOST_PRIORITY_INFO = 5, D_HOST_PRIORITY_INFO_COUNT = 8,
     D_TASK_AUDIT_TOKEN = 15, D_AUDIT_TOKEN_WORDS = 8,
-    D_TASK_BOOTSTRAP_PORT = 4, D_CLOCK_SYSTEM = 0, D_CLOCK_CALENDAR = 1,
+    D_TASK_BOOTSTRAP_PORT = 4, D_TASK_DEBUG_CONTROL_PORT = 10,
+    D_CLOCK_SYSTEM = 0, D_CLOCK_CALENDAR = 1,
     D_AMFI_DYLD_POLICY = 90,
     D_AMFI_ALLOW_AT_PATHS = 1, D_AMFI_ALLOW_PATH_ENV = 2, D_AMFI_ALLOW_CUSTOM_CACHE = 4,
     D_AMFI_ALLOW_FALLBACK_PATHS = 8, D_AMFI_ALLOW_PRINT_ENV = 16, D_AMFI_ALLOW_FAILED_INSERT = 32
@@ -201,7 +202,7 @@ _Static_assert(sizeof(struct darwin_stat64)==144,"Darwin ARM64 stat64 wire layou
 _Static_assert(sizeof(struct darwin_pthread_registration)==48,"Darwin pthread registration wire layout");
 
 /* libpthread-330 kern/kern_internal.h and XNU bsd/pthread/workqueue_syscalls.h.
- * Deliberately omit KEVENT/WORKLOOP: ordinary callbacks use Linux threads. */
+ * Basic KEVENT callbacks use Linux readiness; WORKLOOP remains omitted. */
 enum darwin_workqueue_abi {
     D_PTHREAD_FEATURE_DISPATCH = 0x01, D_PTHREAD_FEATURE_FINEPRIO = 0x02,
     D_PTHREAD_FEATURE_CTL = 0x04, D_PTHREAD_FEATURE_SETSELF = 0x08,

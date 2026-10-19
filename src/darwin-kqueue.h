@@ -16,6 +16,7 @@ struct native_kqueue {
 };
 static struct native_kqueue native_kqueues[D_KQUEUE_COUNT];
 static int native_kqueue_mutex,workqueue_kqueue=-1;
+static unsigned int native_kevent_errors;
 static void native_kqueue_lock(void)
 {
     while (__atomic_exchange_n(&native_kqueue_mutex,1,__ATOMIC_ACQUIRE))
@@ -149,6 +150,13 @@ static long native_kqueue_changes(struct native_kqueue *queue,uint64_t changes,u
         struct darwin_kevent_qos event;
         if (guest_copy(&event,changes+(uint64_t)i*sizeof(event),sizeof(event),0)) return -EFAULT;
         native_kqueue_lock(); long result=native_knote_change(queue,&event); native_kqueue_unlock();
+        if (result && __atomic_fetch_add(&native_kevent_errors,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
+            const char label[]="DARWIN_KEVENT_ERROR ident/filter/flags/fflags/xflags/result follows\n";
+            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            trace_call(0,0,event.ident); trace_call(1,0,(long)event.filter);
+            trace_call(2,0,event.flags); trace_call(3,0,event.fflags);
+            trace_call(4,0,event.xflags); trace_call(5,0,result);
+        }
         if (result || (event.flags&D_EV_RECEIPT)) {
             if (emitted==capacity) return result ? result : -ENOBUFS;
             event.flags=D_EV_ERROR; event.data=result ? darwin_error(result) : 0;
