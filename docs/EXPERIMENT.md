@@ -31,7 +31,7 @@ CPU-number/data accessors return the actual single virtual
 CPU record; every early start checks its identity against current-thread state.
 That record now lives in the original per-CPU section. The ELF linker pads it
 to 16 KiB; all eight starts used XNU's original traversal macro and observed one
-master CPU, with no secondary replicas. Thread switches install the master
+master CPU, with no secondary replicas. Current-thread setup installs the master
 per-CPU offset in the thread's machine state. Actual scheduling is not running.
 The linker script also binds/preserves compiler-generated fixed/variable kalloc
 views. Those boundary imports no longer fail the VM link, but the early binary
