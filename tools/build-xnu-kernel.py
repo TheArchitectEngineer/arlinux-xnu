@@ -179,7 +179,7 @@ def main():
             'ipc_space', 'mach_port', 'mach_msg', 'ipc_init', 'ipc_entry',
             'ipc_hash', 'ipc_object', 'ipc_port', 'ipc_pset', 'ipc_right',
             'ipc_mqueue', 'ipc_kmsg', 'ipc_notify', 'ipc_importance',
-            'ipc_service_port', 'ipc_voucher', 'ipc_eventlink']],
+            'ipc_service_port', 'ipc_voucher', 'ipc_eventlink', 'mach_debug']],
         # Real kernel initialization and allocation: no host malloc stand-ins.
         *['osfmk/kern/' + name + '.c' for name in [
             'startup', 'task', 'thread', 'exception', 'ipc_tt', 'ipc_kobject',
@@ -194,7 +194,7 @@ def main():
             'restartable', 'work_interval', 'smr', 'thread_call', 'stack', 'task_ref', 'clock',
             'coalition', 'extmod_statistics', 'host_notify', 'counter_common',
             'clock_oldops', 'sync_sema', 'task_ident', 'ipc_clock',
-            'affinity', 'thread_group', 'sched_multiq', 'ux_handler']],
+            'affinity', 'thread_group', 'sched_multiq', 'ux_handler', 'mk_timer', 'mk_sp']],
         # Required VM bootstrap, maps, objects, residency, faults and kernel maps.
         *['osfmk/vm/' + name + '.c' for name in [
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
@@ -212,6 +212,7 @@ def main():
         'bsd/kern/kern_resource.c', 'bsd/uxkern/ux_exception.c',
         'bsd/kern/kern_authorization.c', 'bsd/kern/kern_priv.c',
         'bsd/kern/kern_subr.c', 'bsd/kern/bsd_init.c',
+        'bsd/kern/kern_synch.c',
     ]
     # Build the actual MIG dispatch implementations, not just their headers.
     configured_objects = set(upstream_words(generated / 'Makefile', 'OBJS'))
