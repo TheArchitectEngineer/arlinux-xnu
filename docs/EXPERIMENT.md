@@ -9,8 +9,8 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The last completed run is
-[39272737688](https://github.com/taowen/arlinux-xnu/actions/runs/39272737688)
-at root source `91deb53` with XNU fork `b981a1f`. Kernel compilation succeeded;
+[39276798684](https://github.com/taowen/arlinux-xnu/actions/runs/39276798684)
+at root source `c93d1fbab6539374186e03cbe7d708db7706f47e` with XNU fork `b171fc4`. Kernel compilation succeeded;
 VM, full-service and standalone early jobs failed. The real VM has never run.
 The previous diagnostic failure is preserved; it no longer blocks VM attempts.
 No task, real allocation, Mach/BSD dispatch or iOS app has been established.
@@ -30,7 +30,12 @@ TLS. USERMODE now rejects that installation until an actual guest instruction/TL
 adaptation exists. The non-USERMODE hardware path remains original. This is an
 explicit unsupported operation, not a successful framework port.
 
-Next: resolve the native execution/TLS contract, then implement the host helper,
+Execution-engine comparison now records a second candidate: Unicorn 2.1.4
+exposes TPIDRRO state and shared host-memory mappings. This is source/API evidence
+only; no engine, framework or guest journey has been integrated. Execution
+preference is being clarified; neither candidate is established as working.
+
+Next: resolve the execution/TLS contract, then implement the host helper,
 real XNU task/map association and dispatch/return paths together. Use ios-sweet's
 working service graph as the functional reference for kernel startup and later
 iOS services. Preserve exact source pins and compile on GitHub runners through

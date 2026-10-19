@@ -19,6 +19,30 @@ iOS frameworks and an app. ARM64 / 16 KiB / one virtual CPU remain fixed.
   Security policy may be permissive, while shared memory, ports and event queues
   still have observable semantics. Preserve this distinction when reusing code.
 
+## Execution-engine decision remains open
+
+The native ptrace design below is a candidate, not an established ABI solution.
+Darwin TLS is an input to this decision, not a late kernel feature to stub.
+
+| Candidate | What it would preserve | Cost / unresolved requirement |
+| --- | --- | --- |
+| Native ARM64 helper | Direct CPU execution; real XNU services | Must adapt Darwin TSD instructions and validate code coverage, clocks, register state and later executable mappings |
+| ARM64 instruction engine | Original guest instruction bytes, virtual TPIDRRO state, real XNU services | CPU execution overhead; actual XNU task/map/fault/return integration and framework journey remain unimplemented |
+
+[Unicorn 2.1.4 ARM64 registers](https://github.com/unicorn-engine/unicorn/blob/2.1.4/include/unicorn/arm64.h)
+and its
+[backend implementation](https://github.com/unicorn-engine/unicorn/blob/2.1.4/qemu/target/arm/unicorn_aarch64.c)
+explicitly read/write `TPIDRRO_EL0`. Its `uc_mem_map_ptr` API accepts shared host
+backing. This establishes available interfaces, not a running XNU/iOS backend.
+An engine could own each user pmap's executable address space and report SVC,
+protection faults and CPU state to the same real XNU task/thread dispatcher.
+It must not supply substitute Darwin syscall handlers. Instruction emulation
+alone cannot fix missing XNU bootstrap, VM, BSD/VFS or Mach services.
+
+No instruction engine has been added as a dependency or selected as the default.
+The choice trades native performance against instruction adaptation complexity;
+record the user's execution preference before implementing a different backend.
+
 ## Ownership decisions
 
 | Owner | Responsibilities |
