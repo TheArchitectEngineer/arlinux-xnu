@@ -19,6 +19,7 @@ enum ReferenceUI {
         }
         guard arguments[1] == "click" else { fatalError("Unknown action") }
         app.activate(options: [.activateIgnoringOtherApps])
+        Thread.sleep(forTimeInterval: 0.4)
         // The public window list establishes the real visible app window.
         // CoreGraphics and the screen snapshot both use top-left coordinates.
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
@@ -40,8 +41,14 @@ enum ReferenceUI {
                                mouseCursorPosition: point, mouseButton: .left) else {
             fatalError("Cannot create host mouse events")
         }
-        down.postToPid(app.processIdentifier)
+        guard let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+                                 mouseCursorPosition: point, mouseButton: .left) else {
+            fatalError("Cannot create host mouse movement")
+        }
+        move.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.2)
+        down.post(tap: .cghidEventTap)
         Thread.sleep(forTimeInterval: 0.08)
-        up.postToPid(app.processIdentifier)
+        up.post(tap: .cghidEventTap)
     }
 }
