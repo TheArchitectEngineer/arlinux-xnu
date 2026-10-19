@@ -73,6 +73,11 @@ def main():
             for variable in ['PRIVATE_XNUFILES', 'KERNELFILES', 'PRIVATE_KERNELFILES']:
                 for header in upstream_words(directory / 'Makefile', variable):
                     shutil.copyfile(directory / header, san / header)
+        version_header = exported / 'libkern/version.h'
+        version_header.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(XNU / 'libkern/libkern/version.h.template', version_header)
+        run(['perl', XNU / 'config/newvers.pl', version_header],
+            env=dict(env, CURRENT_KERNEL_CONFIG_LC='development'))
     makefile = (generated / 'Makefile').read_text()
     definitions = next(line.partition('=')[2] for line in makefile.splitlines()
                        if line.startswith('export CONFIG_DEFINES ='))
@@ -116,19 +121,25 @@ def main():
         senders = {name.removesuffix('_user.c') for name in upstream_words(mach_makefile, 'MIG_KUSRC')}
         senders |= {name.removesuffix('.h') for name in upstream_words(mach_makefile, 'MIG_UUHDRS')}
         servers = {name.removesuffix('_server.c') for name in upstream_words(mach_makefile, 'MIG_KSSRC')}
-        for side, interfaces in [('user', senders), ('server', servers)]:
-            for interface in sorted(interfaces):
-                definition = XNU / 'osfmk/mach' / (interface + '.defs')
-                preprocessed = mig_output / (interface + '_' + side + '.defs.i')
-                with preprocessed.open('w') as stream:
-                    run(['clang-18', '-E', '-x', 'c', *cpp_flags,
-                         '-DKERNEL_' + side.upper() + '=1', '-D__MACH30__=1', definition], stdout=stream)
-                with preprocessed.open() as stream:
-                    run([mig_build / 'migcom', '-novouchers',
-                         '-header', mig_output / (interface + '.h') if side == 'user' else '/dev/null',
-                         '-user', mig_output / (interface + '_user.c') if side == 'user' else '/dev/null',
-                         '-sheader', mig_output / (interface + '_server.h') if side == 'server' else '/dev/null',
-                         '-server', mig_output / (interface + '_server.c') if side == 'server' else '/dev/null'], stdin=stream)
+        device_interfaces = {Path(name).stem for name in
+                             upstream_words(XNU / 'osfmk/device/Makefile', 'MIG_DEFS')}
+        families = [('mach', senders, servers), ('device', set(), device_interfaces)]
+        for family, sender_interfaces, server_interfaces in families:
+            mig_output = OUT / 'mig' / family
+            mig_output.mkdir(parents=True, exist_ok=True)
+            for side, interfaces in [('user', sender_interfaces), ('server', server_interfaces)]:
+                for interface in sorted(interfaces):
+                    definition = XNU / 'osfmk' / family / (interface + '.defs')
+                    preprocessed = mig_output / (interface + '_' + side + '.defs.i')
+                    with preprocessed.open('w') as stream:
+                        run(['clang-18', '-E', '-x', 'c', *cpp_flags,
+                             '-DKERNEL_' + side.upper() + '=1', '-D__MACH30__=1', definition], stdout=stream)
+                    with preprocessed.open() as stream:
+                        run([mig_build / 'migcom', '-novouchers',
+                             '-header', mig_output / (interface + '.h') if side == 'user' else '/dev/null',
+                             '-user', mig_output / (interface + '_user.c') if side == 'user' else '/dev/null',
+                             '-sheader', mig_output / (interface + '_server.h') if side == 'server' else '/dev/null',
+                             '-server', mig_output / (interface + '_server.c') if side == 'server' else '/dev/null'], stdin=stream)
     if args.phase == 'prepare':
         print('XNU configuration and MIG interfaces generated; no kernel objects compiled', flush=True)
         return

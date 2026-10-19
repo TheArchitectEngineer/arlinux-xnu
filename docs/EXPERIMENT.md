@@ -16,9 +16,11 @@ XNU components not yet in the build, rather than host services to reimplement.
 
 Next: use `unresolved-symbols.txt` and the real source call graph to bring in the
 required XNU initialization/allocator/IPC/VM dependencies, then implement the
-Linux memory, current-thread, exception and scheduling backends. Audit ARM64
-privileged operations before attempting execution. Do not create hundreds of
-success stubs to satisfy the linker. Acceptance remains an initialized backend
+Linux memory, current-thread, exception and scheduling backends. Privileged hardware operations may be skipped or delegated to Linux when the
+program can run without their native mechanism. Implement the behavior needed
+for execution rather than reproducing all EL1 hardware semantics. Check the
+observed program behavior before expanding an emulation; successful calls alone
+do not prove app compatibility. Acceptance remains an initialized backend
 servicing the guest through real XNU, not a successful relocatable link.
 
 The kernel mode has three explicit stages: Linux generates upstream config and
