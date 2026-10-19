@@ -2,6 +2,43 @@
 
 Research toward a userspace XNU backend on Linux/Android. **Not a working iOS emulator.**
 
+## Acknowledgements and feasibility
+
+This experiment is inspired by two independent projects. Credit for their
+existing kernel ports, engineering work and published evidence belongs to their
+respective authors and contributors:
+
+* **[zalexdev/linux-um-arm64](https://github.com/zalexdev/linux-um-arm64)**:
+  the ARM64 User-Mode Linux port demonstrates running a Linux kernel as a
+  userspace process, including on Android without root or KVM. Its syscall
+  interception, address-space management, signal/register handling and Bionic
+  integration are important references for our proposed XNU host backend.
+  It is a Linux kernel port, not a userspace XNU port or an iOS compatibility layer.
+* **[dipa-studio/ios-sweet](https://github.com/dipa-studio/ios-sweet)**:
+  the XNU port to Redmi Note 10 Pro demonstrates Apple's real iOS userland and
+  software-rendered interface on non-Apple hardware. Its XNU/IOKit adaptations,
+  IOSurface/display/HID services and bring-up diagnostics inform this experiment.
+  The bare-metal XNU baseline here is built directly from its pinned patches and
+  upstream build recipe; it is not an original kernel port by this project.
+
+Our hypothesis is that these two results make a userspace XNU experiment worth
+attempting: reuse real XNU logic and eventually compatible iOS frameworks while
+providing Linux/Android host backends. They cannot simply be combined: UML is
+Linux-specific, and ios-sweet boots XNU on bare metal rather than inside Android.
+Neither project establishes that this repository can run iOS apps.
+
+Some older **ARM64, non-arm64e, offline apps with simple software-renderable UI**
+are a plausible long-term target, not a current compatibility promise. The
+16 KiB-only guest scope reduces page-size variation; it does not implement XNU
+VM, Mach IPC, threads, exceptions, dyld, UIKit or an Apple GPU interface.
+32-bit legacy iOS apps are outside this experiment's current scope.
+
+The current Linux Mach-O demo uses our small Darwin syscall shim; real XNU
+integration and Android app-sandbox execution remain outstanding. No third-party
+iOS app has been validated. Source commits are recorded in `sources.lock.json`;
+upstream licenses and attribution must be preserved for reused code. Apple
+proprietary frameworks and firmware are not distributed by this repository.
+
 Initial scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries,
 software framebuffer. No 32-bit guest, Apple GPU driver, Metal translation or IPA support.
 Apple proprietary firmware/frameworks are not included or downloaded by this project.
