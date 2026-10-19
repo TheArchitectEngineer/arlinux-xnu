@@ -75,6 +75,21 @@ filesystem.mkdir(exist_ok=True)
 run(reader_build / 'apfs-fuse', '-o', 'ro', image, filesystem)
 loader = output / 'dyld'
 try:
+    # Record the real mounted layout before assuming an OS-volume path.
+    # A missing file must distinguish volume/path errors from decompression.
+    for relative in ['.', 'usr', 'usr/lib', 'usr/lib/dyld']:
+        path = filesystem / relative
+        try:
+            status = path.lstat()
+            entry = {'path': relative, 'mode': oct(status.st_mode),
+                     'bytes': status.st_size}
+            if path.is_symlink():
+                entry['symlink'] = str(path.readlink())
+            elif path.is_dir():
+                entry['children'] = sorted(item.name for item in path.iterdir())[:60]
+            print('APFS_LAYOUT ' + json.dumps(entry), flush=True)
+        except OSError as error:
+            print('APFS_LAYOUT ' + json.dumps({'path': relative, 'error': str(error)}), flush=True)
     shutil.copyfile(filesystem / 'usr/lib/dyld', loader)
 finally:
     run('fusermount3', '-u', filesystem)
