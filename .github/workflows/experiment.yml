@@ -28,11 +28,15 @@ jobs:
           file build/host/host-substrate | tee build/host/file.txt
           timeout 30 build/host/host-substrate | tee build/host/run.log
           (cd build/host && sha256sum host-substrate > SHA256SUMS)
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/host --outcome '${{ job.status }}'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: linux-arm64-host-substrate
           path: build/host/
+          retention-days: 30
   macho-userland:
     if: inputs.mode == 'both' || inputs.mode == 'host'
     runs-on: ubuntu-24.04-arm
@@ -60,11 +64,15 @@ jobs:
           timeout 30 build/macho/macho-host build/macho/hello.macho > build/macho/guest.stdout 2> build/macho/host.log
           cat build/macho/guest.stdout build/macho/host.log
           (cd build/macho && sha256sum macho-host hello.macho > SHA256SUMS)
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/macho --outcome '${{ job.status }}'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: linux-arm64-macho-userland
           path: build/macho/
+          retention-days: 30
   xnu-baseline:
     if: inputs.mode == 'both' || inputs.mode == 'baseline'
     runs-on: macos-14
@@ -85,11 +93,15 @@ jobs:
           cp baseline.log out-baseline/ || true
           sw_vers > out-baseline/environment.txt
           xcodebuild -version >> out-baseline/environment.txt
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory out-baseline --outcome '${{ job.status }}'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: xnu-arm64-baremetal-baseline
           path: out-baseline/
+          retention-days: 30
   xnu-kernel:
     if: inputs.mode == 'both' || inputs.mode == 'kernel'
     runs-on: ubuntu-24.04-arm
@@ -110,8 +122,12 @@ jobs:
           uname -a > build/kernel/environment.txt
           clang-18 --version >> build/kernel/environment.txt
           python3 tools/build-xnu-kernel.py 2>&1 | tee build/kernel/build.log
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/kernel --outcome '${{ job.status }}'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: xnu-linux-arm64-kernel-port
           path: build/kernel/
+          retention-days: 30
