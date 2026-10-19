@@ -41,6 +41,7 @@ collisions = sorted(name for name in native & kernel
                     if not name.startswith('xnu_host_'))
 report = output / 'native-kernel-collisions.txt'
 report.write_text('\n'.join(collisions) + ('\n' if collisions else 'No native/kernel ABI collisions.\n'))
+print(report.read_text(), end='')
 if collisions:
     raise SystemExit('Native Linux imports collide with XNU definitions: ' + ', '.join(collisions))
 PY

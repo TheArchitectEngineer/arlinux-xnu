@@ -39,7 +39,18 @@ receipt = {
     'sourceLock': json.loads((root / 'sources.lock.json').read_text()),
     'files': files,
 }
-(output / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+receipt_path = output / 'receipt.json'
+receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
+# Expose provenance and executable hashes in Actions logs. Diagnosing a run
+# must not require downloading its kernel objects or complete artifact archive.
+print('EXPERIMENT_RECEIPT ' + json.dumps({
+    'job': receipt['job'], 'commit': receipt['commit'], 'runId': receipt['runId'],
+    'outcomeBeforeUpload': args.outcome, 'filesRecorded': len(files),
+    'receiptSHA256': hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
+}))
+for item in files:
+    if os.access(output / item['path'], os.X_OK):
+        print('EXPERIMENT_EXECUTABLE ' + json.dumps(item))
 summary = os.environ.get('GITHUB_STEP_SUMMARY')
 if summary:
     with open(summary, 'a') as stream:
