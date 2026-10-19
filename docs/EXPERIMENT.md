@@ -22,18 +22,6 @@ used for console strings. The code now uses ADRP/PAGEOFF pairs. No guest ran.
 Failure receipt: `1b72b99bbc93d68c4ee423b33125a39681d5843bff63da79970ebb3f054724a6`.
 Local text log: build/runs/39319498437/native-job.log.
 
-The previous kernel candidate run
-[39318615195](https://github.com/taowen/arlinux-xnu/actions/runs/39318615195),
-root `4ca6ab1c137c655517d10013b2212edeefd75b5c`, compiled the full configured BSD
-graph and the matching real libdispatch firehose implementation. Compiler job
-`118286849038` passed, receipt SHA-256:
-`be767233c1a04ccec259226c5198120fbc9ac7b4eb42bf65452707c65c13f8e7`.
-VM job `118287652980` failed executable linkage; receipt SHA-256:
-`c3c98e02203d66e471f0aa1185b829f70b5128f001600c86e054dbbd6a2d3678`.
-No native XNU executable or process ran. Logs: build/runs/39318615195.
-Keep this candidate available for useful code reuse; symbol completion is not
-the active application milestone.
-
 The full-system reference
 [39311945725](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
 ran original XNU exec/VM/fork/COW/exit/wait with the static PID 1 journey:
@@ -54,10 +42,6 @@ Actions. Reference success does not establish native usermode compatibility.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` + `xnu-reference-boot` | [Full-system XNU exec, memory/COW, child exit and parent wait](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725) | Userspace XNU, dyld, iOS frameworks or apps |
-| `xnu-kernel` | [Selected real kernel graph compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39309052509) | Executable kernel or guest execution |
-| `xnu-link-inputs` | Run 39309052509: relocatable merge passes | Executable linkage or kernel boot |
-| `xnu-early-startup` | [Latest link fails on lock startup imports](https://github.com/taowen/arlinux-xnu/actions/runs/39270528453); prior raw diagnostics passed | VM initialization, tasks or guest execution |
-| `xnu-vm-startup` | [Executable link fails; native engine compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39309052509) | VM bootstrap or guest execution |
 
 These are historical observations at their runs' source revisions, not promises
 about current HEAD. No Android app-sandbox journey or third-party iOS app has

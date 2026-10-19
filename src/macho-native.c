@@ -79,7 +79,7 @@ int main(int argc,char **argv)
 {
     if (argc!=2) { fprintf(stderr,"usage: macho-native STATIC_ARM64_MACHO\n"); return 2; }
     long host=sysconf(_SC_PAGESIZE);
-    need(host>0 && host<=PAGE16 && PAGE16%(unsigned long)host==0,"host page geometry");
+    need(host>0 && (unsigned long)host<=PAGE16 && PAGE16%(unsigned long)host==0,"host page geometry");
     struct image im={0}; load_image(argv[1],&im); map_guest(&im); rewrite_tls(&im);
     void *stack=mmap(NULL,1024*1024,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     if (stack==MAP_FAILED) die("guest stack");

@@ -8,14 +8,10 @@ import subprocess
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['build', 'status', 'download'])
-    parser.add_argument('--mode', choices=['both', 'host', 'baseline', 'kernel', 'native'], default='native')
+    parser.add_argument('--mode', choices=['both', 'host', 'baseline', 'native'], default='native')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
-    parser.add_argument('--diagnostics', action='store_true',
-                        help='Also run the standalone early diagnostic stage')
     args = parser.parse_args()
-    if args.diagnostics and args.command != 'build':
-        parser.error('--diagnostics applies only to build')
     repo = 'taowen/arlinux-xnu'
     if args.command == 'build':
         # A failed push must not silently dispatch stale remote sources. Resolve
@@ -32,8 +28,6 @@ def main():
                              ' local=' + expected + ' remote=' + remote)
         print('Dispatching exact pushed source ' + expected, flush=True)
         command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'mode=' + args.mode]
-        if args.diagnostics:
-            command += ['-f', 'diagnostics=true']
     elif args.command == 'status':
         command = (['run', 'view', args.run_id] if args.run_id else
                    ['run', 'list', '--workflow', 'experiment.yml', '--limit', '5'])

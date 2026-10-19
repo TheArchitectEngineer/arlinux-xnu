@@ -41,9 +41,9 @@ Hardware or privilege policies can be simplified when that is sufficient.
 Returning success for an operation whose missing effect breaks the app is not
 an implementation.
 
-The monolithic XNU/Unicorn path is a separate unvalidated candidate documented
-in XNU-CANDIDATE.md. It is not a prerequisite for native execution. Full-system
-ios-sweet/XNU runs are behavioral references, not proof of ARLinux compatibility.
+Full-system ios-sweet/XNU runs are behavioral references, not proof of ARLinux
+compatibility. The active application path uses native ARM64 execution; its
+build does not depend on a CPU instruction-emulation engine.
 
 ## Application-driven sequence
 

@@ -12,8 +12,7 @@ input, normal exit and restart. Runner verification is pending. It is not dyld,
 a framework-based app or a working Android integration.
 
 A [full-system XNU reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
-provides a behavior comparison. The separate monolithic userspace-XNU candidate
-still fails executable linkage; compilation is not application compatibility.
+provides a behavior comparison. Compilation is not application compatibility.
 
 Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
 software framebuffer. No 32-bit apps or Metal support. Proprietary Apple
@@ -27,7 +26,6 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 ```bash
 ./build.sh build --mode host       # explicit historical host/shim diagnostics
 ./build.sh build                   # default: native Darwin console journey
-./build.sh build --mode kernel     # separate userspace-XNU candidate
 ./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
 ./build.sh status --run-id RUN_ID
 ./build.sh download --run-id RUN_ID
@@ -41,9 +39,6 @@ result proves, how to resume work and how evidence is retained. Dependencies are
 pinned in [sources.lock.json](sources.lock.json); run logs and artifacts live in
 [GitHub Actions](https://github.com/taowen/arlinux-xnu/actions/workflows/experiment.yml).
 
-Standalone early diagnostics require `./build.sh build --diagnostics`; their
-results do not establish guest execution.
-
 ## Acknowledgements
 
 * [zalexdev/linux-um-arm64](https://github.com/zalexdev/linux-um-arm64): ARM64
@@ -53,9 +48,6 @@ results do not establish guest execution.
   userland bring-up on Redmi Note 10 Pro. Our bare-metal baseline uses its pinned
   patches and upstream build recipe; credit belongs to its authors/contributors.
 
-* [Unicorn Engine](https://github.com/unicorn-engine/unicorn): ARM64 instruction
-  execution. [Our fork](https://github.com/taowen/unicorn) exposes pending CPU
-  exception metadata for the separate userspace-XNU candidate.
 * [wmww/tawc](https://github.com/wmww/tawc): the tawcroot in-process syscall
   interception and host-libc-independent runtime model informed the native path.
 * [Apple Open Source](https://github.com/apple-oss-distributions): XNU and the

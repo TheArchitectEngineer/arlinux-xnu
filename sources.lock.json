@@ -29,15 +29,6 @@
     "commit": "0f300a7a04bb1174a3b7db58b57d738aadc14e13",
     "path": "third_party/bootstrap_cmds"
   },
-  "guestExecutionEngine": {
-    "repository": "taowen/unicorn",
-    "commit": "2bca534e6168c9096e326c1868279a5baed4f9b3",
-    "path": "third_party/unicorn",
-    "architecture": "aarch64",
-    "upstreamRepository": "unicorn-engine/unicorn",
-    "upstreamCommit": "8028ec436f2d9376525352dd38ed9ed6b9f6be10",
-    "upstreamTag": "2.1.4"
-  },
   "kernelFirehose": {
     "repository": "apple-oss-distributions/libdispatch",
     "commit": "cdb61e93e803d0093635f356753a9a30c09836db",
