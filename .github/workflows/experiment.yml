@@ -132,7 +132,7 @@ jobs:
       - name: Install Apple filesystem reader
         run: |
           sudo apt-get update
-          sudo apt-get install -y 7zip llvm-18
+          sudo apt-get install -y 7zip llvm-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev
       - name: Prepare pinned Apple userland and execute its actual dyld
         shell: bash
         run: |

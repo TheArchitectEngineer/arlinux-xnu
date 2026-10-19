@@ -47,6 +47,16 @@ show real startup or its actual fault/unsupported-call path, not substitute a
 handwritten loader and label it dyld. File/executable mmap and library services
 remain incomplete. The static journey remains a required predecessor.
 
+First real-userland input attempt [39320874526](https://github.com/taowen/arlinux-xnu/actions/runs/39320874526)
+passed the native console prerequisite but did not execute dyld. The complete
+Apple IPSW SHA-256 matched. 7-Zip exposed the APFS compressed file's empty data
+fork and its alternate streams; the extracted dyld was zero bytes, and the
+Mach-O loader rejected it. Failure receipt SHA-256:
+`ec93ca4de939db0e368c90aab1ba2dbaed2023c357d9d4b1394a7d835f8e8dc0`.
+The input preparation now builds pinned unmodified apfs-fuse/LZFSE sources on
+the runner and reads the file through its read-only compressed-file decoder.
+This changed preparation and actual interpreter startup await verification.
+
 Earlier native build failures remain in Actions and local text logs:
 39319498437 (cross-section ADR), 39319703701 (cstring layout), 39319854670 (host
 page signedness). No program ran in those attempts. The engine-dependent kernel
@@ -77,10 +87,11 @@ Actions. Reference success does not establish native usermode compatibility.
 
 These are historical observations at their runs' source revisions, not promises
 about current HEAD. No Android app-sandbox journey or third-party iOS app has
-been validated. After kernel initialization, separate acceptance gates remain:
-guest memory/tasks/exceptions/IPC, dyld and system libraries, frameworks/display/
-input, then an actual app journey on Android. Record the highest gate actually
-observed; a green probe never advances a later gate.
+been validated. Required gates remain memory/tasks/exceptions/IPC as needed,
+dyld and system libraries, frameworks/display/input, then an actual App journey
+on Android. Kernel initialization is not a prerequisite when Linux-backed
+services supply the required application behavior. Record the highest gate
+actually observed; a green probe never advances a later gate.
 
 ## Working loop
 

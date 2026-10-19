@@ -32,6 +32,23 @@ def sha(path):
     return digest.hexdigest()
 
 
+reader = json.loads((root / 'sources.lock.json').read_text())['apfsReader']
+reader_source = output / 'apfs-source'
+reader_source.mkdir(exist_ok=True)
+run('git', 'init', reader_source)
+run('git', '-C', reader_source, 'fetch', '--depth', '1',
+    'https://github.com/' + reader['repository'] + '.git', reader['commit'])
+run('git', '-C', reader_source, 'checkout', '--detach', 'FETCH_HEAD')
+run('git', '-C', reader_source, 'submodule', 'update', '--init', '--recursive')
+for directory, expected in [(reader_source, reader['commit']),
+                            (reader_source / '3rdparty/lzfse', reader['lzfseCommit'])]:
+    actual_source = subprocess.check_output(['git', '-C', str(directory), 'rev-parse', 'HEAD'], text=True).strip()
+    if actual_source != expected:
+        raise SystemExit('APFS reader source mismatch: ' + actual_source)
+reader_build = output / 'apfs-build'
+run('cmake', '-S', reader_source, '-B', reader_build, '-DUSE_FUSE3=ON')
+run('cmake', '--build', reader_build, '--target', 'apfs-fuse', '-j2')
+
 archive = output / 'firmware.ipsw'
 run('curl', '--fail', '--location', '--retry', '3', '--output', archive, source['url'])
 actual = sha(archive)
@@ -53,25 +70,16 @@ image = output / member
 archive.unlink()
 filesystem = output / 'filesystem'
 filesystem.mkdir(exist_ok=True)
-run(unzip, 'x', '-y', '-o' + str(filesystem), image, 'usr/lib/dyld', '*/usr/lib/dyld', '-r')
-matches = list(filesystem.rglob('dyld'))
-if not matches:
-    # UDIF may expose a filesystem image as a nested archive rather than open
-    # it transparently. Extract the container, then select dyld from that FS.
-    container = output / 'container'
-    run(unzip, 'x', '-y', '-o' + str(container), image)
-    for nested in container.iterdir():
-        if nested.is_file():
-            run(unzip, 'x', '-y', '-o' + str(filesystem), nested,
-                'usr/lib/dyld', '*/usr/lib/dyld', '-r')
-    matches = list(filesystem.rglob('dyld'))
-matches = [path for path in matches if path.is_file() and not path.is_symlink()]
-if len(matches) != 1:
-    raise SystemExit('Expected one real dyld file, found: ' + str(matches))
+# APFS compressed files keep their bytes in decmpfs/resource-fork attributes.
+# Read through the actual APFS decoder, not 7-Zip's zero-size data-fork view.
+run(reader_build / 'apfs-fuse', '-o', 'ro', image, filesystem)
 loader = output / 'dyld'
-shutil.copyfile(matches[0], loader)
+try:
+    shutil.copyfile(filesystem / 'usr/lib/dyld', loader)
+finally:
+    run('fusermount3', '-u', filesystem)
 record = {'firmware': source, 'verifiedFirmwareSHA256': actual,
           'osImage': member, 'osImageSHA256': sha(image),
-          'dyldBytes': loader.stat().st_size, 'dyldSHA256': sha(loader)}
+          'apfsReader': reader, 'dyldBytes': loader.stat().st_size, 'dyldSHA256': sha(loader)}
 (evidence / 'apple-input.json').write_text(json.dumps(record, indent=2) + '\n')
 print('APPLE_USERLAND_INPUT ' + json.dumps(record), flush=True)

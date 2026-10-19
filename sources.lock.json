@@ -42,5 +42,10 @@
     "build": "16H81",
     "url": "https://updates.cdn-apple.com/2023FCSWinter/fullrestores/032-14159/3DCCA12B-087F-438C-B69D-B6316C46910F/iPhone_4.7_12.5.7_16H81_Restore.ipsw",
     "sha256": "7c10ff0e4cdbe24f33012e47e8458a8ae8c858f2e3dbfce766c196f5d229cadb"
+  },
+  "apfsReader": {
+    "repository": "sgan81/apfs-fuse",
+    "commit": "66b86bd525e8cb90f9012543be89b1f092b75cf3",
+    "lzfseCommit": "e634ca58b4821d9f3d560cdc6df5dec02ffc93fd"
   }
 }
