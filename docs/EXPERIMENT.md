@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39237216247](https://github.com/taowen/arlinux-xnu/actions/runs/39237216247)
-at source `7ce0552` compiled 141 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39238344221](https://github.com/taowen/arlinux-xnu/actions/runs/39238344221)
+at source `b849a6a` compiled 142 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -17,6 +17,8 @@ observed live aliases before removal and no aliases after removal/disconnect.
 Resident queries counted both virtual aliases, then one and zero as they were
 disconnected/removed, while the backing bytes remained accessible physically.
 These are guest mapped bytes, not Linux RSS; compressed mappings are unsupported.
+The page-fill primitive wrote and checked every 32-bit word of a 16 KiB frame,
+while a separate aliased frame retained its contents.
 Child processes actually received SIGSEGV on writes to read-only aliases and
 reads after disconnect/removal; the parent retained the physical backing bytes.
 Each start continued through the original `kernel_startup_bootstrap()` dispatcher and startup-debug
@@ -26,7 +28,7 @@ sleep, plus early/random-buffer/kmem-uniform calls backed by Linux `getrandom`.
 No random seed or output bytes are logged. All five downloaded jobs' files
 matched receipts. The original boolean generator is compiled but has not run.
 The early executable SHA-256 is
-`5689e9f66901bd0c9061418ba2e0b95f75e40c14a5e3c6c7f331497647164413`.
+`f10f0c81ec4fa7dd5b40716e581176aba52806ab66ae78c2cef292bef94d8fdc`.
 
 The host uses Linux TLS for XNU's current-thread access, native/alternative
 bootstrap stacks, and a 256 MiB memfd for physical backing. The exported
@@ -39,6 +41,11 @@ per-CPU offset in the thread's machine state. Actual scheduling is not running.
 The linker script also binds/preserves compiler-generated fixed/variable kalloc
 views. Those boundary imports no longer fail the VM link, but the early binary
 has no core allocator views; their ingestion by real kalloc is still unverified.
+Kernel image/text bounds now come from actual ELF linker symbols. Every start
+checks a real function's location and slide/unslide round trip; this fixed ELF
+has zero slide and an empty built-in-kext interval. The original kalloc parser
+uses coalesced ELF views for USERMODE, preserving view parsing/zone assignment
+without walking a nonexistent Mach-O BootKC. That path compiles but has not run.
 Guest pages are 16 KiB on this runner's 4 KiB host. The ELF image and XNU virtual addresses are
 inside a positive 128 GiB kernel window, preserving VM packed-pointer reach.
 Zone page encoding uses a tagged offset for this layout. Native brk, the physical
@@ -61,11 +68,11 @@ the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps
 and pmap ledger/wiring accounting are not connected yet. Reference/dirty attributes record
 conservative mapping history, not precise accesses or cleared-bit tracking.
-The VM executable still fails linkage (369 distinct undefined references), before its original
+The VM executable still fails linkage (353 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
 
-Next: connect remaining machine/thread, kernel image metadata, host pmap and BSD service dependencies,
+Next: connect remaining machine/thread, kernel data layout, host pmap and BSD service dependencies,
 then execute the original VM bootstrap. Selected objects now include original
 BSD process/read-only process data, fork/uthread, coalition, counters, host
 notifications and configured MIG senders. ARM's scheduler dispatch selects dualq;
@@ -107,9 +114,9 @@ retained in artifacts; this is not yet a Linux-only compiler toolchain.
 | `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
 | `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
 | `xnu-baseline` | [ios-sweet bare-metal kernel built on macOS](https://github.com/taowen/arlinux-xnu/actions/runs/39213188337) | Userspace kernel boot or iOS apps |
-| `xnu-kernel` | [141 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39237216247) | Complete kernel or guest execution |
+| `xnu-kernel` | [142 kernel/host/MIG units compiled](https://github.com/taowen/arlinux-xnu/actions/runs/39238344221) | Complete kernel or guest execution |
 | `xnu-link-inputs` | Same run: relocatable merge passes, host TLS replaces privileged current-thread access | Executable linkage or kernel boot |
-| `xnu-early-startup` | Same run: eight starts; per-CPU traversal, pmap residency/block/reclaim/alias/disconnect and actual access faults, original rtclock, Linux entropy and early dispatcher | Lock hooks, VM/tasks initialization or guest execution |
+| `xnu-early-startup` | Same run: eight starts; ELF image bounds, per-CPU traversal, page fill and pmap operations/access faults, original rtclock, Linux entropy and early dispatcher | Lock hooks, VM/tasks initialization or guest execution |
 | `xnu-vm-startup` | Same run: executable link fails; log and link map retained | VM bootstrap or guest execution |
 
 These are historical observations at their runs' source revisions, not promises
