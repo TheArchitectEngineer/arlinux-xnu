@@ -6,10 +6,10 @@
  * No syscall implementation, Mach-O loader or implicit memory allocation. */
 struct xnu_host_guest;
 struct xnu_host_guest_state {
-    unsigned long long x[31], sp, pc, pstate;
+    unsigned long long x[31], sp, pc;
     unsigned long long q[32][2];
     unsigned long long tpidr, tpidrro;
-    unsigned int fpcr, fpsr;
+    unsigned int pstate, fpcr, fpsr;
 };
 enum xnu_host_guest_stop {
     XNU_HOST_GUEST_SLICE,

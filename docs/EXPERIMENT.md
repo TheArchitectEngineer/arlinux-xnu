@@ -2,13 +2,27 @@
 
 ## Current handoff
 
-Execution direction has been revised: use the pinned ARM64 instruction engine
-for user instructions, with real XNU services, instead of starting with native
-ptrace and adapting Apple's TLS instructions. The native CPU adapter and runner
-build integration are new; no engine-backed user pmap, XNU exception bridge or
-guest journey is connected yet. Do not resume symbol-by-symbol expansion as the
-primary work plan. Establish the execution path described in ARCHITECTURE.md.
+Execution direction has been revised: pinned ARM64 instruction execution with
+real XNU services replaces native ptrace as the initial target. The adapter
+transfers integer/FP/TLS state and reports exception/memory/slice stops. No user
+pmap, exception-return bridge or guest journey is connected yet.
 
+[39295473899](https://github.com/taowen/arlinux-xnu/actions/runs/39295473899),
+root `8c496e2e7e8df0c121eb9b5548f1c8f85f80cc0e`, compiled the kernel, pinned
+Unicorn and native adapter. Actual full-link job `118208025146` passed the
+native/kernel collision audit, then failed because unresolved kernel diagnostic
+`log` encountered the engine's transitive libm dependency. Do not add `-lm` to
+make that call bind: XNU `log(int, format, ...)` is not math `log(double)`.
+The kernel symbol is now isolated as `xnu_kernel_log`; its actual provider is
+still required. The adapter PSTATE field also now uses the engine's real
+32-bit register width. Full failure receipt SHA-256:
+`f7ab2017d76c1a195d447de89ccecd6021fe9c71381cf17c7e5765dcb852dd8a`.
+Built ARM64 `libunicorn.so.2` SHA-256:
+`f1175a539cbc884127a03e554c224e155f9746a1f0e698a42b2b108d66cb70d3`.
+Logs are in `build/runs/39295473899`. No XNU executable or guest ran.
+
+Establish the execution path in ARCHITECTURE.md; do not resume symbol-by-symbol
+expansion as the primary work plan. Earlier compiler/VM evidence follows.
 
 The objective is real XNU execution of ARM64 Mach-O, followed by dyld, genuine
 iOS frameworks and an app. [Execution design](ARCHITECTURE.md) now defines the

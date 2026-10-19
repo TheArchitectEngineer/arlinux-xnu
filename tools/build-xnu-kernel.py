@@ -192,6 +192,8 @@ def main():
         '/* Generated from pinned XNU sysproto.h; kernel objects only. */\n'
         '#ifndef XNU_HOST_BSD_SYSCALL_NAMESPACE_H\n'
         '#define XNU_HOST_BSD_SYSCALL_NAMESPACE_H\n' +
+        # XNU's diagnostic log(int, format, ...) must never bind libm log(double).
+        '#pragma redefine_extname log xnu_kernel_log\n' +
         ''.join(f'#pragma redefine_extname {name} xnu_bsd_{name}\n'
                 for name in syscall_names) +
         '#endif\n')
