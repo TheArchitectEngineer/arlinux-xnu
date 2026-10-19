@@ -172,7 +172,7 @@ def main():
     units = [
         'src/xnu-host/xnu_bootstrap.c', 'src/xnu-host/context.c',
         'src/xnu-host/xnu_vm_bootstrap.c', 'src/xnu-host/pmap.c', 'src/xnu-host/time.c',
-        'src/xnu-host/entropy.c', 'src/xnu-host/image.c',
+        'src/xnu-host/entropy.c', 'src/xnu-host/image.c', 'src/xnu-host/ro_zone.c',
         # Core IPC structures used by Mach ports/messages and task initialization.
         *['osfmk/ipc/' + name + '.c' for name in [
             'ipc_space', 'mach_port', 'mach_msg', 'ipc_init', 'ipc_entry',

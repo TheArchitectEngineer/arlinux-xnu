@@ -270,6 +270,31 @@ phystokv(pmap_paddr_t physical)
 }
 
 void
+xnu_host_pmap_modify(unsigned long address, const void *source, unsigned long bytes)
+{
+    assert(address >= XNU_HOST_HEAP_BASE && address <= XNU_HOST_KERNEL_LIMIT &&
+        bytes <= XNU_HOST_KERNEL_LIMIT - address);
+    const unsigned char *input = source;
+    while (bytes) {
+        ppnum_t page = xnu_host_memory_lookup(address);
+        assert(page != 0);
+        unsigned long offset = address & PAGE_MASK;
+        unsigned long chunk = PAGE_SIZE - offset;
+        if (chunk > bytes)
+            chunk = bytes;
+        void *target = (void *)(phystokv((pmap_paddr_t)page * PAGE_SIZE) + offset);
+        if (input) {
+            memcpy(target, input, chunk);
+            input += chunk;
+        } else {
+            memset(target, 0, chunk);
+        }
+        address += chunk;
+        bytes -= chunk;
+    }
+}
+
+void
 (pmap_zero_part_page)(ppnum_t page, vm_offset_t offset, vm_size_t length)
 {
     assert(page && page < frame_limit);
@@ -385,6 +410,12 @@ xnu_host_pmap_bootstrap(void)
     pmap_page_protect(first, VM_PROT_READ);
     assert(left[0] == 0 && right[0] == 0);
     assert(xnu_host_memory_expect_fault(b, 1) == 0);
+    unsigned char replacement = 0x61;
+    xnu_host_pmap_modify(a, &replacement, 1);
+    assert(left[0] == 0x61 && right[0] == 0x61);
+    assert(xnu_host_memory_expect_fault(a, 1) == 0);
+    xnu_host_pmap_modify(a, NULL, 1);
+    assert(left[0] == 0 && right[0] == 0);
     /* Replacing an alias must detach it from the previous frame's chain. */
     assert(pmap_enter(kernel_pmap, b, second, VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_NONE, 0, TRUE) == KERN_SUCCESS);
@@ -407,7 +438,7 @@ xnu_host_pmap_bootstrap(void)
     assert(pmap_query_resident(kernel_pmap, a, b + PAGE_SIZE, &compressed) == 0 &&
         compressed == 0 && copy[0] == 0x7b);
     (pmap_zero_page)(second);
-    kprintf("XNU_HOST_PMAP fill/resident/block/reclaim/shared-alias/copy/zero/protect/disconnect/fault passed free_pages=%u (VM not initialized)\n",
+    kprintf("XNU_HOST_PMAP aperture/fill/resident/block/reclaim/shared-alias/copy/zero/protect/disconnect/fault passed free_pages=%u (VM not initialized)\n",
         pmap_free_pages());
     return 0;
 }
