@@ -9,34 +9,37 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed attempt is
-[39284746610](https://github.com/taowen/arlinux-xnu/actions/runs/39284746610),
-root `a8e58098097e98c5f42f583e8b32890621363d98`, fork `644e9ef`.
-Actual compiler job `118167694122` failed in BSD shutdown and memory-pressure
-code. Failure receipt SHA-256:
-`d36c7110e49863949bf402d04502638976c53825e0d864f7d6424655e6566a4b`.
-Original corpse code compiled; the integrated graph did not. Actual log is
-retained under `build/runs/39284746610` and in Actions. No new executable, VM
-initialization, real allocation, task or guest execution was produced.
+[39285455715](https://github.com/taowen/arlinux-xnu/actions/runs/39285455715),
+root `eb8ce9b1379ee19500ab3f7f48d8112e2e018e0c`, fork `abe6e09`.
+Actual compiler job `118170682476` passed, including original shutdown, corpse
+lifecycle and configured memory-pressure code. Compiler receipt SHA-256:
+`337aeb2fd05c86ee8e0bf570f2fe5666495db88712f1c82cc17369eef069c87c`.
 
-Two concrete boundary errors explain this compilation failure. The original
-pressure implementation requires VM_PRESSURE_EVENTS alongside memorystatus;
-fork `abe6e0903b51554ed5fbdf0adfb67122a59b4702` enables that existing notification
-mechanism. Separately, our MIG generation incorrectly collapsed exported and
-private headers with the same name. The original `osfmk/mach/Makefile` explicitly
-keeps these views distinct; `exc_server.h` from the private view imported IPC
-internals into BSD's namespace through IOKit headers. Generation now writes all
-exported headers to `mig-public` without MACH_KERNEL_PRIVATE, and private
-sender/server headers to `mig`. osfmk prefers private headers with an exported
-fallback; BSD/libkern/pexpert prefer exported headers. No private typedef is
-fabricated and no server implementation is replaced. Both repairs require
-runner validation of the full graph and actual VM journey.
+Actual VM job `118171229157` passed the native/kernel ABI collision audit,
+but executable linkage failed on machine/pmap and further service imports.
+Failure receipt SHA-256:
+`463a525d60c4fb0e4a3f09f18afa0adf2b26f486368cf22ccb0bc5079ea24ef0`.
+No new VM executable, initialization, real allocation, task or guest ran.
+Actual logs are retained under `build/runs/39285455715`; Actions retains complete
+receipts/output hashes. This run is terminal by actual job output even though
+run/job GET metadata continues to report queued. Do not redispatch its source.
 
-The last real VM attempt remains
-[39284374578](https://github.com/taowen/arlinux-xnu/actions/runs/39284374578),
-source `72f6733`, job `118166870795`: ABI collision audit passed but executable
-linkage failed. Receipt SHA-256:
-`7a1f1f3266d9ac813a6dd9af6887e13eff56b1873ceb56a5275842dfff7fb94b`.
-The NOENTER repair compiled there, but no real VM fault retry ran.
+Two actual compiler failures from the preceding run were repaired. Original
+memory pressure code requires VM_PRESSURE_EVENTS alongside memorystatus;
+the fork now enables its real notification mechanism. MIG generation had also
+collapsed exported and private headers with the same name. It now follows the
+original `osfmk/mach/Makefile` distinction: all exported headers are generated
+under `mig-public` without MACH_KERNEL_PRIVATE; private sender/server headers
+remain under `mig`. osfmk prefers private headers with an exported fallback;
+BSD/libkern/pexpert prefer exported headers. Both repairs compiled in the above
+run. There is no fabricated IPC type or substitute service implementation.
+
+The NOENTER correction from `72f6733` is included: original VM fault capacity
+requests no longer attempt to map physical page zero. This has compiled, but
+no original VM fault/retry path has executed. The user pmap backend still rejects
+user mappings, and its creation/activation, actual guest execution/return and
+timer interrupt delivery remain core implementation work. Existing compiled
+BSD/VM services cannot make a guest run until those boundaries are connected.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
