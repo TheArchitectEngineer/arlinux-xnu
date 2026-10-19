@@ -135,6 +135,26 @@ kernel_mapping_range(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end)
     assert(((start | end) & PAGE_MASK) == 0);
 }
 
+mach_vm_size_t
+pmap_query_resident(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end,
+    mach_vm_size_t *compressed_bytes)
+{
+    if (compressed_bytes)
+        *compressed_bytes = 0; /* This backend has no compressed mappings. */
+    if (pmap == PMAP_NULL)
+        return 0;
+    pmap_require(pmap);
+    assert(start >= XNU_HOST_KERNEL_BASE && start <= end && end <= XNU_HOST_KERNEL_LIMIT);
+    assert(((start | end) & PAGE_MASK) == 0);
+    mach_vm_size_t resident = 0;
+    for (vm_map_offset_t address = start; address < end; address += PAGE_SIZE) {
+        if (xnu_host_memory_lookup(address))
+            resident += PAGE_SIZE;
+    }
+    /* Count guest mapped bytes, including aliases, independently of Linux RSS. */
+    return resident;
+}
+
 kern_return_t
 pmap_map_block_addr(pmap_t pmap, addr64_t address, pmap_paddr_t physical,
     uint32_t pages, vm_prot_t protection, int attr, unsigned int flags)
@@ -319,6 +339,9 @@ xnu_host_pmap_bootstrap(void)
         2, VM_PROT_READ | VM_PROT_WRITE, 0, 0) == KERN_SUCCESS);
     assert(pmap_find_phys(kernel_pmap, a) == first &&
         pmap_find_phys(kernel_pmap, b) == second);
+    mach_vm_size_t compressed = 123;
+    assert(pmap_query_resident(kernel_pmap, a, b + 2 * PAGE_SIZE, &compressed) ==
+        2 * PAGE_SIZE && compressed == 0);
     assert(!pmap_verify_free(first) && !pmap_verify_free(second));
     pmap_remove(kernel_pmap, a, b + PAGE_SIZE);
     pmap_assert_free(first);
@@ -327,6 +350,7 @@ xnu_host_pmap_bootstrap(void)
         VM_PROT_NONE, 0, TRUE) == KERN_SUCCESS);
     assert(pmap_enter(kernel_pmap, b, first, VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_NONE, 0, TRUE) == KERN_SUCCESS);
+    assert(pmap_query_resident(kernel_pmap, a, b + PAGE_SIZE, NULL) == 2 * PAGE_SIZE);
     volatile unsigned char *left = (void *)a, *right = (void *)b;
     left[0] = 0x5a;
     left[PAGE_SIZE - 1] = 0xa5;
@@ -357,6 +381,8 @@ xnu_host_pmap_bootstrap(void)
         (VM_MEM_MODIFIED | VM_MEM_REFERENCED));
     assert(pmap_find_phys(kernel_pmap, a) == 0);
     assert(pmap_find_phys(kernel_pmap, b) == second && right[0] == 0x7b);
+    assert(pmap_query_resident(kernel_pmap, a, b + PAGE_SIZE, &compressed) ==
+        PAGE_SIZE && compressed == 0);
     assert(xnu_host_memory_expect_fault(a, 0) == 0);
     pmap_assert_free(first);
     assert(!pmap_verify_free(second));
@@ -364,8 +390,10 @@ xnu_host_pmap_bootstrap(void)
     assert(pmap_find_phys(kernel_pmap, b) == 0 && copy[0] == 0x7b);
     assert(xnu_host_memory_expect_fault(b, 0) == 0);
     pmap_assert_free(second);
+    assert(pmap_query_resident(kernel_pmap, a, b + PAGE_SIZE, &compressed) == 0 &&
+        compressed == 0 && copy[0] == 0x7b);
     (pmap_zero_page)(second);
-    kprintf("XNU_HOST_PMAP block/reclaim/shared-alias/copy/zero/protect/disconnect/fault passed free_pages=%u (VM not initialized)\n",
+    kprintf("XNU_HOST_PMAP resident/block/reclaim/shared-alias/copy/zero/protect/disconnect/fault passed free_pages=%u (VM not initialized)\n",
         pmap_free_pages());
     return 0;
 }
