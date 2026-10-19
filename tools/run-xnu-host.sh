@@ -56,7 +56,9 @@ if [[ $stage == early ]]; then
     build/kernel/pmap.o build/kernel/time.o build/kernel/rtclock.o
     build/kernel/OSAtomicOperations.o build/kernel/entropy.o build/kernel/image.o
     build/kernel/ticket.o build/kernel/usermode_ticket.o
-    build/kernel/copyio_probe.o build/kernel/usermode_copyio.o)
+    build/kernel/copyio_probe.o build/kernel/usermode_copyio.o
+    build/kernel/codec_probe.o build/kernel/WKdmCompress_16k.o
+    build/kernel/WKdmDecompress_16k.o build/kernel/WKdmData.o build/kernel/lz4.o)
 else
   ar rcs "$output/libxnu.a" build/kernel/*.o
   objects=(-Wl,--start-group "$output/libxnu.a" -Wl,--end-group)

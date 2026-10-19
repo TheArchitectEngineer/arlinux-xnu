@@ -205,7 +205,9 @@ def main():
             'vm_init', 'vm_map', 'vm_user', 'vm_object', 'vm_resident',
             'vm_fault', 'vm_kern', 'memory_object', 'vm_pageout',
             'vm_map_store', 'vm_map_store_ll', 'vm_map_store_rb', 'vm_purgeable',
-            'vm32_user', 'vm_compressor', 'vm_compressor_pager', 'vm_compressor_algorithms']],
+            'vm32_user', 'vm_compressor', 'vm_compressor_pager', 'vm_compressor_algorithms', 'lz4']],
+        'osfmk/arm64/WKdmCompress_16k.s', 'osfmk/arm64/WKdmDecompress_16k.s',
+        'osfmk/arm64/WKdmData.s', 'src/xnu-host/codec_probe.c',
         'osfmk/arm/locks_arm.c', 'osfmk/arm/rtclock.c', 'osfmk/arm/arm_timer.c',
         'osfmk/arm64/pcb.c',
         'osfmk/arm64/status.c', 'osfmk/arm64/machine_task.c',
@@ -237,6 +239,8 @@ def main():
         obj = OUT / (name + '.o')
         source_path = ROOT / unit if unit.startswith(('src/', 'build/')) else XNU / unit
         component_flags = []
+        if source_path.suffix == '.s':
+            component_flags += ['-x', 'assembler-with-cpp']
         if unit.startswith('libkern/'):
             # libkern/conf/Makefile.template uses the BSD/libkern namespace.
             component_flags = ['-UMACH_KERNEL', '-UMACH_KERNEL_PRIVATE',

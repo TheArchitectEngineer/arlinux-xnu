@@ -22,6 +22,22 @@ const vm_map_address_t physmap_end = XNU_HOST_PHYSICAL_VIEW + XNU_HOST_PHYSICAL_
 static ppnum_t next_frame;
 static ppnum_t frame_limit;
 
+void
+fill32_nt(addr64_t address, vm_size_t size, uint32_t pattern)
+{
+    assert((address & 127) == 0 && (size & 127) == 0);
+    uint32_t *words = (void *)(uintptr_t)address;
+    for (vm_size_t i = 0; i < size / sizeof(*words); i++)
+        words[i] = pattern;
+}
+
+void
+fill32_dczva(addr64_t address, vm_size_t size)
+{
+    /* Preserve exact byte semantics without assuming host DC ZVA support. */
+    fill32_nt(address, size, 0);
+}
+
 uint64_t
 ml_get_booter_memory_size(void)
 {
@@ -324,9 +340,20 @@ void
 fillPage(ppnum_t page, unsigned int fill)
 {
     assert(page && page < frame_limit);
-    unsigned int *words = (void *)phystokv((pmap_paddr_t)page * PAGE_SIZE);
-    for (unsigned int index = 0; index < PAGE_SIZE / sizeof(*words); index++)
-        words[index] = fill;
+    fill32_nt(phystokv((pmap_paddr_t)page * PAGE_SIZE), PAGE_SIZE, fill);
+}
+
+void *
+pmap_map_compressor_page(ppnum_t page)
+{
+    return (void *)phystokv((pmap_paddr_t)page * PAGE_SIZE);
+}
+
+void
+pmap_unmap_compressor_page(ppnum_t page, void *address)
+{
+    /* Like the original non-PPL physmap, the physical aperture is permanent. */
+    assert(address == (void *)phystokv((pmap_paddr_t)page * PAGE_SIZE));
 }
 
 void
@@ -437,6 +464,7 @@ xnu_host_pmap_bootstrap(void)
     assert(left[0] == 0 && copy[0] == 0x7b);
     xnu_host_ticket_bootstrap(b);
     xnu_host_copyio_bootstrap(b);
+    xnu_host_codec_bootstrap(second);
     unsigned int attributes = (pmap_disconnect)(first);
     assert((attributes & (VM_MEM_MODIFIED | VM_MEM_REFERENCED)) ==
         (VM_MEM_MODIFIED | VM_MEM_REFERENCED));

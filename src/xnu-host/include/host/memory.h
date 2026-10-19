@@ -16,6 +16,7 @@ int xnu_host_memory_expect_fault(unsigned long address, int write_access);
 int xnu_host_memory_expect_unhandled_fault(unsigned long address);
 unsigned int xnu_host_memory_lookup(unsigned long address);
 int xnu_host_pmap_bootstrap(void);
+void xnu_host_codec_bootstrap(unsigned int page);
 /* Data-only aperture writes; NULL source zeroes bytes without changing aliases. */
 void xnu_host_pmap_modify(unsigned long address, const void *source, unsigned long bytes);
 #endif
