@@ -192,25 +192,43 @@ fail:
     return error;
 }
 
-/* Linux owns cache-maintenance access to the CPU. Its compiler runtime emits
- * the architecture's data-clean / instruction-invalidate sequence and barriers.
- * Use a readable view even when ref tracking or execute-only permissions have
- * removed read access. No guest runs concurrently on this single virtual CPU. */
+/* Linux owns cache-maintenance access to the CPU (including trapping/emulating
+ * supported EL0 operations). No guest runs concurrently on this virtual CPU.
+ * Maintenance must not invent accesses in XNU's reference/dirty history. */
 static int
-sync_code_alias(unsigned long address, int protection, unsigned int attributes)
+sync_cache_alias(unsigned long address, int protection, unsigned int attributes,
+    int invalidate_data)
 {
-    int temporary = PROT_READ | ((protection & 4) ? PROT_EXEC : 0);
+    unsigned long line = 0;
+    if (invalidate_data) {
+        unsigned long ctr;
+        __asm__ volatile("mrs %0, ctr_el0" : "=r"(ctr));
+        line = 4UL << ((ctr >> 16) & 15);
+        if (line > XNU_HOST_PAGE_SIZE)
+            return ENOTSUP;
+    }
+    /* DC CIVAC requires a writable translation; code synchronization uses
+     * readable translations for the compiler runtime's CVAU/IVAU sequence. */
+    int temporary = invalidate_data ? (PROT_READ | PROT_WRITE) :
+        (PROT_READ | ((protection & 4) ? PROT_EXEC : 0));
     int restore = tracked_protection(protection, attributes);
     if (syscall(SYS_mprotect, (void *)address, XNU_HOST_PAGE_SIZE, temporary))
         return errno;
-    __builtin___clear_cache((char *)address, (char *)address + XNU_HOST_PAGE_SIZE);
+    if (invalidate_data) {
+        __asm__ volatile("dsb ish" ::: "memory");
+        for (unsigned long at = address; at < address + XNU_HOST_PAGE_SIZE; at += line)
+            __asm__ volatile("dc civac, %0" :: "r"(at) : "memory");
+        __asm__ volatile("dsb ish" ::: "memory");
+    } else {
+        __builtin___clear_cache((char *)address, (char *)address + XNU_HOST_PAGE_SIZE);
+    }
     if (syscall(SYS_mprotect, (void *)address, XNU_HOST_PAGE_SIZE, restore))
         return errno; /* The kernel caller must stop on restoration failure. */
     return 0;
 }
 
-int
-xnu_host_memory_sync_code(unsigned int page)
+static int
+sync_physical_page(unsigned int page, int invalidate_data)
 {
     if (physical_fd == -1 || !page ||
         page > XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE)
@@ -218,23 +236,36 @@ xnu_host_memory_sync_code(unsigned int page)
     unsigned int attributes = physical_attributes[page - 1];
     unsigned long physical = XNU_HOST_PHYSICAL_VIEW +
         (unsigned long)(page - 1) * XNU_HOST_PAGE_SIZE;
-    /* Clean the view used by page-in/copy/zero, then invalidate each executable
-     * virtual alias as well. Flushing only one VA need not cover I-cache aliases. */
-    int error = sync_code_alias(physical, 3, attributes);
+    /* Maintain the aperture used by page-in/copy/zero, then the virtual aliases.
+     * Data invalidation covers every alias; instruction synchronization covers
+     * executable aliases, including any distinct virtual instruction-cache tags. */
+    int error = sync_cache_alias(physical, 3, attributes, invalidate_data);
     if (error)
         return error;
     for (unsigned int node = physical_heads[page - 1]; node;
         node = kernel_links[node - 1].next) {
         unsigned long index = node - 1;
         int protection = kernel_protections[index] & 7;
-        if (protection & 4) {
-            error = sync_code_alias(XNU_HOST_HEAP_BASE + index * XNU_HOST_PAGE_SIZE,
-                protection, attributes);
+        if (invalidate_data || (protection & 4)) {
+            error = sync_cache_alias(XNU_HOST_HEAP_BASE + index * XNU_HOST_PAGE_SIZE,
+                protection, attributes, invalidate_data);
             if (error)
                 return error;
         }
     }
     return 0;
+}
+
+int
+xnu_host_memory_sync_code(unsigned int page)
+{
+    return sync_physical_page(page, 0);
+}
+
+int
+xnu_host_memory_sync_attributes(unsigned int page)
+{
+    return sync_physical_page(page, 1);
 }
 
 int

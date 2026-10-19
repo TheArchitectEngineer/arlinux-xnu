@@ -143,6 +143,15 @@ pmap_sync_page_data_phys(ppnum_t page)
         panic("host pmap_sync_page_data_phys page=%u error=%d", page, error);
 }
 
+void
+pmap_sync_page_attributes_phys(ppnum_t page)
+{
+    assert(page && page < frame_limit);
+    int error = xnu_host_memory_sync_attributes(page);
+    if (error)
+        panic("host pmap_sync_page_attributes_phys page=%u error=%d", page, error);
+}
+
 kern_return_t
 pmap_attribute_cache_sync(ppnum_t page, vm_size_t size,
     vm_machine_attribute_t attribute, vm_machine_attribute_val_t *value)

@@ -18,6 +18,7 @@ enum {
 int xnu_host_memory_protect_page(unsigned int page, int protection);
 /* Synchronize generated/loaded instructions across the physical view and aliases. */
 int xnu_host_memory_sync_code(unsigned int page);
+int xnu_host_memory_sync_attributes(unsigned int page);
 int xnu_host_memory_disconnect(unsigned int page, unsigned int *attributes);
 int xnu_host_memory_page_has_mappings(unsigned int page);
 int xnu_host_memory_attributes(unsigned int page, unsigned int *attributes);
