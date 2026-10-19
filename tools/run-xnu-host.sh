@@ -13,9 +13,9 @@ uname -a > "$output/environment.txt"
 cc --version >> "$output/environment.txt"
 # Obtain the link base from the same platform header used by XNU and native C.
 base=$(printf 'XNU_HOST_KERNEL_BASE\n' | cc -E -P -x c \
-  -Ithird_party/xnu/osfmk/arm -include usermode_vm.h -)
+  -idirafter third_party/xnu/osfmk/arm -include usermode_vm.h -)
 flags=(-Wall -Wextra -Werror -O1 -g -pthread -Isrc/xnu-host/include
-  -Ithird_party/xnu/osfmk/arm -ffunction-sections -fdata-sections)
+  -idirafter third_party/xnu/osfmk/arm -ffunction-sections -fdata-sections)
 cc "${flags[@]}" "${entry_flags[@]}" -c src/xnu-host/host.c -o "$output/host.o"
 cc "${flags[@]}" -c src/xnu-host/memory.c -o "$output/memory.o"
 link_flags=(-no-pie -pthread -Wl,--gc-sections -Wl,-Ttext-segment="$base"

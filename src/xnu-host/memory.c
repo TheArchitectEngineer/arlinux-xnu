@@ -32,8 +32,9 @@ xnu_host_memory_initialize(void)
     unsigned long image_end = (unsigned long)_end;
     if (image_start != XNU_HOST_KERNEL_BASE || image_end >= XNU_HOST_PHYSICAL_VIEW)
         return ERANGE;
-    unsigned long reserve = (image_end + XNU_HOST_PAGE_SIZE - 1) &
-        ~(XNU_HOST_PAGE_SIZE - 1UL);
+    /* The image arena also contains libc's randomized brk heap. Reserve only
+     * the dedicated physical-view/VM arena, without replacing native mappings. */
+    unsigned long reserve = XNU_HOST_PHYSICAL_VIEW;
     unsigned long length = XNU_HOST_KERNEL_LIMIT - reserve;
     void *region = mmap((void *)reserve, length, PROT_NONE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
