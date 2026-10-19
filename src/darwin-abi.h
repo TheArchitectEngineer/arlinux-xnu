@@ -268,8 +268,9 @@ _Static_assert(sizeof(struct darwin_audit_token)==32,"Darwin audit token wire la
 
 /* XNU mach/port.h, LP64 mach_port_construct options. */
 enum darwin_port_option_flags {
-    D_MPO_CONTEXT_AS_GUARD=1, D_MPO_INSERT_SEND_RIGHT=0x10,
-    D_MPO_STRICT=0x20
+    D_MPO_CONTEXT_AS_GUARD=1, D_MPO_QLIMIT=2,
+    D_MPO_IMPORTANCE_RECEIVER=8, D_MPO_INSERT_SEND_RIGHT=0x10,
+    D_MPO_STRICT=0x20, D_PORT_QLIMIT_DEFAULT=5, D_PORT_QLIMIT_MAX=1024
 };
 struct darwin_port_options { uint32_t flags,queue_limit; uint64_t reserved[2]; };
 _Static_assert(sizeof(struct darwin_port_options)==24,"Darwin port options wire layout");

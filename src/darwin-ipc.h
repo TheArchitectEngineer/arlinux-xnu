@@ -7,15 +7,38 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <sys/eventfd.h>
+#include <linux/futex.h>
 static unsigned long host_send_refs,clock_send_refs[2];
 #define IPC_ENDPOINTS 64
 #define IPC_BYTES 1024
 struct ipc_endpoint {
     uint32_t name,generation; int used,kind,read_fd,write_fd;
     unsigned long send_refs; uint64_t context; uint32_t options;
+    int queue_mutex; uint32_t queue_limit,queued;
 };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
+static void ipc_queue_lock(struct ipc_endpoint *endpoint)
+{
+    while (__atomic_exchange_n(&endpoint->queue_mutex,1,__ATOMIC_ACQUIRE))
+        RAW(SYS_futex,&endpoint->queue_mutex,FUTEX_WAIT_PRIVATE,1,0,0,0);
+}
+static void ipc_queue_unlock(struct ipc_endpoint *endpoint)
+{
+    __atomic_store_n(&endpoint->queue_mutex,0,__ATOMIC_RELEASE);
+    RAW(SYS_futex,&endpoint->queue_mutex,FUTEX_WAKE_PRIVATE,1,0,0,0);
+}
+static long ipc_enqueue(struct ipc_endpoint *endpoint,const void *message,unsigned long size)
+{
+    ipc_queue_lock(endpoint);
+    long result=-EAGAIN;
+    if (endpoint->queued<endpoint->queue_limit) {
+        result=RAW(SYS_sendto,endpoint->write_fd,message,size,MSG_DONTWAIT|MSG_NOSIGNAL,0,0);
+        if (result==(long)size) endpoint->queued++;
+    }
+    ipc_queue_unlock(endpoint);
+    return result;
+}
 static struct ipc_endpoint *ipc_find(uint32_t name)
 {
     for (unsigned int i=0;i<IPC_ENDPOINTS;i++)
@@ -37,6 +60,7 @@ static uint32_t ipc_reply_port(void)
         endpoint->name=((i+D_REPLY_PORT_INDEX_BASE)<<D_PORT_NAME_INDEX_SHIFT)|endpoint->generation;
         endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0;
         endpoint->send_refs=0; endpoint->context=0; endpoint->options=0;
+        endpoint->queue_mutex=0; endpoint->queued=0; endpoint->queue_limit=D_PORT_QLIMIT_DEFAULT;
         __atomic_store_n(&endpoint->used,2,__ATOMIC_RELEASE);
         return endpoint->name;
     }
@@ -50,8 +74,11 @@ static unsigned long ipc_port_construct(const unsigned long long *r,unsigned lon
     const char label[]="DARWIN_PORT_CONSTRUCT flags/qlimit/context follows\n";
     RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
     trace_call(0,pc,options.flags); trace_call(1,pc,options.queue_limit); trace_call(2,pc,r[2]);
-    if (options.flags&~(D_MPO_CONTEXT_AS_GUARD|D_MPO_INSERT_SEND_RIGHT|D_MPO_STRICT) ||
+    if (options.flags&~(D_MPO_CONTEXT_AS_GUARD|D_MPO_INSERT_SEND_RIGHT|D_MPO_STRICT|
+                       D_MPO_QLIMIT|D_MPO_IMPORTANCE_RECEIVER) ||
         options.reserved[0] || options.reserved[1]) return D_KERN_NOT_SUPPORTED;
+    if ((options.flags&D_MPO_QLIMIT) && options.queue_limit>D_PORT_QLIMIT_MAX)
+        return D_KERN_INVALID_ARGUMENT;
     if ((options.flags&D_MPO_STRICT) && !(options.flags&D_MPO_CONTEXT_AS_GUARD))
         return D_KERN_INVALID_ARGUMENT;
     uint32_t name=ipc_reply_port();
@@ -59,6 +86,10 @@ static unsigned long ipc_port_construct(const unsigned long long *r,unsigned lon
     struct ipc_endpoint *endpoint=ipc_find(name);
     endpoint->context=r[2]; endpoint->options=options.flags;
     endpoint->send_refs=(options.flags&D_MPO_INSERT_SEND_RIGHT) ? 1 : 0;
+    if (options.flags&D_MPO_QLIMIT) endpoint->queue_limit=options.queue_limit;
+    /* IMPORTANCE_RECEIVER records eligibility under the standalone ordinary
+     * Linux scheduling policy. There is no App Nap or cross-task importance
+     * propagation here. Message delivery/queue limits remain real effects. */
     /* The name owns a genuine Linux message queue and receive right. Generic
      * sends are still rejected until their ownership rules are implemented;
      * construction does not impersonate a remote XPC service. */
@@ -209,7 +240,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             response[8]=status ? D_KERN_FAILURE : D_KERN_SUCCESS; /* real clock, otherwise KERN_FAILURE */
             if (!status) { out->size=44; response[9]=now.tv_sec; response[10]=now.tv_nsec; }
         }
-        long sent=RAW(SYS_sendto,reply->write_fd,response,out->size,MSG_DONTWAIT|MSG_NOSIGNAL,0,0);
+        long sent=ipc_enqueue(reply,response,out->size);
         if (sent!=(long)out->size) return D_MACH_SEND_TIMED_OUT; /* MACH_SEND_TIMED_OUT */
     }
     if (options&D_MACH_RCV_MSG) {
@@ -225,20 +256,31 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         }
         long length=RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,MSG_PEEK,0,0);
         if (length<0) return D_MACH_RCV_INTERRUPTED;
+        /* Another receiver may consume the packet after the blocking peek.
+         * Recheck under the same lock used for enqueue/count updates. Never
+         * block a sender while holding this lock. */
+        ipc_queue_lock(endpoint);
+        length=RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,MSG_PEEK|MSG_DONTWAIT,0,0);
+        unsigned long status=D_KERN_SUCCESS;
+        if (length<0) { status=D_MACH_RCV_INTERRUPTED; goto receive_done; }
         if (r[3]<(unsigned long)length) {
             if (options&D_MACH_RCV_LARGE) {
                 uint32_t size=length;
-                if (guest_copy(&size,r[0]+4,4,1)) return D_MACH_RCV_INVALID_DATA;
-            } else RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,0,0,0);
-            return D_MACH_RCV_TOO_LARGE;
+                if (guest_copy(&size,r[0]+4,4,1)) { status=D_MACH_RCV_INVALID_DATA; goto receive_done; }
+            } else if (RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,MSG_DONTWAIT,0,0)==length) endpoint->queued--;
+            status=D_MACH_RCV_TOO_LARGE; goto receive_done;
         }
         /* Probe destination before consuming its queued message. */
-        if (guest_copy(response,r[0],length,1)) return D_MACH_RCV_INVALID_DATA;
-        long consumed=RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,0,0,0);
-        if (consumed!=length) return D_MACH_RCV_INTERRUPTED;
+        if (guest_copy(response,r[0],length,1)) { status=D_MACH_RCV_INVALID_DATA; goto receive_done; }
+        long consumed=RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,MSG_DONTWAIT,0,0);
+        if (consumed!=length) { status=D_MACH_RCV_INTERRUPTED; goto receive_done; }
+        endpoint->queued--;
         uint32_t trailer[2]={0,8};
         if (r[3]>=(unsigned long)length+sizeof(trailer) &&
-            guest_copy(trailer,r[0]+length,sizeof(trailer),1)) return D_MACH_RCV_INVALID_DATA;
+            guest_copy(trailer,r[0]+length,sizeof(trailer),1)) status=D_MACH_RCV_INVALID_DATA;
+receive_done:
+        ipc_queue_unlock(endpoint);
+        return status;
     }
     return 0;
 }
