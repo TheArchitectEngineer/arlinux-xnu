@@ -1,0 +1,17 @@
+{
+  "iosSweet": {
+    "repository": "dipa-studio/ios-sweet",
+    "commit": "fdad0de8dc0e75c5ea84762adc03f7232dc91f19"
+  },
+  "linuxUmlReference": {
+    "repository": "zalexdev/linux-um-arm64",
+    "commit": "32e5e10b81d8882bdaf77b71e4106a941840c750"
+  },
+  "darwinXnuBuild": {
+    "repository": "blacktop/darwin-xnu-build",
+    "commit": "663906528d1cd5ea8fde7de6f16de73db9511549"
+  },
+  "guestPageSize": 16384,
+  "guestArchitecture": "arm64",
+  "virtualCpus": 1
+}

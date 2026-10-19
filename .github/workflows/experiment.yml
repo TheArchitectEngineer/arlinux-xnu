@@ -1,0 +1,53 @@
+name: XNU usermode feasibility
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  host-substrate:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run ARM64 host diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/host
+          cp sources.lock.json build/host/
+          uname -a | tee build/host/environment.txt
+          getconf PAGE_SIZE | tee -a build/host/environment.txt
+          cc --version | tee -a build/host/environment.txt
+          cc -Wall -Wextra -Werror -O2 -g tools/host-substrate.c -o build/host/host-substrate
+          file build/host/host-substrate | tee build/host/file.txt
+          timeout 30 build/host/host-substrate | tee build/host/run.log
+          (cd build/host && sha256sum host-substrate > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-arm64-host-substrate
+          path: build/host/
+  xnu-baseline:
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned ios-sweet XNU baseline (not usermode)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/build-baseline.sh 2>&1 | tee baseline.log
+      - name: Retain provenance and logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p out-baseline
+          cp sources.lock.json out-baseline/
+          cp baseline.log out-baseline/ || true
+          sw_vers > out-baseline/environment.txt
+          xcodebuild -version >> out-baseline/environment.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-arm64-baremetal-baseline
+          path: out-baseline/
