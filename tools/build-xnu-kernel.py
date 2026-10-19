@@ -147,6 +147,7 @@ def main():
     # These are actual intended kernel objects. Do not replace them with dummy
     # implementations to turn the workflow green.
     units = [
+        'src/xnu-host/xnu_bootstrap.c',
         # Core IPC structures used by Mach ports/messages and task initialization.
         *['osfmk/ipc/' + name + '.c' for name in [
             'ipc_space', 'mach_port', 'mach_msg', 'ipc_init', 'ipc_entry',
@@ -168,8 +169,9 @@ def main():
     for unit in units:
         name = Path(unit).stem
         obj = OUT / (name + '.o')
-        command = [*flags, str(XNU / unit), '-o', str(obj)]
-        commands.append({'directory': str(ROOT), 'file': str(XNU / unit), 'arguments': command})
+        source_path = ROOT / unit if unit.startswith('src/') else XNU / unit
+        command = [*flags, str(source_path), '-o', str(obj)]
+        commands.append({'directory': str(ROOT), 'file': str(source_path), 'arguments': command})
         print('Compiling actual XNU:', unit, flush=True)
         completed = subprocess.run(command, capture_output=True, text=True)
         log = completed.stdout + completed.stderr

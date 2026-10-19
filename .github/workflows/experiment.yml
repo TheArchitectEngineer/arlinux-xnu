@@ -200,3 +200,38 @@ jobs:
           name: xnu-linux-arm64-link-dependencies
           path: build/link/
           retention-days: 30
+  xnu-early-startup:
+    if: inputs.mode == 'both' || inputs.mode == 'kernel'
+    needs: xnu-kernel
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: xnu-linux-arm64-kernel-port
+          path: build/kernel/
+      - name: Link and execute actual XNU early startup (not VM or guest boot)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/startup
+          cp build/kernel/receipt.json build/startup/compiler-receipt.json
+          uname -a > build/startup/environment.txt
+          cc --version >> build/startup/environment.txt
+          cc -Wall -Wextra -Werror -O1 -g -ffunction-sections -fdata-sections -c src/xnu-host/host.c -o build/startup/host.o
+          cc -no-pie -Wl,--gc-sections -Wl,-T,src/xnu-host/startup.ld build/startup/host.o build/kernel/startup.o build/kernel/xnu_bootstrap.o -o build/startup/xnu-host 2>&1 | tee build/startup/link.log
+          file build/startup/xnu-host > build/startup/file.txt
+          timeout 30 build/startup/xnu-host startup_debug=1 > build/startup/stdout.txt 2> build/startup/stderr.txt
+          cat build/startup/stdout.txt build/startup/stderr.txt
+          (cd build/startup && sha256sum xnu-host > SHA256SUMS)
+          echo 'Executed upstream XNU early initialization only. VM/tasks/guest execution remain outstanding.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/startup --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-linux-arm64-early-startup
+          path: build/startup/
+          retention-days: 30
