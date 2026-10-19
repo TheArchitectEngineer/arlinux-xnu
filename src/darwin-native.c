@@ -173,6 +173,8 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
     return guest_copy(&out,destination,sizeof(out),1);
 }
 
+#include "darwin-ipc.h"
+
 static void dispatch(int signal, siginfo_t *info, void *context)
 {
     /* No errno, malloc, pthread, stdio or other host libc operation here.
@@ -194,19 +196,13 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
             return;
         }
-        if (number==31 || number==32) {
-            /* Retain the actual startup request before adding any MIG service.
-             * Header and fixed argument words only, bounded to this diagnostic. */
-            uint32_t words[16]={0};
-            unsigned long length=r[2]<sizeof(words) ? r[2] : sizeof(words);
-            if (length && !guest_copy(words,r[0],length,0)) {
-                const char label[]="DARWIN_MACH_REQUEST word-index/pc/value follows\n";
-                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
-                for (unsigned int i=0;i<length/4;i++) trace_call(i,uc->uc_mcontext.pc,words[i]);
-            }
-            /* No receiver exists yet for NULL/unknown destination rights.
-             * mach_msg returns transport errors, never kern_return_t 46. */
-            r[0]=0x10000003U; /* MACH_SEND_INVALID_DEST */
+        if (number==29 || number==26) {
+            r[0]=number==29 ? CURRENT_HOST_PORT : ipc_reply_port();
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
+        if (number==31) {
+            r[0]=ipc_message(r,uc->uc_mcontext.pc);
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
             return;
         }

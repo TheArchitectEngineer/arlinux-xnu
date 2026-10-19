@@ -1,0 +1,115 @@
+/* Initial process-local Mach service transport, with real kernel queues.
+ * Implements the observed non-complex Host priority-info request only.
+ * Queued replies remain observable by later receive calls; send success never
+ * stands in for a fabricated receive. General descriptor/port transfer, port
+ * sets, notifications and cross-process namespace semantics are not provided. */
+#pragma once
+#include <sys/socket.h>
+#include <poll.h>
+#define CURRENT_HOST_PORT 0x203U
+#define IPC_ENDPOINTS 64
+#define IPC_BYTES 1024
+struct ipc_endpoint { uint32_t name,generation; int used,read_fd,write_fd; };
+static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
+struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
+static struct ipc_endpoint *ipc_find(uint32_t name)
+{
+    for (unsigned int i=0;i<IPC_ENDPOINTS;i++)
+        if (ipc_endpoints[i].used && ipc_endpoints[i].name==name) return ipc_endpoints+i;
+    return NULL;
+}
+static uint32_t ipc_reply_port(void)
+{
+    for (unsigned int i=0;i<IPC_ENDPOINTS;i++) if (!ipc_endpoints[i].used) {
+        int pair[2];
+        if (RAW(SYS_socketpair,AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC,0,pair,0,0)) return 0;
+        struct ipc_endpoint *endpoint=ipc_endpoints+i;
+        endpoint->generation=(endpoint->generation+1)&0xff;
+        if (!endpoint->generation) endpoint->generation=1;
+        endpoint->name=((i+3)<<8)|endpoint->generation;
+        endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->used=1;
+        return endpoint->name;
+    }
+    return 0;
+}
+static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
+{
+    const uint32_t send_invalid_data=0x10000002U,send_invalid_dest=0x10000003U;
+    const uint32_t send_invalid_reply=0x10000009U,send_invalid_options=0x10000013U;
+    const uint32_t receive_invalid_name=0x10004002U,receive_timeout=0x10004003U;
+    const uint32_t receive_too_large=0x10004004U,receive_invalid_data=0x10004008U;
+    unsigned long options=r[1];
+    /* Supported options: send, receive, receive-large, send/receive timeout.
+     * No unsupported complex-message ownership or trailer policy is hidden. */
+    if (!(options&3) || (options&~0x117UL) || r[6]) return send_invalid_options;
+    if (options&1) {
+        unsigned char request[IPC_BYTES];
+        if (r[2]<sizeof(struct ipc_header) || r[2]>sizeof(request) ||
+            guest_copy(request,r[0],r[2],0)) return send_invalid_data;
+        struct ipc_header *header=(void *)request;
+        const char label[]="DARWIN_MACH_REQUEST word-index/pc/value follows\n";
+        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        for (unsigned int i=0;i<r[2]/4 && i<16;i++) {
+            uint32_t word; __builtin_memcpy(&word,request+i*4,4);
+            trace_call(i,pc,word);
+        }
+        if (header->remote!=CURRENT_HOST_PORT) return send_invalid_dest;
+        struct ipc_endpoint *reply=ipc_find(header->local);
+        if (!reply) return send_invalid_reply;
+        if (header->bits!=0x1513 || header->voucher ||
+            header->id>INT32_MAX-100 || (header->size && header->size!=r[2])) return 0x10000010U;
+        /* MIG host_info: header, NDR, flavor, output count. Unknown routines
+         * get a genuine MIG error reply rather than a successful empty body. */
+        uint32_t response[18];
+        for (volatile uint32_t *word=response;word<response+18;word++) *word=0;
+        struct ipc_header *out=(void *)response;
+        out->bits=18U<<8; out->size=36; out->local=reply->name;
+        out->id=header->id+100;
+        response[7]=1; /* NDR little-endian integer representation */
+        response[8]=(uint32_t)-303; /* MIG_BAD_ID */
+        if (header->id==200 && r[2]==40) {
+            uint32_t flavor,count; __builtin_memcpy(&flavor,request+32,4);
+            __builtin_memcpy(&count,request+36,4);
+            response[8]=4; /* KERN_INVALID_ARGUMENT */
+            if (flavor==5 && count>=8) {
+                /* Declared Darwin priority scale (XNU host_priority_info).
+                 * These are ABI policy bounds, not a claim of implemented
+                 * realtime scheduling or successful priority changes. */
+                const uint32_t policy[8]={80,80,64,31,0,0,0,79};
+                response[8]=0; response[9]=8; out->size=72;
+                for (unsigned int i=0;i<8;i++) response[10+i]=policy[i];
+            }
+        }
+        long sent=RAW(SYS_sendto,reply->write_fd,response,out->size,MSG_DONTWAIT|MSG_NOSIGNAL,0,0);
+        if (sent!=(long)out->size) return 0x10000004U; /* MACH_SEND_TIMED_OUT */
+    }
+    if (options&2) {
+        struct ipc_endpoint *endpoint=ipc_find(r[4]);
+        if (!endpoint) return receive_invalid_name;
+        unsigned char response[IPC_BYTES+8];
+        if (options&0x100) {
+            struct pollfd descriptor={.fd=endpoint->read_fd,.events=POLLIN};
+            struct timespec timeout={r[5]/1000,(r[5]%1000)*1000000};
+            long ready=RAW(SYS_ppoll,&descriptor,1,&timeout,0,0,0);
+            if (!ready) return receive_timeout;
+            if (ready<0) return 0x10004005U; /* MACH_RCV_INTERRUPTED */
+        }
+        long length=RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,MSG_PEEK,0,0);
+        if (length<0) return 0x10004005U;
+        if (r[3]<(unsigned long)length) {
+            if (options&4) {
+                uint32_t size=length;
+                if (guest_copy(&size,r[0]+4,4,1)) return receive_invalid_data;
+            } else RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,0,0,0);
+            return receive_too_large;
+        }
+        /* Probe destination before consuming its queued message. */
+        if (guest_copy(response,r[0],length,1)) return receive_invalid_data;
+        long consumed=RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,0,0,0);
+        if (consumed!=length) return 0x10004005U;
+        uint32_t trailer[2]={0,8};
+        if (r[3]>=(unsigned long)length+sizeof(trailer) &&
+            guest_copy(trailer,r[0]+length,sizeof(trailer),1)) return receive_invalid_data;
+    }
+    return 0;
+}
