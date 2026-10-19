@@ -17,6 +17,26 @@ uint64_t max_mem, max_mem_actual, sane_size;
 static ppnum_t next_frame;
 static ppnum_t frame_limit;
 
+void
+pmap_require(pmap_t pmap)
+{
+    assert(pmap == kernel_pmap); /* User pmaps are not allocated by this host yet. */
+}
+
+bool
+pmap_verify_free(ppnum_t page)
+{
+    int mapped = xnu_host_memory_page_has_mappings(page);
+    assert(mapped >= 0);
+    return mapped == 0;
+}
+
+void
+pmap_assert_free(ppnum_t page)
+{
+    assert(pmap_verify_free(page));
+}
+
 uint_t
 pmap_free_pages(void)
 {
@@ -113,6 +133,22 @@ kernel_mapping_range(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end)
     assert(pmap == kernel_pmap);
     assert(start >= XNU_HOST_HEAP_BASE && start <= end && end <= XNU_HOST_KERNEL_LIMIT);
     assert(((start | end) & PAGE_MASK) == 0);
+}
+
+kern_return_t
+pmap_map_block_addr(pmap_t pmap, addr64_t address, pmap_paddr_t physical,
+    uint32_t pages, vm_prot_t protection, int attr, unsigned int flags)
+{
+    (void)flags; /* Hardware block/PTE behavior is owned by Linux. */
+    for (uint32_t index = 0; index < pages; index++) {
+        kern_return_t result = pmap_enter_options_addr(pmap, address, physical,
+            protection, VM_PROT_NONE, attr, TRUE, 0, NULL);
+        if (result != KERN_SUCCESS)
+            return result; /* Preserve the actual mapping failure. */
+        address += PAGE_SIZE;
+        physical += PAGE_SIZE;
+    }
+    return KERN_SUCCESS;
 }
 
 void
@@ -275,6 +311,18 @@ xnu_host_pmap_bootstrap(void)
     assert(pmap_next_page(&first) && pmap_next_page(&second));
     vm_map_offset_t a = XNU_HOST_HEAP_BASE;
     vm_map_offset_t b = a + PAGE_SIZE;
+    pmap_require(kernel_pmap);
+    pmap_assert_free(first);
+    pmap_assert_free(second);
+    assert(second == first + 1);
+    assert(pmap_map_block_addr(kernel_pmap, a, (pmap_paddr_t)first * PAGE_SIZE,
+        2, VM_PROT_READ | VM_PROT_WRITE, 0, 0) == KERN_SUCCESS);
+    assert(pmap_find_phys(kernel_pmap, a) == first &&
+        pmap_find_phys(kernel_pmap, b) == second);
+    assert(!pmap_verify_free(first) && !pmap_verify_free(second));
+    pmap_remove(kernel_pmap, a, b + PAGE_SIZE);
+    pmap_assert_free(first);
+    pmap_assert_free(second);
     assert(pmap_enter(kernel_pmap, a, first, VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_NONE, 0, TRUE) == KERN_SUCCESS);
     assert(pmap_enter(kernel_pmap, b, first, VM_PROT_READ | VM_PROT_WRITE,
@@ -310,11 +358,14 @@ xnu_host_pmap_bootstrap(void)
     assert(pmap_find_phys(kernel_pmap, a) == 0);
     assert(pmap_find_phys(kernel_pmap, b) == second && right[0] == 0x7b);
     assert(xnu_host_memory_expect_fault(a, 0) == 0);
+    pmap_assert_free(first);
+    assert(!pmap_verify_free(second));
     pmap_remove(kernel_pmap, b, b + PAGE_SIZE);
     assert(pmap_find_phys(kernel_pmap, b) == 0 && copy[0] == 0x7b);
     assert(xnu_host_memory_expect_fault(b, 0) == 0);
+    pmap_assert_free(second);
     (pmap_zero_page)(second);
-    kprintf("XNU_HOST_PMAP shared-alias/copy/zero/protect/disconnect/fault passed free_pages=%u (VM not initialized)\n",
+    kprintf("XNU_HOST_PMAP block/reclaim/shared-alias/copy/zero/protect/disconnect/fault passed free_pages=%u (VM not initialized)\n",
         pmap_free_pages());
     return 0;
 }

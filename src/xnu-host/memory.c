@@ -237,6 +237,16 @@ xnu_host_memory_disconnect(unsigned int page, unsigned int *attributes)
 }
 
 int
+xnu_host_memory_page_has_mappings(unsigned int page)
+{
+    if (physical_fd == -1 || !page ||
+        page > XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE)
+        return -EINVAL;
+    /* The permanent physical view is backing access, not a reclaimable alias. */
+    return physical_heads[page - 1] != 0;
+}
+
+int
 xnu_host_memory_expect_fault(unsigned long address, int write_access)
 {
     if (!heap_address(address))
