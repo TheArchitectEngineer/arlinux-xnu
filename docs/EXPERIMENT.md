@@ -9,31 +9,25 @@ contract, not a working implementation. Continue from those constraints instead
 of using unresolved-symbol counts to choose the next subsystem.
 
 The latest observed real-kernel attempt is
-[39282406671](https://github.com/taowen/arlinux-xnu/actions/runs/39282406671),
-root `91ed81d42a512c17c9209b0fd8011c74aaa31daa`, fork `574ac76`.
-Actual compiler job `118159350657` compiled the original BSD process/FD/vnode
-limits and the real static ELF early trace buffer. Compiler receipt SHA-256:
-`0ff362e7722eaabcad277aea6e9b66c29351832375e09484a6f5d732e638e148`.
-
-Actual VM job `118160103988` passed the native/kernel ABI collision audit,
-but executable linkage still failed on machine/pmap, BSD time and further
-services. Its failure receipt SHA-256:
-`6027fff3fa4f7beb76ee581a530d46e275899c68aa25c57a35e6fd9e21539eed`.
-No VM initialization, real allocation, task or guest ran. Actual logs are retained
-under `build/runs/39282406671`; Actions retains receipts and output hashes.
-
-The next source adds original `bsd/kern/kern_time.c`: the actual kevent/pselect
-path lacks its `timespec_is_valid` provider, and BSD time/interval calls belong
-to the same original implementation. Fork `27e48f543d6d420f7e2d50ae2909daabc13ad126`
-also protects the three kperf reset calls with the existing KPERF configuration.
-With KPERF disabled, user configuration returns ENOTSUP and internal kernel
-configuration asserts that KPERF was not requested; no pretend sampling/reset
-provider is added. Original kdebug reset/ownership behavior remains intact.
-These changes require runner verification and do not establish timekeeping,
-timer interrupt delivery or a working VM. The current submitted experiment is
 [39282928929](https://github.com/taowen/arlinux-xnu/actions/runs/39282928929),
-source `0ef524d`. Inspect this exact run's jobs/logs before another dispatch;
-observation delays are not a reason to resubmit unchanged source.
+root `0ef524daa3fc6f8c80b14c45f4163850f772f16c`, fork `27e48f5`.
+Actual compiler job `118161138025` compiled original BSD time/interval services
+and KPERF configuration guards. Compiler receipt SHA-256:
+`0b78046e98ab81c58585dfe451defe38959c53dcc571e74ca75332ac195e42e4`.
+
+Actual VM job `118161590240` passed the native/kernel ABI collision audit,
+but executable linkage still failed on machine/pmap, DriverKit and further
+services. Its failure receipt SHA-256:
+`0228eb195c736511187926878128a453b2ded9a0990e08d99eaf60af6c19f7eb`.
+No VM initialization, real allocation, task or guest ran. Actual logs are retained
+under `build/runs/39282928929`; Actions retains receipts and output hashes.
+
+Fork `644e9efde7cd8486eda792356bf77400f68cdc17` guards the direct DriverKit dispatch
+in `ipc_kobject_server`: with IOKit/C++ disabled, return KERN_NOT_SUPPORTED into
+the original MIG error reply and port-right consumption path. `uext_server` is
+IOUserServer C++ code, not a missing generated MIG server. Enabling the real
+provider retains the original dispatch. This is an explicitly unavailable device
+service, not a successful IOKit implementation. Runner verification is pending.
 
 GitHub run/job metadata has lagged behind directly available job logs. Inspect
 existing job IDs and available logs before concluding that compilation never ran.
