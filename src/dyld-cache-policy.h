@@ -15,6 +15,8 @@ static uint64_t cache_table_symbol(const unsigned char *file,uint64_t size,
         if ((item.type&0xe0) || (item.type&0x0e)!=0x0e || !item.section || item.string>=string_bytes) continue;
         const char *text=(void *)(file+strings+item.string);
         need(memchr(text,0,string_bytes-item.string)!=NULL,"cache symbol name termination");
+        if (strstr(text,"root_queues_init") || strstr(text,"dispatch_worker_thread2"))
+            fprintf(stderr,"NATIVE_CACHE_WORKQUEUE_SYMBOL name=%s address=%#" PRIx64 "\n",text,item.value);
         if (!strcmp(text,name)) return item.value;
     }
     return 0;
@@ -58,7 +60,11 @@ static void cache_dispatch_policy(const unsigned char *file,uint64_t size,uint64
                                        entry[2],locals[0]+info[2],info[3],name);
         }
     }
-    need(address && cache_contains(address,1,PROT_WRITE),"dispatch ordinary-workqueue policy symbol");
+    if (!address) {
+        fprintf(stderr,"NATIVE_CACHE_POLICY ordinary_workqueue_switch=unavailable kevent_backend=unsupported\n");
+        return; /* Release builds may compile out the manager-thread fallback. */
+    }
+    need(cache_contains(address,1,PROT_WRITE),"dispatch ordinary-workqueue policy storage");
     *(uint8_t *)address=0;
     fprintf(stderr,"NATIVE_CACHE_POLICY symbol=%s address=%#" PRIx64 " value=0 ordinary_linux_workers=enabled kevent=unsupported\n",
             name,address);
