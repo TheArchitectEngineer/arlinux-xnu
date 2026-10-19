@@ -10,6 +10,7 @@ from pathlib import Path
 import plistlib
 import shutil
 import subprocess
+import struct
 
 root = Path(__file__).resolve().parents[1]
 source = json.loads((root / 'sources.lock.json').read_text())['iosUserland']
@@ -95,6 +96,23 @@ try:
     # apfs-fuse exposes APFS's root-parent inode at the mount point.
     # Like ios-sweet/tools/mkiosroot.sh, enter the real volume's root directory.
     shutil.copyfile(filesystem / 'root/usr/lib/dyld', loader)
+    cache = filesystem / 'root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64'
+    with cache.open('rb') as stream:
+        header = stream.read(16384)
+        mappings_offset, mappings_count, images_offset, images_count = struct.unpack_from('<IIII', header, 16)
+        slide_offset, slide_size = struct.unpack_from('<QQ', header, 56)
+        mappings = [dict(zip(['address', 'size', 'offset', 'maxProtection', 'protection'],
+                            struct.unpack_from('<QQQII', header, mappings_offset+i*32)))
+                    for i in range(mappings_count)]
+        stream.seek(slide_offset)
+        slide_header = stream.read(40)
+    cache_record = {'bytes': cache.stat().st_size, 'sha256': sha(cache),
+                    'magic': header[:16].decode('ascii', errors='replace'),
+                    'mappings': mappings, 'imagesOffset': images_offset,
+                    'imagesCount': images_count, 'slideOffset': slide_offset,
+                    'slideBytes': slide_size, 'slideHeaderWords': list(struct.unpack('<IIIIIIQQ', slide_header))}
+    (evidence / 'cache-input.json').write_text(json.dumps(cache_record, indent=2)+'\n')
+    print('APPLE_CACHE_INPUT '+json.dumps(cache_record), flush=True)
 except BaseException:
     run('fusermount3', '-u', filesystem)
     raise

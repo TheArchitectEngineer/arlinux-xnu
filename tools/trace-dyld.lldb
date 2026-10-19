@@ -28,6 +28,14 @@ disassemble --frame --count 20
 thread step-inst
 register read pc sp x0 x1
 breakpoint disable
+# Observe the exact cache registration ABI, rather than guessing from source.
+script cache_bp = target.BreakpointCreateByName("fcntl"); print(cache_bp); assert cache_bp.GetNumResolvedLocations() > 0, "fcntl breakpoint unresolved"
+continue
+script thread = target.GetProcess().GetSelectedThread(); assert thread.GetStopReason() == lldb.eStopReasonBreakpoint and thread.GetStopReasonDataAtIndex(0) == cache_bp.GetID(), "Unexpected stop before fcntl"
+register read pc x0 x1 x2
+memory read --format x --size 8 --count 3 $x2
+thread backtrace all
+breakpoint disable
 continue
 
 # Stop on the real fatal signal before the runtime's fault handler consumes it.
