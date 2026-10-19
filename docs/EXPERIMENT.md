@@ -7,8 +7,8 @@ backend with 16 KiB guest pages? The next acceptance is a linked, initialized
 kernel backend servicing a guest through real XNU code. Object compilation is
 only the first gate; the existing syscall shim does not meet that acceptance.
 
-[Run 39251586602](https://github.com/taowen/arlinux-xnu/actions/runs/39251586602)
-at source `df67b7e` (XNU fork `8ca2a74`) compiled 158 kernel/host/MIG units with the minimal `USERMODE` configuration.
+[Run 39252501502](https://github.com/taowen/arlinux-xnu/actions/runs/39252501502)
+at source `f94d9ab` (XNU fork `9cf7487`) compiled 161 kernel/host/MIG units with the minimal `USERMODE` configuration.
 Relocatable linkage passes. Eight independent Linux process starts executed the
 host pmap's shared-alias, page-copy, zero, protection and removal operations,
 including physical-page reverse mappings, alias replacement and disconnect.
@@ -34,7 +34,7 @@ uploaded their artifacts; Actions logs expose receipt and executable hashes.
 This run was inspected through runner logs without downloading binary archives.
 The original boolean generator is compiled but has not run.
 The early executable SHA-256 is
-`b9eccf6f1e400f8db18cabfb34d5b3f57cb7d8389ce88f7f1d737a58e2468dec`.
+`40dd9b21fed11f3736cc6247600b077b349f85e0f32c7729d41a7c8c85dddfb8`.
 
 ARM ticket reservation now performs real LDAXR/STXR operations with an explicit
 ELF recovery range. A Linux [signal handler](https://man7.org/linux/man-pages/man2/sigaction.2.html)
@@ -48,6 +48,21 @@ did not fault on the initial unaligned load. A diagnostic child faults outside
 the recovery range and must die from SIGSEGV; its intentional `unhandled pc=`
 line appears between the parent diagnostic markers in passing logs.
 General kernel recovery ranges and guest Mach exceptions remain unimplemented.
+
+Fault recovery also covers an explicit ELF copy-in/out instruction range.
+The original `arm64/copyio.c` validation wrappers are compiled, retaining map
+bounds, overflow/size limits, alignment, kernel-buffer and zone checks. Hardware
+PAN writes are skipped for USERMODE; Linux owns page permissions. Leaf byte,
+string and aligned 32/64-bit scalar primitives return XNU errno values through
+scoped SIGSEGV/SIGBUS recovery. Every early start verifies real copies, string
+termination/truncation, misalignment rejection, read-only and unmapped faults,
+a string crossing into an unmapped page, and an empty-file SIGBUS. Each has six
+recoveries on the alternative stack (five SIGSEGV, one SIGBUS), then succeeds
+on a subsequent copy. Diagnostics preserve the owned pmap page's contents.
+Only raw primitives execute here: no fake user task/map is installed. Public
+copyio validation, task address isolation and the wait-if-equal path remain
+unverified until genuine user maps and scheduling are connected. Copy imports,
+including `verify_write`, no longer fail the full VM link.
 
 The host uses Linux TLS for XNU's current-thread access, native/alternative
 bootstrap stacks, and a 256 MiB memfd for physical backing. The exported
@@ -100,7 +115,7 @@ the debug tunable; advancing to
 `STARTUP_SUB_LOCKS` does not establish that XNU lock hooks ran. User-process pmaps
 and pmap ledger/wiring accounting are not connected yet. Reference/dirty attributes record
 conservative mapping history, not precise accesses or cleared-bit tracking.
-The VM executable still fails linkage (278 distinct undefined references), before its original
+The VM executable still fails linkage (272 distinct undefined references), before its original
 `thread_bootstrap()` or `vm_mem_bootstrap()` can execute. A smaller missing-symbol
 count is not a runtime acceptance gate.
 
