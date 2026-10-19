@@ -2,6 +2,7 @@
 #include <asm/ptrace.h>
 #include <elf.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -49,14 +50,17 @@ static void page_probe(void) {
 static void trap_probe(void) {
     pid_t child=fork(); if(child<0) fail("fork trap probe");
     if(!child) {
-        if(ptrace(PTRACE_TRACEME,0,0,0)<0) _exit(2);
+        int guard=memfd_create("syscall-side-effect-guard",MFD_CLOEXEC);
+        if(guard<0 || ptrace(PTRACE_TRACEME,0,0,0)<0) _exit(2);
         raise(SIGSTOP);
-        register uint64_t x0 __asm__("x0")=0;
-        register uint64_t x8 __asm__("x8")=SYS_getpid;
+        register uint64_t x0 __asm__("x0")=(uint64_t)guard;
+        register uint64_t x8 __asm__("x8")=SYS_close;
         register uint64_t x16 __asm__("x16")=DARWIN_GETPID;
         uint64_t flags;
         __asm__ volatile("svc #0x80\n\tmrs %3,nzcv" : "+r"(x0), "+r"(x8), "+r"(x16), "=r"(flags) :: "memory","cc");
-        _exit(x0==GUEST_PID && !(flags&(1UL<<29)) ? 0 : 3);
+        int returned=(x0==GUEST_PID && !(flags&(1UL<<29)));
+        int suppressed=(fcntl(guard,F_GETFD)!=-1);
+        _exit(returned && suppressed ? 0 : 3);
     }
     int status; if(waitpid(child,&status,0)<0) fail("initial wait");
     require(WIFSTOPPED(status),"initial child stop");
@@ -81,7 +85,9 @@ static void trap_probe(void) {
                 pending=1;
             }
         } else if(pending) {
-            require((int64_t)r.regs[0]==-ENOSYS,"Linux syscall was suppressed");
+            /* ARM64 syscall=-1 may retain x0 instead of returning ENOSYS.
+             * The child verifies suppression by checking close(fd) had no effect. */
+            printf("TRACE skipped syscall x0=%lld\n",(long long)r.regs[0]);
             r.regs[0]=GUEST_PID; r.pstate &= ~(1UL<<29);
             registers(child,&r,1); pending=0; handled++;
         }

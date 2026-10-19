@@ -1,8 +1,8 @@
-param([ValidateSet('build','status','download')][string]$Command='build',[string]$RunId)
+param([ValidateSet('build','status','download')][string]$Command='build',[string]$RunId,[ValidateSet('both','host','baseline')][string]$Mode='both')
 $ErrorActionPreference='Stop'
 $repo='taowen/arlinux-xnu'
 switch($Command) {
- 'build' { & gh workflow run experiment.yml -R $repo --ref main }
+ 'build' { & gh workflow run experiment.yml -R $repo --ref main -f "mode=$Mode" }
  'status' { if($RunId) { & gh run view $RunId -R $repo } else { & gh run list -R $repo --workflow experiment.yml --limit 5 } }
  'download' { if(-not $RunId){throw 'Pass -RunId for the exact experiment.'}; & gh run download $RunId -R $repo --dir (Join-Path $PSScriptRoot "build/runs/$RunId") }
 }

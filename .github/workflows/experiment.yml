@@ -1,10 +1,16 @@
 name: XNU usermode feasibility
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: both
+        options: [both, host, baseline]
 permissions:
   contents: read
 jobs:
   host-substrate:
+    if: inputs.mode != 'baseline'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
@@ -28,6 +34,7 @@ jobs:
           name: linux-arm64-host-substrate
           path: build/host/
   xnu-baseline:
+    if: inputs.mode != 'host'
     runs-on: macos-14
     timeout-minutes: 120
     steps:
