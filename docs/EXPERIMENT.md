@@ -37,6 +37,10 @@ per-CPU timer queue, EndOfAllTime deadlines, RTClockData link and actual running
 CPU state, following original ARM cpu_init/cpu_data_init. A due event before
 this initialization asserts instead of dispatching an uninitialized queue.
 Runner verification is pending.
+Inspect existing experiment
+[39292773110](https://github.com/taowen/arlinux-xnu/actions/runs/39292773110),
+source `ff949ec56aaedfb24610effe8b30c939d98bf40b`, before another dispatch.
+Keep this exact run through delayed status or log observations.
 
 Delivery is cooperative at kernel safe points, not arbitrary native instruction
 preemption. The software frame is diagnostic, not a guest architectural return
