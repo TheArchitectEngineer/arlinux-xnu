@@ -57,6 +57,22 @@ For an actual experiment, record the package URL, app/version, SHA-256, Mach-O
 architecture and encryption state. A decrypted IPA alone does not establish
 compatibility; this repository does not bundle third-party IPAs.
 
+## Graphics compatibility references
+
+These are candidates for future integration, not implemented Metal support in
+ARLinux. Documentation reviewed on 2026-10-20; no local build or device validation
+has been performed for these components.
+
+| Project | Relevant work and limits |
+| --- | --- |
+| [Darling Indium / Iridium](https://github.com/darlinghq/indium) | Experimental Metal-on-Vulkan implementation and AIR-to-SPIR-V shader translation. Requires an outer ABI-compatible Metal implementation; not a drop-in Metal.framework replacement. |
+| [metal2vulkan](https://github.com/steelbrain/metal2vulkan) | Alpha metallib/AIR translator and Rust Metal-style runtime on Vulkan. An Objective-C ABI bridge and display integration are still needed; its runtime does not compile MSL source. |
+| [darling-lol](https://github.com/lucannez64/darling-lol) | Integration reference with Metal/Indium and other Darling compatibility changes. The author reports macOS game execution on x86-64 Linux; Android ARM64 support is not established. |
+
+Evaluate actual game shaders and complete rendering/presentation flows before
+choosing a backend. OpenGL ES games can use a separate GLES adaptation path;
+ARM64 code does not imply a Metal dependency.
+
 ## Acknowledgements
 
 * [zalexdev/linux-um-arm64](https://github.com/zalexdev/linux-um-arm64): ARM64
@@ -68,6 +84,10 @@ compatibility; this repository does not bundle third-party IPAs.
 
 * [wmww/tawc](https://github.com/wmww/tawc): the tawcroot in-process syscall
   interception and host-libc-independent runtime model informed the native path.
+* [PlayCover](https://github.com/PlayCover/PlayCover): a reference for running
+  decrypted iOS apps on Apple Silicon Macs, application adaptation and input
+  mapping. It relies on macOS's existing iOS runtime; our Linux/Android target
+  must also supply the underlying Darwin and framework compatibility.
 * [Apple Open Source](https://github.com/apple-oss-distributions): XNU and the
   matching libdispatch kernel firehose implementation; licenses remain upstream.
 
