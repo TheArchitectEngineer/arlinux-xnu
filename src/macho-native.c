@@ -39,6 +39,7 @@ static void rewrite_tls(struct image *im)
         struct command cmd; memcpy(&cmd,im->bytes+pos,sizeof(cmd));
         if (cmd.cmd==LC_SEGMENT_64) {
             struct segment s; memcpy(&s,im->bytes+pos,sizeof(s));
+            s.address+=im->slide;
             need(s.nsects<=128 && sizeof(s)+(uint64_t)s.nsects*sizeof(struct section64)<=cmd.size,
                  "section table bounds");
             if (s.prot&4) {
@@ -48,6 +49,7 @@ static void rewrite_tls(struct image *im)
                     struct section64 section;
                     memcpy(&section,im->bytes+pos+sizeof(s)+j*sizeof(section),sizeof(section));
                     if (!(section.flags&0x80000400U)) continue;
+                    section.address+=im->slide;
                     need(!(section.address&3) && !(section.size&3) &&
                          section.address>=s.address && range(section.address-s.address,section.size,s.filesize) &&
                          section.offset==s.offset+section.address-s.address,
@@ -77,15 +79,39 @@ static void rewrite_tls(struct image *im)
 
 int main(int argc,char **argv)
 {
-    if (argc!=2) { fprintf(stderr,"usage: macho-native STATIC_ARM64_MACHO\n"); return 2; }
+    int dynamic=argc==4 && !strcmp(argv[1],"--dyld");
+    if (argc!=2 && !dynamic) { fprintf(stderr,"usage: macho-native [--dyld DYLD] ARM64_MACHO\n"); return 2; }
     long host=sysconf(_SC_PAGESIZE);
     need(host>0 && (unsigned long)host<=PAGE16 && PAGE16%(unsigned long)host==0,"host page geometry");
-    struct image im={0}; load_image(argv[1],&im); map_guest(&im); rewrite_tls(&im);
+    const char *program=argv[dynamic ? 3 : 1];
+    struct image im={0},dyld={0};
+    load_image(program,&im,dynamic); map_guest(&im); rewrite_tls(&im);
+    if (dynamic) {
+        load_image(argv[2],&dyld,1);
+        need(dyld.filetype==7,"interpreter must be MH_DYLINKER");
+        map_guest(&dyld); rewrite_tls(&dyld);
+    }
     void *stack=mmap(NULL,1024*1024,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     if (stack==MAP_FAILED) die("guest stack");
     uint64_t top=((uintptr_t)stack+1024*1024-128)&~15UL;
+    if (dynamic) {
+        size_t length=strlen(program)+1;
+        need(length<4096,"program path too long");
+        top=(top-length)&~15UL;
+        memcpy((void *)top,program,length);
+        uint64_t name=top;
+        top-=8*8;
+        uint64_t *words=(void *)top;
+        words[0]=im.header_address;
+        words[1]=1;
+        words[2]=name;
+        words[3]=0;             /* argv terminator */
+        words[4]=0;             /* envp terminator */
+        words[5]=0;             /* apple terminator; expand as required */
+        words[6]=words[7]=0;
+    }
     /* Zeroed argc/argv/env/apple terminators for this freestanding entry. */
     fprintf(stderr,"NATIVE_DARWIN_ENTRY entry=%#" PRIx64 " host_page=%ld (Linux services, not XNU boot)\n",im.entry,host);
     darwin_native_prepare();
-    darwin_native_enter(top,im.entry);
+    darwin_native_enter(top,dynamic ? dyld.entry : im.entry);
 }

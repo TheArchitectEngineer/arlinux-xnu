@@ -111,5 +111,5 @@ int main(int argc,char **argv) {
     if(argc!=2) { fprintf(stderr,"usage: macho-host FREESTANDING_ARM64_EXECUTABLE\n"); return 2; }
     long host=sysconf(_SC_PAGESIZE);
     need(host>0 && (unsigned long)host<=PAGE16 && PAGE16%(unsigned long)host==0,"host pages must divide 16K");
-    struct image im={0}; load_image(argv[1],&im); return run_guest(&im);
+    struct image im={0}; load_image(argv[1],&im,0); return run_guest(&im);
 }

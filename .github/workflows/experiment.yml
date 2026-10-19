@@ -5,7 +5,7 @@ on:
       mode:
         type: choice
         default: native
-        options: [both, host, baseline, native]
+        options: [both, host, baseline, native, dyld]
 permissions:
   contents: read
 jobs:
@@ -74,7 +74,7 @@ jobs:
           path: build/macho/
           retention-days: 30
   native-userland:
-    if: inputs.mode == 'both' || inputs.mode == 'native'
+    if: inputs.mode == 'both' || inputs.mode == 'native' || inputs.mode == 'dyld'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
@@ -117,6 +117,44 @@ jobs:
         with:
           name: linux-arm64-native-darwin
           path: build/native/
+          retention-days: 30
+  dyld-userland:
+    if: inputs.mode == 'dyld'
+    needs: native-userland
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64-native-darwin
+          path: build/native/
+      - name: Install Apple filesystem reader
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y 7zip llvm-18
+      - name: Prepare pinned Apple userland and execute its actual dyld
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/dyld
+          uname -a > build/dyld/environment.txt
+          (cd build/native && sha256sum -c SHA256SUMS)
+          chmod +x build/native/macho-native
+          python3 tools/prepare-ios-userland.py 2>&1 | tee build/dyld/input.log
+          llvm-objdump-18 --macho --private-headers build/ios-input/dyld > build/dyld/loader-commands.txt
+          status=0
+          printf '+q' | timeout 30 build/native/macho-native --dyld build/ios-input/dyld build/native/console.macho > build/dyld/console.stdout 2> build/dyld/runtime.log || status=$?
+          cat build/dyld/console.stdout build/dyld/runtime.log
+          exit "$status"
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/dyld --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-arm64-apple-dyld-evidence
+          path: build/dyld/
           retention-days: 30
   xnu-baseline:
     if: inputs.mode == 'both' || inputs.mode == 'baseline'

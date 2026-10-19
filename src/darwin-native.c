@@ -138,6 +138,16 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     }
 }
 
+static void fault(int signal,siginfo_t *info,void *context)
+{
+    const char label[]="DARWIN_NATIVE_FAULT signal/pc/address follows\n";
+    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    ucontext_t *uc=context;
+    trace_call(signal,uc->uc_mcontext.pc,(uintptr_t)info->si_addr);
+    RAW(SYS_exit_group,128+signal,0,0,0,0,0);
+    __builtin_unreachable();
+}
+
 void darwin_native_prepare(void)
 {
     /* Initialize before the filter is live, on host TLS. The signal handler
@@ -150,6 +160,11 @@ void darwin_native_prepare(void)
     sigemptyset(&action.sa_mask);
     if (sigaltstack(&alt,NULL) || sigaction(SIGSYS,&action,NULL)) {
         perror("SIGSYS installation"); exit(1);
+    }
+    action.sa_sigaction=fault;
+    int failures[]={SIGSEGV,SIGILL,SIGBUS,SIGABRT};
+    for (unsigned int i=0;i<sizeof(failures)/sizeof(failures[0]);i++) {
+        if (sigaction(failures[i],&action,NULL)) { perror("fault handler"); exit(1); }
     }
     uintptr_t allowed = (uintptr_t)darwin_raw_return;
     void *vdso = dlopen("linux-vdso.so.1",RTLD_NOW|RTLD_LOCAL);

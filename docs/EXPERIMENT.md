@@ -35,6 +35,18 @@ Android app sandbox. Next connect a genuine dynamic userland: process startup,
 LC_LOAD_DYLINKER and executable mappings must be implemented rather than treating
 loader metadata as inert. Require a real program journey at each extension.
 
+New, not yet validated: ./build.sh build --mode dyld re-runs the native
+console journey, then obtains iPhone7,2 iOS 12.5.7 (16H81) from Apple's CDN on a
+Linux ARM64 runner. It verifies the complete IPSW SHA-256, uses Apple's manifest
+to select the filesystem, and extracts the real non-arm64e /usr/lib/dyld.
+Apple binaries stay transient; only input hashes, load commands and execution
+logs are uploaded. The runtime now accepts a Mach-O dylinker/ARM64 UNIXTHREAD
+entry, slides the interpreter, and constructs the initial app-header/argc/argv/
+envp/apple stack. It still lacks the wider dyld system interfaces. The run must
+show real startup or its actual fault/unsupported-call path, not substitute a
+handwritten loader and label it dyld. File/executable mmap and library services
+remain incomplete. The static journey remains a required predecessor.
+
 Earlier native build failures remain in Actions and local text logs:
 39319498437 (cross-section ADR), 39319703701 (cstring layout), 39319854670 (host
 page signedness). No program ran in those attempts. The engine-dependent kernel
