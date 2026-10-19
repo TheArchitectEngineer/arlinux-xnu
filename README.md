@@ -7,7 +7,8 @@ preserved. Running an unchanged kernel is not a requirement.
 
 The native ARM64 path runs a real dyld/libSystem console through memory, TLS,
 threads, input, normal exit and restart. ARHello 1.0 now enters real UIKit on
-Linux but stops at missing workqueue support. The same iOS binary, converted
+Linux and executes real background tasks, with startup compatibility still
+incomplete. The same iOS binary, converted
 with PlayCover on a macOS ARM64 runner, completes display, real mouse input,
 normal exit and relaunch under LLDB. Linux GUI and Android integration remain
 unverified.

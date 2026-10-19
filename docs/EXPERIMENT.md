@@ -5,7 +5,7 @@
 The active target is a modifiable Darwin/iOS compatibility environment on
 Linux/Android. Native ARM64, 16 KiB guest pages and one advertised CPU remain
 fixed. Original XNU boot is a behavioral reference, not an application gate.
-No third-party iOS App, UI or Android integration has passed.
+No third-party iOS app, Linux UI or Android integration has passed.
 
 Current application: **ARHello 1.0** (`io.arlinux.ARHello`), a programmatic
 UIKit window, label and increment button. Its interfaces/TBD files contain only
@@ -13,14 +13,20 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39339057078](https://github.com/taowen/arlinux-xnu/actions/runs/39339057078),
-source `91b14125062de1a934cb3d7bb8fee9af1621baac`, dyld job `118355918738`.
-Real libpthread now accepts the ordinary-workqueue/basic QoS feature result;
-its previous uninitialized-feature trap is gone. The actual release libdispatch
-has no fallback-switch symbol and traps in _dispatch_root_queues_init_once +264
-at 0x1808b6850 with x0=0x4000001f (our supported features, excluding kevent).
-No ordinary workqueue callback has executed in the UIKit journey yet. Do not
-claim that the new backend alone is sufficient for this release library.
+[39344494727](https://github.com/taowen/arlinux-xnu/actions/runs/39344494727),
+source `4beb1634d4d1d124fba507b7055d5a3daebe5605`, dyld job `118373866198`.
+UIKit submits actual background blocks to genuine libdispatch workers on Linux
+threads. LLDB sees _dispatch_root_queue_drain, _dispatch_worker_thread2 and
+_pthread_wqthread alongside CoreFoundation and QuartzCore initialization.
+The original workqueue assertion and base voucher failure are passed; proc_info
+returns the requested 56-byte current-process identity. XPC's audit-token query
+also passes, as do both observed guarded XPC port constructions. The current
+fatal assertion is libdispatch's kevent error path at 0x1808c3ce4. Debug-control
+query and memory-pressure registration pass; the next syscall is kevent_id
+(375), currently unsupported. This exact run captures a genuine Mach receive
+port registration on a dynamic workloop, detailed below.
+BackBoardServices display initialization is on the caller stack. No Linux
+window/display/input callback has passed. App status remains 133 (SIGTRAP).
 
 The same run first completes both independent real-libSystem console launches:
 worker return 37, shared memory 42, input counter 1 and normal exit. Previous
@@ -72,16 +78,67 @@ standalone console regression is
 
 ### Current boundary and next action
 
-Adapt the real release libdispatch path to the implemented ordinary workqueue,
-or implement its required event delivery. The near-version OSS reference
-(libdispatch-1008.250.7, e930039885b0167c65e48f24b370fbabc8085fc2) compiles its
-fallback only with DISPATCH_USE_MGR_THREAD; the environment override is
-restricted to debug/profile builds. Do not infer a release fallback from those
-conditional source branches. The loader now tolerates the absent switch,
-leaving the genuine release code to report its missing capability. Next inspect
-the actual root-queue initializer instructions around its fatal branch.
-General Mach/event delivery, UI presentation and ARLinux integration remain
-unfinished. No Linux iOS UI journey has passed.
+The release initializer instructions are now captured in
+[39339436734](https://github.com/taowen/arlinux-xnu/actions/runs/39339436734).
+It has no compiled manager-thread fallback: it checks real kevent support and
+calls the actual pthread workqueue initializer. The unsuccessful optional-data
+switch approach was removed. Native basic event support now uses epoll,
+eventfd and timerfd and reports its kevent capability; unknown filters and
+workloops return errors. Actual ordinary UIKit work dispatch is observed, but
+no successful kevent-callback/UI journey has yet established broader delivery.
+
+The first contention observed was the real first-fit mutex protocol. Its new
+futex parking backend preserves one wake credit per unlock, including late
+waiters. Fair-share/shared mutexes and condition/RW-lock protocols remain
+unsupported. A standalone bank-voucher request yields an explicitly empty
+accounting context, consistent with libdispatch's empty-base-voucher mode;
+other recipes do not receive fabricated vouchers. UID/GID and time use Linux.
+
+Current-task proc_pidinfo uses actual Linux PID/start ticks and the original
+Mach-O LC_UUID. The app bundle is separately readable alongside the firmware.
+Enabling real file access also exposed an early libSystem re-entrant dispatch
+allocation through SystemVersion.plist/XPC parsing (39341299581). The production
+kern.osvariant_status read-only node now prevents this fallback; both complete
+dynamic consoles pass again. Firmware metadata confirms iPhone OS 12.5.7/16H81
+with no Internal/NonUI ReleaseType. Unknown sysctl nodes still return errors.
+
+TASK_AUDIT_TOKEN passes via real task-info MIG transport, populated
+from Linux IDs, /proc audit assignment and the same process incarnation used by
+proc_pidinfo. Run
+[39342992718](https://github.com/taowen/arlinux-xnu/actions/runs/39342992718),
+source `caf93b5ec22079df3504321339f7dcf03499c0fe`, passes the first real XPC
+port construction (flags 0x31), then rejects its second request (0x3b, qlimit 16).
+Run 39343338894 passes both constructions with synchronized packet-count limits
+and ordinary Linux scheduling for importance-receiver eligibility. The debug
+control query now returns its actual unregistered NULL slot, which both real
+XNU and libdispatch permit; 39343720831 confirms this path passes. Current source
+adds an actual Linux MemAvailable-backed memory-pressure subscription, with
+documented ordinary host thresholds and no configured process Jetsam cap.
+Sampling ticks do not substitute for pressure changes. 39344144830 confirms
+registration but not pressure callback delivery/rearm. The actual request from
+39343720831 was EVFILT_MEMORYSTATUS (-14), ident 0, flags 0x185, fflags
+0xf0000037. Current source retains bounded kevent_id arguments/first-event
+fields without reporting an unimplemented workloop as successful. Completed
+diagnostic regression:
+[39344494727](https://github.com/taowen/arlinux-xnu/actions/runs/39344494727),
+source `4beb1634d4d1d124fba507b7055d5a3daebe5605`:
+
+- kevent_id queue ID 0x3002163e0, one change, capacity 16, no data buffer,
+  syscall flags 0x403 (WORKLOOP | IMMEDIATE | ERROR_EVENTS).
+- Change: ident 0xa01 (the newly allocated receive right), filter -8
+  (EVFILT_MACHPORT), flags 0x385, qos 0x840008ff, fflags 0x0400080e,
+  udata 0x300216470, data/ext zero.
+- Both real-libSystem console launches pass; the actual app returns 133 after
+  the unsupported operation. These IDs/addresses are observations, never fixed
+  configuration or a reason to special-case ARHello.
+
+Next implement actual dynamic queue identity/lifetime, Mach receive readiness,
+message/trailer ownership and the appropriate libpthread event delivery/owner
+binding. Inspect XNU and the actual libdispatch instructions for these flags;
+do not alias a workloop to the existing global workqueue or synthesize receives.
+Generic sends, port
+guard destruction, and broader Mach message/event delivery,
+display services, graphics and ARLinux integration remain incomplete.
 
 The macOS reference now completes **two actual GUI journeys**:
 [39338697656](https://github.com/taowen/arlinux-xnu/actions/runs/39338697656),
@@ -100,14 +157,17 @@ Reference receipt: `b2e4e987dea4a4840b0f125b56c425bb42ec05490c0aed87cbae41b76c26
 Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
 never reached the button; the accepted run uses the actual macOS HID queue.
 
-Linux ordinary-workqueue implementation includes native worker stacks, clone,
-scheduling gates, registered callbacks and cleanup. Linux priority permission
-errors are propagated before guest callbacks run. Kevent/workloop support is not
-advertised. Both independent dynamic consoles pass in 39339057078, but actual
-UIKit still stops at the release initializer's missing-kevent branch. This is
-implemented infrastructure, not an observed successful UIKit work dispatch.
-Latest failed app receipt:
-`95ee8ae7741a878c2d6bd76521264172d0eb8a2390bc9ceacd651db234ac2e82`.
+Latest app failure receipt:
+`5a9d46e788023cfbb83bba4355b72ff5a2c263fee143621d504003c83165bcc1`.
+Local text: build/runs/39344494727/dyld-job.log. Both independent real-libSystem
+console launches still complete. The earlier first worker run 39340039442
+reached the voucher assertion; its receipt is
+`71a285b07a8e6423117eaff487e91342f323db11930de04b66d431d6077c12e2`.
+
+Intermediate port-options failure receipt (39342992718):
+`269a8ebe54039b15834af66f3e349cc7dc3b5ca573c5ad359cea2f4ebc110edb`.
+The preceding 39342902242 attempt failed compilation due to a duplicate C tag;
+it did not execute the app and is not runtime evidence.
 
 ### Reproducible inputs and evidence
 

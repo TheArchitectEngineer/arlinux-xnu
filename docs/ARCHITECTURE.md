@@ -81,13 +81,55 @@ the Darwin ABI policy, not implemented realtime scheduling. Host and Clock send
 references are tracked; Clock service replies transfer a registered service
 right using the normal complex descriptor format. Clock time uses Linux clocks.
 
+mach_port_construct also allocates a real socket queue/receive right and records
+its guard/context and requested initial send right. Queue limits use synchronized
+packet counts, not an approximation based on socket byte capacity. The observed
+XPC options are 0x31 and 0x3b (the latter requests a 16-message limit). Importance
+receiver eligibility uses the standalone ordinary Linux scheduling policy;
+there is no App Nap or cross-process importance inheritance. Generic sends,
+guard destruction and broader port ownership remain unsupported. A successful
+allocation is not evidence of an XPC server or a complete IPC journey.
+
 The observed semaphore-create request allocates an actual Linux eventfd counter.
-Signal/wait/timed-wait support is implemented, but it has not passed a complete
-multithreaded user journey; contended FIFO ordering and concurrent namespace
+Signal/wait traps are implemented, but have not passed a complete
+multithreaded user journey. The host wait helper accepts deadlines; guest timed
+wait traps remain unsupported. Contended FIFO ordering and concurrent namespace
 mutation remain unverified. General descriptors, out-of-line memory, port sets,
 notifications, arbitrary rights transfer and cross-process namespace semantics
 are still outside the implemented transport. These limitations remain failures,
 not empty successful replies.
+
+## Event workers and process services
+
+Native libpthread registration supplies ordinary and basic kevent workqueue
+capabilities backed by actual Linux clone threads, private signal/runtime
+stacks and a scheduling gate before guest callback entry. The original
+libdispatch, pthread callback and user blocks still execute. Native epoll,
+eventfd and timerfd supply readiness for descriptor, user and timer filters.
+Memory-status subscriptions sample actual Linux /proc/meminfo once per second;
+the compatibility policy uses MemAvailable <=10% for warning and <=3% for
+critical pressure. Initial measured state and subsequent transitions are
+delivered only when subscribed; sampling ticks alone are not guest events.
+UDATA-specific DISPATCH/rearm subscriptions are supported for this filter.
+There is no per-process Jetsam cap or Apple MSL status policy in the standalone
+runtime, and no process-limit notification is invented. Physical availability
+does not yet model cgroup memory ceilings; Android integration must address that
+where applicable. Successful registration alone does not verify pressure delivery.
+Mach-port event filters return unsupported errors; workloop capability is not
+advertised. Unsupported
+requests retain real errors. The observed UIKit workers have advanced past
+root-queue initialization; a complete kevent callback journey remains unproven.
+
+First-fit mutex slow waits consume real futex-backed wake credits; the genuine
+pthread library still owns its lock state and owner compare-and-swap. Other
+psynch protocols require their own behavior. The standalone process chooses
+an empty bank-accounting base voucher; it does not mint an Apple identity or
+pretend that unrelated voucher attributes exist. Kernel process identity is
+translated from Linux PID/start ticks, with the guest executable's actual
+Mach-O UUID. TASK_AUDIT_TOKEN uses the same process incarnation and Linux audit,
+real/effective UID/GID and process identity; it does not mint an Apple identity. Application bundle reads are resolved to its real bundle directory
+while firmware reads remain rooted separately; both paths retain read-only
+open policy. These are runtime services, not evidence of Android integration.
 
 ## Preserve behavior, permit implementation changes
 
