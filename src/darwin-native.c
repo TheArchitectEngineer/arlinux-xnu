@@ -14,6 +14,7 @@
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <sys/uio.h>
 #include <ucontext.h>
 #include <dlfcn.h>
 #include <unistd.h>
@@ -97,6 +98,34 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     }
     long result = -38;
     switch (r[16]) {
+    case 500: {                 /* Darwin getentropy: success returns zero */
+        if (r[1]>256) { result=-5; break; }
+        unsigned long done=0;
+        while (done<r[1]) {
+            long count=RAW(SYS_getrandom,r[0]+done,r[1]-done,0,0,0,0);
+            if (count==-4) continue; /* retry EINTR without host errno/TLS */
+            if (count<0) { result=count; break; }
+            if (!count) { result=-5; break; }
+            done+=(unsigned long)count;
+        }
+        if (done==r[1]) result=0;
+        break;
+    }
+    case 520: case 521: {       /* retain actual dyld fatal reason, no fake success */
+        char text[512];
+        struct iovec local={text,sizeof(text)};
+        struct iovec remote={(void *)r[r[16]==521 ? 4 : 5],sizeof(text)};
+        long size=RAW(SYS_process_vm_readv,RAW(SYS_getpid,0,0,0,0,0,0),&local,1,&remote,1,0);
+        if (size>0) {
+            unsigned long length=0;
+            while (length<(unsigned long)size && text[length]) length++;
+            const char label[]="DARWIN_ABORT_REASON ";
+            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,2,text,length,0,0,0);
+            RAW(SYS_write,2,"\n",1,0,0,0);
+        }
+        break;
+    }
     case 1:
         trace_call(r[16],uc->uc_mcontext.pc,r[0]&255);
         RAW(SYS_exit_group,r[0]&255,0,0,0,0,0);
