@@ -197,7 +197,18 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             return;
         }
         if (number==29 || number==26) {
+            if (number==29) host_send_refs++;
             r[0]=number==29 ? CURRENT_HOST_PORT : ipc_reply_port();
+            trace_call(r[16],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
+        if (number==18) { /* release implemented service send-right references */
+            unsigned long *refs=r[1]==CURRENT_HOST_PORT ? &host_send_refs :
+                r[1]==SYSTEM_CLOCK_PORT ? &clock_send_refs[0] :
+                r[1]==CALENDAR_CLOCK_PORT ? &clock_send_refs[1] : NULL;
+            if (r[0]!=CURRENT_TASK_PORT) r[0]=16;
+            else if (refs && *refs) { --*refs; r[0]=0; }
+            else r[0]=15; /* KERN_INVALID_NAME */
             trace_call(r[16],uc->uc_mcontext.pc,r[0]);
             return;
         }

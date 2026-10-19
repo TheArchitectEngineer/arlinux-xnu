@@ -7,6 +7,9 @@
 #include <sys/socket.h>
 #include <poll.h>
 #define CURRENT_HOST_PORT 0x203U
+#define SYSTEM_CLOCK_PORT 0x10001U
+#define CALENDAR_CLOCK_PORT 0x10101U
+static unsigned long host_send_refs,clock_send_refs[2];
 #define IPC_ENDPOINTS 64
 #define IPC_BYTES 1024
 struct ipc_endpoint { uint32_t name,generation; int used,read_fd,write_fd; };
@@ -53,11 +56,14 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             uint32_t word; __builtin_memcpy(&word,request+i*4,4);
             trace_call(i,pc,word);
         }
-        if (header->remote!=CURRENT_HOST_PORT) return send_invalid_dest;
+        int clock=header->remote==SYSTEM_CLOCK_PORT ? 0 :
+                  header->remote==CALENDAR_CLOCK_PORT ? 1 : -1;
+        if (header->remote!=CURRENT_HOST_PORT && clock<0) return send_invalid_dest;
+        if ((clock<0 && !host_send_refs) || (clock>=0 && !clock_send_refs[clock])) return send_invalid_dest;
         struct ipc_endpoint *reply=ipc_find(header->local);
         if (!reply) return send_invalid_reply;
         if (header->bits!=0x1513 || header->voucher ||
-            header->id>INT32_MAX-100 || (header->size && header->size!=r[2])) return 0x10000010U;
+            header->id>INT32_MAX-100) return 0x10000010U;
         /* MIG host_info: header, NDR, flavor, output count. Unknown routines
          * get a genuine MIG error reply rather than a successful empty body. */
         uint32_t response[18];
@@ -67,7 +73,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         out->id=header->id+100;
         response[7]=1; /* NDR little-endian integer representation */
         response[8]=(uint32_t)-303; /* MIG_BAD_ID */
-        if (header->id==200 && r[2]==40) {
+        if (clock<0 && header->id==200 && r[2]==40) {
             uint32_t flavor,count; __builtin_memcpy(&flavor,request+32,4);
             __builtin_memcpy(&count,request+36,4);
             response[8]=4; /* KERN_INVALID_ARGUMENT */
@@ -79,6 +85,23 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 response[8]=0; response[9]=8; out->size=72;
                 for (unsigned int i=0;i<8;i++) response[10+i]=policy[i];
             }
+        }
+        if (clock<0 && header->id==206 && r[2]==36) {
+            uint32_t clock_id; __builtin_memcpy(&clock_id,request+32,4);
+            response[8]=4; /* KERN_INVALID_ARGUMENT */
+            if (clock_id<=1) {
+                /* MIG complex reply: body + one transferred send right. */
+                out->bits|=0x80000000U; out->size=40;
+                response[6]=1; response[7]=clock_id ? CALENDAR_CLOCK_PORT : SYSTEM_CLOCK_PORT;
+                response[8]=0; response[9]=17U<<16;
+                clock_send_refs[clock_id]++;
+            }
+        }
+        if (clock>=0 && header->id==1000 && r[2]==24) {
+            struct timespec now;
+            long status=RAW(SYS_clock_gettime,clock ? CLOCK_REALTIME : CLOCK_MONOTONIC,&now,0,0,0,0);
+            response[8]=status ? 5 : 0; /* real clock, otherwise KERN_FAILURE */
+            if (!status) { out->size=44; response[9]=now.tv_sec; response[10]=now.tv_nsec; }
         }
         long sent=RAW(SYS_sendto,reply->write_fd,response,out->size,MSG_DONTWAIT|MSG_NOSIGNAL,0,0);
         if (sent!=(long)out->size) return 0x10000004U; /* MACH_SEND_TIMED_OUT */
