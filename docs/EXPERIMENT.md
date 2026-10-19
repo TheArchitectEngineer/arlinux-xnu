@@ -46,23 +46,28 @@ User pmap ownership and geometry compiled in the latest run but did not execute.
 Creation/reference/final release use real XNU typed allocation, rwlock, atomic
 refs, ledger refs and a per-pmap engine. Unsupported creation modes are rejected;
 final release cannot discard live mappings. No hardware page table ops exist.
-User insertion still returns unsupported and user wiring is explicitly rejected.
+User queries read engine metadata. No XNU pmap ownership/query path has run.
 
-Compiled, not runtime-validated: user physical/resident queries read the owned
-engine's mapping metadata, never host aliases. Failed/poisoned queries stop rather
-than report an empty map. Empty user-range removal verifies no mapped bytes;
-nonempty removal remains unsupported until task ledger debit is connected. This
-allows empty-map cleanup without pretending to unmap real pages.
+New, not yet built: resident user insertion/replacement/removal/protection and
+wiring now update real task ledger terms (phys_mem, internal/external, alternate,
+footprint, wired). Physical protect/disconnect synchronizes XNU mapping records
+and ledger debit after native completion, with preemption still disabled.
+NOENTER reserves XNU/native metadata without mapping page zero; NOWAIT uses
+nonblocking XNU allocation. Only allocation failure before uncertain native
+mutation is retryable; later failures stop rather than release possibly mapped
+frames. Same-frame reentry retains existing accounting classification.
 
-Next connect actual mappings with task ledger accounting, wiring, replacement,
-ref/mod and user-copy/COW semantics. Use the pinned pmap_data.c ledger helpers
-and pmap.c internal/external/reusable/alternate rules as semantic references;
-update real ledgers on the XNU stack, never from a native engine callback.
-After that connect actual thread saved state and original
-exception return/dispatch. Lifecycle ownership alone does not make user pmaps
-usable. Original VM/scheduler/timer/idle paths remain runtime-unverified.
-Native JIT calls must not schedule XNU while on their stack. Do not choose
-unrelated providers by unresolved-symbol counts or add successful placeholders.
+Reusable/compressed mappings and unsupported cache/mapping options remain
+explicitly unsupported. They must not be silently billed as ordinary resident
+pages. Native reverse aliases and XNU records/ledger terms need the real VM
+journey to validate consistency. No isolated mapping sample/test is added.
+
+Next verify this revision's real runner build, then connect user-copy and
+VM/COW faults, actual thread saved state and original exception return/dispatch.
+Nested/shared-cache/commpage paths and service providers also remain. Keep task
+ledger operations on the XNU stack, never in a native engine callback. Original
+VM/scheduler/timer/idle paths remain runtime-unverified. Do not pick unrelated
+providers by unresolved-symbol counts or add successful placeholders.
 
 The first acceptance is supervisor plus child through original BSD exec/VFS:
 console output, XNU allocation/touch/free, normal child exit and real parent wait.

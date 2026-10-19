@@ -36,6 +36,10 @@ int xnu_host_guest_create(struct xnu_host_guest **result);
 int xnu_host_guest_destroy(struct xnu_host_guest *guest);
 /* Reduce/remove every engine alias of a managed physical frame. */
 int xnu_host_guest_page_protect(unsigned int page, unsigned int protection);
+/* Reserve insertion metadata without installing a translation. */
+int xnu_host_guest_reserve(struct xnu_host_guest *guest);
+/* Returns exactly 1 for an allocation error before uncertain mutation. */
+int xnu_host_guest_error_retryable(struct xnu_host_guest *guest, int error);
 int xnu_host_guest_map(struct xnu_host_guest *guest, unsigned long long address,
     void *frame, unsigned int protection);
 int xnu_host_guest_unmap(struct xnu_host_guest *guest, unsigned long long address);

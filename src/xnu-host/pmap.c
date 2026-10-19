@@ -2,7 +2,7 @@
  * This is not the ARM hardware page-table implementation. Linux owns mappings
  * and TLB/cache maintenance; XNU still owns VM objects/maps and page allocation.
  * User pmap ownership is backed by real XNU allocation/ledgers and an engine.
- * User mapping, task accounting and execution are not connected yet. */
+ * Resident user mappings update real task ledgers; guest execution is not connected. */
 #include <arm/usermode_vm.h>
 #include <kern/assert.h>
 #include <kern/debug.h>
@@ -10,6 +10,7 @@
 #include <kern/cpu_data.h>
 #include <kern/kalloc.h>
 #include <kern/ledger.h>
+#include <kern/task.h>
 #include <kern/startup.h>
 #include <os/atomic_private.h>
 #include <arm/pmap/pmap_pt_geometry.h>
@@ -125,9 +126,19 @@ const struct page_table_attr pmap_pt_attr_16k = {
 };
 const struct page_table_attr *const native_pt_attr = &pmap_pt_attr_16k;
 
+struct host_user_mapping {
+    vm_map_offset_t address;
+    ppnum_t page;
+    vm_prot_t protection;
+    unsigned int accounting;
+    bool wired;
+    struct host_user_mapping *next;
+};
+
 struct host_user_pmap {
     struct pmap map;
     struct xnu_host_guest *guest;
+    struct host_user_mapping *mappings, *spare;
     struct host_user_pmap *next;
 };
 static struct host_user_pmap *user_pmaps;
@@ -159,6 +170,272 @@ pmap_require(pmap_t pmap)
 {
     disable_preemption();
     require_pmap_locked(pmap);
+    enable_preemption();
+}
+
+static struct host_user_mapping **
+user_mapping_link(struct host_user_pmap *user, vm_map_offset_t address)
+{
+    assert(get_preemption_level() > 0);
+    struct host_user_mapping **link = &user->mappings;
+    while (*link && (*link)->address != address)
+        link = &(*link)->next;
+    return link;
+}
+
+static void
+user_ledger_change(pmap_t pmap, int entry, bool credit)
+{
+    if (pmap->ledger == NULL)
+        return; /* A ledger-less commpage/submap has no task balance to update. */
+    kern_return_t result = credit ? ledger_credit(pmap->ledger, entry, PAGE_SIZE) :
+        ledger_debit(pmap->ledger, entry, PAGE_SIZE);
+    if (result != KERN_SUCCESS)
+        panic("host user pmap ledger update pmap=%p entry=%d credit=%d kr=%d",
+            pmap, entry, credit, result);
+}
+
+static void
+user_account_mapping(pmap_t pmap, struct host_user_mapping *mapping, bool credit)
+{
+    /* Same resident/internal/external/alternate/wired terms as pinned ARM.
+     * Reusable and compressed mappings are not accepted by this path yet. */
+    user_ledger_change(pmap, task_ledgers.phys_mem, credit);
+    if (mapping->accounting & PMAP_OPTIONS_INTERNAL) {
+        user_ledger_change(pmap, task_ledgers.internal, credit);
+        user_ledger_change(pmap, (mapping->accounting & PMAP_OPTIONS_ALT_ACCT) ?
+            task_ledgers.alternate_accounting : task_ledgers.phys_footprint, credit);
+    } else {
+        user_ledger_change(pmap, task_ledgers.external, credit);
+    }
+    if (mapping->wired)
+        user_ledger_change(pmap, task_ledgers.wired_mem, credit);
+}
+
+static void
+user_remove_mapping(struct host_user_pmap *user, struct host_user_mapping **link)
+{
+    struct host_user_mapping *mapping = *link;
+    int error = xnu_host_guest_unmap(user->guest, mapping->address);
+    if (error)
+        panic("host user pmap unmap pmap=%p va=%#llx uc_err=%d",
+            &user->map, mapping->address, error);
+    user_account_mapping(&user->map, mapping, false);
+    *link = mapping->next;
+    kfree_type(struct host_user_mapping, mapping);
+}
+
+/* Called after a completed native physical protect/disconnect, with XNU
+ * preemption still disabled. Never perform ledger work on the native stack. */
+static void
+user_physical_change(ppnum_t page, vm_prot_t protection)
+{
+    for (struct host_user_pmap *user = user_pmaps; user; user = user->next) {
+        struct host_user_mapping **link = &user->mappings;
+        while (*link) {
+            struct host_user_mapping *mapping = *link;
+            if (mapping->page != page) {
+                link = &mapping->next;
+                continue;
+            }
+            if (protection != VM_PROT_NONE) {
+                mapping->protection &= protection;
+                link = &mapping->next;
+            } else {
+                user_account_mapping(&user->map, mapping, false);
+                *link = mapping->next;
+                kfree_type(struct host_user_mapping, mapping);
+            }
+        }
+    }
+}
+
+static bool
+user_page_mapped(ppnum_t page)
+{
+    for (struct host_user_pmap *user = user_pmaps; user; user = user->next)
+        for (struct host_user_mapping *mapping = user->mappings; mapping; mapping = mapping->next)
+            if (mapping->page == page)
+                return true;
+    return false;
+}
+
+static kern_return_t
+user_expand(pmap_t pmap, bool nowait)
+{
+    struct host_user_mapping *spare = NULL;
+retry:
+    disable_preemption();
+    struct host_user_pmap *user = *user_pmap_link(pmap);
+    assert(user);
+    if (!user->spare && !spare) {
+        enable_preemption();
+        spare = kalloc_type(struct host_user_mapping,
+            (nowait ? Z_NOWAIT : Z_WAITOK) | Z_ZERO);
+        if (!spare)
+            return KERN_RESOURCE_SHORTAGE;
+        goto retry;
+    }
+    int error = xnu_host_guest_reserve(user->guest);
+    kern_return_t result = KERN_SUCCESS;
+    if (error) {
+        if (!xnu_host_guest_error_retryable(user->guest, error))
+            panic("host user pmap reserve pmap=%p uc_err=%d", pmap, error);
+        result = KERN_RESOURCE_SHORTAGE;
+    } else if (!user->spare) {
+        user->spare = spare;
+        spare = NULL;
+    }
+    enable_preemption();
+    if (spare)
+        kfree_type(struct host_user_mapping, spare);
+    return result;
+}
+
+static kern_return_t
+user_enter(pmap_t pmap, vm_map_offset_t address, ppnum_t page,
+    vm_prot_t protection, vm_prot_t fault_type, unsigned int flags,
+    boolean_t wired, unsigned int options)
+{
+    const unsigned int allowed = PMAP_OPTIONS_NOWAIT | PMAP_OPTIONS_NOENTER |
+        PMAP_OPTIONS_INTERNAL | PMAP_OPTIONS_ALT_ACCT | PMAP_OPTIONS_NOFLUSH;
+    if (flags || (options & ~allowed))
+        return KERN_NOT_SUPPORTED;
+    pmap_require(pmap);
+    if (address < pmap->min || address >= pmap->max || (address & PAGE_MASK) ||
+        (protection & ~VM_PROT_ALL))
+        return KERN_INVALID_ARGUMENT;
+    if (options & PMAP_OPTIONS_NOENTER)
+        return user_expand(pmap, (options & PMAP_OPTIONS_NOWAIT) != 0);
+    if (!page || page >= frame_limit)
+        return KERN_INVALID_ARGUMENT;
+retry:
+    disable_preemption();
+    struct host_user_pmap *user = *user_pmap_link(pmap);
+    struct host_user_mapping **link = user_mapping_link(user, address);
+    struct host_user_mapping *mapping = *link;
+    if (mapping && mapping->page == page) {
+        int error = xnu_host_guest_protect(user->guest, address, protection);
+        if (error)
+            panic("host user pmap reenter protect pmap=%p uc_err=%d", pmap, error);
+        mapping->protection = protection;
+        if (mapping->wired != !!wired) {
+            user_ledger_change(pmap, task_ledgers.wired_mem, !!wired);
+            mapping->wired = !!wired;
+        }
+    } else {
+        bool replacing = mapping != NULL;
+        if (replacing) {
+            int error = xnu_host_guest_reserve(user->guest);
+            if (error) {
+                if (!xnu_host_guest_error_retryable(user->guest, error))
+                    panic("host user pmap replacement reserve pmap=%p uc_err=%d", pmap, error);
+                enable_preemption();
+                return KERN_RESOURCE_SHORTAGE;
+            }
+            error = xnu_host_guest_unmap(user->guest, address);
+            if (error)
+                panic("host user pmap replacement unmap pmap=%p uc_err=%d", pmap, error);
+            user_account_mapping(pmap, mapping, false);
+        } else {
+            mapping = user->spare;
+            user->spare = NULL;
+            if (!mapping)
+                mapping = kalloc_type(struct host_user_mapping, Z_NOWAIT | Z_ZERO);
+            if (!mapping) {
+                enable_preemption();
+                if (options & PMAP_OPTIONS_NOWAIT)
+                    return KERN_RESOURCE_SHORTAGE;
+                kern_return_t result = user_expand(pmap, false);
+                if (result != KERN_SUCCESS)
+                    return result;
+                goto retry;
+            }
+        }
+        int error = xnu_host_guest_map(user->guest, address,
+            (void *)phystokv((pmap_paddr_t)page * PAGE_SIZE), protection);
+        if (error) {
+            if (replacing || !xnu_host_guest_error_retryable(user->guest, error))
+                panic("host user pmap insertion state pmap=%p uc_err=%d", pmap, error);
+            if (!user->spare)
+                user->spare = mapping;
+            else
+                kfree_type(struct host_user_mapping, mapping);
+            enable_preemption();
+            return KERN_RESOURCE_SHORTAGE;
+        }
+        unsigned int accounting = options & PMAP_OPTIONS_INTERNAL;
+        if (accounting && (options & PMAP_OPTIONS_ALT_ACCT))
+            accounting |= PMAP_OPTIONS_ALT_ACCT;
+#if DEVELOPMENT || DEBUG
+        if (accounting && pmap->footprint_suspended)
+            accounting |= PMAP_OPTIONS_ALT_ACCT;
+#endif
+        struct host_user_mapping *next = replacing ? mapping->next : NULL;
+        *mapping = (struct host_user_mapping){ .address = address, .page = page,
+            .protection = protection, .accounting = accounting, .wired = !!wired, .next = next };
+        *link = mapping;
+        user_account_mapping(pmap, mapping, true);
+    }
+    int error = xnu_host_memory_update_attributes(page, 0, VM_MEM_REFERENCED |
+        ((fault_type & VM_PROT_WRITE) ? VM_MEM_MODIFIED : 0));
+    if (error)
+        panic("host user pmap insertion tracking pmap=%p page=%u errno=%d", pmap, page, error);
+    enable_preemption();
+    return KERN_SUCCESS;
+}
+
+static void
+user_protect(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end,
+    vm_prot_t protection, unsigned int options)
+{
+    pmap_require(pmap);
+    assert(start >= pmap->min && start <= end && end <= pmap->max &&
+        ((start | end) & PAGE_MASK) == 0);
+    if (options & ~(PMAP_OPTIONS_NOFLUSH | PMAP_OPTIONS_PROTECT_IMMEDIATE))
+        panic("host user pmap protect options unsupported options=%#x", options);
+    bool immediate = (options & PMAP_OPTIONS_PROTECT_IMMEDIATE) != 0;
+    if (!immediate) {
+        switch (protection) {
+        case VM_PROT_READ:
+        case VM_PROT_EXECUTE:
+        case VM_PROT_READ | VM_PROT_EXECUTE:
+            break;
+        case VM_PROT_READ | VM_PROT_WRITE:
+        case VM_PROT_ALL:
+            return; /* Upgrades wait for the original VM fault/COW decision. */
+        default:
+            protection = VM_PROT_NONE;
+        }
+    }
+    disable_preemption();
+    struct host_user_pmap *user = *user_pmap_link(pmap);
+    struct host_user_mapping **link = &user->mappings;
+    while (*link) {
+        struct host_user_mapping *mapping = *link;
+        if (mapping->address < start || mapping->address >= end) {
+            link = &mapping->next;
+            continue;
+        }
+        if (protection == VM_PROT_NONE) {
+            user_remove_mapping(user, link);
+            continue;
+        }
+        vm_prot_t next = immediate && (protection & VM_PROT_WRITE) ?
+            mapping->protection | VM_PROT_READ | VM_PROT_WRITE :
+            mapping->protection & protection;
+        int error = xnu_host_guest_protect(user->guest, mapping->address, next);
+        if (error)
+            panic("host user pmap protect state pmap=%p uc_err=%d", pmap, error);
+        mapping->protection = next;
+        if (immediate && (protection & VM_PROT_WRITE)) {
+            error = xnu_host_memory_update_attributes(mapping->page, 0,
+                VM_MEM_REFERENCED | VM_MEM_MODIFIED);
+            if (error)
+                panic("host user pmap immediate tracking page=%u errno=%d", mapping->page, error);
+        }
+        link = &mapping->next;
+    }
     enable_preemption();
 }
 
@@ -238,7 +515,7 @@ pmap_destroy(pmap_t pmap)
             panic("host pmap attempt to destroy kernel pmap");
         struct host_user_pmap **link = user_pmap_link(pmap);
         user = *link;
-        assert(user && pmap->nested_pmap == PMAP_NULL);
+        assert(user && pmap->nested_pmap == PMAP_NULL && user->mappings == NULL);
         /* A successful close requires no remaining engine mappings. Never
          * discard mappings or ledger balances merely to free the object. */
         int error = xnu_host_guest_destroy(user->guest);
@@ -250,8 +527,11 @@ pmap_destroy(pmap_t pmap)
         panic("host pmap reference underflow pmap=%p refs=%d", pmap, references);
     }
     enable_preemption();
-    if (user)
+    if (user) {
+        if (user->spare)
+            kfree_type(struct host_user_mapping, user->spare);
         kfree_type(struct host_user_pmap, user);
+    }
     ledger_dereference(ledger);
 }
 
@@ -320,7 +600,7 @@ void
 pmap_init(void)
 {
     assert(next_frame != 0);
-    kprintf("XNU_HOST_PMAP init remaining=%u (kernel mappings only)\n", pmap_free_pages());
+    kprintf("XNU_HOST_PMAP init remaining=%u (user translations use the instruction engine)\n", pmap_free_pages());
 }
 
 kern_return_t
@@ -330,7 +610,7 @@ pmap_enter(pmap_t pmap, vm_map_offset_t address, ppnum_t page, vm_prot_t protect
     (void)fault_type;
     (void)flags; /* Hardware cacheability is owned by Linux. */
     if (pmap != kernel_pmap)
-        return KERN_NOT_SUPPORTED;
+        return user_enter(pmap, address, page, protection, fault_type, flags, wired, 0);
     disable_preemption();
     int error = xnu_host_memory_map(address, page, protection, wired);
     if (error < 0)
@@ -378,7 +658,18 @@ void
 pmap_change_wiring(pmap_t pmap, vm_map_address_t address, boolean_t wired)
 {
     pmap_require(pmap);
-    assert(pmap == kernel_pmap); /* User wiring/accounting is not connected. */
+    if (pmap != kernel_pmap) {
+        disable_preemption();
+        struct host_user_pmap *user = *user_pmap_link(pmap);
+        struct host_user_mapping *mapping = *user_mapping_link(user, address);
+        assert(mapping);
+        if (mapping->wired != !!wired) {
+            user_ledger_change(pmap, task_ledgers.wired_mem, !!wired);
+            mapping->wired = !!wired;
+        }
+        enable_preemption();
+        return;
+    }
     disable_preemption();
     int error = xnu_host_memory_change_wiring(address, wired);
     if (error)
@@ -394,12 +685,12 @@ pmap_enter_options(pmap_t pmap, vm_map_offset_t address, ppnum_t page,
 {
     (void)arg;
     if (pmap != kernel_pmap)
-        return KERN_NOT_SUPPORTED;
+        return user_enter(pmap, address, page, protection, fault_type, flags, wired, options);
     if (options & PMAP_OPTIONS_NOENTER) {
         /* vm_fault retries with page=0 after dropping VM locks. The host
          * reserves the entire kernel VA and its mapping metadata up front,
          * so this capacity request needs no expansion and must not install
-         * or replace a physical mapping. User pmaps are still unsupported. */
+         * or replace a physical mapping. User metadata is reserved separately. */
         if (address < XNU_HOST_HEAP_BASE || address >= XNU_HOST_KERNEL_LIMIT ||
             (address & PAGE_MASK))
             return KERN_INVALID_ARGUMENT;
@@ -482,10 +773,21 @@ pmap_remove_options(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end, int
 {
     (void)options;
     if (pmap != kernel_pmap) {
-        /* Empty ranges are real holes, so failed exec/map setup can unwind
-         * without inventing a removal. Nonempty removal needs ledger debit. */
-        if (pmap_query_resident(pmap, start, end, NULL))
-            panic("host user pmap nonempty removal/accounting not connected pmap=%p", pmap);
+        pmap_require(pmap);
+        assert(start >= pmap->min && start <= end && end <= pmap->max &&
+            ((start | end) & PAGE_MASK) == 0);
+        if (options & ~(PMAP_OPTIONS_NOFLUSH | PMAP_OPTIONS_REMOVE))
+            panic("host user pmap remove options unsupported options=%#x", options);
+        disable_preemption();
+        struct host_user_pmap *user = *user_pmap_link(pmap);
+        struct host_user_mapping **link = &user->mappings;
+        while (*link) {
+            if ((*link)->address >= start && (*link)->address < end)
+                user_remove_mapping(user, link);
+            else
+                link = &(*link)->next;
+        }
+        enable_preemption();
         return;
     }
     kernel_mapping_range(pmap, start, end);
@@ -511,6 +813,10 @@ pmap_protect_options(pmap_t pmap, vm_map_offset_t start, vm_map_offset_t end,
     vm_prot_t protection, unsigned int options, void *arg)
 {
     (void)arg;
+    if (pmap != kernel_pmap) {
+        user_protect(pmap, start, end, protection, options);
+        return;
+    }
     kernel_mapping_range(pmap, start, end);
     boolean_t immediate = (options & PMAP_OPTIONS_PROTECT_IMMEDIATE) != 0;
     if (!immediate) {
@@ -567,9 +873,12 @@ pmap_page_protect_options(ppnum_t page, vm_prot_t protection,
         protection = VM_PROT_NONE;
     }
     disable_preemption();
+    if (user_page_mapped(page) && (options & ~(PMAP_OPTIONS_NOFLUSH | PMAP_OPTIONS_REMOVE)))
+        panic("host user physical protect options unsupported options=%#x", options);
     int error = xnu_host_memory_protect_page(page, protection);
     if (error)
         panic("host pmap_page_protect page=%u error=%d", page, error);
+    user_physical_change(page, protection);
     enable_preemption();
 }
 
@@ -623,6 +932,13 @@ pmap_clear_refmod_options(ppnum_t page, unsigned int mask,
     (void)options;
     (void)argument;
     disable_preemption();
+    if (user_page_mapped(page)) {
+        unsigned int allowed = PMAP_OPTIONS_NOFLUSH | PMAP_OPTIONS_CLEAR_REUSABLE;
+        if (mask & VM_MEM_MODIFIED)
+            allowed |= PMAP_OPTIONS_CLEAR_WRITE; /* Native tracking traps the next write. */
+        if (options & ~allowed)
+            panic("host user refmod/accounting options unsupported page=%u options=%#x", page, options);
+    }
     int error = xnu_host_memory_update_attributes(page, mask, 0);
     if (error)
         panic("host pmap_clear_refmod page=%u mask=%u error=%d", page, mask, error);
@@ -655,9 +971,13 @@ unsigned int
     assert(page && page < frame_limit);
     unsigned int attributes = 0;
     disable_preemption();
+    if (user_page_mapped(page) &&
+        (options & ~(PMAP_OPTIONS_NOFLUSH | PMAP_OPTIONS_NOREFMOD | PMAP_OPTIONS_REMOVE)))
+        panic("host user disconnect accounting options unsupported options=%#x", options);
     int error = xnu_host_memory_disconnect(page, &attributes);
     if (error)
         panic("host pmap_disconnect page=%u error=%d", page, error);
+    user_physical_change(page, VM_PROT_NONE);
     enable_preemption();
     return ((attributes & XNU_HOST_PAGE_MODIFIED) ? VM_MEM_MODIFIED : 0) |
         ((attributes & XNU_HOST_PAGE_REFERENCED) ? VM_MEM_REFERENCED : 0);

@@ -59,12 +59,26 @@ operation may resume a poisoned engine.
 Engine mappings never MAP_FIXED guest addresses over the native process.
 Code translations are flushed before resume because XNU can modify shared
 physical bytes through another alias. Ref/mod tracking relies on native accesses
-to the protected physical aperture; this needs real fault/TCG validation. Task
-ledger accounting, wiring, replacement and COW remain
-unfinished. Native aliases and XNU pmap ownership remain runtime-unverified; they do not
-yet connect user insertion or a runnable thread. User physical/resident queries
-now read their engine metadata. Empty-range removal verifies that no mappings
-exist; nonempty removal is rejected until ledger debit is connected.
+to the protected physical aperture; this needs real fault/TCG validation.
+
+User insertion, same-frame permission/wiring updates, frame replacement, range
+removal/protection and physical disconnect now update both engine aliases and
+real XNU task ledgers. Resident, internal/external, alternate, footprint and wired
+terms follow the pinned ARM provider. A ledger-less submap carries no task ledger
+balance. NOENTER prepares XNU and native mapping metadata without mapping page
+zero; NOWAIT respects XNU allocator nonblocking rules. Native allocation failure
+is retryable only before uncertain mutation. Replacement reserves capacity before
+removing the old mapping. Native mutation failures stop kernel execution.
+
+Ledger changes happen on the XNU stack, never in engine callbacks. Native physical
+protection/disconnect completes before corresponding XNU mapping records/ledgers
+are updated, all with preemption disabled. Ordinary protection reductions cannot
+upgrade permissions; explicit immediate write restores RW and ref/mod tracking.
+Compressed/reusable mappings and unsupported mapping/cache options are rejected
+until their accounting exists; they must not silently use resident accounting.
+These operations are new and have not run through real XNU. User-copy, VM/COW
+fault dispatch, nested/shared-cache/commpage maps and runnable threads remain
+unfinished. The objective still includes those paths and a genuine app journey.
 
 The machine return path must transfer the actual thread saved state, run its
 engine, and translate the reported event into original ARM exception handling:

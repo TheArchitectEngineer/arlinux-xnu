@@ -24,7 +24,7 @@ struct xnu_host_guest {
     uc_engine *engine;
     struct xnu_host_guest_event event;
     bool running, poisoned;
-    struct guest_mapping *mappings;
+    struct guest_mapping *mappings, *spare;
     struct xnu_host_guest *next;
     uc_err stop_error;
 };
@@ -104,6 +104,7 @@ guest_destroy(struct xnu_host_guest *guest)
         return error;
     }
     *link = guest->next;
+    free(guest->spare);
     free(guest);
     return 0;
 }
@@ -137,7 +138,10 @@ guest_map(struct xnu_host_guest *guest, unsigned long long address,
     struct guest_mapping **link = find_mapping(guest, address);
     if (*link)
         return UC_ERR_MAP; /* Replacement needs an explicit XNU removal. */
-    struct guest_mapping *mapping = calloc(1, sizeof(*mapping));
+    struct guest_mapping *mapping = guest->spare;
+    guest->spare = NULL;
+    if (!mapping)
+        mapping = calloc(1, sizeof(*mapping));
     if (!mapping)
         return UC_ERR_NOMEM; /* No engine mapping or page reference changed. */
     if (xnu_host_memory_guest_reference(page, 1)) {
@@ -243,6 +247,24 @@ guest_lookup(struct xnu_host_guest *guest, unsigned long long address,
     return 0;
 }
 
+static int
+guest_reserve(struct xnu_host_guest *guest)
+{
+    if (!guest || guest->running || guest->poisoned)
+        return UC_ERR_ARG;
+    if (!guest->spare)
+        guest->spare = calloc(1, sizeof(*guest->spare));
+    return guest->spare ? 0 : UC_ERR_NOMEM;
+}
+
+/* Pure status inspection, no TCG/libc call or stack switch. An insertion OOM
+ * is retryable only before any possibly effective native mapping mutation. */
+int
+xnu_host_guest_error_retryable(struct xnu_host_guest *guest, int error)
+{
+    return guest && !guest->running && !guest->poisoned && error == UC_ERR_NOMEM;
+}
+
 static uc_err
 transfer_state(uc_engine *engine, struct xnu_host_guest_state *state, bool write)
 {
@@ -317,7 +339,7 @@ guest_run(struct xnu_host_guest *guest,
 static unsigned long native_stack_top;
 static _Thread_local bool in_native;
 static _Thread_local struct {
-    enum { CREATE, DESTROY, MAP, UNMAP, PROTECT, RUN, PAGE_PROTECT, QUERY, LOOKUP } operation;
+    enum { CREATE, DESTROY, MAP, UNMAP, PROTECT, RUN, PAGE_PROTECT, QUERY, LOOKUP, RESERVE } operation;
     struct xnu_host_guest *guest, **result;
     unsigned long long address, end, *resident;
     unsigned int *found;
@@ -365,6 +387,7 @@ perform(void)
     case PAGE_PROTECT: return guest_page_protect(request.page, request.protection);
     case QUERY: return guest_query(request.guest, request.address, request.end, request.resident);
     case LOOKUP: return guest_lookup(request.guest, request.address, request.found);
+    case RESERVE: return guest_reserve(request.guest);
     }
     return UC_ERR_ARG;
 }
@@ -461,5 +484,13 @@ xnu_host_guest_lookup(struct xnu_host_guest *guest, unsigned long long address,
     if (in_native) return UC_ERR_ARG;
     request.operation = LOOKUP; request.guest = guest;
     request.address = address; request.found = page;
+    return dispatch();
+}
+
+int
+xnu_host_guest_reserve(struct xnu_host_guest *guest)
+{
+    if (in_native) return UC_ERR_ARG;
+    request.operation = RESERVE; request.guest = guest;
     return dispatch();
 }
