@@ -6,9 +6,11 @@
 #include <stdint.h>
 #include <sys/mman.h>
 #include <ucontext.h>
+#include <asm/sigcontext.h>
 #include <unistd.h>
 #include <usermode_vm.h>
 #include <host/fault.h>
+#include <host/memory.h>
 
 #if !defined(__aarch64__)
 #error This signal-context backend requires Linux ARM64
@@ -33,12 +35,44 @@ hex_address(char *output, uintptr_t value)
     }
 }
 
+/* Linux ARM64 UAPI requires ESR records, when present, to live in the
+ * fixed reserved context area (not the optional extra context). */
+static unsigned int
+fault_access(const ucontext_t *state)
+{
+    const unsigned char *area = state->uc_mcontext.__reserved;
+    size_t length = sizeof(state->uc_mcontext.__reserved);
+    for (size_t offset = 0; offset + sizeof(struct _aarch64_ctx) <= length;) {
+        const struct _aarch64_ctx *head = (const void *)(area + offset);
+        if (!head->magic || head->size < sizeof(*head) ||
+            (head->size & 15) || head->size > length - offset)
+            return 0;
+        if (head->magic == ESR_MAGIC && head->size >= sizeof(struct esr_context)) {
+            uint64_t esr = ((const struct esr_context *)head)->esr;
+            unsigned int exception = (esr >> 26) & 0x3f;
+            if (exception == 0x20) /* Instruction abort from EL0. */
+                return 4;
+            if (exception == 0x24) /* Data abort: WnR is bit 6. */
+                return (esr & (1u << 6)) ? 2 : 1;
+            return 0;
+        }
+        offset += head->size;
+    }
+    return 0;
+}
+
 static void
 fault_handler(int signal_number, siginfo_t *information, void *context)
 {
     int saved_errno = errno;
     ucontext_t *state = context;
     uintptr_t pc = state->uc_mcontext.pc;
+    if (signal_number == SIGSEGV && information->si_code == SEGV_ACCERR &&
+        xnu_host_memory_tracking_fault((uintptr_t)information->si_addr,
+            fault_access(state)) == 1) {
+        errno = saved_errno;
+        return; /* Retry the same instruction with legitimately restored rights. */
+    }
     uintptr_t recovery = 0;
     if (pc >= (uintptr_t)xnu_host_ticket_fault_start && pc < (uintptr_t)xnu_host_ticket_fault_end)
         recovery = (uintptr_t)xnu_host_ticket_fault_return;

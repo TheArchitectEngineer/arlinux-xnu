@@ -270,6 +270,70 @@ pmap_page_protect(ppnum_t page, vm_prot_t protection)
     pmap_page_protect_options(page, protection, 0, NULL);
 }
 
+_Static_assert(VM_MEM_MODIFIED == XNU_HOST_PAGE_MODIFIED &&
+    VM_MEM_REFERENCED == XNU_HOST_PAGE_REFERENCED, "host/XNU page attribute ABI");
+
+unsigned int
+pmap_get_refmod(ppnum_t page)
+{
+    unsigned int attributes;
+    int error = xnu_host_memory_attributes(page, &attributes);
+    if (error)
+        panic("host pmap_get_refmod page=%u error=%d", page, error);
+    return attributes;
+}
+
+boolean_t
+pmap_is_modified(ppnum_t page)
+{
+    return (pmap_get_refmod(page) & VM_MEM_MODIFIED) != 0;
+}
+
+boolean_t
+(pmap_is_referenced)(ppnum_t page)
+{
+    return (pmap_get_refmod(page) & VM_MEM_REFERENCED) != 0;
+}
+
+void
+pmap_set_modify(ppnum_t page)
+{
+    int error = xnu_host_memory_update_attributes(page, 0, VM_MEM_MODIFIED);
+    if (error)
+        panic("host pmap_set_modify page=%u error=%d", page, error);
+}
+
+void
+pmap_clear_refmod_options(ppnum_t page, unsigned int mask,
+    unsigned int options, void *argument)
+{
+    /* Linux mprotect completes permission/TLB changes synchronously. Deferred
+     * flush batching is unnecessary, even when the caller requests it. */
+    (void)options;
+    (void)argument;
+    int error = xnu_host_memory_update_attributes(page, mask, 0);
+    if (error)
+        panic("host pmap_clear_refmod page=%u mask=%u error=%d", page, mask, error);
+}
+
+void
+pmap_clear_refmod(ppnum_t page, unsigned int mask)
+{
+    pmap_clear_refmod_options(page, mask, 0, NULL);
+}
+
+void
+pmap_clear_modify(ppnum_t page)
+{
+    pmap_clear_refmod(page, VM_MEM_MODIFIED);
+}
+
+void
+pmap_clear_reference(ppnum_t page)
+{
+    pmap_clear_refmod(page, VM_MEM_REFERENCED);
+}
+
 unsigned int
 (pmap_disconnect_options)(ppnum_t page, unsigned int options, void *arg)
 {
@@ -280,7 +344,6 @@ unsigned int
     int error = xnu_host_memory_disconnect(page, &attributes);
     if (error)
         panic("host pmap_disconnect page=%u error=%d", page, error);
-    /* Conservative mapping history, not precise per-access dirty tracking. */
     return ((attributes & XNU_HOST_PAGE_MODIFIED) ? VM_MEM_MODIFIED : 0) |
         ((attributes & XNU_HOST_PAGE_REFERENCED) ? VM_MEM_REFERENCED : 0);
 }

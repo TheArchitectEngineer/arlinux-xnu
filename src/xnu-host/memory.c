@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -25,6 +26,42 @@ struct mapping_link {
 static struct mapping_link *kernel_links;
 static unsigned int physical_heads[XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE];
 static unsigned char physical_attributes[XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE];
+
+/* Linux has no userspace PTE access/dirty bits. After XNU clears them,
+ * temporarily restrict every alias, including the permanent physical view.
+ * A synchronous fault restores only the mapping's original permissions. */
+static int
+tracked_protection(int protection, unsigned int attributes)
+{
+    if (!(attributes & XNU_HOST_PAGE_REFERENCED))
+        return PROT_NONE;
+    if (!(attributes & XNU_HOST_PAGE_MODIFIED))
+        protection &= ~2;
+    return ((protection & 1) ? PROT_READ : 0) |
+        ((protection & 2) ? PROT_WRITE : 0) | ((protection & 4) ? PROT_EXEC : 0);
+}
+
+static int
+apply_page_tracking(unsigned int page)
+{
+    unsigned int attributes = physical_attributes[page - 1];
+    unsigned long physical = XNU_HOST_PHYSICAL_VIEW +
+        (unsigned long)(page - 1) * XNU_HOST_PAGE_SIZE;
+    /* Direct Linux syscall: this path is also called on the signal stack.
+     * It must not allocate, take a libc lock or touch tracked guest memory. */
+    if (syscall(SYS_mprotect, (void *)physical, XNU_HOST_PAGE_SIZE,
+        tracked_protection(3, attributes)))
+        return errno;
+    for (unsigned int node = physical_heads[page - 1]; node;
+        node = kernel_links[node - 1].next) {
+        unsigned long index = node - 1;
+        unsigned long address = XNU_HOST_HEAP_BASE + index * XNU_HOST_PAGE_SIZE;
+        if (syscall(SYS_mprotect, (void *)address, XNU_HOST_PAGE_SIZE,
+            tracked_protection(kernel_protections[index] & 7, attributes)))
+            return errno;
+    }
+    return 0;
+}
 
 static void
 unlink_mapping(unsigned long index)
@@ -140,6 +177,10 @@ xnu_host_memory_initialize(void)
         error = ENOMEM;
         goto fail;
     }
+    /* Until a clear arms tracking, conservatively account for direct writes
+     * through the physical aperture, not just writes through virtual aliases. */
+    for (unsigned int page = 0; page < sizeof(physical_attributes); page++)
+        physical_attributes[page] = XNU_HOST_PAGE_REFERENCED | XNU_HOST_PAGE_MODIFIED;
     physical_fd = fd;
     fprintf(stderr, "XNU_HOST_MEMORY host_page=%ld guest_page=%d physical=%d kernel=[%#lx,%#lx)\n",
         host_page, XNU_HOST_PAGE_SIZE, XNU_HOST_PHYSICAL_BYTES,
@@ -169,6 +210,9 @@ xnu_host_memory_map(unsigned long address, unsigned int page, int protection, in
     kernel_pages[index] = page;
     kernel_protections[index] = protection | (wired ? MAPPING_WIRED : 0);
     link_mapping(index, page, protection);
+    int error = apply_page_tracking(page);
+    if (error)
+        return error;
     if (protection & 4)
         __builtin___clear_cache((char *)address, (char *)address + XNU_HOST_PAGE_SIZE);
     return 0;
@@ -198,8 +242,8 @@ xnu_host_memory_protect(unsigned long address, int protection)
     if (!kernel_pages[index])
         return 0; /* Preserve holes in the reserved VA arena. */
     protection &= kernel_protections[index] & 7; /* pmap_protect only reduces rights. */
-    int native_protection = ((protection & 1) ? PROT_READ : 0) |
-        ((protection & 2) ? PROT_WRITE : 0) | ((protection & 4) ? PROT_EXEC : 0);
+    int native_protection = tracked_protection(protection,
+        physical_attributes[kernel_pages[index] - 1]);
     if (mprotect((void *)address, XNU_HOST_PAGE_SIZE, native_protection))
         return errno;
     kernel_protections[index] = protection | (kernel_protections[index] & MAPPING_WIRED);
@@ -264,6 +308,58 @@ xnu_host_memory_page_has_mappings(unsigned int page)
         return -EINVAL;
     /* The permanent physical view is backing access, not a reclaimable alias. */
     return physical_heads[page - 1] != 0;
+}
+
+int
+xnu_host_memory_attributes(unsigned int page, unsigned int *attributes)
+{
+    if (physical_fd == -1 || !page || !attributes ||
+        page > XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE)
+        return EINVAL;
+    *attributes = physical_attributes[page - 1];
+    return 0;
+}
+
+int
+xnu_host_memory_update_attributes(unsigned int page, unsigned int clear,
+    unsigned int set)
+{
+    if (physical_fd == -1 || !page ||
+        page > XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE || ((clear | set) & ~3u))
+        return EINVAL;
+    physical_attributes[page - 1] = (physical_attributes[page - 1] & ~clear) | set;
+    return apply_page_tracking(page);
+}
+
+int
+xnu_host_memory_tracking_fault(unsigned long address, unsigned int access)
+{
+    if (physical_fd == -1 || (access != 1 && access != 2 && access != 4))
+        return 0;
+    unsigned int page;
+    unsigned int protection;
+    if (address >= XNU_HOST_PHYSICAL_VIEW &&
+        address < XNU_HOST_PHYSICAL_VIEW + XNU_HOST_PHYSICAL_BYTES) {
+        page = 1 + (address - XNU_HOST_PHYSICAL_VIEW) / XNU_HOST_PAGE_SIZE;
+        protection = 3;
+    } else {
+        unsigned long aligned = address & ~(XNU_HOST_PAGE_SIZE - 1UL);
+        if (!heap_address(aligned))
+            return 0;
+        unsigned long index = (aligned - XNU_HOST_HEAP_BASE) / XNU_HOST_PAGE_SIZE;
+        page = kernel_pages[index];
+        protection = kernel_protections[index] & 7;
+    }
+    if (!page || !(protection & access))
+        return 0; /* Never turn an actual protection violation into success. */
+    unsigned int old = physical_attributes[page - 1];
+    unsigned int observed = old | XNU_HOST_PAGE_REFERENCED |
+        ((access == 2) ? XNU_HOST_PAGE_MODIFIED : 0);
+    if (old == observed)
+        return 0; /* This fault was not caused by an armed tracking bit. */
+    physical_attributes[page - 1] = observed;
+    int error = apply_page_tracking(page);
+    return error ? -error : 1;
 }
 
 static int
