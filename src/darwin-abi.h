@@ -19,6 +19,8 @@ enum darwin_syscall {
     D_SYS_CLOSE = 6,
     D_SYS_WAIT4 = 7,
     D_SYS_GETPID = 20,
+    D_SYS_GETUID = 24, D_SYS_GETEUID = 25, D_SYS_GETGID = 47, D_SYS_GETEGID = 43,
+    D_SYS_GETTIMEOFDAY = 116,
     D_SYS_MUNMAP = 73,
     D_SYS_MPROTECT = 74,
     D_SYS_PREAD = 153,
@@ -26,6 +28,7 @@ enum darwin_syscall {
     D_SYS_LSEEK = 199,
     D_SYS_SHARED_REGION_CHECK = 294,
     D_SYS_SEMWAIT_SIGNAL = 334,
+    D_SYS_PSYNCH_MUTEXWAIT = 301, D_SYS_PSYNCH_MUTEXDROP = 302,
     D_SYS_STAT64 = 338,
     D_SYS_FSTAT64 = 339,
     D_SYS_LSTAT64 = 340,
@@ -68,6 +71,7 @@ enum darwin_mach_trap {
     D_TRAP_SEMAPHORE_SIGNAL = 33,
     D_TRAP_SEMAPHORE_WAIT = 36,
     D_TRAP_TIMEBASE_INFO = 89,
+    D_TRAP_HOST_CREATE_VOUCHER = 70,
 };
 enum darwin_errno {
     D_EPERM = 1,
@@ -228,3 +232,11 @@ struct darwin_kevent_qos {
     uint64_t udata; uint32_t fflags,xflags; int64_t data; uint64_t ext[4];
 };
 _Static_assert(sizeof(struct darwin_kevent_qos)==72,"ARM64 kevent_qos wire layout");
+
+/* libpthread-330 internal.h mutex options and XNU bank/bank_types.h. */
+enum darwin_mutex_voucher_abi {
+    D_MUTEX_POLICY_SHIFT=6, D_MUTEX_POLICY_MASK=7, D_MUTEX_FIRSTFIT=2,
+    D_MUTEX_SHARED=0x10, D_VOUCHER_KEY_BANK=3, D_VOUCHER_BANK_CREATE=610
+};
+struct darwin_voucher_recipe { uint32_t key,command,previous_voucher,content_size; };
+struct darwin_timeval { int64_t seconds; int32_t microseconds,padding; };

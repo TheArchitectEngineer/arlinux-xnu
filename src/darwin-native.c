@@ -141,7 +141,8 @@ long darwin_native_memory(unsigned long size,int protection)
 /* Read-only filesystem access for genuine dyld dependencies. Darwin paths
  * resolve inside the selected firmware root; only the explicit executable
  * retains its host path. This is path adaptation, not a security sandbox. */
-static int root_descriptor=-1;
+static int root_descriptor=-1,bundle_descriptor=-1;
+static char bundle_path[4096];
 static uint64_t current_cache_base;
 /* Process-local name for this task's VM capability. Only implemented VM traps
  * accept it; other port/IPC operations remain unsupported, never successful. */
@@ -166,6 +167,14 @@ static int path_directory(char **path)
     unsigned int i=0;
     while ((*path)[i] && (*path)[i]==executable_path[i]) i++;
     if (!(*path)[i] && !executable_path[i]) return AT_FDCWD;
+    size_t bundle_length=strlen(bundle_path);
+    if (bundle_descriptor>=0 && !strncmp(*path,bundle_path,bundle_length) &&
+        ((*path)[bundle_length]=='/' || !(*path)[bundle_length])) {
+        *path+=bundle_length;
+        if (**path=='/') (*path)++;
+        if (!**path) *path=".";
+        return bundle_descriptor;
+    }
     if (root_descriptor>=0) {
         if (**path=='/') (*path)++;
         return root_descriptor;
@@ -223,6 +232,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 
 #include "darwin-ipc.h"
 #include "darwin-threads.h"
+#include "darwin-psynch.h"
 #include "darwin-kqueue.h"
 #include "darwin-workqueue.h"
 
@@ -242,6 +252,21 @@ static void dispatch(int signal, siginfo_t *info, void *context)
          * implemented process-local capabilities are returned; unsupported
          * operations return KERN_NOT_SUPPORTED. */
         unsigned long number=-(int64_t)trap;
+        if (number==D_TRAP_HOST_CREATE_VOUCHER) {
+            /* Standalone identity/accounting policy: no extra bank context.
+             * This is the empty-base-voucher mode already supported by real
+             * libdispatch, not a fabricated identity or resource authority. */
+            struct darwin_voucher_recipe recipe;
+            uint32_t empty=D_MACH_PORT_NULL;
+            if (r[0]!=CURRENT_HOST_PORT) r[0]=D_KERN_INVALID_ARGUMENT;
+            else if (r[2]!=sizeof(recipe)) r[0]=D_KERN_NOT_SUPPORTED;
+            else if (guest_copy(&recipe,r[1],sizeof(recipe),0)) r[0]=D_KERN_INVALID_ADDRESS;
+            else if (recipe.key!=D_VOUCHER_KEY_BANK || recipe.command!=D_VOUCHER_BANK_CREATE ||
+                     recipe.previous_voucher || recipe.content_size) r[0]=D_KERN_NOT_SUPPORTED;
+            else r[0]=guest_copy(&empty,r[3],sizeof(empty),1) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
         if (number==D_TRAP_TASK_SELF) {
             r[0]=CURRENT_TASK_PORT;
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
@@ -383,10 +408,26 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         break;
     }
     case D_SYS_KQUEUE: result=native_kqueue_create(); break;
-    case D_SYS_KEVENT_QOS: result=native_kevent_qos(r,&uc->uc_sigmask); break;
-    case D_SYS_BSDTHREAD_CTL: result=native_thread_ctl(r); break;
-    case D_SYS_WORKQ_OPEN: case D_SYS_WORKQ_KERNRETURN:
-        result=native_workqueue(r,&uc->uc_sigmask); break;
+    case D_SYS_KEVENT_QOS: case D_SYS_BSDTHREAD_CTL:
+    case D_SYS_PSYNCH_MUTEXWAIT: case D_SYS_PSYNCH_MUTEXDROP:
+    case D_SYS_WORKQ_OPEN: case D_SYS_WORKQ_KERNRETURN: {
+        static unsigned int requests;
+        if (__atomic_fetch_add(&requests,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
+            const char label[]="DARWIN_SCHEDULER_REQUEST syscall then argument-index/pc/value follows\n";
+            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,0);
+            unsigned int count=r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_QOS ? 8 :
+                (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXWAIT ||
+                 r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXDROP) ? 5 : 4;
+            for (unsigned int i=0;i<count;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
+        }
+        if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_QOS) result=native_kevent_qos(r,&uc->uc_sigmask);
+        else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_CTL) result=native_thread_ctl(r);
+        else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXWAIT ||
+                 r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXDROP) result=native_psynch_mutex(r);
+        else result=native_workqueue(r,&uc->uc_sigmask);
+        break;
+    }
     case D_SYS_BSDTHREAD_TERMINATE: result=native_thread_terminate(r); break;
     case D_SYS_ULOCK_WAIT: case D_SYS_ULOCK_WAKE:
         result=native_ulock(r);
@@ -460,7 +501,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case D_SYS_WRITE: result = RAW(SYS_write,r[0],r[1],r[2],0,0,0); break;
     case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_open(r[0],r[1]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
-        result=(int)r[0]==root_descriptor ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
+        result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
     case D_SYS_PREAD: case D_SYS_PREAD_NOCANCEL: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
     case D_SYS_LSEEK: result=RAW(SYS_lseek,r[0],r[1],r[2],0,0,0); break;
     case D_SYS_SHARED_REGION_CHECK: /* Actual process-private cache mappings prepared before entry. */
@@ -475,6 +516,27 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         break;
     }
     case D_SYS_STAT64: case D_SYS_FSTAT64: case D_SYS_LSTAT64: result=guest_stat(r[0],r[1],r[D_ARM64_SYSCALL_REGISTER]); break;
+    case D_SYS_GETUID: result=RAW(SYS_getuid,0,0,0,0,0,0); break;
+    case D_SYS_GETEUID: result=RAW(SYS_geteuid,0,0,0,0,0,0); break;
+    case D_SYS_GETGID: result=RAW(SYS_getgid,0,0,0,0,0,0); break;
+    case D_SYS_GETEGID: result=RAW(SYS_getegid,0,0,0,0,0,0); break;
+    case D_SYS_GETTIMEOFDAY: {
+        struct { int64_t seconds,microseconds; } host;
+        struct { int32_t minutes_west,dst; } timezone;
+        result=RAW(SYS_gettimeofday,&host,&timezone,0,0,0,0);
+        if (result) break;
+        struct darwin_timeval value={host.seconds,host.microseconds,0};
+        if ((r[0] && guest_copy(&value,r[0],sizeof(value),1)) ||
+            (r[1] && guest_copy(&timezone,r[1],sizeof(timezone),1))) { result=-EFAULT; break; }
+        if (r[2]) {
+            struct timespec now;
+            result=RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0);
+            if (result) break;
+            uint64_t ticks=(uint64_t)now.tv_sec*1000000000+now.tv_nsec;
+            result=guest_copy(&ticks,r[2],sizeof(ticks),1);
+        }
+        break;
+    }
     case D_SYS_GETPID: result = RAW(SYS_getpid,0,0,0,0,0,0); break;
     case D_SYS_THREAD_SELFID: result = RAW(SYS_gettid,0,0,0,0,0,0); break; /* thread_selfid */
     case D_SYS_FORK:
@@ -551,7 +613,14 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     if (!absolute || strlen(absolute)>=sizeof(executable_path)) {
         fprintf(stderr,"Invalid guest executable path\n"); exit(1);
     }
-    memcpy(executable_path,absolute,strlen(absolute)+1); free(absolute);
+    memcpy(executable_path,absolute,strlen(absolute)+1);
+    memcpy(bundle_path,absolute,strlen(absolute)+1);
+    char *slash=strrchr(bundle_path,'/');
+    if (!slash) { fprintf(stderr,"Missing application bundle parent\n"); exit(1); }
+    *slash=0;
+    bundle_descriptor=open(*bundle_path ? bundle_path : "/",O_PATH|O_DIRECTORY|O_CLOEXEC);
+    if (bundle_descriptor<0) { perror("application bundle directory"); exit(1); }
+    free(absolute);
     if (root) {
         root_descriptor=open(root,O_PATH|O_DIRECTORY|O_CLOEXEC);
         if (root_descriptor<0) { perror("Darwin filesystem root"); exit(1); }

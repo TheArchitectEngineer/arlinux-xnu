@@ -176,13 +176,14 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
             struct darwin_kevent_qos event=note->event;
             event.flags&=D_EV_ONESHOT|D_EV_CLEAR|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC;
             if (events[i].events&(EPOLLHUP|EPOLLRDHUP)) event.flags|=D_EV_EOF;
-            if (event.filter==D_EVFILT_TIMER || event.filter==D_EVFILT_USER) {
+            if (event.filter==D_EVFILT_TIMER || (event.filter==D_EVFILT_USER &&
+                (note->event.flags&(D_EV_CLEAR|D_EV_ONESHOT)))) {
                 uint64_t value;
                 long read=RAW(SYS_read,note->fd,&value,sizeof(value),0,0,0);
                 if (read==-EAGAIN) continue;
                 if (read!=(long)sizeof(value)) { native_kqueue_unlock(); return read<0 ? read : -EIO; }
                 if (event.filter==D_EVFILT_TIMER) event.data=value;
-            } else {
+            } else if (event.filter!=D_EVFILT_USER) {
                 int available=0;
                 long result=RAW(SYS_ioctl,note->fd,FIONREAD,&available,0,0,0);
                 event.data=result ? 1 : available;
@@ -225,19 +226,35 @@ static long native_event_worker_return(const unsigned long long *r)
 }
 static long native_kqueue_start_worker(struct native_kqueue *queue,const sigset_t *mask)
 {
-    if (__atomic_exchange_n(&queue->worker,1,__ATOMIC_ACQ_REL)) return 0;
+    int expected=0;
+    while (!__atomic_compare_exchange_n(&queue->worker,&expected,1,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) {
+        if (expected==2) return 0;
+        RAW(SYS_futex,&queue->worker,FUTEX_WAIT_PRIVATE,1,0,0,0);
+        expected=0;
+    }
     uint64_t size=D_GUEST_PAGE_SIZE+D_WORKQUEUE_STACK_SIZE+
                   ((registered_pthread_size+D_GUEST_PAGE_SIZE-1)&~(D_GUEST_PAGE_SIZE-1));
     long memory=anonymous_aligned(size,PROT_READ|PROT_WRITE,D_GUEST_PAGE_SIZE-1);
-    if ((unsigned long)memory>=(unsigned long)-4095) { queue->worker=0; return memory; }
+    if ((unsigned long)memory>=(unsigned long)-4095) {
+        __atomic_store_n(&queue->worker,0,__ATOMIC_RELEASE);
+        RAW(SYS_futex,&queue->worker,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
+        return memory;
+    }
     long result=RAW(SYS_mprotect,memory,D_GUEST_PAGE_SIZE,PROT_NONE,0,0,0);
     uint64_t low=memory+D_GUEST_PAGE_SIZE,self=low+D_WORKQUEUE_STACK_SIZE;
     if (!result) {
         unsigned long long arguments[6]={0,0,self-D_GUEST_PAGE_SIZE,self,D_WQ_PRIO_QOS|D_WQ_NEWSPI|4,0};
         result=native_thread_create_impl(arguments,mask,2,low);
-        if ((unsigned long)result<(unsigned long)-4095) return 0;
+        if ((unsigned long)result<(unsigned long)-4095) {
+            __atomic_store_n(&queue->worker,2,__ATOMIC_RELEASE);
+            RAW(SYS_futex,&queue->worker,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
+            return 0;
+        }
     }
-    RAW(SYS_munmap,memory,size,0,0,0,0); queue->worker=0; return result;
+    RAW(SYS_munmap,memory,size,0,0,0,0);
+    __atomic_store_n(&queue->worker,0,__ATOMIC_RELEASE);
+    RAW(SYS_futex,&queue->worker,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
+    return result;
 }
 static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
 {
