@@ -128,7 +128,31 @@ pmap_enter(pmap_t pmap, vm_map_offset_t address, ppnum_t page, vm_prot_t protect
     if (pmap != kernel_pmap)
         return KERN_NOT_SUPPORTED;
     int error = xnu_host_memory_map(address, page, protection, wired);
+    if (error < 0)
+        panic("host pmap_enter committed mapping address=%#llx page=%u error=%d",
+            address, page, -error);
     return error ? KERN_FAILURE : KERN_SUCCESS;
+}
+
+void
+pmap_sync_page_data_phys(ppnum_t page)
+{
+    assert(page && page < frame_limit);
+    int error = xnu_host_memory_sync_code(page);
+    if (error)
+        panic("host pmap_sync_page_data_phys page=%u error=%d", page, error);
+}
+
+kern_return_t
+pmap_attribute_cache_sync(ppnum_t page, vm_size_t size,
+    vm_machine_attribute_t attribute, vm_machine_attribute_val_t *value)
+{
+    (void)attribute;
+    (void)value;
+    /* Same one-page contract as original ARM pmap_attribute_cache_sync. */
+    assert(size <= PAGE_SIZE);
+    pmap_sync_page_data_phys(page);
+    return KERN_SUCCESS;
 }
 
 void

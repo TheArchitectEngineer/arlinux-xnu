@@ -34,6 +34,18 @@ remain under `mig`. osfmk prefers private headers with an exported fallback;
 BSD/libkern/pexpert prefer exported headers. Both repairs compiled in the above
 run. There is no fabricated IPC type or substitute service implementation.
 
+The next source implements real instruction-cache synchronization for kernel
+physical pages: the compiler runtime's native ARM64 cache-maintenance sequence
+runs on the physical aperture and every executable alias. Temporary readable
+permissions permit cache maintenance with ref/dirty tracking or execute-only
+mappings, then each view's tracked permissions are restored without changing
+page attributes. Original `pmap_sync_page_data_phys` and cache-attribute-sync
+callers use this operation. Native map insertion now distinguishes errors before
+commit from tracking/cache errors after commit; the latter stop the kernel so
+VM cannot reclaim a frame still mapped. No cache runtime journey is verified.
+The separate physical cache-attribute/DMA API is still unimplemented.
+Reference: [GCC ARM64 cache runtime](https://github.com/gcc-mirror/gcc/blob/releases/gcc-13/libgcc/config/aarch64/sync-cache.c).
+
 The NOENTER correction from `72f6733` is included: original VM fault capacity
 requests no longer attempt to map physical page zero. This has compiled, but
 no original VM fault/retry path has executed. The user pmap backend still rejects

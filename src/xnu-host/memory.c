@@ -192,6 +192,51 @@ fail:
     return error;
 }
 
+/* Linux owns cache-maintenance access to the CPU. Its compiler runtime emits
+ * the architecture's data-clean / instruction-invalidate sequence and barriers.
+ * Use a readable view even when ref tracking or execute-only permissions have
+ * removed read access. No guest runs concurrently on this single virtual CPU. */
+static int
+sync_code_alias(unsigned long address, int protection, unsigned int attributes)
+{
+    int temporary = PROT_READ | ((protection & 4) ? PROT_EXEC : 0);
+    int restore = tracked_protection(protection, attributes);
+    if (syscall(SYS_mprotect, (void *)address, XNU_HOST_PAGE_SIZE, temporary))
+        return errno;
+    __builtin___clear_cache((char *)address, (char *)address + XNU_HOST_PAGE_SIZE);
+    if (syscall(SYS_mprotect, (void *)address, XNU_HOST_PAGE_SIZE, restore))
+        return errno; /* The kernel caller must stop on restoration failure. */
+    return 0;
+}
+
+int
+xnu_host_memory_sync_code(unsigned int page)
+{
+    if (physical_fd == -1 || !page ||
+        page > XNU_HOST_PHYSICAL_BYTES / XNU_HOST_PAGE_SIZE)
+        return EINVAL;
+    unsigned int attributes = physical_attributes[page - 1];
+    unsigned long physical = XNU_HOST_PHYSICAL_VIEW +
+        (unsigned long)(page - 1) * XNU_HOST_PAGE_SIZE;
+    /* Clean the view used by page-in/copy/zero, then invalidate each executable
+     * virtual alias as well. Flushing only one VA need not cover I-cache aliases. */
+    int error = sync_code_alias(physical, 3, attributes);
+    if (error)
+        return error;
+    for (unsigned int node = physical_heads[page - 1]; node;
+        node = kernel_links[node - 1].next) {
+        unsigned long index = node - 1;
+        int protection = kernel_protections[index] & 7;
+        if (protection & 4) {
+            error = sync_code_alias(XNU_HOST_HEAP_BASE + index * XNU_HOST_PAGE_SIZE,
+                protection, attributes);
+            if (error)
+                return error;
+        }
+    }
+    return 0;
+}
+
 int
 xnu_host_memory_map(unsigned long address, unsigned int page, int protection, int wired)
 {
@@ -211,11 +256,11 @@ xnu_host_memory_map(unsigned long address, unsigned int page, int protection, in
     kernel_protections[index] = protection | (wired ? MAPPING_WIRED : 0);
     link_mapping(index, page, protection);
     int error = apply_page_tracking(page);
-    if (error)
-        return error;
-    if (protection & 4)
-        __builtin___clear_cache((char *)address, (char *)address + XNU_HOST_PAGE_SIZE);
-    return 0;
+    if (!error && (protection & 4))
+        error = xnu_host_memory_sync_code(page);
+    /* The alias is already installed. Report a distinct fatal state instead of
+     * telling VM that insertion failed and letting it reclaim the mapped page. */
+    return error ? -error : 0;
 }
 
 int
