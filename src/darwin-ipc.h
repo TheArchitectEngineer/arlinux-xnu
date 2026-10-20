@@ -772,6 +772,16 @@ void *darwin_native_service_run(void *unused)
             RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(0,0,header->local); trace_call(1,0,header->id);
             trace_call(2,0,header->size); trace_call(3,0,out->size);
+            if (out->size==36 && response[8]==(uint32_t)D_MIG_BAD_ID &&
+                !(header->bits&D_MACH_MSG_COMPLEX)) {
+                const char unknown[]="DARLING_UNHANDLED_SERVICE_INLINE offset/value follows\n";
+                RAW(SYS_write,native_trace_fd,unknown,sizeof(unknown)-1,0,0,0);
+                for (unsigned int offset=sizeof(*header),i=0;
+                     i<8 && offset<=header->size && header->size-offset>=4;i++,offset+=4) {
+                    uint32_t value;__builtin_memcpy(&value,request+offset,4);
+                    trace_call(offset,0,value);
+                }
+            }
         }
         status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL);
         if (held_port) darwin_native_host_port_refs(held_port,-1);

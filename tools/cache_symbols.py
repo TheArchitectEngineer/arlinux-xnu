@@ -183,6 +183,12 @@ class CacheSymbols:
                 if target in names:calls[target]=names[target]
             return calls
         calls=direct_calls(start,end-start)
+        # A late assertion may be far from the MIG request construction.
+        # Preserve a separate bounded entry window of that same real function.
+        if nearest[0]<start:
+            entry_size=min(768,start-nearest[0])
+            record['functionEntry']=self.disassemble(nearest[0],entry_size)
+            calls.update(direct_calls(nearest[0],entry_size))
         record['directCalls']=[{'address':hex(address),'symbol':name} for address,name in sorted(calls.items())]
         callees=[];pending=[(address,name,1) for address,name in sorted(calls.items())];seen={start}
         while pending:
