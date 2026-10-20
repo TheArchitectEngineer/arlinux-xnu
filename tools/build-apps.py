@@ -17,8 +17,8 @@ def command(*args):
     return subprocess.check_output(list(map(str,args)),stderr=subprocess.STDOUT)
 
 def main():
-    if sys.platform!='darwin' or platform.machine()!='arm64' or os.environ.get('GITHUB_ACTIONS')!='true':
-        raise SystemExit('App compilation requires the macOS ARM64 runner through build.sh')
+    if sys.platform!='darwin' or platform.machine() not in ('arm64','x86_64') or os.environ.get('GITHUB_ACTIONS')!='true':
+        raise SystemExit('App compilation requires a hosted macOS SDK runner through build.sh')
     OUT.mkdir(parents=True,exist_ok=False)
     sdk=command('xcrun','--sdk','iphoneos','--show-sdk-path').decode().strip()
     firmware=json.loads((ROOT/'sources.lock.json').read_text())['iosUserland']
@@ -26,7 +26,7 @@ def main():
     target='arm64-apple-ios'+minimum
     environment={'xcode':command('xcodebuild','-version').decode(),
                  'swift':command('xcrun','swiftc','--version').decode(),
-                 'sdk':sdk,'target':target,'host':platform.platform()}
+                 'sdk':sdk,'target':target,'host':platform.platform(),'hostArchitecture':platform.machine()}
     (OUT/'environment.json').write_text(json.dumps(environment,indent=2)+'\n')
     command('xcrun','clang','-target',target,'-isysroot',sdk,'-dynamiclib',
             ROOT/'src/ios-platform.c','-o',OUT/'libarlinux-ios.dylib',

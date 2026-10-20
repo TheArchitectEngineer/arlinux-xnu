@@ -24,8 +24,8 @@ GitHub CLI are required. Compilation and execution happen only on hosted runners
 ./build.sh download --run-id RUN_ID --artifact ios-app-results-linux
 ```
 
-One macOS ARM64 job uses Xcode 16.4's real iPhoneOS SDK to build C, Objective-C
-and Swift apps. Linux ARM64 builds the production runtime with ccache, verifies
+One macOS Intel job uses Xcode 16.4's real iPhoneOS SDK to cross-compile ARM64
+C, Objective-C and Swift apps. Linux ARM64 builds the production runtime with ccache, verifies
 the exact same-run app products and prepares the pinned iOS 16.7.16 userland.
 Each independent journey gets a fresh shared Mach session and fresh app state;
 relaunch keeps only that journey's state. Concurrency scenarios alone share
