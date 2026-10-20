@@ -121,6 +121,7 @@ static uint64_t load_native_cache(const char *root)
      * rewritten TSD read cannot be mistaken for an original CPU metadata read. */
     uint64_t render_start=0,render_get_port=0;
     struct darwin_ui_api ui_api={0};
+    int diagnostic_exports=getenv("ARLINUX_DIAGNOSTICS")!=NULL;
     uint64_t *seen=calloc(header.images_count,sizeof(uint64_t));
     need(seen!=NULL,"cache image bookkeeping");
     size_t images=0,rewritten=0;
@@ -168,7 +169,7 @@ static uint64_t load_native_cache(const char *root)
                 int ui_image=ios_framework_image((const char *)file+image.path_offset);
                 int scene_image=!strcmp((const char *)file+image.path_offset,"/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices");
                 int base_image=!strcmp((const char *)file+image.path_offset,"/System/Library/PrivateFrameworks/BaseBoard.framework/BaseBoard");
-                if (xpc_image || render_image || ui_image || scene_image || base_image) {
+                if (xpc_image || render_image || ui_image || (diagnostic_exports && (scene_image || base_image))) {
                     uint32_t table[4]; memcpy(table,bytes+pos+8,sizeof(table));
                     need(range(table[0],(uint64_t)table[1]*16,size) && range(table[2],table[3],size),
                          "cache service symbol bounds");
@@ -181,14 +182,14 @@ static uint64_t load_native_cache(const char *root)
                         need(memchr(text,0,table[3]-name)!=NULL,"cache symbol name termination");
                         ios_framework_bind(&ui_api,(const char *)file+image.path_offset,text,address);
                         if (render_image) {
-                            if (!strncmp(text,"_CARender",9) && cache_contains(address,4,4))
+                            if (diagnostic_exports && !strncmp(text,"_CARender",9) && cache_contains(address,4,4))
                                 fprintf(stderr,"NATIVE_RENDER_EXPORT symbol=%s address=%#" PRIx64 "\n",text,address);
                             if (!strcmp(text,"_CARenderServerStart")) render_start=address;
                             if (!strcmp(text,"_CARenderServerGetPort")) render_get_port=address;
                             continue;
                         }
-                        if ((scene_image && !strcmp(text,"_OBJC_CLASS_$_FBSSceneSettingsDiff")) ||
-                            (base_image && strstr(text,"CGRect")))
+                        if (diagnostic_exports && ((scene_image && !strcmp(text,"_OBJC_CLASS_$_FBSSceneSettingsDiff")) ||
+                            (base_image && strstr(text,"CGRect"))))
                             fprintf(stderr,"NATIVE_SCENE_EXPORT symbol=%s address=%#" PRIx64 "\n",text,address);
                         uint64_t target=!strcmp(text,"_bootstrap_look_up3") ? (uintptr_t)darwin_native_service_lookup :
                             !strcmp(text,"_bootstrap_register2") ? (uintptr_t)darwin_native_service_register :

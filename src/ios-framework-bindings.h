@@ -5,22 +5,7 @@
  */
 #pragma once
 #include <stddef.h>
-#define IOS_CF_IMAGE "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
-#define IOS_CG_IMAGE "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
-#define IOS_OBJC_IMAGE "/usr/lib/libobjc.A.dylib"
-#define IOS_UI_IMPORTS(X) \
-    X(IOS_CF_IMAGE,"_CFRunLoopGetMain",runloop_main,0) \
-    X(IOS_CF_IMAGE,"_CFRunLoopObserverCreate",observer_create,0) \
-    X(IOS_CF_IMAGE,"_CFRunLoopAddObserver",observer_add,0) \
-    X(IOS_CF_IMAGE,"_kCFRunLoopCommonModes",common_modes,1) \
-    X(IOS_OBJC_IMAGE,"_objc_getClass",objc_class,0) \
-    X(IOS_OBJC_IMAGE,"_sel_registerName",selector,0) \
-    X(IOS_OBJC_IMAGE,"_objc_msgSend",message,0) \
-    X(IOS_CG_IMAGE,"_CGColorSpaceCreateDeviceRGB",color_space,0) \
-    X(IOS_CG_IMAGE,"_CGBitmapContextCreate",bitmap_create,0) \
-    X(IOS_CG_IMAGE,"_CGContextTranslateCTM",context_translate,0) \
-    X(IOS_CG_IMAGE,"_CGContextScaleCTM",context_scale,0)
-
+#include "ios-framework-api.h"
 struct ios_framework_import { const char *image,*symbol; unsigned int offset,data; };
 #define IOS_IMPORT_ROW(image,symbol,field,data) {image,symbol,offsetof(struct darwin_ui_api,field),data},
 static const struct ios_framework_import ios_framework_imports[]={IOS_UI_IMPORTS(IOS_IMPORT_ROW)};

@@ -105,8 +105,13 @@ class Journey:
         process = subprocess.Popen([str(ROOT / 'build/native/macho-native'), '--dyld',
             str(ROOT / 'build/ios-input/dyld'), '--root', str(ROOT / 'build/ios-input/filesystem/root'),
             str(binary)], cwd=state, env=env, stdout=stdout, stderr=stderr, start_new_session=True)
-        record = {'app': name, 'generation': number, 'identity': identity(process.pid),
+        record = {'app': name, 'generation': number,
+                  'identity': {'pid': process.pid, 'startTicks': None, 'executable': None},
                   'input': self.apps[name], 'binarySHA256': sha(binary)}
+        # Own the process before reading /proc: an early crash must still be
+        # reaped and retained as a launch failure, not orphaned by diagnosis.
+        self.processes[name] = {**record, 'process': process}
+        record['identity'] = identity(process.pid)
         if previous and record['identity'] == previous['identity']:
             raise RuntimeError('Relaunch reused the original process identity')
         self.generations.append(record)
@@ -200,7 +205,10 @@ class Journey:
                 process = item['process']
                 forced = process.poll() is None
                 if forced:
-                    os.killpg(process.pid, signal.SIGTERM)
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
                     try:
                         process.wait(timeout=2)
                     except subprocess.TimeoutExpired:

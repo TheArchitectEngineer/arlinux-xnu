@@ -8,7 +8,7 @@ on:
         options: [both, host, baseline, native, dyld, app, playcover, darling]
       ipc:
         type: choice
-        default: local
+        default: darling
         options: [local, darling]
 permissions:
   contents: read
@@ -93,6 +93,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ '${{ inputs.mode }}' == app && '${{ inputs.ipc }}' != darling ]]; then
+            echo 'Application journeys require the integrated shared Darling session' >&2
+            exit 2
+          fi
           packages=(clang-18 cmake ccache)
           if [[ '${{ inputs.mode }}' == darling || '${{ inputs.ipc }}' == darling ]]; then
             packages+=(ninja-build bison flex libbsd-dev)
@@ -181,7 +185,7 @@ jobs:
             mkdir -p "build/native/$app.app"
             cp "guests/$app/Info.plist" "build/native/$app.app/"
             ccache clang-18 --target=arm64-apple-ios12.0 -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c "guests/$app/main.m" -o "build/native/$app.o"
-            ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main "build/native/$app.o" -needed_library guests/libSystem.tbd -needed_library guests/ARHello/UIKit.tbd -needed_library guests/ARHello/Foundation.tbd -needed_library guests/ARHello/libobjc.tbd -o "build/native/$app.app/$app"
+            ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main "build/native/$app.o" -needed_library guests/libSystem.tbd -needed_library guests/sdk/UIKit.tbd -needed_library guests/sdk/Foundation.tbd -needed_library guests/sdk/libobjc.tbd -o "build/native/$app.app/$app"
           done
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
           rpc_flags=()
@@ -194,6 +198,7 @@ jobs:
             spc_objects+=("build/native/spc-$source.o")
           done
           ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/native-xpc.c -o build/native/native-xpc.o
+          ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/ios-scene-codec.c -o build/native/ios-scene-codec.o
           cp third_party/libspc/LICENSE build/native/libspc-LICENSE
           if [[ '${{ inputs.ipc }}' == darling ]]; then
             rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include)
@@ -206,7 +211,7 @@ jobs:
           wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
           ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native "${rpc_flags[@]}" -c src/macho-native.c -o build/native/macho-native.o
           ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native -c build/native/xdg-shell-protocol.c -o build/native/xdg-shell-protocol.o
-          cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
+          cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o build/native/ios-scene-codec.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
           # Two complete independent launches of the interactive program, not
           # a source assertion or isolated TLS probe. Runtime exit status is
           # the guest's real Linux-backed normal process exit status.
@@ -306,7 +311,7 @@ jobs:
               time.sleep(.05)
           PY
           # Real X11 focus feeds Weston's Wayland seat. No app action RPC exists.
-          xdotool search --sync --onlyvisible --class weston windowfocus
+          timeout 5 xdotool search --sync --onlyvisible --class '[Ww]eston' windowfocus
       - name: Execute real iOS application journeys
         id: ios_app
         if: inputs.mode == 'app'
@@ -342,15 +347,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/dyld
-          if [[ -f build/dyld/app-outcome.json ]] && python3 - <<'PY'
-          import json, pathlib, sys
-          outcome = json.loads(pathlib.Path('build/dyld/app-outcome.json').read_text())
-          sys.exit(0 if outcome['retryNeeded'] is False else 1)
-          PY
-          then
-            echo 'LLDB_RETRY_SKIPPED original timeout captured in ordinary-wait.log; application remains failed'
-            exit 0
-          fi
           if [[ -f build/dyld/session.pid ]] && ! kill -0 "$(cat build/dyld/session.pid)" 2>/dev/null; then
             echo 'SESSION_SERVICE_UNAVAILABLE inspect session.log; no live provider for LLDB retry'
             cat build/dyld/session.log
