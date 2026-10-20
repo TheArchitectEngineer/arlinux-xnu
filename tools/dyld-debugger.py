@@ -431,6 +431,17 @@ def capture_exception(process, breakpoint):
             print('HID_CLIENT_CODE', hex(start), flush=True)
             target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(start) + ' --count 128')
             capture_code_references(target, start, 128, 'HID_CLIENT_REFERENCE')
+            instructions = target.ReadInstructions(target.ResolveLoadAddress(start), 32)
+            for instruction in instructions:
+                if instruction.GetMnemonic(target) != 'bl':
+                    continue
+                operand = instruction.GetOperands(target).split()[0]
+                if not re.fullmatch('0x[0-9a-fA-F]+', operand):
+                    continue
+                callee = int(operand, 16)
+                print('HID_CLIENT_CALLEE_CODE', hex(callee), flush=True)
+                target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(callee) + ' --count 96')
+                capture_code_references(target, callee, 96, 'HID_CLIENT_CALLEE_REFERENCE')
     for index in range(1, min(thread.GetNumFrames(), 5)):
         caller = thread.GetFrameAtIndex(index).GetPC()
         if not 0x180000000 <= caller < 0x200000000:
