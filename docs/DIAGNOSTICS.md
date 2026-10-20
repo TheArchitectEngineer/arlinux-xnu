@@ -281,3 +281,12 @@ dynamic queue ID, client Mach owner, Linux servicer TID, QoS, udata and all four
 extension words alongside DARWIN_KEVENT_ERROR. A synchronous waiter uses its
 own ident, distinct from the workloop's dynamic ID; do not infer the queue ID
 from that ident or treat a missing wait/wake command as an advisory hint.
+
+DARWIN_WORKLOOP_SYNC_WAIT/WAKE/RETURN correlate the separate synchronous knote
+ident with its dynamic queue, Linux waiter TID, actual futex wake result and
+completion state. A registration or wake marker alone is not proof that the
+waiter resumed. Native sync waits follow imported XNU's disabled-knote,
+debounce/owner, wake-before-wait, delete-wake and interrupted-wait contracts;
+they do not enqueue an asynchronous worker event. Kernel turnstile priority
+inheritance is not supplied by this Linux futex path. Observe actual real-app
+progress and contention before expanding any scheduling claims.

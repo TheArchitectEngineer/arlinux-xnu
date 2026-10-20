@@ -123,6 +123,7 @@ def report(run_id, job_name, verbose=False):
                    'DARLING_S2C_MEMORY ', 'DARLING_PSYNCH ', 'NATIVE_THREAD_IDENTITIES ', 'NATIVE_ULOCK_WAIT ', 'NATIVE_ULOCK_QUEUES ', 'DARLING_CODE_COPY_COMPLETE ',
                    'SESSION_MACH_CORE_STARTED ', 'SESSION_MACH_CORE_FAILED ', 'UNIFIED_SESSION_PID ',
                    'DARWIN_WORKLOOP_SOFT_DELETE ', 'DARWIN_WORKLOOP_ERROR_STATE ',
+                   'DARWIN_WORKLOOP_SYNC_',
                    'DARWIN_CODESIGN_QUERY ', 'SECURITY_QUERY ', 'SECURITY_RETURN ',
                    'EXCEPTION_CALLER_CODE ', 'EXCEPTION_CALLER_REFERENCE ',
                    'DICTIONARY_NIL_INPUT ', 'DICTIONARY_INPUT_READ_ERROR ', 'HID_CLIENT_REFERENCE ',
@@ -195,7 +196,7 @@ def report(run_id, job_name, verbose=False):
                        'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
                        'NATIVE_SERVICE_FAILURE ', 'DARLING_RENDER_RECEIVED ',
                        'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_RENDER_FORWARD ',
-                       'DARWIN_WORKLOOP_ERROR_STATE ',
+                       'DARWIN_WORKLOOP_ERROR_STATE ', 'DARWIN_WORKLOOP_SYNC_',
                        'EXPERIMENT_RECEIPT ')
             shown = set()
             ordered = sorted(enumerate(item['observations']),

@@ -10,6 +10,7 @@
 struct native_knote {
     struct darwin_kevent_qos event;
     int used,fd,enabled; uint32_t generation,memory_state;
+    int sync_state,sync_tid,sync_active; /* pending / woken / deleted */
 };
 #include "darling-kqueue.h"
 struct native_kqueue {
@@ -45,9 +46,19 @@ static void native_kqueue_owner(struct native_kqueue *queue,uint32_t port)
 }
 static void native_event_owner_exit(uint64_t port)
 {
+    struct native_thread *thread=native_thread_port(port);
     native_kqueue_lock();
-    for (struct native_kqueue *queue=native_kqueues;queue;queue=queue->next)
+    for (struct native_kqueue *queue=native_kqueues;queue;queue=queue->next) {
         if (queue->client_owner==port) native_kqueue_owner(queue,0);
+        for (unsigned int i=0;thread && i<D_KQUEUE_WATCHES;i++) {
+            struct native_knote *note=queue->watches+i;
+            if (note->used && note->event.filter==D_EVFILT_WORKLOOP && note->sync_tid==thread->tid) {
+                __atomic_store_n(&note->sync_state,2,__ATOMIC_RELEASE);
+                RAW(SYS_futex,&note->sync_state,FUTEX_WAKE_PRIVATE,1,0,0,0);
+                if (!note->sync_active) note->used=0;
+            }
+        }
+    }
     native_kqueue_unlock();
 }
 /* A synchronous special-reply wait yields this thread's workloop ownership
@@ -89,7 +100,109 @@ static long native_kqueue_create(void)
     native_kqueue_unlock();
     return result;
 }
-static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent_qos *event)
+/* XNU filt_wlupdate: copy/debounce before committing owner changes. A zero
+ * owner token preserves the current owner; END_OWNERSHIP may clear it even on
+ * ESTALE, but DISCOVER_OWNER must not update a stale request. */
+static long native_workloop_owner_update(struct native_kqueue *queue,struct darwin_kevent_qos *event)
+{
+    uint32_t owner=queue->client_owner;
+    int stale=0;
+    if (event->ext[D_WL_ADDR]) {
+        uint64_t state;
+        if ((event->ext[D_WL_ADDR]&7) || guest_copy(&state,event->ext[D_WL_ADDR],8,0)) return -EFAULT;
+        uint64_t expected=event->ext[D_WL_VALUE];
+        event->ext[D_WL_VALUE]=state;
+        stale=(state&event->ext[D_WL_MASK])!=(expected&event->ext[D_WL_MASK]);
+        if (!stale && (event->fflags&D_NOTE_WL_DISCOVER_OWNER)) {
+            uint32_t name=(uint32_t)state&~(uint32_t)D_PORT_GENERATION_TAG;
+            if (name) {
+                struct native_thread *thread=native_thread_port(name|D_PORT_GENERATION_TAG);
+                if (!thread || thread->state!=2 || thread->tid<=0) return -EOWNERDEAD;
+                owner=thread->tid==queue->owner_tid ? 0 : thread->port;
+            }
+        }
+    }
+    struct native_thread *caller=native_current_thread();
+    if ((event->fflags&D_NOTE_WL_END_OWNERSHIP) && caller && owner==caller->port) owner=0;
+    native_kqueue_owner(queue,owner);
+    return stale ? -ESTALE : 0;
+}
+/* XNU event.h/filt_wlattach/filt_wltouch use a distinct disabled knote per
+ * synchronous waiter. Linux futex supplies the real sleep/wake; these notes
+ * never enter epoll or manufacture an asynchronous workqueue callback. */
+static long native_workloop_sync_change(struct native_kqueue *queue,struct darwin_kevent_qos *event,
+                                       struct native_knote *note,struct native_knote **waiter)
+{
+    unsigned int command=event->fflags&D_NOTE_WL_COMMAND_MASK;
+    if (!queue->dynamic_id || event->ident==queue->dynamic_id ||
+        (event->fflags&~(D_NOTE_WL_SYNC_WAIT|D_NOTE_WL_SYNC_WAKE|D_NOTE_WL_DISCOVER_OWNER|
+                         D_NOTE_WL_END_OWNERSHIP|D_NOTE_WL_IGNORE_ESTALE))) return -EINVAL;
+    if ((event->flags&D_EV_DELETE) && (event->fflags&D_NOTE_WL_DISCOVER_OWNER)) return -EINVAL;
+    if (command==D_NOTE_WL_SYNC_WAIT && (event->fflags&D_NOTE_WL_END_OWNERSHIP)) return -EINVAL;
+    if ((event->flags&(D_EV_ENABLE|D_EV_DELETE))==D_EV_ENABLE) return -EINVAL;
+    if (!note && (event->flags&(D_EV_ADD|D_EV_DELETE))==(D_EV_ADD|D_EV_DELETE)) return 0;
+    if (note && !(note->event.fflags&(D_NOTE_WL_SYNC_WAIT|D_NOTE_WL_SYNC_WAKE))) return -EINVAL;
+    if (note && note->sync_state==2) return -ENOENT;
+    if (note && note->sync_state==1 && command==D_NOTE_WL_SYNC_WAKE) return -EALREADY;
+    if (!note && (!(event->flags&D_EV_ADD) || (event->flags&D_EV_DELETE))) return -ENOENT;
+    if (!note && !(event->flags&D_EV_DISABLE)) return -EINVAL;
+    if (command==D_NOTE_WL_SYNC_WAIT && !waiter) return -ENOTSUP;
+    struct native_thread *caller=native_current_thread();
+    if (command==D_NOTE_WL_SYNC_WAIT && !(event->flags&D_EV_DELETE)) {
+        if (!caller) return -ESRCH;
+        if (note && note->sync_tid && note->sync_tid!=caller->tid) return -EXDEV;
+        if (note && note->sync_active) return -EBUSY;
+    }
+    if (!note) {
+        for (unsigned int i=0;i<D_KQUEUE_WATCHES;i++)
+            if (!queue->watches[i].used) { note=queue->watches+i; break; }
+        if (!note) return -ENOMEM;
+    }
+    long result=native_workloop_owner_update(queue,event);
+    if (result) return result==-ESTALE && (event->fflags&D_NOTE_WL_IGNORE_ESTALE) ? 0 : result;
+    if (!note->used) {
+        note->event=*event; note->fd=-1; note->enabled=0;
+        note->sync_state=0; note->sync_tid=0; note->sync_active=0;
+        note->generation++; if (!note->generation) note->generation=1;
+        note->used=1;
+    }
+    if (event->flags&D_EV_DELETE) {
+        __atomic_store_n(&note->sync_state,2,__ATOMIC_RELEASE);
+        RAW(SYS_futex,&note->sync_state,FUTEX_WAKE_PRIVATE,1,0,0,0);
+        if (!note->sync_active) note->used=0;
+        return 0;
+    }
+    if (command==D_NOTE_WL_SYNC_WAKE) {
+        note->event.fflags|=D_NOTE_WL_SYNC_WAKE;
+        __atomic_store_n(&note->sync_state,1,__ATOMIC_RELEASE);
+        long woke=RAW(SYS_futex,&note->sync_state,FUTEX_WAKE_PRIVATE,1,0,0,0);
+        trace_record("DARWIN_WORKLOOP_SYNC_WAKE ident=0x",event->ident,queue->dynamic_id,woke);
+        return woke<0 ? woke : 0;
+    }
+    if (!note->sync_state) {
+        note->sync_tid=caller->tid; note->sync_active=1; *waiter=note;
+    }
+    return 0;
+}
+static long native_workloop_sync_wait(struct native_kqueue *queue,struct native_knote *note)
+{
+    trace_record("DARWIN_WORKLOOP_SYNC_WAIT ident=0x",note->event.ident,queue->dynamic_id,note->sync_tid);
+    long result=0;
+    while (!__atomic_load_n(&note->sync_state,__ATOMIC_ACQUIRE)) {
+        result=RAW(SYS_futex,&note->sync_state,FUTEX_WAIT_PRIVATE,0,0,0,0);
+        if (result && result!=-EAGAIN) break;
+        result=0;
+    }
+    native_kqueue_lock();
+    note->sync_active=0;
+    int state=note->sync_state;
+    trace_record("DARWIN_WORKLOOP_SYNC_RETURN ident=0x",note->event.ident,state,result);
+    if (state==2) note->used=0;
+    native_kqueue_unlock();
+    return result;
+}
+static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent_qos *event,
+                                struct native_knote **waiter)
 {
     if (event->xflags || (event->flags&~(D_EV_ADD|D_EV_DELETE|D_EV_ENABLE|D_EV_DISABLE|
         D_EV_ONESHOT|D_EV_CLEAR|D_EV_RECEIPT|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC|D_EV_VANISHED))) return -ENOTSUP;
@@ -114,6 +227,9 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
             (!(event->flags&D_EV_UDATA_SPECIFIC) || candidate->event.udata==event->udata)) { note=candidate; break; }
     }
     if (event->filter==D_EVFILT_WORKLOOP) {
+        unsigned int command=event->fflags&D_NOTE_WL_COMMAND_MASK;
+        if (command==D_NOTE_WL_SYNC_WAIT || command==D_NOTE_WL_SYNC_WAKE)
+            return native_workloop_sync_change(queue,event,note,waiter);
         if (!queue->dynamic_id || event->ident!=queue->dynamic_id ||
             !(event->fflags&D_NOTE_WL_THREAD_REQUEST) ||
             (event->fflags&~(D_NOTE_WL_THREAD_REQUEST|D_NOTE_WL_UPDATE_QOS|D_NOTE_WL_IGNORE_ESTALE|
@@ -129,34 +245,8 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
             }
             return 0;
         }
-        /* Match XNU's debounce snapshot. A stale ignored request must not
-         * attach, modify or wake a source. Preserve the actual state in an
-         * error receipt when the caller asks to see ESTALE. */
-        int stale=0;
-        uint32_t owner=queue->client_owner;
-        if (event->ext[D_WL_ADDR]) {
-            uint64_t state;
-            if ((event->ext[D_WL_ADDR]&7) ||
-                guest_copy(&state,event->ext[D_WL_ADDR],sizeof(state),0)) return -EFAULT;
-            uint64_t expected=event->ext[D_WL_VALUE];
-            event->ext[D_WL_VALUE]=state;
-            stale=(state&event->ext[D_WL_MASK])!=(expected&event->ext[D_WL_MASK]);
-            if (!stale && (event->fflags&D_NOTE_WL_DISCOVER_OWNER)) {
-                uint32_t name=(uint32_t)state&~(uint32_t)D_PORT_GENERATION_TAG;
-                owner=0;
-                if (name) {
-                    name|=D_PORT_GENERATION_TAG;
-                    struct native_thread *thread=native_thread_port(name);
-                    if (!thread || __atomic_load_n(&thread->state,__ATOMIC_ACQUIRE)!=2 || thread->tid<=0)
-                        return -EOWNERDEAD;
-                    owner=name;
-                }
-            }
-        }
-        struct native_thread *caller=native_current_thread();
-        if ((event->fflags&D_NOTE_WL_END_OWNERSHIP) && caller && owner==caller->port) owner=0;
-        native_kqueue_owner(queue,owner);
-        if (stale) return (event->fflags&D_NOTE_WL_IGNORE_ESTALE) ? 0 : -ESTALE;
+        long owner_result=native_workloop_owner_update(queue,event);
+        if (owner_result) return owner_result==-ESTALE && (event->fflags&D_NOTE_WL_IGNORE_ESTALE) ? 0 : owner_result;
         if ((event->flags&D_EV_ADD) && !(event->flags&D_EV_DELETE)) {
             uint32_t priority=(uint32_t)event->qos&D_PTHREAD_PRIORITY_MASK;
             unsigned int bits=(priority>>D_PTHREAD_QOS_SHIFT)&D_PTHREAD_QOS_MASK;
@@ -316,14 +406,21 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
     return 0;
 }
 static long native_kqueue_changes(struct native_kqueue *queue,uint64_t changes,uint64_t count,
-                                  uint64_t output,unsigned int capacity)
+                                  uint64_t output,unsigned int capacity,int *did_wait)
 {
     if (count>D_KQUEUE_WATCHES) return -EINVAL;
     unsigned int emitted=0;
     for (unsigned int i=0;i<count;i++) {
         struct darwin_kevent_qos event;
         if (guest_copy(&event,changes+(uint64_t)i*sizeof(event),sizeof(event),0)) return -EFAULT;
-        native_kqueue_lock(); long result=native_knote_change(queue,&event); native_kqueue_unlock();
+        struct native_knote *waiter=NULL;
+        native_kqueue_lock();
+        long result=native_knote_change(queue,&event,did_wait ? &waiter : NULL);
+        native_kqueue_unlock();
+        if (!result && waiter) {
+            *did_wait=1;
+            result=native_workloop_sync_wait(queue,waiter);
+        }
         if (result && __atomic_fetch_add(&native_kevent_errors,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
             const char label[]="DARWIN_KEVENT_ERROR ident/filter/flags/fflags/xflags/result follows\n";
             RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
@@ -345,6 +442,7 @@ static long native_kqueue_changes(struct native_kqueue *queue,uint64_t changes,u
             if (guest_copy(&event,output+(uint64_t)emitted*sizeof(event),sizeof(event),1)) return -EFAULT;
             emitted++;
         }
+        if (waiter) return emitted;
     }
     return emitted;
 }
@@ -571,7 +669,7 @@ static long native_event_worker_return(const unsigned long long *r)
         if (id!=thread->workloop_id || queue->owner_tid!=thread->tid) return -ENOTSUP;
     }
     uint64_t buffer=r[1] ? r[1] : native_event_buffer(thread);
-    long result=native_kqueue_changes(queue,r[1],r[2],buffer,D_KQUEUE_BATCH);
+    long result=native_kqueue_changes(queue,r[1],r[2],buffer,D_KQUEUE_BATCH,NULL);
     if (result) return result;
     do { result=native_event_collect(queue,thread,buffer); } while (result==-EINTR);
     return result;
@@ -632,7 +730,7 @@ static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
     }
     struct native_kqueue *queue=native_kqueue_find(fd);
     if (!queue) return -EBADF;
-    long result=native_kqueue_changes(queue,r[1],r[2],r[3],r[4]);
+    long result=native_kqueue_changes(queue,r[1],r[2],r[3],r[4],NULL);
     if (result) return result;
     if (r[7]&D_KEVENT_WORKQ) {
         result=native_kqueue_start_worker(queue,mask);
@@ -644,7 +742,8 @@ static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
 }
 /* Dynamic queues are distinct objects. One bound Linux worker serializes
  * delivery for each queue; this does not implement EVFILT_WORKLOOP owner
- * transfer, synchronous-wait commands, or the workloop control syscall. */
+ * scheduling beyond the Linux-backed owner gate and sync waits, or the
+ * workloop control syscall. */
 static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
 {
     unsigned long flags=r[7];
@@ -676,8 +775,9 @@ static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
         struct native_thread *caller=native_current_thread();
         if (!caller || __atomic_load_n(&queue->client_owner,__ATOMIC_ACQUIRE)!=caller->port) return -EXDEV;
     }
-    long result=native_kqueue_changes(queue,r[1],r[2],r[3],r[4]);
-    if (result) return result;
+    int waited=0;
+    long result=native_kqueue_changes(queue,r[1],r[2],r[3],r[4],&waited);
+    if (result || waited) return result;
     if (r[2]) {
         struct darwin_kevent_qos event;
         if (guest_copy(&event,r[1],sizeof(event),0)) return -EFAULT;
