@@ -196,6 +196,11 @@ jobs:
         import pathlib, struct, zlib
         def chunk(kind, payload):
             return struct.pack('>I', len(payload)) + kind + payload + struct.pack('>I', zlib.crc32(kind + payload))
+        # A killed writer may leave an unpublished temporary bitmap. The last
+        # atomically published frame remains authoritative; never encode a temp.
+        for path in pathlib.Path('build/results').rglob('frame-*.bgra.tmp'):
+            path.unlink()
+            print('APP_FRAME_CAPTURE_UNPUBLISHED ' + str(path))
         for path in pathlib.Path('build/results').rglob('frame-*.bgra'):
             data = path.read_bytes()
             width, height, stride = struct.unpack('<III', data[:12])

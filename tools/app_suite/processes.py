@@ -118,11 +118,7 @@ class Processes:
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
             if self.environment.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1':
                 arguments.extend(['--lookup-bytes','4096'])
-                for image,symbol in [
-                    ('FrontBoardServices','-[FBSScene _callOutQueue_agent_didCreateWithTransitionContext:completion:]'),
-                    ('FrontBoardServices','-[FBSBasicSceneAgent _configureWithScene:]'),
-                    ('FrontBoardServices','-[FBSScene _callOutQueue_agent_willDestroyWithTransitionContext:completion:]')]:
-                    arguments.extend(['--lookup',f'/System/Library/PrivateFrameworks/{image}.framework/{image}',symbol])
+                arguments.extend(['--list-symbols','/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore','UIDynamicCatalog'])
             if 'DARLING_UNHANDLED_SERVICE_INLINE' in runtime.read_text(errors='replace'):
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZL14query_displaysv'])
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZN2CA7Display7Display6updateEv'])

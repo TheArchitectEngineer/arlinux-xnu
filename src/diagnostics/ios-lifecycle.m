@@ -77,6 +77,7 @@ static int lifecycle_method(const char *name)
         strstr(name,"Foreground") || strstr(name,"foreground") ||
         strstr(name,"Orientation") || strstr(name,"orientation") ||
         strstr(name,"Connection") || strstr(name,"Focus") || strstr(name,"focus") ||
+        strstr(name,"Color") || strstr(name,"color") || strstr(name,"Gamut") || strstr(name,"gamut") || strstr(name,"trait") ||
         !strcmp(name,"_clientClass") || !strcmp(name,"parametersForSpecification:");
 }
 static void describe_methods(Class cls,int meta)
@@ -103,7 +104,9 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
     if (protocol) describe_protocol(protocol,adapter,&evidence);
     fprintf(stderr,"IOS_LIFECYCLE_CONTRACT protocol=FBSSceneUpdater protocol_available=%d adapter_available=%d protocols=%u methods=%u missing=%u encoding_differences=%u truncated=%d app_acceptance=false\n",
         protocol!=NULL,adapter!=Nil,evidence.protocols,evidence.methods,evidence.missing,evidence.encoding_differences,evidence.truncated);
-    const char *classes[]={"_UIRemoteKeyboards","FBSWorkspace","FBSScene","FBSBasicSceneAgent","FBSSceneParameters","FBSMutableSceneParameters",
+    const char *classes[]={"FBSDisplayConfiguration","FBSMutableDisplayConfiguration","CADisplay",
+        "UIDynamicCatalogColor","UIDynamicCatalogSystemColor","UIDynamicColor",
+        "_UIRemoteKeyboards","FBSWorkspace","FBSScene","FBSBasicSceneAgent","FBSSceneParameters","FBSMutableSceneParameters",
         "FBSSceneIdentity","FBSSceneIdentityToken","FBSSceneDefinition","FBSMutableSceneDefinition",
         "FBSSceneSpecification","FBSSceneSettings","FBSMutableSceneSettings",
         "FBSSceneClientSettings","FBSMutableSceneClientSettings","FBSSceneTransitionContext",
