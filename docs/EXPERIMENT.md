@@ -75,15 +75,32 @@ values 0, 1, 0 and 149. The blocked guest stack is in QuartzCore's
 Context::connect_remote overloads. The OOL payload content is not decoded;
 do not guess that all five resources are shared memory or assign port roles.
 
-Exact candidate run: [39421509125](https://github.com/taowen/arlinux-xnu/actions/runs/39421509125),
-source 97b00aeae004cfabb875a2ccdc22ef8255b2c14f. It resolves genuine
-CARenderServerStart/GetPort from the current cache and calls them on the
-original guest-TSD lookup thread. Measured Wayland display metadata stays in
-the adapter; other actual render requests are forwarded to the real framework
-port with the original reply right and transferred resources. No registration
-reply, context or rendered frame is fabricated. Observe NATIVE_RENDER_FRAMEWORK_
-and NATIVE_RENDER_FORWARD, real startup errors and app progress before claiming
-this candidate works. Continue this exact run while it remains live.
+[Run 39421509125](https://github.com/taowen/arlinux-xnu/actions/runs/39421509125),
+source 97b00aeae004cfabb875a2ccdc22ef8255b2c14f, starts the actual framework
+service: CARenderServerStart returns true, GetPort returns a real Mach name,
+and retaining its send right succeeds. The 40203 request forwards successfully
+with its original reply right and resources. Wayland metadata queries stay in
+the adapter. No registration reply, context or rendered frame is fabricated.
+The ordinary app times out (124); its separate LLDB attempt instead stops at an
+earlier libdispatch BRK. Those are different attempts, not one causal trace.
+
+[Run 39422532342](https://github.com/taowen/arlinux-xnu/actions/runs/39422532342),
+source 1d5a2fec1eb5c734cda89e92c94721164927dce4, captures the original live app
+4291/start-ticks 101156 before timeout. Attach and detach succeed (trace status
+0). Main is in UIApplicationMain/CFRunLoop, the actual CA render thread receives
+Mach messages, and two workers block in native_ulock. One is on the Objective-C
+method-lookup/CA layer-class path. The trace does not prove those locks' owner
+or a condition-variable cause. Syscalls 303/305 also return ENOSYS during real
+startup and are a genuine additional synchronization gap.
+
+Exact pending run: [39423551547](https://github.com/taowen/arlinux-xnu/actions/runs/39423551547),
+source 69377ac8b26c66aee2d01e4affc9ce25a798544f. Mutex/CV/RW calls now route
+through the same real XNU queue model, preserving updates, timeouts and BSD
+errors. Condition wait cannot safely coordinate with the old local mutex-credit
+model. The original-process attach decoder also records ulock expected/actual
+words and native thread/Mach-port identities. Inspect those to establish an
+owner/wait chain; do not call the CV change a proven fix before observing it.
+Continue this exact run while it remains live. No GUI lifecycle passes yet.
 
 Primary ABI reference: WebKit's
 [QuartzCoreSPI.h](https://github.com/WebKit/WebKit/blob/ebaa3acb4ca036ced8011e8bfb2e951dd2199696/Source/WebCore/PAL/pal/spi/cocoa/QuartzCoreSPI.h#L287-L299)
@@ -124,11 +141,6 @@ uses fixed overwrite with copy=TRUE. The imported memory.c implementation
 already performs a real copy. libffi's copy=FALSE sharing variant cannot replace
 that private-copy operation.
 
-The prior diagnostic run 39410444685 stopped earlier in libdispatch at
-0x1808c4878 and did not reproduce the pthread abort; preserve that distinct
-interleaving. Actual app progress, not one selected successful trace, remains
-the acceptance criterion.
-
 Header-only MACH_NOTIFY_SEND_ONCE cancellation is accepted only on outstanding
 reply ports with the exact kernel notification and zero audit identity; it is
 never a successful scene reply. Client retirement is observed. Complete crash
@@ -144,15 +156,15 @@ explains abort-reason/abort routing; compare it with the actual cache code.
 
 ## Exact evidence and inputs
 
-Latest failure evidence is run 39420355213; downloaded ordinary/debugger runtime
-and session logs match its receipt. Receipt SHA-256:
-`b4503275d2d6e688ab8086b26f14a493829fbb7746ee183c25046d2f22b700d8`.
+Latest failure evidence is run 39422532342; downloaded ordinary runtime,
+original-process attach and session logs match its receipt. Receipt SHA-256:
+`1cf16c75faaf3d4f84f704fb1b05a53e954803bc9a20da94bc23761afa150eaf`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| app.runtime.log | `77c4e2a1c45da967be903ba36b7fc908d734b9b086094d2cdc9558968b130360` |
-| debugger.runtime.log | `755eb8ae3afd503b004888162e1b80c1532f3745b7274f8a9bb74bf2d6c36ce1` |
-| session.log | `763d3d5fb097ef68e8b80320efb914a338566266503363dadc8f9984168fe5b0` |
+| app.runtime.log | `611f982fef91da7ea1e88b2e263b406315e65b7bc26cab38321cdc2f8dcadcaf` |
+| ordinary-wait.log | `2771d975344a5db4554609cabb85a3b1bdfad64f74ab28fd3250e8ae2b559b69` |
+| session.log | `ed2cf1606d6e3dbdb0c18d2376f41cc4183115a1163423c721015d05ae5c4973` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain
