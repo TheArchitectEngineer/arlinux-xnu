@@ -84,8 +84,16 @@ its own copy). Real VM reservation and file mappings place Counter's dylib at
 ephemeral allocator region. No observed release removes the actual dylib mapping.
 This distinguishes bad address metadata from a proven early unload of the dylib.
 
-Next compare dyld's original library/segment diagnostics and the actual compact
-snapshot decoder to determine when the saved address diverges. Apple source's
+Run [39487072359](https://github.com/taowen/arlinux-xnu/actions/runs/39487072359),
+source a586c985b2e6937347c33cb6f555cb3a8963a51b, verified receipt
+**8d66093bb7ad76c69bc6d14d7f01eb57115d9bfe8f1550f95161c22f16ea0ec6**
+and all 43 retained files. The actual decoder uses the measured 16K/4K flag and
+cumulative image deltas. Console/Foundation pass; the same GUI fault remains.
+Its requested dyld logs did not reach the guest: the launcher's environment
+allowlist forwarded only the declared platform library. Explicit read-only log
+switch forwarding and original-process compact-metadata decoding are the next
+unverified diagnostic changes. Compare the real image table, serialized snapshot
+and fault object to locate the first divergent address. Apple source's
 identity mapper dereferences that saved address; do not fix this by mapping
 arbitrary memory at the stale address or disabling snapshot notifications.
 

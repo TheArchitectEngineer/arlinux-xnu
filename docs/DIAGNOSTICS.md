@@ -40,6 +40,11 @@ the journey failed, and stops the original process for existing read-only LLDB
 collection. Debugger collection or forced cleanup never counts as normal exit.
 Atlas Image metadata reads require a matched actual fault symbol and a complete
 writable-map bounds check; no guest calls or executable-memory dumps are added.
+The same original-process collection can decode its registered dyld image-info
+and version-0 compact snapshot as bounded metadata. It emits image paths/addresses,
+not raw bytes, and rejects unknown layouts. Compare these with actual VM traces
+and dyld's own library/segment logging. Only those two explicit diagnostic env
+switches are forwarded through the guest environment allowlist.
 
 Each original app generation has .stdout, .stderr and .runtime.log. The harness
 passes an actual inherited trace descriptor to the runtime; guest writes to stderr

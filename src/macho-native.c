@@ -181,12 +181,25 @@ int main(int argc,char **argv)
             top=(top-count-1)&~15UL;
             memcpy((void *)top,injected,count+1); environment=top;
         }
+        /* Explicit read-only dyld diagnostics may enter the guest. Never copy
+         * arbitrary host environment or credentials into the Apple process. */
+        const char *diagnostic_names[]={"DYLD_PRINT_LIBRARIES","DYLD_PRINT_SEGMENTS"};
+        uint64_t diagnostics[2]={0};size_t diagnostic_count=0;
+        for(size_t i=0;i<sizeof(diagnostic_names)/sizeof(diagnostic_names[0]);i++) {
+            const char *value=getenv(diagnostic_names[i]);
+            if(!value || strcmp(value,"1")) continue;
+            char setting[64];int size=snprintf(setting,sizeof(setting),"%s=1",diagnostic_names[i]);
+            need(size>0 && (size_t)size<sizeof(setting),"dyld diagnostic environment length");
+            top=(top-size-1)&~15UL;memcpy((void *)top,setting,size+1);
+            diagnostics[diagnostic_count++]=top;
+        }
         /* Header/argc/argv, optional env, and three Apple strings. Count the
          * actual entries; stack alignment does not depend on magic slot totals. */
-        uint64_t initial[10];size_t count=0;
+        uint64_t initial[12];size_t count=0;
         initial[count++]=im.header_address;initial[count++]=1;
         initial[count++]=name;initial[count++]=0;
         if(environment)initial[count++]=environment;
+        for(size_t i=0;i<diagnostic_count;i++)initial[count++]=diagnostics[i];
         initial[count++]=0;
         initial[count++]=apple;initial[count++]=stack_parameter_address;
         initial[count++]=token_parameter_address;initial[count++]=0;
