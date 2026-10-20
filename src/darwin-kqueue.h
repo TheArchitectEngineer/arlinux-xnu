@@ -87,6 +87,7 @@ static long native_kqueue_create(void)
 }
 static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent_qos *event)
 {
+    if (darling_active && event->filter==D_EVFILT_MACHPORT) return -ENOTSUP; /* requires a real kqchan */
     if (event->xflags || (event->flags&~(D_EV_ADD|D_EV_DELETE|D_EV_ENABLE|D_EV_DISABLE|
         D_EV_ONESHOT|D_EV_CLEAR|D_EV_RECEIPT|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC|D_EV_VANISHED))) return -ENOTSUP;
     /* UDATA-specific memory sources have separate subscriptions and ordinary

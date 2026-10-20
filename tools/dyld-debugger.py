@@ -386,8 +386,25 @@ def capture_ipc_waits(process):
                     record[field] = value.GetValueAsSigned() if field.endswith('_fd') else value.GetValueAsUnsigned()
             queues[record['name']] = record
     objects = GuestObjects(process)
+    backend = target.FindFirstGlobalVariable('darling_active')
+    darling = backend.IsValid() and backend.GetValueAsUnsigned() != 0
     for thread in process:
         for frame in thread:
+            function = frame.GetFunctionName() or ''
+            if darling and 'dserver_rpc_explicit_' in function:
+                record = {'tid': thread.GetThreadID(), 'function': function,
+                          'framePC': hex(frame.GetPC())}
+                call = frame.FindVariable('call')
+                for field in ('header', 'body'):
+                    value = call.GetChildMemberWithName(field)
+                    members = {}
+                    if value.IsValid() and value.GetError().Success():
+                        for index in range(min(value.GetNumChildren(), 12)):
+                            member = value.GetChildAtIndex(index)
+                            members[member.GetName()] = member.GetValue() if member.GetError().Success() else None
+                    record[field] = members or None
+                print('DARLING_RPC_WAIT ' + json.dumps(record), flush=True)
+                break
             if 'ipc_message' not in (frame.GetFunctionName() or ''):
                 continue
             record = {'tid': thread.GetThreadID(), 'framePC': hex(frame.GetPC())}
@@ -410,7 +427,8 @@ def capture_ipc_waits(process):
                 record['error'] = str(error)
                 print('IPC_WAIT_DECODE_ERROR ' + json.dumps(record), flush=True)
             break
-    print('IPC_QUEUE_SNAPSHOT ' + json.dumps(list(queues.values())), flush=True)
+    if not darling:
+        print('IPC_QUEUE_SNAPSHOT ' + json.dumps(list(queues.values())), flush=True)
 
 
 def capture_normal_fault(target):

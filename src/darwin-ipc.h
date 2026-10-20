@@ -197,6 +197,9 @@ static unsigned long ipc_receive_locked(struct ipc_endpoint *endpoint,uint64_t a
 }
 static struct ipc_endpoint *ipc_find(uint32_t name)
 {
+    /* The selected backend owns the whole port namespace. A numeric name
+     * from Darling must never alias an old process-local object. */
+    if (darling_active) return NULL;
     for (unsigned int i=0;i<IPC_ENDPOINTS;i++)
         if (__atomic_load_n(&ipc_endpoints[i].used,__ATOMIC_ACQUIRE)==2 && ipc_endpoints[i].name==name) return ipc_endpoints+i;
     return NULL;

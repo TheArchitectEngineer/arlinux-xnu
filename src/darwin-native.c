@@ -262,7 +262,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
 #ifdef ARLINUX_DARLING
         if (darling_active && number!=D_TRAP_VM_ALLOCATE && number!=D_TRAP_VM_DEALLOCATE &&
             number!=D_TRAP_VM_MAP && number!=D_TRAP_VM_PROTECT && number!=D_TRAP_ABSOLUTE_TIME &&
-            number!=D_TRAP_CONTINUOUS_TIME && number!=D_TRAP_TIMEBASE_INFO && number!=D_TRAP_GENERATE_ACTIVITY_ID) {
+            number!=D_TRAP_CONTINUOUS_TIME && number!=D_TRAP_TIMEBASE_INFO && number!=D_TRAP_GENERATE_ACTIVITY_ID &&
+            number!=D_TRAP_HOST_CREATE_VOUCHER) {
             r[0]=darling_mach(number,r);
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;

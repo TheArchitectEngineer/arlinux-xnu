@@ -191,7 +191,7 @@ jobs:
           path: build/native/
           retention-days: 30
   dyld-userland:
-    if: inputs.mode == 'dyld' || inputs.mode == 'app'
+    if: always() && needs.native-userland.result == 'success' && (inputs.mode == 'dyld' || inputs.mode == 'app')
     needs: native-userland
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
@@ -349,7 +349,7 @@ jobs:
             !build/dyld/wayland-runtime/**
           retention-days: 30
   playcover-reference:
-    if: inputs.mode == 'playcover'
+    if: always() && needs.native-userland.result == 'success' && inputs.mode == 'playcover'
     needs: native-userland
     runs-on: macos-14
     timeout-minutes: 15
