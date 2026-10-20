@@ -158,6 +158,7 @@ enum darwin_device_layout {
     D_DEV_MAJOR_SHIFT = 24, D_DEV_MAJOR_MAX = 255, D_DEV_MINOR_MAX = 0xffffff
 };
 enum darwin_open_flags {
+    D_O_NONBLOCK = 0x4,
     D_O_NOFOLLOW = 0x100, D_O_DIRECTORY = 0x100000, D_O_CLOEXEC = 0x1000000
 };
 enum darwin_vm_flags {

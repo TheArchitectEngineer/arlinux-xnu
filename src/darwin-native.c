@@ -189,7 +189,6 @@ static int path_directory(char **path)
 static long guest_open(unsigned long address,unsigned long flags)
 {
     /* The firmware is read-only. Unsupported flag semantics are explicit. */
-    if (flags & ~(D_O_NOFOLLOW|D_O_DIRECTORY|D_O_CLOEXEC)) return -ENOTSUP;
     char buffer[4096],*path=buffer;
     long error=guest_path(address,buffer);
     if (error) return error;
@@ -198,8 +197,15 @@ static long guest_open(unsigned long address,unsigned long flags)
     RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
     RAW(SYS_write,2,buffer,length,0,0,0);
     RAW(SYS_write,2,"\n",1,0,0,0);
+    if (flags & ~(D_O_NONBLOCK|D_O_NOFOLLOW|D_O_DIRECTORY|D_O_CLOEXEC)) {
+        const char rejected[]="DARWIN_OPEN_UNSUPPORTED_FLAGS follows\n";
+        RAW(SYS_write,2,rejected,sizeof(rejected)-1,0,0,0);
+        trace_call(0,0,flags);
+        return -ENOTSUP;
+    }
     int directory=path_directory(&path);
     int options=O_RDONLY;
+    if (flags&D_O_NONBLOCK) options|=O_NONBLOCK;
     if (flags&D_O_NOFOLLOW) options|=O_NOFOLLOW;
     if (flags&D_O_DIRECTORY) options|=O_DIRECTORY;
     if (flags&D_O_CLOEXEC) options|=O_CLOEXEC;
