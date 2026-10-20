@@ -96,6 +96,7 @@ def report(run_id, job_name):
                    'HID_CLIENT_CALLEE_REFERENCE ',
                    'IPC_CALLBACK ',
                    'DARLING_PORT_CONSTRUCT ',
+                   'DARLING_PORT_GUARD ',
                    'APP_STARTUP_INCOMPLETE ', 'DARWIN_EXIT_FRAME ',
                    'GUEST_EXIT_STATUS ', 'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
                    'SERVICE_LOOKUP ', 'SERVICE_LOOKUP_LIMIT ',
@@ -118,6 +119,7 @@ def report(run_id, job_name):
                            'DARLING_KQCHAN_OPEN ': 3, 'DARLING_KQCHAN_EVENT ': 5,
                            'DARLING_SERVICE_REPLY ': 4,
                            'DARLING_PORT_CONSTRUCT ': 5,
+                           'DARLING_PORT_GUARD ': 5,
                            'DARLING_S2C_MEMORY ': 6,
                            'DARWIN_WORKLOOP_SOFT_DELETE ': 2,
                            'DARWIN_CODESIGN_QUERY ': 6,
@@ -164,11 +166,14 @@ def main():
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--job', help='Exact job name for report; default: all jobs')
+    parser.add_argument('--artifact', help='Download only this named artifact from the exact run')
     args = parser.parse_args()
     if args.command in ('report', 'download') and (not args.run_id or not args.run_id.isdecimal()):
         parser.error(args.command + ' requires --run-id NUMERIC_RUN_ID')
     if args.job and args.command != 'report':
         parser.error('--job is only supported by report')
+    if args.artifact and args.command != 'download':
+        parser.error('--artifact is only supported by download')
     if args.command == 'report':
         report(args.run_id, args.job)
         return
@@ -196,6 +201,8 @@ def main():
             parser.error('download requires --run-id NUMERIC_RUN_ID')
         output = Path(__file__).resolve().parents[1] / 'build' / 'runs' / args.run_id
         command = ['run', 'download', args.run_id, '--dir', str(output)]
+        if args.artifact:
+            command += ['--name', args.artifact]
     subprocess.run(['gh', *command, '-R', repo], check=True)
 
 

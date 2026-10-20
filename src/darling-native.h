@@ -183,6 +183,19 @@ static long darling_mach(unsigned long number,const unsigned long long *r)
         return result;
     }
     case D_TRAP_PORT_DESTRUCT: return dserver_rpc_mach_port_destruct(r[0],r[1],r[2],r[3]);
+    case D_TRAP_PORT_GUARD: case D_TRAP_PORT_UNGUARD: {
+        long result=number==D_TRAP_PORT_GUARD ?
+            dserver_rpc_mach_port_guard(r[0],r[1],r[2],r[3]) :
+            dserver_rpc_mach_port_unguard(r[0],r[1],r[2]);
+        static unsigned int traces;
+        if(__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
+            const char marker[]="DARLING_PORT_GUARD trap/name/context/strict/result follows\n";
+            RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+            trace_call(0,0,number); trace_call(1,0,r[1]); trace_call(2,0,r[2]);
+            trace_call(3,0,number==D_TRAP_PORT_GUARD ? r[3] : 0); trace_call(4,0,result);
+        }
+        return result;
+    }
     case D_TRAP_SEMAPHORE_SIGNAL: return dserver_rpc_semaphore_signal(r[0]);
     case D_TRAP_SEMAPHORE_WAIT: return dserver_rpc_semaphore_wait(r[0]);
     case D_TRAP_TIMER_CREATE: result=dserver_rpc_mk_timer_create(&port); return result ? 0 : port;
