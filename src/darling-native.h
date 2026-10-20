@@ -152,11 +152,47 @@ static void darling_prepare(void)
     RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
     trace_call(0,0,darling_task_port); trace_call(1,0,darling_host_port);
 }
+static long darling_mach_msg2(const unsigned long long *r)
+{
+    /* XNU mach/message.h mach_msg2() and ipc/mach_msg.c mach_msg2_trap:
+     * eight packed arguments, unlike legacy mach_msg_overwrite's flat ABI.
+     * Ordinary canonical-buffer calls use the same real Darling queues and
+     * MIG kobjects. This trusted-input runtime does not enforce Apple's CFI
+     * routing policy. Vectors/auxiliary messages remain unsupported. */
+    static unsigned int traces;
+    int diagnostic=__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT;
+    if(diagnostic) trace_record("DARLING_MSG2_BEGIN options=0x",r[1],r[4]>>32,r[2]>>32);
+    uint64_t routing=r[1]&(D_MACH64_SEND_KOBJECT|D_MACH64_SEND_QUEUE|D_MACH64_SEND_ANY);
+    if ((r[1]&~(UINT64_C(0xffffffff)|D_MACH64_SEND_KOBJECT|D_MACH64_SEND_QUEUE|D_MACH64_SEND_ANY)) ||
+        (routing && (routing&(routing-1)))) return D_MACH_SEND_INVALID_OPTIONS;
+    uint32_t options=r[1],send_size=r[2]>>32,receive_size=r[6],receive_name=r[5]>>32;
+    if(options&D_MACH_SEND_MSG) {
+        uint32_t header[6];
+        if(send_size<sizeof(header) || guest_copy(header,r[0],sizeof(header),0)) return D_MACH_SEND_INVALID_DATA;
+        /* The existing kernel reads its header from the buffer. Explicitly
+         * reject the unimplemented separate-header form instead of sending a
+         * different message than the packed arguments requested. */
+        if(header[0]!=(uint32_t)r[2] || header[2]!=(uint32_t)r[3] || header[3]!=(uint32_t)(r[3]>>32) ||
+           header[4]!=(uint32_t)r[4] || header[5]!=(uint32_t)(r[4]>>32)) return D_MACH_SEND_INVALID_HEADER;
+        uint32_t descriptors=0;
+        if(header[0]&D_MACH_MSG_COMPLEX) {
+            if(send_size<sizeof(header)+sizeof(descriptors) ||
+               guest_copy(&descriptors,r[0]+sizeof(header),sizeof(descriptors),0)) return D_MACH_SEND_INVALID_DATA;
+        }
+        if(descriptors!=(uint32_t)r[5]) return D_MACH_SEND_INVALID_HEADER;
+    }
+    long result=dserver_rpc_mach_msg_overwrite((void *)r[0],options,send_size,receive_size,
+        receive_name,(uint32_t)r[7],(uint32_t)(r[6]>>32),NULL);
+    if(diagnostic)
+        trace_record("DARLING_MSG2 options=0x",r[1],r[4]>>32,result);
+    return result;
+}
 static long darling_mach(unsigned long number,const unsigned long long *r)
 {
     uint32_t port=0;
     int result;
     switch (number) {
+    case D_TRAP_MSG2: return darling_mach_msg2(r);
     case D_TRAP_TASK_SELF: result=dserver_rpc_task_self_trap(&port); return result ? 0 : port;
     case D_TRAP_HOST_SELF: result=dserver_rpc_host_self_trap(&port); return result ? 0 : port;
     case D_TRAP_THREAD_SELF: return darling_thread_self();

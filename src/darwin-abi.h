@@ -99,6 +99,7 @@ enum darwin_mach_trap {
     D_TRAP_SEMAPHORE_WAIT = 36,
     D_TRAP_PORT_GUARD = 41, D_TRAP_PORT_UNGUARD = 42,
     D_TRAP_GENERATE_ACTIVITY_ID = 43,
+    D_TRAP_MSG2 = 47,
     D_TRAP_SPECIAL_REPLY_PORT = 50,
     D_TRAP_TIMEBASE_INFO = 89,
     D_TRAP_TIMER_CREATE = 91, D_TRAP_TIMER_DESTROY = 92,
@@ -190,8 +191,14 @@ struct darwin_dirent64 {
 };
 enum darwin_vm_flags {
     D_VM_FLAGS_ANYWHERE = 1, D_VM_FLAGS_TAG_MASK = 0xff000000U,
-    D_MAP_SHARED = 1, D_MAP_PRIVATE = 2, D_MAP_FIXED = 0x10, D_MAP_ANON = 0x1000
+    D_MAP_SHARED = 1, D_MAP_PRIVATE = 2, D_MAP_FIXED = 0x10, D_MAP_ANON = 0x1000,
+    D_MAP_UNIX03 = 0x40000
 };
+/* XNU 8796.141.3 mach/message.h: high-word mach_msg2 routing hints. */
+#define D_MACH64_MSG_VECTOR UINT64_C(0x100000000)
+#define D_MACH64_SEND_KOBJECT UINT64_C(0x200000000)
+#define D_MACH64_SEND_QUEUE UINT64_C(0x400000000)
+#define D_MACH64_SEND_ANY UINT64_C(0x800000000)
 enum darwin_platform_operation { D_PLATFORM_SET_TSD = 2, D_PLATFORM_GET_TSD = 3 };
 enum darwin_ulock_operation {
     D_UL_COMPARE_AND_WAIT = 1, D_UL_UNFAIR_LOCK = 2,

@@ -112,7 +112,9 @@ static long native_file_code_ranges(int fd,uint64_t mapped_offset,uint64_t mappe
 }
 static long native_file_mmap(const unsigned long long *r)
 {
-    unsigned long address=r[0],length=r[1],protection=r[2],flags=r[3],offset=r[5];
+    /* MAP_UNIX03 selects POSIX validation, not a Linux mapping flag. The
+     * checks below and Linux mmap enforce our supported POSIX mapping subset. */
+    unsigned long address=r[0],length=r[1],protection=r[2],flags=r[3]&~(unsigned long)D_MAP_UNIX03,offset=r[5];
     int fd=(int)r[4];
     if (!length || length>D_VM_MAX_ALLOCATION || (protection&~(PROT_READ|PROT_WRITE|PROT_EXEC)) ||
         flags&~(unsigned long)(D_MAP_SHARED|D_MAP_PRIVATE|D_MAP_FIXED) ||
@@ -159,7 +161,7 @@ static long native_mmap(const unsigned long long *r)
 {
     /* Darwin fd is a signed 32-bit int. The real libSystem wrapper passes
      * -1 as w4=0xffffffff; upper register bits are not its sign extension. */
-    if (r[3]==(D_MAP_PRIVATE|D_MAP_ANON) && (int32_t)r[4]==-1 && !r[5] && !r[0])
+    if ((r[3]&~(unsigned long)D_MAP_UNIX03)==(D_MAP_PRIVATE|D_MAP_ANON) && (int32_t)r[4]==-1 && !r[5] && !r[0])
         return darwin_native_memory(r[1],r[2]);
     long result=native_file_mmap(r);
     static unsigned int traces;
