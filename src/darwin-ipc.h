@@ -30,9 +30,9 @@ static uint32_t native_processinfo_port;
 static int native_session_manager;
 static uint32_t native_provider_pid,native_provider_incarnation;
 
+#ifdef ARLINUX_DARLING
 static int native_inherit_bootstrap(void)
 {
-#ifdef ARLINUX_DARLING
     uint32_t reply=0; uint32_t message[32]={0};
     if (dserver_rpc_mach_reply_port(&reply)) return -1;
     struct ipc_header_bootstrap { uint32_t bits,size,remote,local,voucher; int32_t id; };
@@ -44,10 +44,8 @@ static int native_inherit_bootstrap(void)
     dserver_rpc_mach_port_mod_refs(CURRENT_TASK_PORT,reply,D_PORT_RIGHT_RECEIVE,-1);
     if (error || !(header->bits&D_MACH_MSG_COMPLEX) || header->size!=40 || message[6]!=1 || !message[7]) return -1;
     native_bootstrap_port=message[7]; return 0;
-#else
-    return -1;
-#endif
 }
+#endif
 static uint32_t native_display_width,native_display_height;
 static uint32_t native_display_refresh;
 static uint64_t native_display_period_bits;

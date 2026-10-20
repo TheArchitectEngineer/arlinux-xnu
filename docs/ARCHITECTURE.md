@@ -10,8 +10,10 @@ on GitHub runners through the root build.sh entry.
 Multiple independent iOS app processes must run concurrently, each with its
 own address space, threads and lifecycle. Bootstrap, service registration and
 process-state management belong in an independent shared session service.
+App-requested helper/XPC processes also belong to this model, including
+service-mediated launches rather than assuming every helper is a direct fork.
 Reuse Darling/XNU cross-task rights and message delivery; do not build a second
-Mach ownership model. The current in-task provider and same-task trust adapter
+Mach ownership model. The independent provider and provider-specific trust adapter
 are transitional and cannot establish this requirement. Requester identity
 must come from actual message provenance; provider identity must identify the
 session service rather than assume it is the application itself.
@@ -377,29 +379,32 @@ stack alone does not identify a missing daemon or establish its protocol.
   Its decoder ignores OOL descriptors and aborts/exits on several errors; it is
   not a drop-in production transport. Any extracted code needs actual descriptor
   ownership and bounded decoding, using the existing Mach backend.
-  The current host service builds its four unmodified codec/container C files
-  through the existing workflow, with a Linux LP64 Mach ABI adapter. It accepts
-  only inline bootstrap messages, rejects complex requests before decoding,
-  and retains upstream's fatal malformed-input behavior for trusted firmware.
+  The current host service builds the pinned fork's codec/container/check-in C files
+  through the existing workflow, with a Linux LP64 Mach ABI adapter. Bootstrap
+  accepts inline messages; process-info accepts validated ordinary port descriptors.
+  The decoder retains upstream's fatal malformed-input behavior for trusted firmware.
   Routine 0x324 queries the actual registry; absent services remain errors.
   Reply send references are retained until XNU completes the actual send.
   This is not yet a general peer-facing XPC implementation or an assertiond.
-  [Our pinned fork](https://github.com/taowen/arlinux-libspc/tree/5b6a39a0c117ffe63bf9339f322e27a1ea3e7270/libspc)
+  [Our pinned fork](https://github.com/taowen/arlinux-libspc/tree/25448224f76c78c11dfb137fdeb777fbee5e640e/libspc)
   exposes validated adoption of an already received check-in. A controlled
   system-domain process-info listener now owns actual XNU rights. Unknown
   process-state messages remain unsupported and connection retirement remains
   unfinished. Run 39387933387 establishes actual check-in in both ordinary and
-  debugger attempts; the first descriptor-bearing process-state message is the
-  next unsupported operation. Publication/lookup alone never proves check-in.
+  debugger attempts. Run 39389693704 decodes the first process-state request:
+  message=11, taskPort send right and endpoint send right. Its semantics remain
+  unsupported (ENOTSUP). Publication/lookup alone never proves check-in.
 
 The private libxpc mapping's launchd trust predicate now accepts only the actual
-in-task bootstrap provider's PID, effective UID and Linux-backed incarnation.
+independent session provider's PID, effective UID and Linux-backed incarnation.
 The original audit getter and requester-echo comparisons remain. No PID 1 or
 root audit identity is fabricated. A bounded instruction/branch-layout match
 locates the predicate; unknown or ambiguous layouts fail explicitly. There is
-no firmware-version offset selection. This single-process bootstrap policy
-does not establish inherited bootstrap service behavior in fork children or a
-multi-process iOS session. A future virtual PID 1 would require consistent
+no firmware-version offset selection. Run 39389693704 establishes bootstrap
+lookup and process-info check-in by two distinct concurrent application PIDs
+against the independent provider. It does not establish helper spawning, fork
+inheritance, process-state semantics, cleanup or concurrent interactive apps.
+A future virtual PID 1 would require consistent
 process, parentage, signal and audit behavior, rather than one altered field.
 - [VibeDarling Wayland backend](https://github.com/VibeDarling/darling-cocotron/tree/f0e1b1b28c439af9fcd01f039d74fbfe958f3067/AppKit/Wayland.backend)
   supplies window/configure, shared buffers, input and EGL subwindows. Reviewed

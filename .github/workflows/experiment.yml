@@ -316,6 +316,7 @@ jobs:
             peer=$!
           fi
           timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log || status=$?
+          app_status=$status
           if [[ "$peer" != 0 ]]; then
             peer_status=0
             wait "$peer" || peer_status=$?
@@ -324,7 +325,7 @@ jobs:
             if [[ "$peer_status" != 0 || ! -s build/dyld/peer.stdout ]] || ! grep -q '^ARHELLO_READY ' build/dyld/peer.stdout; then status=1; fi
           fi
           cat build/dyld/app.stdout build/dyld/app.runtime.log
-          echo "APP_PROCESS_STATUS=$status"
+          echo "APP_PROCESS_STATUS=$app_status"
           if [[ "$status" == 0 ]] && ! grep -q '^ARHELLO_READY ' build/dyld/app.stdout; then
             echo 'APP_STARTUP_INCOMPLETE process exited before the real UIKit window readiness callback'
             status=1

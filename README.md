@@ -27,12 +27,16 @@ The target includes **multiple independent iOS application processes running
 concurrently in one session**, with separate address spaces and lifecycles.
 A shared session service must provide bootstrap, service registration and
 process-state management, reusing Darling/XNU cross-process Mach rights and
-messages. The current in-task bootstrap provider is an intermediate experiment;
-multi-process iOS application support is not implemented or validated yet.
+messages. An independent session provider now accepts bootstrap and process-info
+connections from two concurrent app processes. Complete multi-process application
+behavior is not implemented or validated yet.
+This includes auxiliary/XPC processes requested by a single app, not only
+separate foreground apps; their launch and lifetime belong to the session.
 
 Acceptance requires at least two named/versioned application processes with
 real display and input: close and relaunch one while the other remains
-interactive, then verify the same journey through ARLinux on Linux/Android.
+interactive, plus an app-requested helper/service launch, IPC and cleanup; then
+verify the same journey through ARLinux on Linux/Android.
 A virtual PID 1 is an implementation option, not an acceptance criterion. If
 PID virtualization is needed, process queries, parentage, audit identity,
 signals and wait/exit behavior must use one consistent mapping.

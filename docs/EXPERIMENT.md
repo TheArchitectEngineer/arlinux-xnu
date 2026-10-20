@@ -2,191 +2,77 @@
 
 ## Current handoff
 
-The target is a modifiable Darwin/iOS compatibility environment on
-Linux/Android: native ARM64, 16 KiB guest pages, one advertised/scheduled CPU
-and non-arm64e code. Original XNU boot is a behavioral reference. Acceptance
-still requires an actual iOS app's display, input, normal exit and relaunch,
-followed by its actual ARLinux integration journey. None of those GUI/Android
-requirements has passed on Linux.
+Target: a modifiable Darwin/iOS compatibility environment on Linux/Android,
+native ARM64, 16 KiB guest pages, one advertised/scheduled CPU, non-arm64e.
+Real display, input, normal exit and relaunch have not passed on Linux.
+Acceptance includes two concurrently interactive applications in one shared
+session, exit/relaunch without disrupting the other, and app-requested helper
+or XPC-service launch, communication and cleanup. Repeat through ARLinux;
+none of that complete multi-process/Android journey has passed.
 
-Acceptance also requires at least two independent iOS application processes
-running concurrently in one session, with shared bootstrap/process services
-and real cross-process IPC. Closing and relaunching one must leave the other
-interactive, including through ARLinux. The in-task bootstrap experiment is
-transitional; multi-process iOS app support is not established.
+Current app: **ARHello 1.0** (`io.arlinux.ARHello`), source in guests/ARHello,
+using the real pinned UIKit/frameworks. Latest executed source:
+`bd26a47d491cadb2f4e2518cbeaaa03fdc90e18c`,
+[run 39389693704](https://github.com/taowen/arlinux-xnu/actions/runs/39389693704).
+Use the sole build.sh entry, `build --mode app --ipc darling`.
 
-Current application: **ARHello 1.0** (`io.arlinux.ARHello`), a programmatic
-UIKit window, label and increment button. Source/TBD declarations are under
-guests/ARHello; real framework implementations come from the pinned firmware.
+Two genuine dyld/libSystem console journeys still pass: malloc, pthread join
+(value 37/shared memory 42), real input, normal return and independent relaunch.
+Darling/XNU owns real Mach rights/messages; current-task VM/time/BSD remain
+Linux-backed. Synchronous anonymous S2C mapping works for observed OOL flows;
+file/fixed/executable mappings and asynchronous callbacks remain incomplete.
 
-Current integration attempt:
-[39386480991](https://github.com/taowen/arlinux-xnu/actions/runs/39386480991),
-source `64cf2a2fa5bb190dd6f44b52c0669e2ae94367d2`.
-Use `build.sh build --mode app --ipc darling` through the sole root entry.
-The taowen/darling parent gitlink pins our community server fork and upstream
-MIG/header dependencies; sources.lock.json records the community base.
+The independent session process (Linux PID 4273) owns bootstrap and process-info
+receive rights. Two concurrently launched ARHello processes (4281 and 4282)
+reach it with kernel-audited requester identities and each completes actual
+process-info XPC check-in. A separate debugger attempt (4380) also checks in.
+This is cross-process service connectivity, not concurrent working applications
+or app-requested helper spawning. No virtual PID 1/root audit identity is used.
+The adapted libxpc predicate authenticates the real session provider; original
+requester PID/incarnation echo checks remain.
 
-The RPC service runs separately with `--rpc-only`: no second userland,
-launchd or mount setup. Its ARM64 XNU configuration is guest shift 14, with
-one CPU; this runner's Linux pages are 4096 bytes. Backend memory hooks still
-count host pages. The native generated RPC client uses raw Linux syscalls,
-actual per-thread checkin/checkout and authorization to the exact server PID.
+The forked community libspc codec now decodes transferred endpoint rights.
+Both clients' first process-info dictionary has `message=11`, a `taskPort`
+send right and an `endpoint` send right. The adapter explicitly returns ENOTSUP;
+process-state semantics and peer retirement remain unfinished. FrontBoard
+workspace/systemappservices are absent and return unknown-service 1102.
 
-**Two genuine dyld/libSystem console journeys pass through Darling**, with
-malloc, a real pthread create/join (value 37, shared memory 42), input counter 1,
-normal return and independent relaunch. Self ports and Mach port/message traps
-use Darling's real namespace. Current-task VM, clocks and other native BSD
-services remain Linux-backed. General S2C memory/OOL behavior is not validated.
+**Startup still fails.** Both ordinary app attempts reach the 30-second timeout
+without ARHELLO_READY. PEER_PROCESS_STATUS is 124. This revision mistakenly
+prints the aggregate result as APP_PROCESS_STATUS=1; it is not the raw primary
+exit status. The workflow fix preserves that status separately in the next run.
+The debugger is interrupted while the main thread waits for a Mach reply;
+its frames alone do not identify which unsupported service caused the wait.
+Wayland still submits a blank host buffer, not an application frame.
 
-The same app now obtains real bootstrap/display send rights and the native
-service thread handles actual Mach requests through a receive-right port set.
-BackBoard screen info succeeds (1024x640). QuartzCore parses the OOL display
-list and requests display properties (40232), using a real 1024x640@60Hz mode.
-Synchronous S2C anonymous mapping callbacks allocate actual 16 KiB-aligned low
-addresses (observed 0x301754000 and 0x302990000 for 4096-byte host requests).
-The server copies the real OOL bytes into those mappings. File/fixed/executable
-S2C mappings and asynchronous signal-driven callbacks remain incomplete.
+Next: correlate message 11's real framework caller and expected response with
+community code, implement required process-info state/endpoint behavior, and
+identify the outstanding Mach request/reply. Do not infer success from a live
+connection or suppress framework errors. Helper launch, service ownership,
+crash/exit cleanup and identity reuse remain required subsequent work.
 
-Mach-port kqchannels now attach and deliver actual data. One observed receive
-has status 0, 112 bytes at 0x302a1bf90 and 0x3910 bytes remaining in the caller's
-stack data area. The upstream filter had first panicked on missing locked /
-suppressed knote scan state (run 39369011861); a real cooperative processing
-mutex and scoped scan state fix that assertion without removing it. Channel
-read flags/residual extensions preserve caller-owned kevent data storage.
-
-The missing-note workloop ADD|DELETE soft delete now follows XNU's actual
-kevent_register semantics. Run 39371022211 passes the former libdispatch BRK
-and registers ARHello.gsEvents. No dummy note is created and a plain missing
-DELETE still fails. Current runs preserve that progress.
-
-The next entitlement failure exposed unimplemented csops. The loader now
-records actual signature metadata; unsigned ARHello returns unsigned status
-and EINVAL for an absent entitlement blob, following XNU/Security semantics.
-The server's real Linux credentials, PID and start-tick incarnation populate
-its task audit token. Embedded unvalidated signatures remain unsupported.
-
-The BackBoard nil dictionary value was `bundleID` (run 39373331310), obtained
-from `mainBundle.bundleIdentifier` (run 39376968132). CoreFoundation's actual
-directory open rejected O_NONBLOCK; after translating it, fstatfs64 failed with
-ENOSYS (39377567538). Real Linux statfs/mount metadata and inode64 directory
-conversion now let CoreFoundation enumerate the bundle and read its Info.plist
-(0x28f bytes in run 39378124844). No identifier is injected into the framework.
-The nil dictionary exception is gone in the current traced attempt.
-
-The next failure was the native adapter's fixed eight-queue limit, returning
-EMFILE during FrontBoard initialization (39378124844). Queue objects now use
-real mmap/epoll allocations with stable published addresses and Linux resource
-errors. They remain process-lifetime objects; full retirement is incomplete.
-
-The libxpc async reply crash is fixed: its disconnect branch queries the reply
-port's context. The message/continuation retained its context, but the native
-bridge returned KERN_NOT_SUPPORTED for guard trap 41, leaving the actual port
-context zero. The bridge now forwards guard/unguard to Darling's existing RPCs.
-In run 39382175891's LLDB attempt, port 0x3303 is guarded with context 0x30022c820,
-strict=false, result=0; the actual libxpc callback receives that same nonzero
-second argument. No context table or guard success is fabricated.
-
-**ARHello still fails startup.** The ordinary attempt exits with status 0
-before ARHELLO_READY. Its actual exit stack includes AssertionServices at
-0x1836bdc24, libxpc event handling and a dispatch worker. The LLDB attempt also
-exits 0 without a window-ready callback; it no longer hits the former SIGSEGV.
-The startup step now explicitly rejects a zero exit before the real app ready
-callback. A prior green run (39379317212) was only such an early zero exit,
-not a working app.
-
-Run 39383448706 identifies the exit's actual connection: the creation of
-`com.apple.assertiond.processinfoservice` at caller 0x1836bdb00 is followed by
-handler installation on connection 0x30022e4f0 at 0x1836bdb44. That same
-connection receives event 0x1b102de10, then its thread exits. The real exit
-caller's code references "Exiting because the workspace server has disconnected."
-and calls exit(0). FrontBoard systemappservices/workspace connections receive
-the same error object earlier. The bootstrap endpoint 0x303 also receives four
-232-byte XPC message-ID 0x10000000 requests; our current producer returns its
-36-byte MIG_BAD_ID response. This establishes a bootstrap/XPC protocol gap,
-not a working assertion service or proof of its required reply schema. Next:
-inspect those actual requests and reuse community XPC encoding/bootstrap
-dispatch before implementing the process-info service behavior. Do not bypass
-the framework's exit or invent a successful connection.
-
-The downloaded textual lldb.log SHA-256 matches its receipt:
-`fdabf8ea0fa9f6cdba09fc6156163c7e3e5508a854429d9cb4ac56269d4e084a`.
-
-Run 39384447686 links the pinned unmodified community libspc codec in the
-host-TLS service thread. Actual bootstrap requests decode as subsystem 3,
-routine 804 (0x324), zero handle/lookup-handle. FrontBoard requests use type 7,
-flags 0 and receive encoded 64-byte XPC error dictionaries (registry result
-1102); assertiond processinfoservice uses type 1, flags 8 and remains
-unsupported. Darling's bootstrap_priv.h defines flag 8 as privileged-server
-lookup. The app still exits before ARHELLO_READY: no process-info service or
-privileged provider is established. Complex requests are rejected because this
-upstream codec ignores OOL descriptors; malformed inline requests retain its
-fatal behavior. No new Mach namespace or rights table is introduced.
-Current lldb.log SHA-256, verified against its receipt:
-`ec5fc84f14afd5d8b7da3620287c2b593fc7614b34b52be2d9cd2a73c364e282`.
-
-Regression 39385046397 preserves both real console journeys and the
-startup failure. Bootstrap still receives actual routine 804 requests and
-sends 64-byte XPC replies: unsupported type 1 / privileged assertiond lookup
-now returns ENOTSUP (45); default type 7 FrontBoard lookup returns registry
-unknown-service (1102). Reply vouchers are explicitly absent. No app readiness,
-frame or input is claimed. Next work is a real process-info service connection
-and its observed messages, with an explicit compatibility privilege policy.
-The latest downloaded lldb.log and app.runtime.log match their receipt hashes:
-`79af2a1cfc65db7d2857236bf82e37c706020fd2bf279f11a1bef13e173a3dfd`
-and `886343d076396c0582a1f2d097c0f8e8914980b5c959c9d75c975c3744d6f446`.
-
-Current run 39386480991 adds an actual controlled process-info listener and
-the forked community check-in adoption helper. Type 1 / flags 8 lookup returns
-its actual send right (port 1539); it does not expose app-registered ports as
-privileged providers or change real audit credentials. **Check-in is not yet
-reached.** The ordinary and debugger attempts trap at 0x180b14bf4 in libxpc,
-referencing "Configuration error: bootstrap port must lead to PID 1".
-The real bootstrap reply now includes req_pid/rec_execcnt derived from the
-same Linux PID/start-tick identity as XNU (debugger: 4349/31077); that did not
-resolve the assertion. LR 0x180b14b58 points after the call to 0x180b21000,
-before the adjacent comparisons, so those comparisons alone do not identify
-the failing predicate. Next trace must inspect that active callee and actual
-reply audit/metadata. Do not claim an established connection or replace the
-identity with PID 1. Both real console journeys still pass; GUI remains failed.
-Latest lldb.log / app.runtime.log hashes, verified against the receipt:
-`0775c6aba2bdb049a2dd923909d844cafe559c8b33c94e92e958da3135b35079` /
-`7fd482727ce3672e67a1f022e0712c32e91a42307f3bf6ca1870dac0a33990e6`.
-
-The Wayland host child still supplies a real 1024x640@60Hz surface with a blank
-wl_shm buffer: **no application frame or input journey is validated**. The
-local IPC baseline remains an explicit comparison, never a fallback in the
-Darling namespace. Its display protocol knowledge is shared by both producers.
-The former 1260-byte XPC COPY_SEND/MAKE_SEND_ONCE request still needs an actual
-peer/reply observation on this backend; enqueue or right acceptance alone is
-not a preferences service response.
-
-Next action: trace the actual AssertionServices exit caller and its XPC event,
-then continue this same app toward rendering/input/normal exit/relaunch and ARLinux
-integration. Keep native TLS, real port ownership, mapped OOL storage and
-direct Wayland. Extend S2C signals/FD mappings only from actual required flows.
 ## Exact evidence and inputs
 
-Latest source/run above: server job `118493546558`, native job `118494035151`.
+Latest run jobs: server `118517946876`, native `118518260536`, app
+`118518583988`. Downloaded session/app/peer/LLDB textual logs match the receipt.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Native ELF | `41ccbd921faee7548ef6c29719618f3002e476627bf1d2c240eb26a3b39ba303` |
-| Darling server ELF | `29d0a91afd3e4d05e137911016f4d25f5ae3dd8daa69ebcfb226a9e04eceafbd` |
-| Failed app evidence receipt | `bf32e3e1ea5f0f4ce69833b87a6cbfbb7a2fa036da2648c7460aaa732c820d75` |
-| Native receipt | `3d4b442db427af90a6d1a5621e0dffd190bdbdfb79357d002620f72ae1215eb3` |
-| Server receipt | `749f40259058e0232f18e1b90f8a1de50272d7e8417ce70cc34d58f044d32786` |
+| Native ELF | `0aeca9ed3c261031cea0d4dd36e5148a7214865cd50de2d68dc23d0524c6a347` |
+| Darling server ELF | `b821fb0284e01f1ccf1d2df47bbdc0a86d86462ebda7158c871e7481883c848c` |
+| App evidence receipt | `6f5c033ca8946840fb37a1f71d607b130ffe1c366b81510fc346078a3ee0b519` |
+| Native receipt | `8f89153a0907c45b4eaae1c5a894978a318164e5707536d92d09953184b74960` |
+| Server receipt | `344aa075daa5f98d2a59aea3029887d22d52f87a8f62877e619bbe11f75e913d` |
+| Session log | `b346e2a74eb18b678d5417daf918e2d2556f18d2729bdcef12c94ea1e04ca53b` |
+| Session decoded dictionaries | `169b73a520e974cff19707d5d2402f31554d4e7a790853fa921d4ca472487a81` |
+| LLDB log | `2a2e442fd16e87176154fbd7bb1827909d9aa53c0b8bcaf5fbb029ee6593dc51` |
 
-Firmware identity/URL/IPSW SHA-256 live in sources.lock.json. Selected firmware
-is iPhone7,2 / iOS 12.5.7 / 16H81. Actual input/cache metadata and runtime hashes
-are retained in each run's artifacts and receipts. Apple executables, firmware,
-cache and cores remain transient on runners, never workstation artifacts.
-
-| Input | SHA-256 |
-| --- | --- |
-| ARHello 1.0 original Mach-O | `4b346aa7dd998425990cb9ef282ddb7e5252b4d9d069b12c369d32d407f29b77` |
-| Dynamic console Mach-O | `2b66ddec09f799b483a2e97b86b859ed5cc1e0474a9c6afb197dde17cf3327ca` |
-| dyld 650.3.4 | `5c5563ec91c78cfe060cb500e3ca8d764350572f124f98144bac175aa25655e9` |
-| ARM64 cache (1276837888 bytes) | `a60a0653eb730f73b5d1de61a97e86e5a241f7a4ff00c83659f9eefb965cac6f` |
+Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
+iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain
+transient on runners, never workstation artifacts. ARHello Mach-O SHA-256:
+`4b346aa7dd998425990cb9ef282ddb7e5252b4d9d069b12c369d32d407f29b77`.
+Dependency commits, input/cache and remaining file hashes are in the exact
+run's receipts. Keep trial history in Actions/Git rather than a growing diary.
 
 ## Evidence boundaries
 
