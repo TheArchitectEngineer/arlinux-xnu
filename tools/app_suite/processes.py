@@ -128,6 +128,11 @@ class Processes:
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZN2CA7Display7Display6updateEv'])
             if 'unsupported bootstrap trust predicate layout' in Path(item['stdout']).with_suffix('.stderr').read_text(errors='replace'):
                 arguments.append('--bootstrap-context')
+            if 'unable to locate IOSurface kernel service' in Path(item['stdout']).with_suffix('.stderr').read_text(errors='replace'):
+                arguments.extend(['--lookup-bytes','4096'])
+                for symbol in ('__Z29init_max_renderable_iosurfacePv','_CABackingStoreUpdate_',
+                    '__ZL29CABackingStorePrepareUpdates_P14CABackingStoremmjjjyPN2CA14GenericContextEP11UpdateState'):
+                    arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore',symbol])
             result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
             runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
             if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))
