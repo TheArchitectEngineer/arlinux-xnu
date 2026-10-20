@@ -86,13 +86,15 @@ static int darwin_error(long result)
     }
 }
 
-static int native_trace_fd=2;
+static int native_trace_fd=2,native_stop_on_fault;
 static void native_trace_prepare(void)
 {
     /* Host-TLS setup only. Keep syscall tracing out of the guest's stderr so
      * dyld's small writes remain readable as one original error message. */
     static int prepared;
     if (prepared) return;
+    const char *stop=getenv("ARLINUX_STOP_ON_FAULT");
+    native_stop_on_fault=stop && !strcmp(stop,"1");
     const char *value=getenv("ARLINUX_TRACE_FD");
     if (value) {
         char *end=NULL; long descriptor=strtol(value,&end,10);
@@ -800,6 +802,10 @@ static void fault(int signal,siginfo_t *info,void *context)
         trace_record("DARWIN_FAULT_REGISTER index=0x",i,uc->uc_mcontext.pc,uc->uc_mcontext.regs[i]);
     trace_guest_frames("DARWIN_FAULT_FRAME nr=0x",uc->uc_mcontext.regs);
     trace_fault_maps();
+    /* Explicit runner diagnosis only: the journey records the fault as a
+     * failure before attaching its existing debugger to this original process.
+     * Resume/detach continues to the real fatal exit below. */
+    if (native_stop_on_fault) RAW(SYS_kill,RAW(SYS_getpid,0,0,0,0,0,0),SIGSTOP,0,0,0,0);
     RAW(SYS_exit_group,128+signal,0,0,0,0,0);
     __builtin_unreachable();
 }
