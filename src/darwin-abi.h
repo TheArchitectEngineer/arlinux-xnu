@@ -166,7 +166,8 @@ enum darwin_device_layout {
 };
 enum darwin_open_flags {
     D_O_NONBLOCK = 0x4,
-    D_O_NOFOLLOW = 0x100, D_O_DIRECTORY = 0x100000, D_O_CLOEXEC = 0x1000000
+    D_O_NOFOLLOW = 0x100, D_O_DIRECTORY = 0x100000, D_O_CLOEXEC = 0x1000000,
+    D_O_NOFOLLOW_ANY = 0x20000000
 };
 /* XNU bsd/sys/{mount,dirent}.h LP64 inode64 records. */
 struct darwin_statfs64 {

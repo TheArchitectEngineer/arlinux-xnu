@@ -16,6 +16,7 @@
 #include <linux/audit.h>
 #include <linux/filter.h>
 #include <linux/seccomp.h>
+#include <linux/openat2.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
@@ -205,7 +206,7 @@ static int path_directory(char **path)
         return bundle_descriptor;
     }
     if (root_descriptor>=0) {
-        if (**path=='/') (*path)++;
+        if (**path=='/') { (*path)++; if (!**path) *path="."; }
         return root_descriptor;
     }
     return AT_FDCWD;
@@ -221,7 +222,7 @@ static long guest_open(unsigned long address,unsigned long flags)
     RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
     RAW(SYS_write,native_trace_fd,buffer,length,0,0,0);
     RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
-    if (flags & ~(D_O_NONBLOCK|D_O_NOFOLLOW|D_O_DIRECTORY|D_O_CLOEXEC)) {
+    if (flags & ~(D_O_NONBLOCK|D_O_NOFOLLOW|D_O_DIRECTORY|D_O_CLOEXEC|D_O_NOFOLLOW_ANY)) {
         const char rejected[]="DARWIN_OPEN_UNSUPPORTED_FLAGS follows\n";
         RAW(SYS_write,native_trace_fd,rejected,sizeof(rejected)-1,0,0,0);
         trace_call(0,0,flags);
@@ -233,6 +234,12 @@ static long guest_open(unsigned long address,unsigned long flags)
     if (flags&D_O_NOFOLLOW) options|=O_NOFOLLOW;
     if (flags&D_O_DIRECTORY) options|=O_DIRECTORY;
     if (flags&D_O_CLOEXEC) options|=O_CLOEXEC;
+    if (flags&D_O_NOFOLLOW_ANY) {
+        /* XNU fcntl.h requires no symlink in any path component. Linux's
+         * O_NOFOLLOW covers only the last component; openat2 owns this effect. */
+        struct open_how how={.flags=options,.resolve=RESOLVE_NO_SYMLINKS};
+        return RAW(SYS_openat2,directory,path,&how,sizeof(how),0,0);
+    }
     return RAW(SYS_openat,directory,path,options,0,0,0);
 }
 /* XNU bsd/sys/stat.h __DARWIN_STRUCT_STAT64, ARM64 layout. statx avoids
