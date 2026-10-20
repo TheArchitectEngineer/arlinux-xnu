@@ -45,7 +45,7 @@ def main():
     command('xcrun','clang','-target',target,'-isysroot',sdk,'-dynamiclib',
             '-fblocks',ROOT/'src/ios-platform.c',ROOT/'src/ios-lifecycle.m',ROOT/'src/diagnostics/ios-lifecycle.m',
             '-o',OUT/'libarlinux-ios.dylib',
-            '-framework','UIKit','-framework','CoreFoundation','-framework','CoreGraphics',
+            '-framework','UIKit','-framework','Foundation','-framework','CoreFoundation','-framework','CoreGraphics',
             '-Wl,-install_name,@loader_path/libarlinux-ios.dylib')
     products=[]
     for app_id in sorted(selected):

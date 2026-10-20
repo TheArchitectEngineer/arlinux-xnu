@@ -201,7 +201,11 @@ def report(run_id, job_name, verbose=False):
         # An uncaught failure can have no application markers (e.g. compiler
         # error). Preserve actionable Actions errors instead of a blank report.
         item['errors'] = [line for line in lines if line.startswith('##[error]') or
-                          re.search(r':\d+(?::\d+)?: (?:fatal )?error:', line)]
+                          re.search(r':\d+(?::\d+)?: (?:fatal )?error:', line) or
+                          line.startswith(('clang: error:','ld: '))]
+        for index,line in enumerate(lines):
+            if line.startswith('Undefined symbols for architecture '):
+                item['errors'].extend(lines[index:min(index+16,len(lines))])
         for line in item['errors'][-8:]:
             print('  ' + line)
         print('  Raw log: ' + str(log_path))
