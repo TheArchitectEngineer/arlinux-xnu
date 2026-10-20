@@ -82,7 +82,7 @@ jobs:
       - name: Install ARM64 Mach-O compiler
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 lld-18 llvm-18 libx11-dev
+          sudo apt-get install -y clang-18 lld-18 llvm-18 libwayland-dev wayland-protocols
       - name: Build and run native Darwin console journey
         shell: bash
         run: |
@@ -108,7 +108,9 @@ jobs:
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
           cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics -c src/darwin-native.c -o build/native/runtime.o
           cc -c src/darwin-native.S -o build/native/entry.o
-          cc -Wall -Wextra -Werror -O2 -g src/macho-native.c build/native/runtime.o build/native/entry.o -ldl -lX11 -o build/native/macho-native
+          wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-client-protocol.h
+          wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
+          cc -Wall -Wextra -Werror -O2 -g -Ibuild/native src/macho-native.c build/native/xdg-shell-protocol.c build/native/runtime.o build/native/entry.o -ldl -lwayland-client -o build/native/macho-native
           # Two complete independent launches of the interactive program, not
           # a source assertion or isolated TLS probe. Runtime exit status is
           # the guest's real Linux-backed normal process exit status.
@@ -142,7 +144,7 @@ jobs:
       - name: Install Apple filesystem reader
         run: |
           sudo apt-get update
-          sudo apt-get install -y 7zip llvm-18 lldb-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev xvfb xauth
+          sudo apt-get install -y 7zip llvm-18 lldb-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev weston libwayland-client0
       - name: Prepare pinned Apple userland and execute its actual dyld
         shell: bash
         run: |
@@ -164,6 +166,27 @@ jobs:
             cat "build/dyld/console-${attempt}.stdout" "build/dyld/runtime-${attempt}.log"
             if [ "$status" -ne 0 ]; then exit "$status"; fi
           done
+      - name: Start native Wayland compositor
+        if: inputs.mode == 'app'
+        shell: bash
+        run: |
+          export XDG_RUNTIME_DIR="$PWD/build/dyld/wayland-runtime"
+          export WAYLAND_DISPLAY=arlinux-ios
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+          echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" >> "$GITHUB_ENV"
+          weston --backend=headless-backend.so --renderer=pixman --shell=kiosk-shell.so --no-config --idle-time=0 --socket="$WAYLAND_DISPLAY" --log="$PWD/build/dyld/weston.log" &
+          echo $! > build/dyld/weston.pid
+          python3 - <<'PY'
+          import os, pathlib, time
+          socket = pathlib.Path(os.environ['XDG_RUNTIME_DIR']) / os.environ['WAYLAND_DISPLAY']
+          deadline = time.monotonic() + 5
+          while not socket.is_socket():
+              if time.monotonic() >= deadline:
+                  raise SystemExit('Weston did not open its Wayland socket; inspect weston.log')
+              time.sleep(0.05)
+          PY
       - name: Start ARHello 1.0 with real UIKit
         if: inputs.mode == 'app'
         shell: bash
@@ -173,7 +196,7 @@ jobs:
           echo build/native/ARHello.app/ARHello > build/dyld/debugger.program
           python3 -c "import hashlib,json,pathlib; p=pathlib.Path('build/native/ARHello.app/ARHello'); print('APP_INPUT '+json.dumps({'name':'ARHello','version':'1.0','bundleId':'io.arlinux.ARHello','sha256':hashlib.sha256(p.read_bytes()).hexdigest()}))" | tee build/dyld/app-input.json
           status=0
-          xvfb-run -a timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log || status=$?
+          timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log || status=$?
           cat build/dyld/app.stdout build/dyld/app.runtime.log
           echo "APP_PROCESS_STATUS=$status"
           # Even reaching UIApplicationMain is only a startup milestone. The
@@ -197,15 +220,20 @@ jobs:
               --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up3
           fi
           status=0
-          display_runner=()
-          if [[ -f build/dyld/debugger.program ]]; then display_runner=(xvfb-run -a); fi
-          "${display_runner[@]}" timeout 45 lldb-18 --batch -o 'command source -e true -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?
+          timeout 45 lldb-18 --batch -o 'command source -e true -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?
           cat build/dyld/lldb.log
           echo "LLDB_COMMAND_STATUS=$status"
           if [[ -f build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64 ]]; then
             python3 tools/symbolicate-cache.py build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64 build/dyld/lldb.log build/dyld/cache-frames.json
           fi
           exit "$status"
+      - name: Stop runner Wayland compositor
+        if: always() && inputs.mode == 'app'
+        shell: bash
+        run: |
+          if [[ -f build/dyld/weston.pid ]]; then
+            kill -- "$(cat build/dyld/weston.pid)" || true
+          fi
       - name: Record experiment receipt
         if: always()
         run: python3 tools/experiment-receipt.py --directory build/dyld --outcome '${{ job.status }}'
@@ -213,7 +241,9 @@ jobs:
         if: always()
         with:
           name: linux-arm64-apple-dyld-evidence
-          path: build/dyld/
+          path: |
+            build/dyld/
+            !build/dyld/wayland-runtime/**
           retention-days: 30
   playcover-reference:
     if: inputs.mode == 'playcover'

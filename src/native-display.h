@@ -1,28 +1,131 @@
-/* Host-only setup before Darwin takes over TLS. X11 owns the actual window;
- * no host-libc/Xlib call is made from a guest callback. Presentation and input
- * have not been connected to UIKit yet. An empty backend window is not an app
- * screenshot or proof that the application displayed anything. */
+/* Native Wayland client in a host child, isolated from Darwin TLS. A blank
+ * mapped surface is backend readiness, never evidence of UIKit rendering. */
 #pragma once
-#include <X11/Xlib.h>
-static Display *native_x_display;
+#include <wayland-client.h>
+#include "xdg-shell-client-protocol.h"
+#include <sys/prctl.h>
+#include <sys/wait.h>
+#include <poll.h>
+#include <signal.h>
 static int native_display_enabled;
+static void *native_display_pixels;
+struct native_wayland {
+    struct wl_display *display;
+    struct wl_compositor *compositor;
+    struct wl_shm *shm;
+    struct xdg_wm_base *shell;
+    struct wl_surface *surface;
+    struct wl_buffer *buffer;
+    uint32_t width,height;
+    int ready_fd,pixels_fd,running,configured,ready,xrgb;
+};
+static void native_wm_ping(void *data,struct xdg_wm_base *shell,uint32_t serial)
+{ (void)data; xdg_wm_base_pong(shell,serial); }
+static const struct xdg_wm_base_listener native_wm_listener={.ping=native_wm_ping};
+static void native_shm_format(void *data,struct wl_shm *shm,uint32_t format)
+{ (void)shm; if (format==WL_SHM_FORMAT_XRGB8888) ((struct native_wayland *)data)->xrgb=1; }
+static const struct wl_shm_listener native_shm_listener={.format=native_shm_format};
+static void native_wl_global(void *data,struct wl_registry *registry,uint32_t name,
+                             const char *interface,uint32_t version)
+{
+    struct native_wayland *w=data; (void)version;
+    if (!strcmp(interface,"wl_compositor")) w->compositor=wl_registry_bind(registry,name,&wl_compositor_interface,1);
+    else if (!strcmp(interface,"wl_shm")) {
+        w->shm=wl_registry_bind(registry,name,&wl_shm_interface,1);
+        wl_shm_add_listener(w->shm,&native_shm_listener,w);
+    }
+    else if (!strcmp(interface,"xdg_wm_base")) {
+        w->shell=wl_registry_bind(registry,name,&xdg_wm_base_interface,1);
+        xdg_wm_base_add_listener(w->shell,&native_wm_listener,w);
+    }
+}
+static void native_wl_remove(void *data,struct wl_registry *registry,uint32_t name)
+{ (void)data; (void)registry; (void)name; }
+static const struct wl_registry_listener native_registry_listener={native_wl_global,native_wl_remove};
+static void native_wl_frame(void *data,struct wl_callback *callback,uint32_t time)
+{
+    struct native_wayland *w=data; (void)time; wl_callback_destroy(callback);
+    if (!w->ready) {
+        uint32_t geometry[2]={w->width,w->height};
+        need(write(w->ready_fd,geometry,sizeof(geometry))==(ssize_t)sizeof(geometry),"Wayland readiness reply");
+        close(w->ready_fd); w->ready=1;
+        fprintf(stderr,"WAYLAND_BACKEND_READY width=%u height=%u app_frame_presented=false\n",w->width,w->height);
+    }
+}
+static const struct wl_callback_listener native_frame_listener={.done=native_wl_frame};
+static void native_buffer_release(void *data,struct wl_buffer *buffer)
+{ (void)data; (void)buffer; }
+static const struct wl_buffer_listener native_buffer_listener={.release=native_buffer_release};
+static void native_surface_configure(void *data,struct xdg_surface *surface,uint32_t serial)
+{
+    struct native_wayland *w=data;
+    xdg_surface_ack_configure(surface,serial);
+    if (w->configured) return;
+    need(w->width && w->height && w->width<=8192 && w->height<=8192,"Wayland configured geometry");
+    int bytes=w->width*w->height*4;
+    need(!ftruncate(w->pixels_fd,bytes),"Wayland shared framebuffer allocation");
+    struct wl_shm_pool *pool=wl_shm_create_pool(w->shm,w->pixels_fd,bytes);
+    w->buffer=wl_shm_pool_create_buffer(pool,0,w->width,w->height,w->width*4,WL_SHM_FORMAT_XRGB8888);
+    wl_buffer_add_listener(w->buffer,&native_buffer_listener,w);
+    wl_shm_pool_destroy(pool);
+    struct wl_callback *frame=wl_surface_frame(w->surface);
+    wl_callback_add_listener(frame,&native_frame_listener,w);
+    wl_surface_attach(w->surface,w->buffer,0,0);
+    wl_surface_damage(w->surface,0,0,w->width,w->height);
+    wl_surface_commit(w->surface); w->configured=1;
+}
+static const struct xdg_surface_listener native_surface_listener={.configure=native_surface_configure};
+static void native_toplevel_configure(void *data,struct xdg_toplevel *top,int32_t width,
+                                      int32_t height,struct wl_array *states)
+{
+    struct native_wayland *w=data; (void)top; (void)states;
+    if (!w->configured) {
+        if (width>0) w->width=width;
+        if (height>0) w->height=height;
+    }
+}
+static void native_toplevel_close(void *data,struct xdg_toplevel *top)
+{ (void)top; ((struct native_wayland *)data)->running=0; }
+static const struct xdg_toplevel_listener native_toplevel_listener={
+    .configure=native_toplevel_configure,.close=native_toplevel_close
+};
+static void native_wayland_run(int ready_fd,int pixels_fd,pid_t parent)
+{
+    need(!prctl(PR_SET_PDEATHSIG,SIGTERM) && getppid()==parent,"Wayland backend parent lifetime");
+    struct native_wayland w={.ready_fd=ready_fd,.pixels_fd=pixels_fd,.running=1,.width=320,.height=480};
+    w.display=wl_display_connect(NULL);
+    need(w.display!=NULL,"connect native Wayland compositor");
+    struct wl_registry *registry=wl_display_get_registry(w.display);
+    wl_registry_add_listener(registry,&native_registry_listener,&w);
+    need(wl_display_roundtrip(w.display)>=0 && w.compositor && w.shm && w.shell,"Wayland display interfaces");
+    need(wl_display_roundtrip(w.display)>=0 && w.xrgb,"Wayland XRGB framebuffer capability");
+    w.surface=wl_compositor_create_surface(w.compositor);
+    struct xdg_surface *surface=xdg_wm_base_get_xdg_surface(w.shell,w.surface);
+    xdg_surface_add_listener(surface,&native_surface_listener,&w);
+    struct xdg_toplevel *top=xdg_surface_get_toplevel(surface);
+    xdg_toplevel_add_listener(top,&native_toplevel_listener,&w);
+    xdg_toplevel_set_title(top,"ARLinux Wayland backend - no app frame yet");
+    xdg_toplevel_set_app_id(top,"io.arlinux.darwin-display");
+    wl_surface_commit(w.surface);
+    while (w.running && wl_display_dispatch(w.display)>=0) {}
+    wl_display_disconnect(w.display); _exit(0);
+}
 static void native_display_open(void)
 {
-    if (!getenv("DISPLAY")) return;
-    native_x_display=XOpenDisplay(NULL);
-    need(native_x_display!=NULL,"connect actual Linux X11 display");
-    int screen=DefaultScreen(native_x_display);
-    Window window=XCreateSimpleWindow(native_x_display,RootWindow(native_x_display,screen),
-                                       0,0,320,480,0,0,0);
-    need(window!=0,"create Linux display window");
-    XStoreName(native_x_display,window,"ARLinux display backend - no app frame yet");
-    XMapWindow(native_x_display,window);
-    XSync(native_x_display,False);
-    XWindowAttributes actual;
-    need(XGetWindowAttributes(native_x_display,window,&actual)!=0 && actual.width>0 && actual.height>0,
-         "read actual Linux window geometry");
-    need(!darwin_native_display_register(actual.width,actual.height),"register actual Linux display endpoint");
+    if (!getenv("WAYLAND_DISPLAY") && !getenv("WAYLAND_SOCKET")) return;
+    int ready[2]; need(!pipe2(ready,O_CLOEXEC),"Wayland backend readiness pipe");
+    int pixels=memfd_create("arlinux-ios-framebuffer",MFD_CLOEXEC);
+    need(pixels>=0,"Wayland framebuffer memfd");
+    pid_t parent=getpid(),child=fork(); need(child>=0,"Wayland backend process");
+    if (!child) { close(ready[0]); native_wayland_run(ready[1],pixels,parent); }
+    close(ready[1]);
+    struct pollfd descriptor={.fd=ready[0],.events=POLLIN};
+    uint32_t geometry[2];
+    int received=poll(&descriptor,1,5000)>0 && read(ready[0],geometry,sizeof(geometry))==(ssize_t)sizeof(geometry);
+    close(ready[0]);
+    if (!received) { kill(child,SIGTERM); waitpid(child,NULL,0); need(0,"Wayland backend did not configure a surface"); }
+    native_display_pixels=mmap(NULL,(size_t)geometry[0]*geometry[1]*4,PROT_READ|PROT_WRITE,MAP_SHARED,pixels,0);
+    need(native_display_pixels!=MAP_FAILED,"map real Wayland framebuffer"); close(pixels);
+    need(!darwin_native_display_register(geometry[0],geometry[1]),"register native Wayland display endpoint");
     native_display_enabled=1;
-    fprintf(stderr,"LINUX_DISPLAY_BACKEND window=%#lx width=%d height=%d app_frame_presented=false\n",
-            window,actual.width,actual.height);
 }
