@@ -66,6 +66,68 @@ def graphics_failure(frame, location, internal_dict):
 
 _security_entries = {}
 _ipc_callback_entries = {}
+_launch_entries = {}
+
+
+def launch_callback(frame, location, internal_dict):
+    """Observe real launch methods and message construction, never invoke them."""
+    breakpoint = location.GetBreakpoint()
+    name = _launch_entries[breakpoint.GetID()]
+    objects = GuestObjects(frame.GetThread().GetProcess())
+    if name == '_xpc_dictionary_set_uint64':
+        try:
+            key = objects.cstring(frame.FindRegister('x1').GetValueAsUnsigned())
+        except (ValueError, UnicodeError, SystemError):
+            return False
+        if key != 'message' or frame.FindRegister('x2').GetValueAsUnsigned() != 11:
+            return False
+    print('APP_LAUNCH_CALL ' + json.dumps({'method': name,
+          'tid': frame.GetThread().GetThreadID(), 'pc': hex(frame.GetPC()),
+          'caller': hex(frame.FindRegister('lr').GetValueAsUnsigned())}), flush=True)
+    target = frame.GetThread().GetProcess().GetTarget()
+    target.GetDebugger().HandleCommand('thread backtrace --count 12')
+    caller = frame.FindRegister('lr').GetValueAsUnsigned()
+    target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(caller-96) + ' --count 96')
+    capture_code_references(target, caller-96, 96, 'APP_LAUNCH_REFERENCE')
+    # One actual call suffices for each selected method/message constructor.
+    breakpoint.SetEnabled(False)
+    return False
+
+
+def install_launch_breakpoints(target):
+    objects = GuestObjects(target.GetProcess())
+    for symbol in diagnostic_symbols():
+        name = symbol.get('symbol', '')
+        if name == '_xpc_dictionary_set_uint64':
+            entries = [(name, int(symbol['address'], 16))]
+        elif name in ('_OBJC_CLASS_$_UIApplication', '_OBJC_CLASS_$_BKSProcess',
+                       '_OBJC_CLASS_$_FBSWorkspace'):
+            entries = []
+            try:
+                cls = int(symbol['address'], 16)
+                methods = objects.u64(objects.class_ro(cls)+32)
+                size, count = objects.u32(methods) & ~3, objects.u32(methods+4)
+                if size != 24 or count > 2048:
+                    raise ValueError('Unsupported launch class method metadata')
+                for index in range(count):
+                    entry = methods+8+index*size
+                    selector = objects.cstring(objects.u64(entry))
+                    if any(part in selector.lower() for part in
+                           ('launch', 'initializ', 'checkin', 'connect', 'scene', '_run')):
+                        address = objects.u64(entry+16)
+                        label = name + ' ' + selector
+                        print('APP_LAUNCH_METHOD ' + json.dumps({'method': label,
+                              'address': hex(address)}), flush=True)
+                        entries.append((label, address))
+            except (ValueError, UnicodeError, SystemError) as error:
+                print('APP_LAUNCH_METADATA_ERROR', name, str(error), flush=True)
+        else:
+            continue
+        for label, address in entries:
+            breakpoint = target.BreakpointCreateByAddress(address)
+            _launch_entries[breakpoint.GetID()] = label
+            breakpoint.SetScriptCallbackFunction('dyld_debugger.launch_callback')
+            breakpoint.SetAutoContinue(True)
 
 
 def capture_exit_callers(frame):

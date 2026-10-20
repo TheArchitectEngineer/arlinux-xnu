@@ -15,6 +15,7 @@ script import os; target = lldb.debugger.GetSelectedTarget(); dyld_module = targ
 script load_error = target.SetModuleLoadAddress(dyld_module, 0x200000000); print(load_error); assert load_error.Success(), "Cannot relocate dyld symbols"
 script exception_bp = helper.install_exception_breakpoint(target)
 script helper.install_service_breakpoints(target)
+script helper.install_launch_breakpoints(target)
 image list
 register read pc sp x0 x1
 thread backtrace all
