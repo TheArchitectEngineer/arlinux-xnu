@@ -489,6 +489,18 @@ int darwin_native_host_identity(uint32_t *pid,uint32_t *incarnation)
     if (error) return D_KERN_FAILURE;
     *pid=token.pid; *incarnation=token.idversion; return 0;
 }
+int darwin_native_host_process_matches(uint32_t pid,uint32_t incarnation)
+{
+    uint64_t ticks=0; uint32_t parent=0;
+    return !native_proc_start(pid,&ticks,&parent) && (uint32_t)ticks==incarnation;
+}
+int darwin_native_host_receive_destroy(uint32_t port)
+{
+#ifdef ARLINUX_DARLING
+    if (darling_active) return dserver_rpc_mach_port_mod_refs(CURRENT_TASK_PORT,port,D_PORT_RIGHT_RECEIVE,-1);
+#endif
+    (void)port; return D_KERN_NOT_SUPPORTED;
+}
 uint32_t darwin_native_bootstrap_peer(uint64_t token_address)
 {
     struct darwin_audit_token peer,self;
@@ -539,13 +551,21 @@ void *darwin_native_service_run(void *unused)
     }
     unsigned int traces=0;
     for (;;) {
+        if (native_session_manager) arlinux_xpc_reap();
         unsigned char request[IPC_BYTES+256]; uint32_t response[IPC_BYTES/4];
-        int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_RCV_MSG|(3U<<24),0,sizeof(request),set,0,0,NULL);
+        int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_RCV_MSG|(3U<<24)|
+            (native_session_manager ? D_MACH_RCV_TIMEOUT : 0),0,sizeof(request),set,100,0,NULL);
+        if (native_session_manager && status==D_MACH_RCV_TIMED_OUT) continue;
         if (status) { trace_call(0,0,status); darling_abort("receive display service request"); }
         struct ipc_header *header=(void *)request,*out=(void *)response;
         if (header->size<sizeof(*header) || header->size>IPC_BYTES)
             darling_abort("invalid service request size");
-        int processinfo=arlinux_xpc_processinfo(request,header->size,response,sizeof(response),native_processinfo_port,set);
+        unsigned long trailer_offset=(header->size+3UL)&~3UL;
+        struct darwin_context_trailer *trailer=(void *)(request+trailer_offset);
+        if (trailer->type || trailer->size<52 || trailer_offset+trailer->size>sizeof(request))
+            darling_abort("missing service requester audit trailer");
+        uint32_t requester[8]; __builtin_memcpy(requester,&trailer->audit,sizeof(requester));
+        int processinfo=arlinux_xpc_processinfo(request,header->size,response,sizeof(response),native_processinfo_port,set,requester);
         if (!processinfo) continue;
         if (processinfo>0) {
             status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL);
@@ -561,11 +581,6 @@ void *darwin_native_service_run(void *unused)
         out->size=36; out->id=header->id+D_MIG_REPLY_ID_OFFSET;
         response[7]=1; response[8]=(uint32_t)D_MIG_BAD_ID;
         unsigned long ool=0; uint32_t held_port=0;
-        unsigned long trailer_offset=(header->size+3UL)&~3UL;
-        struct darwin_context_trailer *trailer=(void *)(request+trailer_offset);
-        if (trailer->type || trailer->size<52 || trailer_offset+trailer->size>sizeof(request))
-            darling_abort("missing service requester audit trailer");
-        uint32_t requester[8]; __builtin_memcpy(requester,&trailer->audit,sizeof(requester));
         if (header->local!=native_bootstrap_port ||
             !arlinux_xpc_bootstrap(request,response,sizeof(response),native_bootstrap_port,&held_port,requester))
             ool=ipc_display_response(header->local==native_render_port,

@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <poll.h>
 #include "darwin-native.h"
 #include "datatypes.h"
 #include "dictionary.h"
@@ -84,16 +87,46 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
 /* Connection associations only; XNU owns the transferred rights and queues. */
 static struct processinfo_peer {
     spc_connection_t connection;
+    uint32_t pid,incarnation,task,endpoint;
+    int pidfd;
     struct processinfo_peer *next;
 } *processinfo_peers;
 
-int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capacity,uint32_t listener,uint32_t set)
+void arlinux_xpc_reap(void)
+{
+    struct processinfo_peer **slot=&processinfo_peers;
+    while (*slot) {
+        struct processinfo_peer *peer=*slot;
+        struct pollfd fd={.fd=peer->pidfd,.events=POLLIN};
+        int ready=poll(&fd,1,0);
+        if (ready<0) { perror("poll session client pidfd"); abort(); }
+        if (!ready) { slot=&peer->next; continue; }
+        if (!(fd.revents&POLLIN)) { fprintf(stderr,"PROCESSINFO_PIDFD_ERROR events=%x\n",fd.revents); abort(); }
+        if ((peer->task && darwin_native_host_port_deallocate(peer->task)) ||
+            (peer->endpoint && darwin_native_host_port_deallocate(peer->endpoint)) ||
+            darwin_native_host_port_deallocate(peer->connection.send_port) ||
+            darwin_native_host_receive_destroy(peer->connection.receive_port)) abort();
+        fprintf(stderr,"PROCESSINFO_RETIRED pid=%u incarnation=%u\n",peer->pid,peer->incarnation);
+        close(peer->pidfd); *slot=peer->next; free(peer);
+    }
+}
+
+int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capacity,uint32_t listener,uint32_t set,const uint32_t *audit)
 {
     mach_msg_header_t *header=request;
     if (header->msgh_local_port==listener) {
         struct processinfo_peer *peer=calloc(1,sizeof(*peer));
         if (!peer || !spc_accept_message(request,length,&peer->connection)) {
             fprintf(stderr,"PROCESSINFO_CHECKIN_REJECTED id=%x bits=%x bytes=%zu\n",header->msgh_id,header->msgh_bits,length);
+            abort();
+        }
+        if (!audit) abort();
+        peer->pid=audit[5]; peer->incarnation=audit[7];
+        /* Hold a stable Linux process reference before checking its audit
+         * incarnation. A recycled PID must not inherit this connection. */
+        peer->pidfd=syscall(SYS_pidfd_open,peer->pid,0);
+        if (peer->pidfd<0 || !darwin_native_host_process_matches(peer->pid,peer->incarnation)) {
+            fprintf(stderr,"PROCESSINFO_PEER_IDENTITY_UNAVAILABLE pid=%u incarnation=%u\n",peer->pid,peer->incarnation);
             abort();
         }
         int error=darwin_native_host_join(peer->connection.receive_port,set);
@@ -105,6 +138,9 @@ int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capa
     struct processinfo_peer *peer=processinfo_peers;
     while (peer && peer->connection.receive_port!=header->msgh_local_port) peer=peer->next;
     if (!peer) return -1;
+    if (!audit || audit[5]!=peer->pid || audit[7]!=peer->incarnation) {
+        fprintf(stderr,"PROCESSINFO_PEER_IDENTITY_MISMATCH\n"); abort();
+    }
     fprintf(stderr,"PROCESSINFO_MESSAGE id=%x bits=%x bytes=%zu reply=%u\n",header->msgh_id,header->msgh_bits,length,header->msgh_remote_port);
     /* Do not let upstream silently discard OOL resources. Actual process-state
      * protocol behavior is still being diagnosed, not acknowledged as success. */
@@ -129,7 +165,26 @@ int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capa
     }
     spc_message_t *message=spc_deserialize(request);
     if (!message) abort();
-    fprintf(stderr,"PROCESSINFO_REQUEST_UNSUPPORTED fields=%zu\n",message->content->num_items);
+    int error=D_ENOTSUP;
+    /* Actual BKSWorkspace.init registration, observed in run 39391469924:
+     * message 11 carries its listener endpoint and submitted task capability.
+     * Retain both actual rights for this authenticated client lifetime. This
+     * does not implement FrontBoard scene launch or invent process state. */
+    spc_dictionary_item_t *kind=spc_dictionary_lookup(message->content,"message");
+    spc_dictionary_item_t *task=spc_dictionary_lookup(message->content,"taskPort");
+    spc_dictionary_item_t *endpoint=spc_dictionary_lookup(message->content,"endpoint");
+    if (kind && kind->value.type==SPC_TYPE_INT64 && kind->value.value.i64==11 &&
+        message->content->num_items==3 && task && task->value.type==SPC_TYPE_SEND_PORT &&
+        endpoint && endpoint->value.type==SPC_TYPE_ENDPOINT &&
+        task->value.value.port.name && endpoint->value.value.port.name) {
+        uint32_t new_task=task->value.value.port.name,new_endpoint=endpoint->value.value.port.name;
+        if (darwin_native_host_port_refs(new_task,1) || darwin_native_host_port_refs(new_endpoint,1)) abort();
+        if ((peer->task && darwin_native_host_port_deallocate(peer->task)) ||
+            (peer->endpoint && darwin_native_host_port_deallocate(peer->endpoint))) abort();
+        peer->task=new_task; peer->endpoint=new_endpoint; error=0;
+        fprintf(stderr,"PROCESSINFO_WORKSPACE_REGISTERED pid=%u incarnation=%u task=%u endpoint=%u\n",
+            peer->pid,peer->incarnation,peer->task,peer->endpoint);
+    } else fprintf(stderr,"PROCESSINFO_REQUEST_UNSUPPORTED fields=%zu\n",message->content->num_items);
     spc_dump(message->content); fflush(stdout);
     int reply=header->msgh_remote_port!=MACH_PORT_NULL;
     if (reply && MACH_MSGH_BITS_REMOTE(header->msgh_bits)!=D_MACH_TYPE_MOVE_SEND_ONCE) {
@@ -137,7 +192,7 @@ int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capa
     }
     if (reply) {
         spc_dictionary_t *dictionary=spc_dictionary_create();
-        spc_dictionary_set_int64(dictionary,"error",D_ENOTSUP);
+        spc_dictionary_set_int64(dictionary,"error",error);
         spc_message_t response={.remote_port={header->msgh_remote_port,D_MACH_TYPE_MOVE_SEND_ONCE},
             .id=0x20000000,.content=dictionary};
         spc_mach_message_t *encoded=spc_serialize(&response);

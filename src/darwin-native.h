@@ -12,7 +12,10 @@ uint32_t darwin_native_host_task(void);
 int darwin_native_host_identity(uint32_t *pid,uint32_t *incarnation);
 uint32_t darwin_native_bootstrap_peer(uint64_t token_address);
 int arlinux_xpc_bootstrap(void *request,void *response,unsigned long capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *requester);
-int arlinux_xpc_processinfo(void *request,unsigned long length,void *response,unsigned long capacity,uint32_t listener,uint32_t set);
+int arlinux_xpc_processinfo(void *request,unsigned long length,void *response,unsigned long capacity,uint32_t listener,uint32_t set,const uint32_t *audit);
+void arlinux_xpc_reap(void);
+int darwin_native_host_process_matches(uint32_t pid,uint32_t incarnation);
+int darwin_native_host_receive_destroy(uint32_t port);
 int darwin_native_host_join(uint32_t port,uint32_t set);
 int darwin_native_system_lookup(const char *name,uint64_t type,uint64_t flags,uint32_t *port);
 int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refresh_millihz,
