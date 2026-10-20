@@ -336,7 +336,12 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
         session_service_names[peer->service],peer->pid,peer->incarnation,length);
     /* Do not let upstream silently discard OOL resources. Actual process-state
      * protocol behavior is still being diagnosed, not acknowledged as success. */
-    if (length<32 || header->msgh_id!=((launch_reply || scene_reply) ? 0x20000000 : 0x10000000)) {
+    /* __xpc_pipe_pack_message also emits the routine-0 request envelope on
+     * established connections. Its CPX5 dictionary/rights contract is the
+     * same; accepting the envelope does not implement its service operation. */
+    int expected_reply=launch_reply || scene_reply;
+    if (length<32 || (expected_reply ? header->msgh_id!=0x20000000 :
+        (header->msgh_id!=0x10000000 && header->msgh_id!=0x40000000))) {
         fprintf(stderr,"PROCESSINFO_MESSAGE_UNSUPPORTED\n"); abort();
     }
     session_validate_port_descriptors(header,length);

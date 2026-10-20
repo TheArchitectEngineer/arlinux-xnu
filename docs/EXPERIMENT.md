@@ -117,15 +117,28 @@ The original next fault is libdispatch's "Unexpected error from kevent".
 SYNC_WAKE|DISCOVER_OWNER (0x88) on an already-woken synchronous knote returns
 EALREADY from our early check. XNU filt_wltouch permits this update and still
 runs debounce/owner discovery; EALREADY is for a second THREAD_REQUEST attach.
-The current fix removes only that incorrect synchronous-wake rejection, retaining
-real owner updates and futex wake behavior. Runtime confirmation remains pending.
+Source ac090af removes only that incorrect synchronous-wake rejection,
+retaining real owner updates and futex wake behavior. Run
+[39496003883](https://github.com/taowen/arlinux-xnu/actions/runs/39496003883),
+source ac090af0e9d0bc85c8689e6d9e564d5d9e53a97d, verified receipt
+**0bf27e59dcecd9a669eddb843955caa97860e0e2fc887dce5a742c042ddbb642**
+and all 39 retained files. The original EALREADY/libdispatch failure no longer
+stops this path. The client sends another real systemappservices request with
+ID 0x40000000; the peer entry rejects it and aborts the provider. Console and
+Foundation still pass; UIKit acceptance remains failed.
 
-BSXPC's genuine method names are available from the actual firmware. Diagnostic
-selection previously let a same-address <redacted> alias override the requested
-method name, cutting its intended 4K decoder window to 768 bytes. Prefer actual
-named aliases at the same address, retain the aliases and honor exact requested
-names. This is read-only collection, not proof of handshake success. Continue
-through real activation/message semantics after the synchronization failure.
+The current change accepts that measured routine-0 CPX5 request envelope on an
+established authenticated connection. It retains operation errors and actual
+reply/rights ownership; no BSXPC connect success is fabricated. Decode the next
+actual dictionary to establish the service operation.
+
+BSXPC diagnostics now preserve the requested real method instead of a
+same-address <redacted> alias, exposing the real activation encoder. The activation
+receiver's method symbol is stripped, though its block helper is named. A bounded
+read-only class_ro.baseMethods reader now resolves the exact instance IMP using
+Apple's declared absolute/relative method lists and selector-base metadata.
+Unknown layouts produce a diagnostic limitation. Only requested names/addresses
+and bounded decoded instructions are retained; no guest call is injected.
 
 ## Evidence limits
 

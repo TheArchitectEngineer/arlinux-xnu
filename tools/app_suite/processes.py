@@ -139,6 +139,8 @@ class Processes:
                 '-[BSXPCServiceConnectionMessage _sendSynchronously:]',
                 '___71-[BSXPCServiceConnection _connection_handleActivationMessage:fromPeer:]_block_invoke']:
                 arguments.extend(['--lookup','/System/Library/PrivateFrameworks/BoardServices.framework/BoardServices',symbol])
+            arguments.extend(['--objc-method','/System/Library/PrivateFrameworks/BoardServices.framework/BoardServices',
+                              'BSXPCServiceConnection','_connection_handleActivationMessage:fromPeer:'])
             result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
             runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
             if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))

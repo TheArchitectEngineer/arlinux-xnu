@@ -111,7 +111,7 @@ class CacheSymbols:
             if magic!=0xfeedfacf or cpu!=0x100000c or subtype&0xffffff or kind not in (6,7) or count>256:raise ValueError('Unsupported image: '+name)
             self.locate(address,32+size)
             cursor,end=start+32,start+32+size
-            executable=[];cstring=[];cfstring=[];linkedit=None;tables=[]
+            executable=[];cstring=[];cfstring=[];linkedit=None;tables=[];objc_opt_ro=None
             for _ in range(count):
                 cmd,size=member.unpack('<II',cursor)
                 if size<8 or size%8 or cursor+size>end:raise ValueError('Invalid command: '+name)
@@ -128,12 +128,75 @@ class CacheSymbols:
                             cstring.append(member.unpack('<QQ',section+32))
                         if member.data[section:section+16].rstrip(b'\0')==b'__cfstring':
                             cfstring.append(member.unpack('<QQ',section+32))
+                        if member.data[section:section+16].rstrip(b'\0')==b'__objc_opt_ro':
+                            objc_opt_ro=member.unpack('<QQ',section+32)
                 elif cmd==2:
                     if size!=24:raise ValueError('Invalid symbol command')
                     tables.append(member.unpack('<IIII',cursor+8))
                 cursor+=size
             if cursor!=end:raise ValueError('Invalid command extent')
-            yield {'name':name,'address':address,'executable':executable,'cstring':cstring,'cfstring':cfstring,'linkedit':linkedit,'tables':tables}
+            yield {'name':name,'address':address,'executable':executable,'cstring':cstring,'cfstring':cfstring,'linkedit':linkedit,'tables':tables,'objcOptRO':objc_opt_ro}
+
+    def objc_method(self,image,class_name,selector):
+        """Resolve an instance IMP from declared Objective-C metadata, never a call.
+
+        Apple ObjCVisitor.h/cpp class_t, ClassData, method_list_t and
+        DyldSharedCache::objcRelativeMethodListsBaseAddress define these fields.
+        Export only the requested name/address, not metadata or executable bytes.
+        """
+        def unpack(address,fmt):
+            member,offset=self.locate(address,struct.calcsize(fmt))
+            return member.unpack(fmt,offset)
+        def string(address):
+            member,offset=self.locate(address,1)
+            return member.string(offset,512)
+        def selector_base():
+            offset,size=self.files[0].unpack('<QQ',464)
+            if offset and size>=56:
+                address=self.base+offset
+                version=unpack(address,'<I')[0]
+                if version!=1:raise ValueError('Unknown ObjC optimization header')
+                relative=unpack(address+48,'<Q')[0]
+                if relative:return self.base+relative
+            objc=next((entry for entry in self.images() if entry['name']=='/usr/lib/libobjc.A.dylib'),None)
+            region=objc and objc['objcOptRO']
+            if not region or region[1]<48:raise ValueError('No declared selector base')
+            address=region[0]
+            if unpack(address,'<I')[0]!=16:raise ValueError('Unknown legacy ObjC optimization header')
+            relative=unpack(address+40,'<q')[0]
+            if not relative:raise ValueError('Empty selector base')
+            return address+relative
+        classes=[value for value,name in self.symbols(image) if name=='_OBJC_CLASS_$_'+class_name]
+        if len(set(classes))!=1:raise ValueError('Missing or ambiguous declared Objective-C class')
+        class_address=classes[0]
+        ro=self.typed_pointer(class_address+32)&0x00007ffffffffff8
+        if string(self.typed_pointer(ro+24))!=class_name:raise ValueError('Class metadata name mismatch')
+        methods=self.typed_pointer(ro+32)
+        flags,count=unpack(methods,'<II')
+        relative=bool(flags&0x80000000);direct=bool(flags&0x40000000)
+        stride=flags&0x0000fffc
+        if stride!=(12 if relative else 24) or count>4096:raise ValueError('Unknown method-list layout')
+        self.locate(methods+8,count*stride)
+        base=selector_base() if relative and direct else None
+        matches=[];boundaries=[]
+        for i in range(count):
+            entry=methods+8+i*stride
+            if relative:
+                name_offset,_,imp_offset=unpack(entry,'<iii')
+                name=base+unpack(entry,'<I')[0] if direct else self.typed_pointer(entry+name_offset)
+                imp=entry+8+imp_offset
+            else:
+                name=self.typed_pointer(entry);imp=self.typed_pointer(entry+16)
+            inside=any(begin<=imp<begin+size for begin,size in image['executable'])
+            if inside:boundaries.append(imp)
+            if string(name)==selector:
+                if not inside:raise ValueError('Requested method implementation outside declared executable image')
+                matches.append(imp)
+        if len(set(matches))!=1:raise ValueError('Missing or ambiguous requested instance method')
+        return {'class':class_name,'selector':selector,'classAddress':hex(class_address),
+                'readOnlyData':hex(ro),'methodList':hex(methods),'methodListFlags':hex(flags),
+                'methodCount':count,'address':hex(matches[0]),'boundaries':boundaries,
+                'source':'Declared class_ro.baseMethods; no injected guest calls'}
 
     def typed_pointer(self,address):
         """Read a declared pointer field with its mapping's actual slide-v2 data."""
@@ -216,7 +279,7 @@ class CacheSymbols:
                 'decoderDiagnostics':process.stderr,
                 'note':'Branch immediates are relative to their instruction; observation only'}
 
-    def fault_context(self,image,pc,symbols,preferred_name=None):
+    def fault_context(self,image,pc,symbols,preferred_name=None,end_bound=None):
         """Original fault's bounded function and named direct callees, never replay."""
         base,length=next((base,length) for base,length in image['executable'] if base<=pc<base+length)
         nearest=nearest_symbol(symbols,pc) or (pc,None)
@@ -227,7 +290,7 @@ class CacheSymbols:
         maximum=4096 if nearest[1] and ('display' in nearest[1].lower() or 'ProcessSnapshot10Serializer' in nearest[1] or 'xpc_pipe_' in nearest[1] or 'bsxpc' in nearest[1].lower()) else 768
         end=min(start+maximum,base+length)
         following=min((value for value,name in symbols if value>pc),default=end)
-        end=min(end,following)
+        end=min(end,following,end_bound if end_bound is not None else end)
         record=self.disassemble(start,end-start)
         record.update(symbol=nearest[1],faultPC=hex(pc),symbolAliases=[name for value,name in symbols if value==nearest[0]])
         literals=[]

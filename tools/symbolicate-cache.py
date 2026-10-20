@@ -15,6 +15,7 @@ parser.add_argument('output',type=Path)
 parser.add_argument('--lookup',action='append',nargs=2,default=[],metavar=('IMAGE','SYMBOL'))
 parser.add_argument('--bootstrap-context',action='store_true')
 parser.add_argument('--list-symbols',action='append',nargs=2,default=[],metavar=('IMAGE','FRAGMENT'))
+parser.add_argument('--objc-method',action='append',nargs=3,default=[],metavar=('IMAGE','CLASS','SELECTOR'))
 args=parser.parse_args()
 trace=args.trace.read_text(errors='replace')
 patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT)_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
@@ -56,7 +57,8 @@ with CacheSymbols(args.cache) as cache:
         matches=[pc for pc in frames if any(base<=lookup_pc(pc)<base+size for base,size in ranges)]
         requested={name for path,name in args.lookup if path==image['name']}
         queries=[fragment for path,fragment in args.list_symbols if path==image['name']]
-        if not matches and not requested and not queries:continue
+        methods=[(cls,selector) for path,cls,selector in args.objc_method if path==image['name']]
+        if not matches and not requested and not queries and not methods:continue
         actual_symbols=list(cache.symbols(image))
         for query in queries:
             found=[{'address':hex(value),'symbol':name} for value,name in actual_symbols if query.lower() in name.lower()]
@@ -73,6 +75,18 @@ with CacheSymbols(args.cache) as cache:
         for value,name,record in requested_addresses:
             if any(base<=value<base+size for base,size in ranges):
                 record['protocolContext']=cache.fault_context(image,value,symbols,preferred_name=name)
+        for cls,selector in methods:
+            try:
+                method=cache.objc_method(image,cls,selector)
+                value=int(method['address'],16);boundaries=method.pop('boundaries')
+                label=f'-[{cls} {selector}]'
+                declared=symbols+[(value,label)]
+                end=min((address for address in boundaries if address>value),default=None)
+                records.append({'image':image['name'],'objcMethod':method,
+                    'protocolContext':cache.fault_context(image,value,declared,preferred_name=label,end_bound=end)})
+            except ValueError as error:
+                records.append({'image':image['name'],'objcMethod':{'class':cls,'selector':selector},
+                                'status':'metadata-unavailable','reason':str(error)})
         for pc in matches:
             matched.add(pc)
             address=lookup_pc(pc)
