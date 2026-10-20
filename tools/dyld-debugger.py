@@ -126,14 +126,14 @@ def capture_display_code(target):
                         print('OBJC_DISPLAY_METHOD ' + json.dumps({'kind': kind, 'selector': name, 'address': hex(implementation)}), flush=True)
                         if name in ('mainDisplay', 'displays', 'bounds', 'currentMode', 'availableModes', 'preferredMode') or name.lstrip('_').startswith('initWith'):
                             disassemble('DISPLAY_METHOD_CODE', implementation, 96)
-                            for child in list(dict.fromkeys(calls(implementation, 48)))[:3]:
+                            for child_index, child in enumerate(list(dict.fromkeys(calls(implementation, 48)))[:3]):
                                 if kind == 'class' and name in ('mainDisplay', 'displays'):
                                     disassemble('DISPLAY_METHOD_CALLEE_CODE', child, 400)
                                     for grandchild in list(dict.fromkeys(calls(child, 64)))[:6]:
                                         disassemble('DISPLAY_METHOD_CALLEE_CODE', grandchild, 180)
                                     references(child, 400)
                                 else:
-                                    count = 720 if name.lstrip('_').startswith('initWith') and child != next(calls(implementation, 48), None) else 96
+                                    count = 720 if name.lstrip('_').startswith('initWith') and child_index == 1 else 96
                                     disassemble('DISPLAY_METHOD_CALLEE_CODE', child, count)
                                     if count > 96:
                                         references(child, count)
