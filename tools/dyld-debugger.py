@@ -65,6 +65,36 @@ def graphics_failure(frame, location, internal_dict):
 
 
 _security_entries = {}
+_ipc_callback_entries = {}
+
+
+def ipc_callback(frame, location, internal_dict):
+    """Observe real send/continuation/reply arguments without guest execution."""
+    breakpoint = location.GetBreakpoint()
+    symbol = _ipc_callback_entries[breakpoint.GetID()]
+    objects = GuestObjects(frame.GetThread().GetProcess())
+    arguments = [frame.FindRegister('x' + str(i)).GetValueAsUnsigned() for i in range(4)]
+    record = {'symbol': symbol, 'tid': frame.GetThread().GetThreadID(),
+              'caller': hex(frame.FindRegister('lr').GetValueAsUnsigned()),
+              'arguments': [hex(value) for value in arguments], 'objects': []}
+    for argument, pointer in enumerate(arguments[:3]):
+        if pointer < 4096:
+            continue
+        item = {'argument': argument, 'address': hex(pointer)}
+        try:
+            item['words'] = [hex(value) for value in struct.unpack('<'+'Q'*32, objects.read(pointer, 256))]
+        except (ValueError, SystemError) as error:
+            item['readError'] = str(error)
+        record['objects'].append(item)
+    print('IPC_CALLBACK ' + json.dumps(record), flush=True)
+    if breakpoint.GetHitCount() == 1:
+        address = frame.GetPC()
+        print('IPC_CALLBACK_CODE', hex(address), symbol, flush=True)
+        frame.GetThread().GetProcess().GetTarget().GetDebugger().HandleCommand(
+            'disassemble --start-address ' + hex(address) + ' --count 160')
+    if breakpoint.GetHitCount() >= 16:
+        breakpoint.SetEnabled(False)
+    return False
 
 
 def security_query(frame, location, internal_dict):
@@ -117,7 +147,15 @@ def dictionary_inputs(frame, location, internal_dict):
 
 def install_service_breakpoints(target):
     for symbol in diagnostic_symbols():
-        if symbol.get('symbol') == '_OBJC_CLASS_$_NSDictionary':
+        if symbol.get('symbol') in ('__xpc_connection_call_reply_async',
+                '_dispatch_mach_send_with_result_and_async_reply_4libxpc',
+                '__dispatch_mach_msg_async_reply_invoke$VARIANT$mp'):
+            breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
+            _ipc_callback_entries[breakpoint.GetID()] = symbol['symbol']
+            breakpoint.SetScriptCallbackFunction('dyld_debugger.ipc_callback')
+            breakpoint.SetAutoContinue(True)
+            print('IPC_CALLBACK_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
+        elif symbol.get('symbol') == '_OBJC_CLASS_$_NSDictionary':
             objects = GuestObjects(target.GetProcess())
             try:
                 cls = objects.object_class(int(symbol['address'], 16))

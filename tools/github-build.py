@@ -94,6 +94,7 @@ def report(run_id, job_name):
                    'EXCEPTION_CALLER_CODE ', 'EXCEPTION_CALLER_REFERENCE ',
                    'DICTIONARY_NIL_INPUT ', 'DICTIONARY_INPUT_READ_ERROR ', 'HID_CLIENT_REFERENCE ',
                    'HID_CLIENT_CALLEE_REFERENCE ',
+                   'IPC_CALLBACK ',
                    'GUEST_EXIT_STATUS ', 'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
                    'SERVICE_LOOKUP ', 'SERVICE_LOOKUP_LIMIT ',
                    'WAYLAND_BACKEND_READY ', 'NATIVE_SERVICE_ADAPTER ', 'DARWIN_DISPLAY_QUERY ',
