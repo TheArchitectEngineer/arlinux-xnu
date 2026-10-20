@@ -24,6 +24,7 @@ struct cache_header {
     unsigned char symbol_uuid[16];
     uint64_t rosetta_ro,rosetta_ro_size,rosetta_rw,rosetta_rw_size;
     uint32_t images_offset,images_count,cache_subtype;
+    uint64_t objc_options,objc_options_size,atlas,atlas_size,dynamic_offset,dynamic_max_size;
 };
 struct cache_slide_map {
     uint64_t address,size,offset,slide_offset,slide_size,flags;
@@ -35,6 +36,7 @@ _Static_assert(offsetof(struct cache_header,uuid)==88,"cache UUID ABI");
 _Static_assert(offsetof(struct cache_header,slide_maps_offset)==312,"cache slide mappings ABI");
 _Static_assert(offsetof(struct cache_header,subcaches_offset)==392,"cache subcache table ABI");
 _Static_assert(offsetof(struct cache_header,images_offset)==448,"cache image table ABI");
+_Static_assert(offsetof(struct cache_header,dynamic_offset)==496,"cache dynamic configuration ABI");
 _Static_assert(sizeof(struct cache_subcache)==56,"cache member ABI");
 _Static_assert(sizeof(struct cache_slide_map)==56,"cache mapping and slide ABI");
 static struct cache_file cache_files[CACHE_MAX_FILES];
@@ -132,4 +134,32 @@ static void cache_rebase_members(void)
             }
         }
     }
+}
+static void cache_configure_dynamic_data(void)
+{
+    /* Apple's dyld-1066.10 SharedCacheRuntime.cpp configureDynamicData and
+     * mapCachePrivate create this extra read-only mapping from runtime file
+     * identity. It is declared by the cache header, not a disk segment. */
+    const struct cache_file *primary=cache_files;
+    const struct cache_header *header=&primary->header;
+    struct { char magic[16]; uint64_t fs_id,object_id; } data={0};
+    uint64_t size=round16(sizeof(data));
+    need(header->dynamic_offset && !(header->dynamic_offset&(PAGE16-1)) &&
+         size<=header->dynamic_max_size && range(header->dynamic_offset,size,header->region_size) &&
+         range(header->region_start,header->dynamic_offset+size,0x0000800000000000ULL),
+         "cache dynamic configuration geometry");
+    uint64_t address=header->region_start+header->dynamic_offset;
+    for(unsigned int i=0;i<cache_map_count;i++)
+        need(address>=cache_maps[i].address+cache_maps[i].size || cache_maps[i].address>=address+size,
+             "cache dynamic configuration overlaps a file region");
+    need(cache_map_count<CACHE_MAX_MAPS,"too many cache VM mappings");
+    struct stat st;if(fstat(primary->fd,&st))die("stat cache configuration identity");
+    memcpy(data.magic,"dyld_data    v0",sizeof("dyld_data    v0"));
+    data.fs_id=st.st_dev;data.object_id=st.st_ino;
+    void *mapped=mmap((void *)address,size,PROT_READ|PROT_WRITE,
+                      MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
+    if(mapped==MAP_FAILED)die("map declared cache dynamic configuration");
+    memcpy(mapped,&data,sizeof(data));
+    cache_maps[cache_map_count++]=(struct cache_map){.address=address,.size=size,.maxprot=1,.prot=1};
+    fprintf(stderr,"NATIVE_CACHE_DYNAMIC address=%#" PRIx64 " bytes=%#" PRIx64 " file_identity=actual\n",address,size);
 }

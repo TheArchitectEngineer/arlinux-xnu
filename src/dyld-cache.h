@@ -61,7 +61,7 @@ static uint64_t load_native_cache(const char *root)
     char path[8192];
     int length=snprintf(path,sizeof(path),"%s/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64",root);
     need(length>0 && (size_t)length<sizeof(path),"cache path length");
-    cache_open_members(path);cache_map_members();cache_rebase_members();
+    cache_open_members(path);cache_map_members();cache_rebase_members();cache_configure_dynamic_data();
     const struct cache_file *primary=cache_files;
     const unsigned char *file=primary->bytes;uint64_t size=primary->size;
     struct cache_prefix header=primary->header.common;

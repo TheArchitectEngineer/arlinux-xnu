@@ -18,6 +18,9 @@ def describe_cache(path,sha):
         if not number and offset>=456:images,number=unpack('<II',448)
         record={'name':file.name,'bytes':size,'sha256':sha(file),'magic':header[:16].decode(errors='replace'),
                 'uuid':header[88:104].hex(),'imagesOffset':images,'imagesCount':number,'mappings':[]}
+        if offset>=512:
+            dynamic,maximum=unpack('<QQ',496)
+            record['dynamicData']={'offset':dynamic,'maximumSize':maximum}
         with file.open('rb') as stream:
             if count>1024 or offset+count*32>size:raise ValueError('Invalid cache mapping table')
             stream.seek(offset)
