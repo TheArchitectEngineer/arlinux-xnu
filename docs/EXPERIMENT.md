@@ -105,7 +105,11 @@ main now waits in CA::Context::connect_remote for the 108-byte request's reply.
 The genuine CA server thread waits on receive name 10243, while GetPort and
 forwarding use name 10499. Different names alone do not prove different kernel
 objects. The next diagnostic records actual receive headers and service port
-identities; establish delivery before changing the renderer. Receipt SHA-256:
+identities. The same startup log records trap -20 returning KERN_NOT_SUPPORTED;
+XNU syscall_sw.c identifies this as mach_port_move_member. The existing Darling
+RPC now routes this operation to XNU's real membership implementation. Verify
+actual membership and renderer receipt/reply before calling this a fix.
+Receipt SHA-256:
 4646e54db15925f01faec6ce40fd90dbab52a4cb2011856822a813c512cb3ffc.
 Original snapshot and runtime logs match that receipt. App still times out
 (124); no frame, input or complete GUI lifecycle has passed.

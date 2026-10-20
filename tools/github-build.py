@@ -84,7 +84,7 @@ def report(run_id, job_name):
         lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
         markers = ('APP_INPUT ', 'APP_OUTCOME ', 'LLDB_RETRY_SKIPPED ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                    'DARLING_NATIVE_CONNECTED ', 'DARLING_RPC_ERROR ', 'DARLING_RPC_WAIT ',
-                   'DARLING_RENDER_RECEIVED ', 'NATIVE_SERVICE_PORTS ',
+                   'DARLING_RENDER_RECEIVED ', 'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_SERVICE_PORTS ',
                    'DARLINGSERVER_RPC_ONLY ',
                    'DARLING_KQCHAN_OPEN ', 'DARLING_KQCHAN_EVENT ',
                    'DARLING_SERVICE_REPLY ',
