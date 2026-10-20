@@ -49,15 +49,23 @@ not a zero-result stub. Write-lock routing is implemented but not independently
 observed in that trace. Server Darwin errors and Linux transport errors retain
 separate ABI handling. The local backend remains unsupported for these calls.
 
-[Run 39417304660](https://github.com/taowen/arlinux-xnu/actions/runs/39417304660),
-source `4582c23e7ecfe285c3ebcc1cbb0c242e66845b57`, builds the in-tree hard
-fork and runs real ARHello. The original vm_remap trampoline allocation no
-longer fails: the ordinary runtime records DARLING_CODE_COPY_COMPLETE after
-Darling copies the real code and native cache maintenance completes. The app
-continues to a new actual fatal error, `unsupported display request rights/body`,
-and exits 125. This establishes progress beyond trampoline remap, not a UIKit
-frame or an interactive app. Keep the ordinary and debugger attempts separate.
-No ARHELLO_READY, real input or complete GUI lifecycle passes yet.
+[Run 39418764026](https://github.com/taowen/arlinux-xnu/actions/runs/39418764026),
+source `1e0fc46e8deedc5af8d821a3007f9fc3f628735c`, builds and starts the unified
+session. SESSION_MACH_CORE_STARTED and UNIFIED_SESSION_PID both identify PID
+3864; real Mach check-in and port setup precede SESSION_READY. Apps 4277 and
+4278 independently register real Wayland backends and audited process-info
+connections. Both genuine dyld/libSystem console journeys complete: pthread
+join value 37, shared memory 42, input and normal return. This establishes
+shared session startup and separate app processes, not interactive apps.
+
+Real ARHello passes trampoline remap and instruction-cache maintenance, then
+exits 125 at `unsupported display request rights/body`. The observed request
+on render port 0x503 has ID 0x9d0b (40203), 108 bytes, bits 0x80001112, voucher
+0 and five Mach descriptors. The simple display service rejects the complex
+body before decoding it. Preserve real rights, shared memory and rendering
+semantics when adding support; a successful registration reply alone is not
+rendering. No ARHELLO_READY, UIKit frame, real input or complete GUI lifecycle
+passes yet. Keep ordinary and debugger attempts separate.
 
 The runtime source now lives in components/darling, with native client and
 server-side support identified by the same enclosing Git commit. ORIGINS.json
@@ -66,14 +74,16 @@ import run 39415413747 failed building MIG due to missing original header
 forwarding paths. Those source symlinks are included at 4582c23; that run builds
 both server and client and reaches the real app failure above.
 
-The next architecture change removes the standalone Darling desktop main and
-executable. A linked Mach-core library starts its event loop in the persistent
-native session process, which also owns bootstrap/FrontBoard. App address
-spaces stay independent. A ready marker must follow actual Mach check-in and
-port setup; compare SESSION_MACH_CORE_STARTED, UNIFIED_SESSION_PID, client audit
-identity and actual app progress in the exact new runner result. Internal host
-RPC dispatch and same-task guest VM routing are not yet simplified by this
-first consolidation. It must not be reported as validated before that run.
+The standalone Darling desktop main and executable are removed. A linked
+Mach-core library runs its event loop in the persistent native session process,
+which also owns bootstrap/FrontBoard. App address spaces stay independent.
+Internal host socket RPC and same-task guest VM routing are not simplified by
+this consolidation. Complete crash isolation, helpers and GUI remain unpassed.
+The first shared-library link retained unused exported XNU functions; limiting
+exports to the host entry point restores section GC without fake kernel stubs.
+Run 39418258026 compiled both components but did not start them due to an omitted
+native artifact download. Its dependency and pre-execution hash check are fixed
+in 39418764026; continue from the actual render request above.
 
 The S2C memory implementation maps real low-address, 16 KiB anonymous storage
 with actual fixed overwrite/non-overwrite and requested R/W/X permissions.
@@ -109,15 +119,15 @@ explains abort-reason/abort routing; compare it with the actual cache code.
 
 ## Exact evidence and inputs
 
-Latest failure evidence is run 39417304660; downloaded ordinary runtime,
-debugger runtime and session logs match its receipt. Receipt SHA-256:
-`ca4bd912cda09b3cabdfddd0efa8a59cd26708c75bacaf3f81de317777be9f52`.
+Latest failure evidence is run 39418764026; downloaded ordinary/debugger runtime,
+session logs and both console outputs match its receipt. Receipt SHA-256:
+`29002584322903a9df0b97f2c397d981b8832fd974e3870835ea06c63532841d`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| app.runtime.log | `a338ca8c1f9148ef3dda0451ca7fee3e04a3b2f6c5e62b5822ea8f8a49c0e2d6` |
-| debugger.runtime.log | `01280a602c3a30195e155bc64bba4df8dfd97319a7903c0b98a7ba9c407821db` |
-| session.log | `5c7775e1d0c1541c2587917bac813a8447ae1b02dd3047bc9e3fb155e6a1156a` |
+| app.runtime.log | `e14723a2a163f49861d4c5351425b4b88c0b33d97c5690f63b53f92730d164a8` |
+| debugger.runtime.log | `84e476fe0595f77efe8cd4afe59ebcc021365dde0b0371e18df7acfa9690375f` |
+| session.log | `efb3e94c316b6c4a6dd284027ac5bc3d5f3f8f9d87427d65d930351cbdadab94` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain

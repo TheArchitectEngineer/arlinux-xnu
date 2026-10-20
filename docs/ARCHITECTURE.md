@@ -303,8 +303,10 @@ inside that process; this first consolidation does not claim direct-call
 dispatch or removal of all callback overhead. Same-task guest VM operations
 should move to direct native memory operations as their semantics are supported;
 cross-task rights, transfers and service names retain session-wide ownership.
-Real-run identity and app progress must validate the consolidation before it is
-considered working. Do not replace shared ownership with per-app namespaces.
+Run 39418764026 validates one actual session/core PID, two independently
+registered app processes and both real dyld/libSystem console lifecycles.
+The app still fails at a complex render-service request; GUI acceptance is
+unpassed. Do not replace shared ownership with per-app namespaces.
 
 The generated RPC client uses per-thread Linux sockets, actual thread checkin
 and checkout, raw syscall hooks and no host TLS. Client memory access is
