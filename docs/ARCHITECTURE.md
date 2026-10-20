@@ -247,7 +247,9 @@ Dynamic queues have distinct IDs/epoll objects and a dedicated serial Linux
 worker. Real libpthread receives WORKLOOP flags and the ID immediately before
 the event list; its registered workloop callback executes the guest code.
 Servicer-side returns stay bound to that actual queue, while foreign synchronous
-polls fail. Queues currently live until process exit with bounded capacity.
+polls fail. Queue objects use real mmap/epoll allocations with stable published
+addresses, replacing the former eight-object limit. They currently live until
+process exit; automatic retirement remains incomplete.
 
 Asynchronous EVFILT_WORKLOOP thread requests check the actual guest state against
 the supplied mask/value before issuing a real eventfd wake. Ignored stale
@@ -307,7 +309,11 @@ pretend that unrelated voucher attributes exist. Kernel process identity is
 translated from Linux PID/start ticks, with the guest executable's actual
 Mach-O UUID. TASK_AUDIT_TOKEN uses the same process incarnation and Linux audit,
 real/effective UID/GID and process identity; it does not mint an Apple identity. Application bundle reads are resolved to its real bundle directory
-while firmware reads remain rooted separately; both paths retain read-only
+while firmware reads remain rooted separately. O_NONBLOCK directory opens,
+real Linux filesystem statistics/mount metadata and inode64 directory records
+let CoreFoundation discover and read actual bundle metadata. Directory cookies
+are retained and unread entries are not dropped on output-buffer exhaustion.
+Both paths retain read-only
 open policy. These are runtime services, not evidence of Android integration.
 
 Activity IDs reserve unique ranges from a MAP_SHARED atomic counter for this
