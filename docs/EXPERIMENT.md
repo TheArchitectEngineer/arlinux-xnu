@@ -8,7 +8,7 @@ Current app: **ARHello 1.0** (`io.arlinux.ARHello`), source in guests/ARHello,
 using real pinned dyld/UIKit/frameworks. The sole build/report entry is build.sh;
 see README for operations and docs/DIAGNOSTICS.md before runtime changes.
 
-**No Linux pixel/input/complete GUI lifecycle or Android acceptance has passed.**
+**No complete Linux display/input/GUI lifecycle or Android acceptance has passed.**
 Acceptance still includes two concurrently interactive independent applications,
 normal close/relaunch without disrupting the other, app-requested helpers/XPC
 services, audited identity/resource cleanup after crashes, then ARLinux/Android.
@@ -47,10 +47,18 @@ Current functional blockers:
   and workloop control remain unsupported.
 
 The coordinate fix uses genuine CGContextTranslateCTM/ScaleCTM once per bitmap
-context; the upright PNG above verifies it. Next candidate adds a bounded
-UIKit recursiveDescription capture on its normal main run loop, only when
-runner frame evidence is explicitly enabled. It does not change layout or
-invoke control actions. No next run has been dispatched yet.
+context; the upright PNG above verifies it. The following diagnostic run
+[39440314033](https://github.com/taowen/arlinux-xnu/actions/runs/39440314033),
+source **86918ac585f06aed85d3126809bcf77f0f5fc1a0**, is terminal failure:
+both original apps reach readiness and time out 124. UIKit's own bounded
+recursiveDescription reports the UIButton at (20,180;280,60) and its real
+UIButtonLabel at (106,21;69,18), text Increment. Thus button creation and
+layout exist; the missing title pixels need color/layer-content diagnosis.
+No layout was changed or control action invoked by this capture.
+Receipt d55e7fab8d6e498b37eb66ec549b5e904735162f203c61c8a6ad0e114a7541b1
+matches both runtime logs and app outcomes. Next: inspect actual button-label
+text/tint colors and layer contents before changing rendering behavior.
+No runner is currently live for this work.
 
 Scene-frame codec evidence: run 39437411133, receipt
 862d641fc074e2e8f0fc68498339cf2c06500ff591fb61b6c9799925a894227a.
