@@ -36,9 +36,7 @@ def install_service_breakpoints(target):
     for symbol in diagnostic_symbols():
         if symbol.get('symbol') in ('_bootstrap_look_up', '_bootstrap_look_up2', '_bootstrap_look_up3'):
             breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
-            error = breakpoint.SetScriptCallbackFunction('dyld_debugger.service_lookup')
-            if error.Fail():
-                raise RuntimeError(str(error))
+            breakpoint.SetScriptCallbackFunction('dyld_debugger.service_lookup')
             print('SERVICE_LOOKUP_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
 
 
