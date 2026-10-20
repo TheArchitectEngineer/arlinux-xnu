@@ -66,12 +66,39 @@ cache-loading responsibility rather than faking its completion.
 Real libSystem/pthread/libc initializers now execute. The observed Host
 priority query, Clock service lookup and semaphore creation have passed their
 clients' checks. The true dynamically linked C main now executes real libSystem
-write/malloc/free calls and real pthread create/join, input, exit and relaunch. An empty task Bootstrap
-slot is reported as NULL, not as a working launchd/XPC service. See docs/EXPERIMENT.md for the exact source/run/hash and
+write/malloc/free calls and real pthread create/join, input, exit and relaunch.
+Without a display backend the empty task Bootstrap slot is NULL. A configured
+native Wayland backend enables the standalone registry described below;
+this is not a full launchd/XPC server. See docs/EXPERIMENT.md for the exact source/run/hash and
 remaining acceptance gaps. Cache symbolication preserves actual image and nearest-symbol
 metadata from the same input without uploading Apple executable contents.
 
 ## Initial Mach services
+
+When WAYLAND_DISPLAY or WAYLAND_SOCKET is supplied, a host child connects
+directly to the compositor using wl_compositor, xdg-shell and wl_shm. It runs
+before Darwin TLS setup and keeps its own host TLS and protocol event loop.
+After configure/ack, a real XRGB memfd buffer is attached and a frame callback
+confirms backend readiness. The guest process maps the same framebuffer.
+The child is terminated when its parent dies. Initial geometry is retained;
+resize, UIKit rendering, input forwarding and application close are unfinished.
+An empty mapped surface never counts as displaying the application.
+
+The task then gets an actual standalone bootstrap endpoint. The private cache's
+public bootstrap_look_up3 entry is redirected by symbol to a libc/TLS-independent
+registry adapter; no firmware-specific address is used. Only the live display
+backend's com.apple.backboard.display.services is registered, and lookup grants
+a tracked send reference. Other names return BOOTSTRAP_UNKNOWN_SERVICE;
+unsupported flags/target-PID lookups fail. This replaces name discovery at the
+API boundary rather than pretending to implement launchd's XPC dictionary
+protocol. Display requests/replies still use real Mach queues and MIG layouts.
+The measured 24-byte screen-info request uses routine 6001004; its 52-byte reply
+contains configured width/height, scale 1 and rotation 0 for the actual default
+Wayland buffer transform. Backend liveness is checked before lookup and query.
+Unimplemented display routines return MIG_BAD_ID. See the current handoff for
+which requests have actually completed under genuine UIKit.
+
+Protocol reference: [Wayland specification](https://wayland.freedesktop.org/docs/html/apa.html).
 
 Process-local reply rights have distinct names and Linux SOCK_SEQPACKET queues.
 The observed combined send/receive exchanges enqueue a MIG response and then

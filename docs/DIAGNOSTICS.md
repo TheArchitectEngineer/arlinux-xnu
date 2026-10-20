@@ -80,3 +80,13 @@ attempt. Callbacks auto-continue and have a per-breakpoint hit bound.
 - [GitHub job logs and attempt-scoped jobs](https://docs.github.com/en/rest/actions/workflow-jobs)
 - [strace manual](https://man7.org/linux/man-pages/man1/strace.1.html)
 - [rr hardware and recording limitations](https://rr-project.org/)
+
+The native Wayland path is now exercised by the same app in
+[39351144939](https://github.com/taowen/arlinux-xnu/actions/runs/39351144939).
+WAYLAND_BACKEND_READY follows configure, real wl_shm submission and a compositor
+frame callback. DARWIN_DISPLAY_QUERY records the actual geometry served to the
+genuine framework. The next throw is `main display is nil`, alongside a lookup
+for CARenderServer. The backend buffer is blank and never counts as an app
+screenshot. Weston runs headless with pixman on the runner; deployment should
+connect to ARLinux's existing compositor through WAYLAND_DISPLAY/WAYLAND_SOCKET.
+No ARLinux device integration has been validated.

@@ -13,30 +13,27 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39349359592](https://github.com/taowen/arlinux-xnu/actions/runs/39349359592),
-source `5ce5bb2aafcb46b26a018e579afde6ab2d2c2686`, dyld job `118389731972`.
-UIKit submits actual background blocks to genuine libdispatch workers on Linux
-threads. LLDB sees _dispatch_root_queue_drain, _dispatch_worker_thread2 and
-_pthread_wqthread alongside CoreFoundation and QuartzCore initialization.
-The original workqueue assertion and base voucher failure are passed; proc_info
-returns the requested 56-byte current-process identity. XPC's audit-token query
-also passes, as do both observed guarded XPC port constructions, debug-control
-query, memory-pressure and dynamic Mach-port registration. A genuine workloop
-event is delivered; synchronous special-reply reception now actually blocks
-instead of returning INVALID_NAME for fake port 46. The previous stack-memory
-fault is absent in this run. The actual stop is an uncaught NSException from
-BKSDisplayServicesStart +436, through Foundation/CoreFoundation and
-UIApplicationMainPreparations, ending in libsystem_c abort at 0x1809bbf6c.
-The actual throw-site object is decoded as NSInternalInconsistencyException:
-`backboardd isn't running -- or we couldn't talk to it -- result:10000003`.
-A missing display server must not be replaced by fake success.
-BackBoardServices display initialization is on the caller stack. No Linux
-window/display/input callback has passed. App status is 133 (SIGTRAP in abort).
+[39351144939](https://github.com/taowen/arlinux-xnu/actions/runs/39351144939),
+source `fe9f1d65366642abaede2f3e286f025e0d6d22bc`, dyld job `118395522325`.
+The host child connects directly to headless Weston, configures a 1024x640
+xdg-shell surface and submits an actual wl_shm buffer. A real frame callback
+precedes endpoint registration. This buffer is still blank: no application
+content or input has been presented.
 
-The same run first completes both independent real-libSystem console launches:
-worker return 37, shared memory 42, input counter 1 and normal exit. Previous
-standalone console regression is
-[39336200293](https://github.com/taowen/arlinux-xnu/actions/runs/39336200293).
+The actual bootstrap lookup now grants the registered display endpoint's send
+right. Genuine BackBoardServices sends screen-info MIG routine 6001004 and
+accepts the 52-byte reply containing configured dimensions, scale 1 and
+rotation 0. The prior backboardd connection assertion is passed. The next actual
+exception is NSInternalInconsistencyException, `main display is nil`, from
+BKSDisplayServicesStart +668; the app also queries the unimplemented
+`com.apple.CARenderServer`. The ordinary app still aborts with status 133;
+LLDB_COMMAND_STATUS=0 describes evidence capture only. A backend surface is
+not a working CADisplay/CoreAnimation render server.
+
+Both independent real-libSystem console journeys still pass: worker return 37,
+shared memory 42, input counter 1 and normal exit. Real workloop event delivery
+also repeats. Linux UIKit display/input/normal close/relaunch and the ARLinux
+integration journey remain incomplete.
 
 ### Verified execution
 
@@ -83,43 +80,30 @@ standalone console regression is
 
 ### Current boundary and next action
 
-The latest real app run, 39349359592, captures the actual exception at
-objc_exception_throw before abort, without injecting guest method calls.
-Its read-only decoder obtains NSException's name/reason offsets from the real
-class ivar metadata. The reason identifies the backboardd connection failure;
-normal application status remains 133, while LLDB_COMMAND_STATUS=0 means only
-that evidence collection completed. Both real-libSystem console journeys pass.
-No Linux display/input journey has passed.
+Continue at QuartzCore/CADisplay and the actual CARenderServer client protocol.
+Connect a real display object and rendering path to the Wayland framebuffer;
+do not supply a fabricated CADisplay object or mark a blank surface as UIKit
+output. The currently supported display RPC is screen geometry only. All
+other display routines fail with MIG_BAD_ID. Native lookup replaces launchd
+name discovery at the public API boundary; it does not implement launchd's
+XPC dictionary protocol. Unsupported names, flags and target-PID lookups fail.
 
-Actual bootstrap breakpoints now record the hit frame's Linux TID, caller,
-service name, bootstrap port and output address, without injected guest calls.
-The display query requests `com.apple.backboard.display.services` with bootstrap
-port **0**. The existing task bootstrap slot is genuinely empty. libxpc also
-looks up logd and notification_center with that empty port; this does not prove
-that those services are the cause of the UIKit abort. Same-cache disassembly
-confirms BKSDisplayServicesStart calls _BKSDisplayServicesGetMainScreenInfo,
-which supplies four 32-bit output values to the startup code. The failing
-connection must lead to a real display backend, not a fabricated service right
-or a successful reply containing unrelated constants. The exact display RPC
-request/reply layout still needs inspection before implementing it.
+The screen ABI was established from this firmware's actual client and
+GSSetMainScreenInfo disassembly (run 39350427317): 24-byte request, 52-byte
+reply, four binary32 outputs; scale divides pixel dimensions and rotation
+feeds a transform. There are no device-model/version address tables. The
+current Wayland client chooses buffer scale 1 and the normal transform.
+The backend runs in a separate host process with its own TLS and event loop;
+Linux child-state checks reject lookups/queries after it exits. Resize,
+input routing, app frame submission and normal window close remain unfinished.
+See [execution design](ARCHITECTURE.md) for the service/Wayland boundary.
 
-The earlier special-reply fix (39347374538) establishes actual waiting in
-ipc_message/ppoll and workloop delivery. The older 0x1808bf9d4 stack access
-(39346614222) is absent in the later observed attempts; that is not proof
-against every lifetime race. Forced-interruption diagnostics still need an
-actual hanging-run validation. No run remains pending.
-
-Actual Mach message receipt uses send-time Linux sender identity, packed
-trailers, receive sequence and queued-message size negotiation. Workloop entry
-uses the real libpthread callback with the actual queue ID before the event
-list. First event delivery is observed; successful completion of its callback
-and message round trips remain unproven. Explicit
-SYNC_WAIT/SYNC_WAKE commands, full turnstile/priority inheritance, dynamic queue
-retirement, the workloop control syscall, complex/right-transfer IPC, display
-services, graphics and ARLinux integration remain incomplete. Next supply real service discovery and a display endpoint backed by an actual
-Linux display, inspecting the observed client protocol before implementing
-its replies. Keep extending
-the real ARHello journey; no isolated probe replaces UI acceptance.
+The earlier special-reply fix establishes actual waiting in ipc_message/ppoll
+and workloop delivery. The older 0x1808bf9d4 stack access is absent in later
+observed attempts; that is not proof against every lifetime race. Complex
+Mach descriptors, full reply/voucher-right transfer, workloop SYNC_WAIT/WAKE,
+turnstile inheritance and queue retirement remain incomplete. Forced-interrupt
+diagnostics still need an actual hanging-run validation. No run is pending.
 
 ABI sources: libpthread-330.250.2
 `b4b8795e1d4030f45efe04947773b265240ce03c`, XNU's pinned ipc_entry/event/voucher
@@ -146,10 +130,10 @@ Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
 never reached the button; the accepted run uses the actual macOS HID queue.
 
 Latest app failure receipt:
-`27992bfde85c56e7687bbf64806f8720bf5f77deb8449c67662afc8f6779d4ff`.
-Native runtime SHA-256: `6ce03a2b827f783c8d63f8da01e4a195ce8354e8e7ec6fc82fc105152ac55459`.
-Local text: build/runs/39349359592/attempt-1/job-118389731972.log. Native hash is unchanged
-from build/runs/39347374538/native-SHA256SUMS. Both independent real-libSystem
+`600f226b072e0d99bc6011103774387f90701f10a3d63cf34c752960269c4217`.
+Native runtime SHA-256: `a737f3c8952ebe84f7b5a17ebe6a408bd27dcdf3e8144788c057ae56f35ab51d`.
+Local text: build/runs/39351144939/attempt-1/job-118395522325.log
+and job-118395345767.log. Both independent real-libSystem
 console launches still complete. The earlier first worker run 39340039442
 reached the voucher assertion; its receipt is
 `71a285b07a8e6423117eaff487e91342f323db11930de04b66d431d6077c12e2`.
