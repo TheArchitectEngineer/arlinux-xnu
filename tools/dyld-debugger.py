@@ -378,12 +378,17 @@ def capture_exception(process, breakpoint):
     except (ValueError, UnicodeError) as error:
         print('OBJC_EXCEPTION_DECODE_ERROR', str(error), flush=True)
         process.GetTarget().GetDebugger().HandleCommand('memory read --format x --size 8 --count 8 ' + hex(address))
-    for symbol in diagnostic_symbols():
-        if symbol.get('symbol') == '__UICopyValueForEntitlementUsingTaskCreationBlock':
-            address = int(symbol['address'], 16)
-            print('ENTITLEMENT_CODE', hex(address), flush=True)
-            process.GetTarget().GetDebugger().HandleCommand('disassemble --start-address ' + hex(address) + ' --count 80')
-            capture_code_references(process.GetTarget(), address, 80, 'ENTITLEMENT_REFERENCE')
+    # Capture actual throwing callers rather than a previous failure's function.
+    # These addresses are already mapped guest frames, never guessed cache offsets.
+    target = process.GetTarget()
+    for index in range(1, min(thread.GetNumFrames(), 5)):
+        caller = thread.GetFrameAtIndex(index).GetPC()
+        if not 0x180000000 <= caller < 0x200000000:
+            continue
+        start = caller - 96
+        print('EXCEPTION_CALLER_CODE', index, hex(caller), flush=True)
+        target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(start) + ' --count 64')
+        capture_code_references(target, start, 64, 'EXCEPTION_CALLER_REFERENCE')
 
 
 def resume_bounded(process, seconds=12):
