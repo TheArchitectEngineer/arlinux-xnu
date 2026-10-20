@@ -48,13 +48,28 @@ identify the failed lock predicate. The ordinary attempt times out (124), a
 separate process from this trace. No ARHELLO_READY, UIKit frame, real input,
 normal GUI exit/relaunch or concurrent interactive journey passes.
 
-Exact pending run: [39410444685](https://github.com/taowen/arlinux-xnu/actions/runs/39410444685),
-source `304e804614cc2b2bf22323189e4b74dbf780067a`, captures actual
-___pthread_abort_reason format/arguments and caller code before libc abort.
-Read the actual reason before changing synchronization or priority handling.
-Do not bypass lock assertions, return fake synchronization success or call the
-app delegate directly. Continue this exact run; local observation timeouts do
-not justify restarting it.
+[Run 39410444685](https://github.com/taowen/arlinux-xnu/actions/runs/39410444685),
+source `304e804614cc2b2bf22323189e4b74dbf780067a`, installs the real
+pthread abort-reason breakpoint but stops earlier in libdispatch at 0x1808c4878.
+The targeted abort is not reproduced; no pthread reason is captured. Preserve
+this distinct interleaving rather than interpreting the missing breakpoint as
+proof that locking works. LLDB log SHA-256 `529f244096a21f2fe2243c87afb232a7fa8ade78d6614af5d26650986311be57`
+was receipt verified.
+
+A concrete missing operation is independently established in run 39409669685:
+actual syscall 306 returns ENOSYS during the UIKit/localtime locking path.
+XNU syscalls.master identifies 306/307/308 as psynch_rw_rdlock/wrlock/unlock.
+The pinned Darling server exposes all three through its existing XNU queues.
+
+Exact pending run: [39411131655](https://github.com/taowen/arlinux-xnu/actions/runs/39411131655),
+source `1c90164f63f6a2807cd10f1d56464586f5c1d1e1`, routes those operations
+to generated community RPCs. Actual returned generation/update bits are
+preserved; positive Darwin BSD errors use carry without Linux errno remapping,
+while negative Linux transport errors retain the existing conversion. Check
+DARLING_PSYNCH_RW, actual libpthread reasons, activation and subsequent app
+progress. No lock success is fabricated. The local backend remains unsupported
+for these operations. Continue this exact run; observation timeouts do not
+justify restarting it. No GUI acceptance passes.
 
 Header-only MACH_NOTIFY_SEND_ONCE cancellation is accepted only on outstanding
 reply ports with the exact kernel notification and zero audit identity; it is
