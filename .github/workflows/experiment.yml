@@ -307,6 +307,8 @@ jobs:
           if [[ -f "$cache" && -f "$ordinary" ]]; then
             python3 tools/symbolicate-cache.py "$cache" "$ordinary" build/dyld/diagnostic-symbols.json \
               --lookup /usr/lib/libobjc.A.dylib _objc_exception_throw \
+              --lookup /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation '_OBJC_CLASS_$_NSDictionary' \
+              --lookup /System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices ____getHIDEventSystemClient_block_invoke \
               --lookup /System/Library/Frameworks/Security.framework/Security _SecTaskCreateFromSelf \
               --lookup /System/Library/Frameworks/Security.framework/Security _SecTaskCopyValueForEntitlement \
               --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore __UICopyValueForEntitlementUsingTaskCreationBlock \

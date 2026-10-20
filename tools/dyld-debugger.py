@@ -107,9 +107,53 @@ def security_return(frame, location, internal_dict):
     return False
 
 
+def dictionary_inputs(frame, location, internal_dict):
+    """Read actual ObjC ABI arguments only when a dictionary contains nil."""
+    objects = GuestObjects(frame.GetThread().GetProcess())
+    values, keys, count = [frame.FindRegister('x' + str(i)).GetValueAsUnsigned() for i in (2, 3, 4)]
+    if 0 < count <= 16 and values and keys:
+        try:
+            pairs = [(objects.u64(keys + i*8), objects.u64(values + i*8)) for i in range(count)]
+            if any(not value for key, value in pairs):
+                record = {'tid': frame.GetThread().GetThreadID(),
+                          'caller': hex(frame.FindRegister('lr').GetValueAsUnsigned()), 'pairs': []}
+                for key, value in pairs:
+                    pair = {'key': hex(key), 'value': hex(value)}
+                    try:
+                        pair['keyText'] = objects.cfstring(key)
+                    except (ValueError, UnicodeError, SystemError) as error:
+                        pair['keyReadError'] = str(error)
+                    record['pairs'].append(pair)
+                print('DICTIONARY_NIL_INPUT ' + json.dumps(record), flush=True)
+                location.GetBreakpoint().SetEnabled(False)
+        except (ValueError, SystemError) as error:
+            print('DICTIONARY_INPUT_READ_ERROR', str(error), flush=True)
+    if location.GetBreakpoint().GetHitCount() >= 4096:
+        location.GetBreakpoint().SetEnabled(False)
+    return False
+
+
 def install_service_breakpoints(target):
     for symbol in diagnostic_symbols():
-        if symbol.get('symbol') in ('_bootstrap_look_up', '_bootstrap_look_up2', '_bootstrap_look_up3'):
+        if symbol.get('symbol') == '_OBJC_CLASS_$_NSDictionary':
+            objects = GuestObjects(target.GetProcess())
+            try:
+                cls = objects.object_class(int(symbol['address'], 16))
+                methods = objects.u64(objects.class_ro(cls)+32)
+                size, count = objects.u32(methods) & ~3, objects.u32(methods+4)
+                if size != 24 or count > 256:
+                    raise ValueError('Unsupported dictionary method metadata')
+                for index in range(count):
+                    entry = methods+8+index*size
+                    if objects.cstring(objects.u64(entry)) == 'dictionaryWithObjects:forKeys:count:':
+                        address = objects.u64(entry+16)
+                        breakpoint = target.BreakpointCreateByAddress(address)
+                        breakpoint.SetScriptCallbackFunction('dyld_debugger.dictionary_inputs')
+                        breakpoint.SetAutoContinue(True)
+                        print('DICTIONARY_INPUT_BREAKPOINT', hex(address), flush=True)
+            except (ValueError, SystemError) as error:
+                print('DICTIONARY_METADATA_ERROR', str(error), flush=True)
+        elif symbol.get('symbol') in ('_bootstrap_look_up', '_bootstrap_look_up2', '_bootstrap_look_up3'):
             breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
             breakpoint.SetScriptCallbackFunction('dyld_debugger.service_lookup')
             breakpoint.SetAutoContinue(True)
@@ -381,6 +425,12 @@ def capture_exception(process, breakpoint):
     # Capture actual throwing callers rather than a previous failure's function.
     # These addresses are already mapped guest frames, never guessed cache offsets.
     target = process.GetTarget()
+    for symbol in diagnostic_symbols():
+        if symbol.get('symbol') == '____getHIDEventSystemClient_block_invoke':
+            start = int(symbol['address'], 16)
+            print('HID_CLIENT_CODE', hex(start), flush=True)
+            target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(start) + ' --count 128')
+            capture_code_references(target, start, 128, 'HID_CLIENT_REFERENCE')
     for index in range(1, min(thread.GetNumFrames(), 5)):
         caller = thread.GetFrameAtIndex(index).GetPC()
         if not 0x180000000 <= caller < 0x200000000:
