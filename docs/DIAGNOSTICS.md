@@ -14,6 +14,14 @@ and darling-ipc jobs. Default report output includes per-step timings, original
 and peer outcomes/window callbacks, and key fault/wait/delivery evidence. Full
 observations remain in the report JSON/raw log; use --verbose to print them.
 Window readiness is an app callback, not proof of pixels, input or lifecycle.
+UI_LAYER_FRAME records a genuine CALayer.renderInContext: call into shared
+CoreGraphics storage; WAYLAND_APP_FRAME_COMMITTED/CALLBACK record transport,
+not useful content or physical presentation. Inspect the hash-verified PNG.
+The capture retains the last completed render. UI_WINDOW_BOUNDS/ UI_LAYER_BOUNDS
+identify the objects and UI_BOUNDS_SIZE contains exact ARM64 CGRect double bits;
+the report also prints decoded dimensions. Run 39436857295 submitted frames but
+both real window/layer bounds were 0 x 0 and both PNGs were entirely black.
+This is a geometry failure, not a display pass. No app-specific frame is forced.
 Repeated reports recheck the run/attempt/job identity through GitHub, then reuse
 the completed job's local raw log only when its SHA-256 matches the prior report.
 A changed attempt, source, job outcome or missing/corrupt cache fetches logs again.

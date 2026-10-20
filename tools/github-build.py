@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import struct
 import subprocess
 from datetime import datetime
 
@@ -120,6 +121,7 @@ def report(run_id, job_name, verbose=False):
                    'WAYLAND_TOPLEVEL_FOCUS ',
                    'UI_RUNLOOP_OBSERVER_', 'UI_LAYER_FRAME ', 'UI_BITMAP_CONTEXT_UNAVAILABLE ',
                    'UI_FRAME_CAPTURE', 'WAYLAND_APP_FRAME_', 'APP_FRAME_CAPTURE ',
+                   'UI_WINDOW_BOUNDS ', 'UI_LAYER_BOUNDS ', 'UI_BOUNDS_SIZE ', 'UI_LAYER_CHILDREN ',
                    'DARLINGSERVER_RPC_ONLY ',
                    'DARLING_KQCHAN_OPEN ', 'DARLING_KQCHAN_EVENT ',
                    'DARLING_SERVICE_REPLY ',
@@ -203,6 +205,7 @@ def report(run_id, job_name, verbose=False):
                        'WAYLAND_TOPLEVEL_FOCUS ',
                        'UI_RUNLOOP_OBSERVER_', 'UI_LAYER_FRAME ', 'UI_BITMAP_CONTEXT_UNAVAILABLE ',
                        'UI_FRAME_CAPTURE', 'WAYLAND_APP_FRAME_', 'APP_FRAME_CAPTURE ',
+                       'UI_WINDOW_BOUNDS ', 'UI_LAYER_BOUNDS ', 'UI_BOUNDS_SIZE ', 'UI_LAYER_CHILDREN ',
                        'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_RENDER_FORWARD ',
                        'DARWIN_WORKLOOP_ERROR_STATE ', 'DARWIN_WORKLOOP_SYNC_', 'NATIVE_WORKLOOP_WAIT ',
                        'EXPERIMENT_RECEIPT ')
@@ -214,6 +217,11 @@ def report(run_id, job_name, verbose=False):
                 if line.startswith(concise) and line not in shown:
                     print('  ' + line)
                     shown.add(line)
+                    geometry = re.match(r'UI_BOUNDS_SIZE width=0x([0-9a-f]{16}) pc=0x([0-9a-f]{16}) ', line)
+                    if geometry:
+                        width, height = (struct.unpack('<d', int(value, 16).to_bytes(8, 'little'))[0]
+                                         for value in geometry.groups())
+                        print(f'    measured bounds: width={width:g} height={height:g}')
                     if line.startswith(('DARWIN_WORKLOOP_ERROR_STATE ', 'DARWIN_NATIVE_FAULT ', 'DARWIN_KEVENT_ERROR ')):
                         for context in item['observations'][index+1:index+10]:
                             if not context.startswith('  context: '):

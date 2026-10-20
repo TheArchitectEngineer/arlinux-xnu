@@ -13,51 +13,52 @@ Acceptance still includes two concurrently interactive independent applications,
 normal close/relaunch without disrupting the other, app-requested helpers/XPC
 services, audited identity/resource cleanup after crashes, then ARLinux/Android.
 
-Latest runtime evidence: [39431342283](https://github.com/taowen/arlinux-xnu/actions/runs/39431342283),
-source **89b7f4f8010d7a950ccd627f315f843b301006ac**. Both genuine dyld/libSystem
-console journeys pass (malloc, pthread join 37/shared memory 42, input, normal
-return/relaunch). Both original UIKit app processes now exercise real workloop
-synchronous wait/wake/return, with no original-process BRK. The peer reaches
-ARHELLO_READY; the original does not. Both later exit 0 through a framework
-invalidation path, so the app journey correctly remains failed.
+Latest runtime evidence: [39439676234](https://github.com/taowen/arlinux-xnu/actions/runs/39439676234),
+source **d4eccc4b608976c41994dd63325b6910e19638c0**. Both independent UIKit
+apps reach ARHELLO_READY and remain alive until timeout 124. Actual UIWindow
+and CALayer bounds are **1024 x 640**; real CALayer rendering into shared
+CoreGraphics buffers now produces a white background and readable ARHello 1.0
+Count: 0 text in both captured PNGs. **The image is now upright; the Increment button is still absent.** This is real application pixel progress, not a
+complete display/input/lifecycle pass or physical-presentation proof.
 
-In the original process, waiter TID 5516/ident 0x703 sleeps on workloop
-0x30022aae0; TID 5595 wakes one futex waiter, then TID 5516 returns state 1/status
-0. The peer independently completes three matching wait/wake/return chains,
-including reciprocal waits between its main and worker threads. These are real
-process logs, not a diagnostic rerun or a source assertion. Dyld receipt SHA-256
-81943741391b7482ae36f522a8ca3a6935e567858a737c1d13f7bbfbe21c3679
-matches downloaded app outcomes, both runtime logs and peer stdout.
+Dyld receipt SHA-256
+705aa4933eed680bbd1caf8aac82fb734437d115e47bed0a8d292ebec100c6a2
+matches both runtime logs, app outcomes and both PNGs. PNG SHA-256:
+932783331031675bb3dd16a01f0475094a320b4cb18b1c5bbd3df2e728be531b.
+No separate diagnostic replay replaces the original processes.
+
+Decisive fixes: missing scene frame (0 x 0 windows) now passes actual registered
+Wayland geometry through setting 3 (NSValue -> bs_CGRectValue -> setFrame:),
+without forcing an app window. The following libpthread parallelism assertion
+was caused by our bsdthread_ctl constant incorrectly naming 364 (lchown).
+Correct syscall 478 reaches the existing real single-CPU-affinity implementation
+and the assertion no longer occurs in either original process.
 
 Current functional blockers:
 
-- BackBoard HID focus: the actual NSXPC client requests
-  `com.apple.backboard.hid.focus`; rejecting the missing service causes exit.
-  Exit caller 0x183822e34 belongs to its invalidation handler (literal:
-  "backboarrd must be going down, exiting"). Implement real focus/input behavior
-  backed by Wayland; suppressing exit or holding an empty endpoint is not a fix.
-- Window readiness is not pixel delivery. Genuine QuartzCore context creation
-  and input must reach the real Wayland backend, then support complete lifecycle
-  and two concurrent interactive apps. That end-to-end connection is unproven.
-- The new sync-wait path does not supply XNU turnstile priority inheritance or
-  the workloop control syscall. Continue diagnosing required scheduling behavior
-  from actual app contention. A wait registration alone is not a wake proof.
+- Diagnose the absent Increment button from genuine UIKit view/layout
+  evidence. Upright label pixels and Wayland callbacks do not prove a usable UI.
+- BackBoard HID focus has an audited discovery endpoint only. Neither client
+  has invoked its lazy XPC connection. Actual semantic requests still fail
+  explicitly; real focus/input behavior is incomplete.
+- Normal GUI close/relaunch, two independently interactive apps, helpers,
+  crash cleanup and Android acceptance remain unverified.
+- Workloop sync wait/wake/return is verified; turnstile priority inheritance
+  and workloop control remain unsupported.
 
-Current diagnostic candidate adds an audited receive endpoint for HID focus,
-with a fatal unimplemented-operation path before any semantic reply. In run
-[39432695199](https://github.com/taowen/arlinux-xnu/actions/runs/39432695199),
-source b6d8038cc098978d8e97cba7bc4aac210bfa4180, lookup succeeds for both apps;
-neither opens the lazy XPC connection or submits an invocation. Both reach
-ARHELLO_READY and remain alive until timeout 124. This demonstrates service
-discovery/liveness only, not a focus implementation. Receipt
-f1c4149f228bd50466cb5ad63b90b3ebc812381e6a69fef8d243243fbe848961
-matches outcomes, both stdout files and session logs. The public runtime header
-[BKSEventFocusIPCInterface](https://github.com/nst/iOS-Runtime-Headers/blob/9b00d90cdccdc95b8029441919bcfb7fb44c8816/protocols/BKSEventFocusIPCInterface.h)
-declares flush(NSSet), but this cache's actual invocation is still unobserved.
-Next exact run [39433710099](https://github.com/taowen/arlinux-xnu/actions/runs/39433710099),
-source 0e810ff4c948bcfdd3a74a5f88f6eafcef12ca28, captures the original live app
-after readiness, real Wayland activation changes and actual CARender exports.
-Continue that handle while live; no pixel/input/lifecycle pass is claimed.
+The coordinate fix uses genuine CGContextTranslateCTM/ScaleCTM once per bitmap
+context; the upright PNG above verifies it. Next candidate adds a bounded
+UIKit recursiveDescription capture on its normal main run loop, only when
+runner frame evidence is explicitly enabled. It does not change layout or
+invoke control actions. No next run has been dispatched yet.
+
+Scene-frame codec evidence: run 39437411133, receipt
+862d641fc074e2e8f0fc68498339cf2c06500ff591fb61b6c9799925a894227a.
+Rectangle archive references at Foundation commit
+[b40c41e](https://github.com/swiftlang/swift-corelibs-foundation/tree/b40c41e73612385c24be821bdfe95a67fdb157a5):
+NSGeometry.swift, NSSpecialValue.swift and CoreFoundation/CFPropertyList.c.
+The actual iOS framework decoding and observed bounds validate this integration;
+community serialization definitions alone would not.
 
 Verified substrate milestones:
 
@@ -91,20 +92,11 @@ this handoff limited to current behavior, decisive evidence and next blockers.
 
 ## Exact evidence and inputs
 
-Latest failure evidence is run 39422532342; downloaded ordinary runtime,
-original-process attach and session logs match its receipt. Receipt SHA-256:
-`1cf16c75faaf3d4f84f704fb1b05a53e954803bc9a20da94bc23761afa150eaf`.
-
-| Artifact | SHA-256 |
-| --- | --- |
-| app.runtime.log | `611f982fef91da7ea1e88b2e263b406315e65b7bc26cab38321cdc2f8dcadcaf` |
-| ordinary-wait.log | `2771d975344a5db4554609cabb85a3b1bdfad64f74ab28fd3250e8ae2b559b69` |
-| session.log | `ed2cf1606d6e3dbdb0c18d2376f41cc4183115a1163423c721015d05ae5c4973` |
-
-Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
-iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain
-transient on runners, never workstation artifacts. ARHello Mach-O SHA-256:
-`4b346aa7dd998425990cb9ef282ddb7e5252b4d9d069b12c369d32d407f29b77`.
+The latest verified runtime receipt and screenshot hashes are above. Firmware
+identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 / iOS 12.5.7 /
+16H81. Apple executables, firmware, cache and cores remain transient on runners,
+never workstation artifacts. Current ARHello input SHA-256 is recorded in the
+exact run's app-input.json and receipt.
 Dependency commits and other input/output hashes belong to the exact run's
 receipts. Keep trial history in Actions/Git rather than a growing diary.
 

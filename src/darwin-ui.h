@@ -35,6 +35,25 @@ static void native_ui_geometry(void *object,const char *tag)
 }
 static void *native_ui_object(void *object,const char *selector)
 { return ((void *(*)(void *,void *))(uintptr_t)native_ui_api.message)(object,native_ui_selector(selector)); }
+static void native_ui_layout_description(void *window)
+{
+    /* Explicit runner evidence only. Read UIKit's own diagnostic view tree
+     * on its normal main run loop; never invoke control actions or alter layout.
+     * Limit text emitted by this runtime, and never call host stdio with guest TLS.
+     */
+    if (!native_ui_capture_path[0] || native_ui_sequence!=1) return;
+    void *selector=native_ui_selector("recursiveDescription");
+    if (!((signed char (*)(void *,void *,void *))(uintptr_t)native_ui_api.message)
+            (window,native_ui_selector("respondsToSelector:"),selector)) return;
+    void *description=((void *(*)(void *,void *))(uintptr_t)native_ui_api.message)(window,selector);
+    const char *text=description ? native_ui_object(description,"UTF8String") : NULL;
+    if (!text) return;
+    unsigned long length=0; while (length<8192 && text[length]) length++;
+    const char marker[]="UI_VIEW_TREE genuine UIKit recursiveDescription follows\n";
+    RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+    RAW(SYS_write,2,text,length,0,0,0);
+    RAW(SYS_write,2,"\n",1,0,0,0);
+}
 static void native_ui_capture(void *pixels,unsigned long bytes)
 {
     if (!native_ui_capture_path[0]) return;
@@ -101,6 +120,7 @@ static void native_ui_frame(void *observer,uint64_t activity,void *info)
             if (((signed char (*)(void *,void *))(uintptr_t)native_ui_api.message)(window,native_ui_selector("isHidden"))) continue;
             void *layer=native_ui_object(window,"layer");
             if (!layer) continue;
+            native_ui_layout_description(window);
             if (native_ui_sequence<2) {
                 native_ui_geometry(window,"UI_WINDOW_BOUNDS object=0x");
                 native_ui_geometry(layer,"UI_LAYER_BOUNDS object=0x");
