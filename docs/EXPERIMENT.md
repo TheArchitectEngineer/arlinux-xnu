@@ -13,8 +13,8 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39347374538](https://github.com/taowen/arlinux-xnu/actions/runs/39347374538),
-source `9ba56833f6f8bca0ce8e0b7284f23ae5c22f0410`, dyld job `118383295559`.
+[39348154790](https://github.com/taowen/arlinux-xnu/actions/runs/39348154790),
+source `94d1180ca38507ac4ce6c2a4f83caf6a368f75c7`, dyld job `118385803048`.
 UIKit submits actual background blocks to genuine libdispatch workers on Linux
 threads. LLDB sees _dispatch_root_queue_drain, _dispatch_worker_thread2 and
 _pthread_wqthread alongside CoreFoundation and QuartzCore initialization.
@@ -27,8 +27,9 @@ instead of returning INVALID_NAME for fake port 46. The previous stack-memory
 fault is absent in this run. The actual stop is an uncaught NSException from
 BKSDisplayServicesStart +436, through Foundation/CoreFoundation and
 UIApplicationMainPreparations, ending in libsystem_c abort at 0x1809bbf6c.
-The exception name/reason and the underlying display requirement still need
-to be captured; a missing display server must not be replaced by fake success.
+The actual throw-site object is decoded as NSInternalInconsistencyException:
+`backboardd isn't running -- or we couldn't talk to it -- result:10000003`.
+A missing display server must not be replaced by fake success.
 BackBoardServices display initialization is on the caller stack. No Linux
 window/display/input callback has passed. App status is 133 (SIGTRAP in abort).
 
@@ -82,50 +83,19 @@ standalone console regression is
 
 ### Current boundary and next action
 
-Dynamic Mach-port registration now passes on distinct Linux epoll queues:
-[39345466818](https://github.com/taowen/arlinux-xnu/actions/runs/39345466818),
-source `f684bcf10865f8607f431ac5a5474ea33394b662`. The next rejected request
-was EVFILT_WORKLOOP (-17), flags 5, fflags 0x111, with an actual guest-state
-address/mask/value. Current asynchronous requests use real debounce snapshots
-and eventfd readiness; ignored stale requests never synthesize a wake.
+The latest real app run, 39348154790, captures the actual exception at
+objc_exception_throw before abort, without injecting guest method calls.
+Its read-only decoder obtains NSException's name/reason offsets from the real
+class ivar metadata. The reason identifies the backboardd connection failure;
+normal application status remains 133, while LLDB_COMMAND_STATUS=0 means only
+that evidence collection completed. Both real-libSystem console journeys pass.
+No Linux display/input journey has passed.
 
-[39345907904](https://github.com/taowen/arlinux-xnu/actions/runs/39345907904),
-source `2939723de31e41eb6245ab7d62cc059b46eb31b3`, passes the first asynchronous
-request. The ordinary app attempt stops at the unimplemented activity-ID trap
-(43), PC 0x1808c9bf4. Its LLDB retry takes another interleaving and stops at
-owner discovery (fflags 0x91), PC 0x1808c33d0. Both are retained; no first
-workloop event delivery/callback has yet been observed. Both real-libSystem
-console launches pass.
-
-Current source follows XNU's assigned-name rule: low two port generation bits
-remain set (3), with generation increments of four. Dispatch temporarily uses
-these bits for state tags, then restores them for actual owner lookup. Owner
-discovery resolves a real live thread, defers worker consumption while another
-thread owns the drain, and wakes waiters on ownership end/thread exit.
-Activity IDs reserve unique ranges from a MAP_SHARED atomic allocator for the
-standalone compatibility machine, including its fork/COW children. This is not
-an Apple host-wide tracing namespace. This app regression completed:
-[39346614222](https://github.com/taowen/arlinux-xnu/actions/runs/39346614222),
-source `debda62ef7eaefb442c8c6befb570100e75a068a`.
-
-It passes activity-ID allocation and records DARWIN_EVENT_DELIVERY for queue
-0x3002167b0, one event, actual worker TID 0xd69. The ordinary run then faults
-in libdispatch; the LLDB retry takes another interleaving and stops earlier.
-Current source supplies real special-reply queues, yielding actual workloop
-ownership only when a receive must block, plus bounded waiting-process LLDB
-capture and disassembly/symbolication for the ordinary attempt's fault PC.
-Completed regression:
-[39347374538](https://github.com/taowen/arlinux-xnu/actions/runs/39347374538),
-source `9ba56833f6f8bca0ce8e0b7284f23ae5c22f0410`.
-
-This run repeats real workloop event delivery and both console journeys.
-LLDB shows the synchronous thread genuinely waiting in ipc_message/ppoll,
-while the main thread throws from BackBoardServices display initialization.
-The older 0x1808bf9d4 stack access is not seen in either attempt of this run;
-that is evidence for this journey, not proof against all lifetime races.
-The bounded LLDB helper and ordinary-fault PC capture run successfully
-(LLDB_COMMAND_STATUS=0); its forced-interruption branch has not yet been
-exercised by a genuinely hanging attempt. No job remains pending.
+The earlier special-reply fix (39347374538) establishes actual waiting in
+ipc_message/ppoll and workloop delivery. The older 0x1808bf9d4 stack access
+(39346614222) is absent in the later observed attempts; that is not proof
+against every lifetime race. Forced-interruption diagnostics still need an
+actual hanging-run validation. No run remains pending.
 
 Actual Mach message receipt uses send-time Linux sender identity, packed
 trailers, receive sequence and queued-message size negotiation. Workloop entry
@@ -134,9 +104,9 @@ list. First event delivery is observed; successful completion of its callback
 and message round trips remain unproven. Explicit
 SYNC_WAIT/SYNC_WAKE commands, full turnstile/priority inheritance, dynamic queue
 retirement, the workloop control syscall, complex/right-transfer IPC, display
-services, graphics and ARLinux integration remain incomplete. Next capture
-the actual NSException name/reason at objc_exception_throw and inspect the
-BKSDisplayServicesStart caller before adapting the real display path. Keep extending
+services, graphics and ARLinux integration remain incomplete. Next inspect
+the BKSDisplayServicesStart connection and required protocol before adapting
+the real display path. Keep extending
 the real ARHello journey; no isolated probe replaces UI acceptance.
 
 ABI sources: libpthread-330.250.2
@@ -164,9 +134,10 @@ Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
 never reached the button; the accepted run uses the actual macOS HID queue.
 
 Latest app failure receipt:
-`b6b7303acee39c431a9021d20428c195eda0c1293d7a0c8578fb9064f79eeb81`.
+`5d39707dc85a521361ff60719f3f333a97955fdd8a260af2f818a9d2f16df997`.
 Native runtime SHA-256: `6ce03a2b827f783c8d63f8da01e4a195ce8354e8e7ec6fc82fc105152ac55459`.
-Local text: build/runs/39347374538/dyld-job.log and native-SHA256SUMS. Both independent real-libSystem
+Local text: build/runs/39348154790/dyld-job.log. Native hash is unchanged
+from build/runs/39347374538/native-SHA256SUMS. Both independent real-libSystem
 console launches still complete. The earlier first worker run 39340039442
 reached the voucher assertion; its receipt is
 `71a285b07a8e6423117eaff487e91342f323db11930de04b66d431d6077c12e2`.
@@ -244,8 +215,10 @@ actually observed; a green probe never advances a later gate.
    only the relevant mode through `build.sh`; `both` explicitly runs all stages.
 3. Track the exact run ID and attempt. Inspect its status after interruptions;
    a local wait timeout is not grounds to dispatch another build.
-4. Inspect that run's Actions logs, exit/result and printed receipt/executable
-   hashes. Download a specific artifact only when its contents are needed for
+4. Use `build.sh report --run-id RUN_ID` for the existing run's failure,
+   exception, original fault and receipt/executable hashes; inspect raw logs
+   for causal details. See [diagnostic tool selection](DIAGNOSTICS.md).
+   Download a specific artifact only when its contents are needed for
    diagnosis or durable preservation, not as a routine workstation build step.
    Preserve failures; never relax checks to make an unfinished stage green.
 5. Replace the current handoff when the blocker changes. Update the table only
@@ -276,10 +249,3 @@ lose their binaries. Do not silently replace expired evidence with a new build.
 
 Git stores source, pins and this short handoff. Actions stores run history and
 logs. Artifacts store bytes and provenance. These roles should stay separate.
-
-The default `build.sh build` now selects the real kernel path. Standalone early
-diagnostics require `--diagnostics`; host/shim and bare-metal runs require their
-explicit modes. The VM startup task links the complete declared service graph and attempts
-execution. The former full-link job duplicated the exact same link and exited;
-it has been removed. Optional diagnostics do not turn failed kernel execution
-into a passing result.

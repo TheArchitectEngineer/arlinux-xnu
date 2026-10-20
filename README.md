@@ -33,6 +33,7 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 ./build.sh build --mode playcover  # same iOS binary, PlayCover conversion on macOS
 ./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
 ./build.sh status --run-id RUN_ID
+./build.sh report --run-id RUN_ID --job dyld-userland # concise diagnosis + raw logs
 ./build.sh download --run-id RUN_ID
 ```
 
@@ -43,6 +44,10 @@ the host/kernel/guest boundary.
 result proves, how to resume work and how evidence is retained. Dependencies are
 pinned in [sources.lock.json](sources.lock.json); run logs and artifacts live in
 [GitHub Actions](https://github.com/taowen/arlinux-xnu/actions/workflows/experiment.yml).
+
+[Diagnostic tool selection](docs/DIAGNOSTICS.md) explains how to investigate
+exceptions, waits and native execution without confusing a debugger retry with
+the ordinary application attempt.
 
 ## IPA sources for compatibility research
 
