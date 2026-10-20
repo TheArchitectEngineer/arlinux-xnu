@@ -85,6 +85,7 @@ def report(run_id, job_name):
         markers = ('APP_INPUT ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                    'DARLING_NATIVE_CONNECTED ', 'DARLING_RPC_ERROR ', 'DARLING_RPC_WAIT ',
                    'DARLINGSERVER_RPC_ONLY ',
+                   'DARLING_KQCHAN_OPEN ', 'DARLING_KQCHAN_EVENT ',
                    'GUEST_EXIT_STATUS ', 'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
                    'SERVICE_LOOKUP ', 'SERVICE_LOOKUP_LIMIT ',
                    'WAYLAND_BACKEND_READY ', 'NATIVE_SERVICE_ADAPTER ', 'DARWIN_DISPLAY_QUERY ',
@@ -103,6 +104,7 @@ def report(run_id, job_name):
                    'DYNAMIC_CONSOLE ', 'EXPERIMENT_RECEIPT ', 'EXPERIMENT_EXECUTABLE ')
         item['observations'] = []
         context_lengths = {'DARLING_NATIVE_CONNECTED ': 2,
+                           'DARLING_KQCHAN_OPEN ': 3, 'DARLING_KQCHAN_EVENT ': 5,
                            'DARWIN_EVENT_DELIVERY ': 3, 'DARWIN_NATIVE_FAULT ': 3,
                            'DARWIN_DISPLAY_QUERY ': 3, 'DARWIN_RENDER_DISPLAY_LIST ': 3,
                            'DARWIN_RENDER_PROPERTIES ': 4, 'DARWIN_TIMER_OPERATION ': 6,

@@ -11,6 +11,7 @@ struct native_knote {
     struct darwin_kevent_qos event;
     int used,fd,enabled; uint32_t generation,memory_state;
 };
+#include "darling-kqueue.h"
 struct native_kqueue {
     int used,fd,worker,owner_tid;
     uint64_t dynamic_id; uint32_t priority,client_owner,ownership_epoch;
@@ -87,7 +88,6 @@ static long native_kqueue_create(void)
 }
 static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent_qos *event)
 {
-    if (darling_active && event->filter==D_EVFILT_MACHPORT) return -ENOTSUP; /* requires a real kqchan */
     if (event->xflags || (event->flags&~(D_EV_ADD|D_EV_DELETE|D_EV_ENABLE|D_EV_DISABLE|
         D_EV_ONESHOT|D_EV_CLEAR|D_EV_RECEIPT|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC|D_EV_VANISHED))) return -ENOTSUP;
     /* UDATA-specific memory sources have separate subscriptions and ordinary
@@ -97,7 +97,7 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
         event->filter!=D_EVFILT_MACHPORT) return -ENOTSUP;
     if ((event->flags&D_EV_VANISHED) && (event->filter!=D_EVFILT_MACHPORT ||
         (event->flags&(D_EV_UDATA_SPECIFIC|D_EV_DISPATCH))!=(D_EV_UDATA_SPECIFIC|D_EV_DISPATCH))) return -ENOTSUP;
-    if (event->filter==D_EVFILT_MACHPORT &&
+    if (!darling_active && event->filter==D_EVFILT_MACHPORT &&
         (!ipc_receive_options(event->fflags) || event->ext[2] || event->ext[3])) return -ENOTSUP;
     if (event->filter==D_EVFILT_MEMORYSTATUS &&
         (event->ident || (event->fflags&~(D_MEMORY_NORMAL|D_MEMORY_WARN|D_MEMORY_CRITICAL|
@@ -173,6 +173,9 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
         long fd;
         switch (event->filter) {
         case D_EVFILT_MACHPORT: {
+#ifdef ARLINUX_DARLING
+            if (darling_active) { fd=darling_kq_open(event); break; }
+#endif
             struct ipc_endpoint *endpoint=ipc_find(event->ident);
             if (!endpoint || endpoint->kind) return -ENOENT;
             fd=RAW(SYS_fcntl,endpoint->read_fd,F_DUPFD_CLOEXEC,0,0,0,0); break;
@@ -204,6 +207,11 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
             if (result!=(long)sizeof(token)) error=result<0 ? result : -EIO;
         }
     } else if (event->filter==D_EVFILT_MACHPORT && (event->flags&D_EV_ADD)) {
+#ifdef ARLINUX_DARLING
+        if (darling_active && !fresh && (event->fflags!=note->event.fflags ||
+            event->ext[0]!=note->event.ext[0] || event->ext[1]!=note->event.ext[1]))
+            error=darling_kq_modify(note->fd,event);
+#endif
         note->event.fflags=event->fflags;
         for (unsigned int i=0;i<4;i++) note->event.ext[i]=event->ext[i];
     } else if (event->filter==D_EVFILT_MEMORYSTATUS && (event->flags&D_EV_ADD)) {
@@ -371,6 +379,28 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
             event.flags&=D_EV_ONESHOT|D_EV_CLEAR|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC;
             if (events[i].events&(EPOLLHUP|EPOLLRDHUP)) event.flags|=D_EV_EOF;
             if (event.filter==D_EVFILT_MACHPORT) {
+#ifdef ARLINUX_DARLING
+                if (darling_active) {
+                    uint64_t before=data ? data->remaining : 0,residual=before;
+                    long ready=darling_kq_read(note->fd,&event,data ? data->address : 0,
+                                              before,data ? data->stack : 0,&residual);
+                    if (ready<0) { native_kqueue_unlock(); return ready; }
+                    if (data && ready) {
+                        if (!data->stack) data->address+=before-residual;
+                        data->remaining=residual;
+                    }
+                    if (!ready) {
+                        struct epoll_event ep={.events=EPOLLIN};
+                        if (note->event.flags&D_EV_CLEAR) ep.events|=EPOLLET;
+                        if (note->event.flags&(D_EV_ONESHOT|D_EV_DISPATCH)) ep.events|=EPOLLONESHOT;
+                        ep.data.u64=((uint64_t)note->generation<<32)|index;
+                        long rearm=RAW(SYS_epoll_ctl,queue->fd,EPOLL_CTL_MOD,note->fd,&ep,0,0);
+                        if (rearm) { native_kqueue_unlock(); return rearm; }
+                        continue;
+                    }
+                } else
+#endif
+                {
                 struct ipc_endpoint *endpoint=ipc_find(event.ident);
                 if (!endpoint || endpoint->kind) {
                     event.flags|=D_EV_VANISHED|D_EV_ONESHOT;
@@ -429,6 +459,7 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
                         event.flags|=D_EV_VANISHED|D_EV_ONESHOT;
                         event.fflags=0; event.data=0;
                     } else if (size<0) { native_kqueue_unlock(); return size; }
+                }
                 }
             } else if (event.filter==D_EVFILT_TIMER || event.filter==D_EVFILT_MEMORYSTATUS ||
                 event.filter==D_EVFILT_WORKLOOP || (event.filter==D_EVFILT_USER &&

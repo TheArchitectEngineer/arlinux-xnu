@@ -16,7 +16,7 @@
   "guestPageSize": 16384,
   "darlingIpc": {
     "repository": "taowen/darling",
-    "commit": "7731e42a15a31db25715011e3d27455d32fb7492",
+    "commit": "c08e3817a0730a608906d2f452c9290af3be59dd",
     "upstreamRepository": "VibeDarling/darling",
     "upstreamCommit": "47cd6dc7aa0e16596777ad189dddc6e75c3de4ba",
     "path": "third_party/darling",
