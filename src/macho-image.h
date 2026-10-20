@@ -9,6 +9,9 @@
 #define NT_ARM_SYSTEM_CALL 0x404
 #define CARRY (1UL<<29)
 #define MAX_SEGMENTS 32
+/* The canonical cache spans 6-10 GiB; keep its interpreter above that and
+ * the runtime low-address heap. Mapping collisions still fail via NOREPLACE. */
+#define NATIVE_INTERPRETER_BASE 0x400000000ULL
 struct header { uint32_t magic,cpu,subtype,type,ncmds,sizeofcmds,flags,reserved; };
 struct command { uint32_t cmd,size; };
 struct segment {
@@ -40,7 +43,7 @@ static void load_image(const char *path,struct image *im,int dynamic) {
          (h.type==2 || (dynamic && h.type==7)),
          "only little-endian ARM64 non-arm64e executable/dylinker is supported");
     im->filetype=h.type;
-    im->slide=h.type==7 ? 0x200000000ULL : 0;
+    im->slide=h.type==7 ? NATIVE_INTERPRETER_BASE : 0;
     need(h.ncmds<=256 && range(sizeof(h),h.sizeofcmds,im->size),"invalid load commands");
     uint64_t pos=sizeof(h),commands_end=pos+h.sizeofcmds,entryoff=UINT64_MAX,thread_entry=0;
     int signature_seen=0;

@@ -23,7 +23,7 @@ static void die(const char *message)
 }
 static void need(int ok,const char *message)
 {
-    if (!ok) { errno=0; die(message); }
+    if (!ok) { fprintf(stderr,"ERROR %s\n",message);exit(1); }
 }
 #include "native-display.h"
 #include "macho-image.h"

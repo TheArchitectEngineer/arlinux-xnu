@@ -1,6 +1,6 @@
-/* Native, process-private loader for the legacy non-arm64e iOS cache.
- * Format reference: apple-oss-distributions/dyld, dyld-655.1,
- * dyld3/shared-cache/dyld_cache_format.h and SharedCacheRuntime.cpp.
+/* Native, process-private loader for non-arm64e ARM64 split shared caches.
+ * Format reference: apple-oss-distributions/dyld include/mach-o/dyld_cache_format.h
+ * and SharedCacheRuntime.cpp. Membership, UUIDs and VM/slide tables come from data.
  * This implements mapping/relocation, not Apple's signature authentication.
  * The selected firmware's SHA-256 is verified by runner input preparation.
  * Consumers supply need(), range(), PAGE16 and rewrite_instruction_words(). */
@@ -15,12 +15,14 @@ struct cache_slide2 {
     uint32_t version,page_size,starts_offset,starts_count,extras_offset,extras_count;
     uint64_t delta_mask,value_add;
 };
-static struct cache_map cache_maps[3];
+enum { CACHE_MAX_FILES=128,CACHE_MAX_MAPS=512 };
+static struct cache_map cache_maps[CACHE_MAX_MAPS];
+static unsigned int cache_map_count;
 static unsigned int cache_service_hooks;
 static int native_framework_services_enabled;
 static int cache_contains(uint64_t address,uint64_t length,uint32_t protection)
 {
-    for (unsigned int i=0;i<3;i++) {
+    for (unsigned int i=0;i<cache_map_count;i++) {
         const struct cache_map *m=cache_maps+i;
         if ((m->prot&protection)==protection && address>=m->address &&
             range(address-m->address,length,m->size)) return 1;
@@ -53,71 +55,18 @@ static void cache_relocate_chain(unsigned char *page,uint32_t offset,
     }
     need(0,"unterminated cache pointer chain");
 }
+#include "dyld-cache-storage.h"
 static uint64_t load_native_cache(const char *root)
 {
     char path[8192];
     int length=snprintf(path,sizeof(path),"%s/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64",root);
     need(length>0 && (size_t)length<sizeof(path),"cache path length");
-    int fd=open(path,O_RDONLY|O_CLOEXEC); if (fd<0) die("open real iOS shared cache");
-    struct stat status; if (fstat(fd,&status)) die("stat real iOS shared cache");
-    need(status.st_size>=16384 && (uint64_t)status.st_size<=(1ULL<<32),"cache file size");
-    uint64_t size=status.st_size;
-    const unsigned char *file=mmap(NULL,size,PROT_READ,MAP_PRIVATE,fd,0);
-    if (file==MAP_FAILED) die("read cache metadata");
-    struct cache_prefix header; memcpy(&header,file,sizeof(header));
-    need(!memcmp(header.magic,"dyld_v1   arm64",sizeof("dyld_v1   arm64")),
-         "only legacy non-arm64e ARM64 shared cache is supported");
-    need(header.mappings_count==3 && header.images_count>0 && header.images_count<=16384 &&
-         range(header.mappings_offset,sizeof(cache_maps),size) &&
-         range(header.images_offset,(uint64_t)header.images_count*sizeof(struct cache_image),size) &&
-         range(header.slide_offset,header.slide_size,size) &&
-         header.slide_size>=sizeof(struct cache_slide2),"cache table bounds");
-    memcpy(cache_maps,file+header.mappings_offset,sizeof(cache_maps));
-    for (unsigned int i=0;i<3;i++) {
-        struct cache_map *m=cache_maps+i;
-        need(m->size && !(m->size&(PAGE16-1)) && !(m->address&(PAGE16-1)) &&
-             !(m->offset&(PAGE16-1)) && range(m->offset,m->size,size) &&
-             m->address>=0x10000 && range(m->address,m->size,0x0000800000000000ULL) &&
-             !(m->prot&~7U) && !(m->prot&2 && m->prot&4),"cache mapping geometry/protection");
-        if (i) need(cache_maps[i-1].address+cache_maps[i-1].size<=m->address,
-                    "overlapping cache mappings");
-        /* Never execute code while rewriting it. Every region is private. */
-        int initial=(m->prot&4) ? PROT_READ|PROT_WRITE : m->prot;
-        void *mapped=mmap((void *)m->address,m->size,initial,MAP_PRIVATE|MAP_FIXED_NOREPLACE,fd,m->offset);
-        if (mapped==MAP_FAILED) die("map actual shared cache");
-        fprintf(stderr,"NATIVE_CACHE_MAP address=%#" PRIx64 " bytes=%#" PRIx64 " prot=%u\n",
-                m->address,m->size,m->prot);
-    }
-    close(fd);
-    need(cache_maps[0].prot==5 && cache_maps[1].prot==3 && cache_maps[2].prot==1,
-         "expected legacy text/data/linkedit cache");
-    struct cache_slide2 slide; memcpy(&slide,file+header.slide_offset,sizeof(slide));
-    need(slide.version==2 && (slide.page_size==4096 || slide.page_size==16384) &&
-         slide.delta_mask && __builtin_ctzll(slide.delta_mask)>=2 &&
-         range(slide.starts_offset,(uint64_t)slide.starts_count*2,header.slide_size) &&
-         range(slide.extras_offset,(uint64_t)slide.extras_count*2,header.slide_size) &&
-         (uint64_t)slide.starts_count*slide.page_size<=cache_maps[1].size,
-         "unsupported or invalid cache slide info");
-    uint64_t mask=slide.delta_mask>>__builtin_ctzll(slide.delta_mask);
-    need(!(mask&(mask+1)),"noncontiguous cache delta mask");
-    const unsigned char *starts=file+header.slide_offset+slide.starts_offset;
-    const unsigned char *extras=file+header.slide_offset+slide.extras_offset;
-    for (uint32_t i=0;i<slide.starts_count;i++) {
-        uint16_t entry=cache_u16(starts+i*2);
-        if (entry==0x4000) continue;
-        unsigned char *page=(void *)(cache_maps[1].address+(uint64_t)i*slide.page_size);
-        if (!(entry&0x8000)) cache_relocate_chain(page,(uint32_t)entry*4,&slide);
-        else {
-            uint32_t index=entry&0x3fff;
-            for (;;) {
-                need(index<slide.extras_count,"cache extra chain bounds");
-                uint16_t chain=cache_u16(extras+index*2);
-                cache_relocate_chain(page,(chain&0x3fff)*4,&slide);
-                index++;
-                if (chain&0x8000) break;
-            }
-        }
-    }
+    cache_open_members(path);cache_map_members();cache_rebase_members();
+    const struct cache_file *primary=cache_files;
+    const unsigned char *file=primary->bytes;uint64_t size=primary->size;
+    struct cache_prefix header=primary->header.common;
+    header.images_offset=primary->header.images_offset;header.images_count=primary->header.images_count;
+    need(header.images_count && header.images_count<=16384 && range(header.images_offset,(uint64_t)header.images_count*sizeof(struct cache_image),size),"cache image index bounds");
     /* Cache images may alias the same Mach-O. Adapt each image only once so a
      * rewritten TSD read cannot be mistaken for an original CPU metadata read. */
     uint64_t render_start=0,render_get_port=0;
@@ -142,6 +91,7 @@ static uint64_t load_native_cache(const char *root)
              mh.type==6 && mh.ncmds<=256 && cache_contains(image.address,sizeof(mh)+mh.sizeofcmds,1),
              "unsupported cached Mach-O");
         uint64_t pos=sizeof(mh),end=pos+mh.sizeofcmds;
+        uint64_t linkedit_address=0,linkedit_offset=0,linkedit_size=0;
         for (uint32_t n=0;n<mh.ncmds;n++) {
             need(range(pos,sizeof(struct command),end),"cache command bounds");
             struct command command; memcpy(&command,bytes+pos,sizeof(command));
@@ -152,6 +102,7 @@ static uint64_t load_native_cache(const char *root)
                 struct segment segment; memcpy(&segment,bytes+pos,sizeof(segment));
                 need(segment.nsects<=128 && range(sizeof(segment),(uint64_t)segment.nsects*sizeof(struct section64),command.size),
                      "cache section table bounds");
+                if (!memcmp(segment.name,"__LINKEDIT",10)) { linkedit_address=segment.address;linkedit_offset=segment.offset;linkedit_size=segment.filesize; }
                 if (segment.prot&4) for (uint32_t k=0;k<segment.nsects;k++) {
                     struct section64 section;
                     memcpy(&section,bytes+pos+sizeof(segment)+(uint64_t)k*sizeof(section),sizeof(section));
@@ -172,14 +123,18 @@ static uint64_t load_native_cache(const char *root)
                 int base_image=!strcmp((const char *)file+image.path_offset,"/System/Library/PrivateFrameworks/BaseBoard.framework/BaseBoard");
                 if (xpc_image || render_image || ui_image || (diagnostic_exports && (scene_image || base_image))) {
                     uint32_t table[4]; memcpy(table,bytes+pos+8,sizeof(table));
-                    need(range(table[0],(uint64_t)table[1]*16,size) && range(table[2],table[3],size),
-                         "cache service symbol bounds");
+                    need(linkedit_address && table[0]>=linkedit_offset && table[2]>=linkedit_offset &&
+                         range(table[0]-linkedit_offset,(uint64_t)table[1]*16,linkedit_size) &&
+                         range(table[2]-linkedit_offset,table[3],linkedit_size),"cache image linkedit symbol bounds");
+                    const unsigned char *symbols=(void *)(linkedit_address+table[0]-linkedit_offset);
+                    const unsigned char *strings=(void *)(linkedit_address+table[2]-linkedit_offset);
+                    need(cache_contains((uintptr_t)symbols,(uint64_t)table[1]*16,1) && cache_contains((uintptr_t)strings,table[3],1),"cache mapped symbol bounds");
                     for (uint32_t k=0;k<table[1];k++) {
-                        const unsigned char *symbol=file+table[0]+(uint64_t)k*16;
+                        const unsigned char *symbol=symbols+(uint64_t)k*16;
                         uint32_t name; uint64_t address;
                         memcpy(&name,symbol,4); memcpy(&address,symbol+8,8);
                         if (name>=table[3] || symbol[4]&0xe0 || (symbol[4]&0xe)!=0xe || !symbol[5]) continue;
-                        const char *text=(const char *)file+table[2]+name;
+                        const char *text=(const char *)strings+name;
                         need(memchr(text,0,table[3]-name)!=NULL,"cache symbol name termination");
                         ios_framework_bind(&ui_api,(const char *)file+image.path_offset,text,address);
                         if (render_image) {
@@ -221,12 +176,12 @@ static uint64_t load_native_cache(const char *root)
     }
     need(!native_framework_services_enabled || cache_service_hooks==3,"exact service registry adapter symbols unavailable");
     need(!native_framework_services_enabled || cache_bootstrap_policy_hooks==1,"unsupported bootstrap trust predicate layout");
-    for (unsigned int i=0;i<3;i++) {
+    for (unsigned int i=0;i<cache_map_count;i++) {
         struct cache_map *m=cache_maps+i;
         if (m->prot&4) __builtin___clear_cache((void *)m->address,(void *)(m->address+m->size));
         if (mprotect((void *)m->address,m->size,m->prot)) die("final cache protection");
     }
-    munmap((void *)file,size);
+    for (unsigned int i=0;i<cache_file_count;i++) { munmap((void *)cache_files[i].bytes,cache_files[i].size);close(cache_files[i].fd); }
     fprintf(stderr,"NATIVE_CACHE_READY base=%#" PRIx64 " images=%zu tls_instructions=%zu slide=0 signature_authentication=disabled\n",
             cache_maps[0].address,images,rewritten);
     return cache_maps[0].address;
