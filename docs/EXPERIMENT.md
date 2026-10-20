@@ -19,10 +19,10 @@ and two cross-app scenarios; a selected subset cannot certify the whole suite.
 
 ## Latest verified Linux result
 
-Run [39499951516](https://github.com/taowen/arlinux-xnu/actions/runs/39499951516),
-source **fb255ac6cafcb852c7952413c8a8ac664e909208**, selected Console, Counter,
+Run [39501339522](https://github.com/taowen/arlinux-xnu/actions/runs/39501339522),
+source **0172b0c377eff295613fd62ec7c56649470eb95b**, selected Console, Counter,
 Foundation and SwiftCards. Receipt SHA-256
-**baea597d8ddae4dfb95a5cb2511c1d7e4ca4e69a773f913ea6728f2a03051e81**
+**6df270f5f13eb0fc620bf5f74ff47745e38f8ef29363e65b945d0ba2937f5b28**
 and all 43 retained file hashes were verified. This is partial coverage and the
 run fails GUI acceptance.
 
@@ -43,6 +43,20 @@ run fails GUI acceptance.
   CodeDirectory inspection supplies actual coverage without signature trust;
   repeated synchronous kevent wake preserves real owner updates and wakeups.
   Actual receipt/rights ownership remains in Darling/XNU, not a mock IPC path.
+
+The version-2 platform API is compiled and exercised by the real injected
+library. Counter reads the actual host window as 1024 x 600, 60000 mHz, configured,
+active and backend-alive (flags 11), with its audited PID/incarnation. Explicit
+host close propagation is implemented in the snapshot but has not been exercised
+by a passing close journey. No UIKit transition is inferred from these facts.
+
+Loaded metadata disproves the historical FBSUIApplicationWorkspace,
+FBSWorkspaceClient and FBSSceneImpl interfaces: those classes are absent.
+FBSScene instead declares
+_initWithUpdater:identityToken:identity:specification:settings:initialClientSettings:.
+UIApplication declares workspace:didCreateScene:withTransitionContext:completion:.
+The next focused diagnosis establishes the real scene identity/settings objects
+and initializer behavior before connecting that framework boundary.
 
 ## Direction and next implementation
 

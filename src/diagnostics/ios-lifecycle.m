@@ -30,6 +30,14 @@ static int lifecycle_method(const char *name)
         strstr(name,"delegate") || strstr(name,"Delegate") ||
         strstr(name,"Scene") || strstr(name,"scene") ||
         strstr(name,"workspace") || strstr(name,"Workspace") ||
+        strstr(name,"Identity") || strstr(name,"identity") ||
+        strstr(name,"Settings") || strstr(name,"settings") ||
+        strstr(name,"Specification") || strstr(name,"specification") ||
+        strstr(name,"Transition") || strstr(name,"transition") ||
+        strstr(name,"Display") || strstr(name,"display") ||
+        strstr(name,"Frame") || strstr(name,"frame") ||
+        strstr(name,"Foreground") || strstr(name,"foreground") ||
+        strstr(name,"Orientation") || strstr(name,"orientation") ||
         !strcmp(name,"_clientClass") || !strcmp(name,"parametersForSpecification:");
 }
 static void describe_methods(Class cls,int meta)
@@ -40,8 +48,8 @@ static void describe_methods(Class cls,int meta)
         const char *name=sel_getName(method_getName(methods[i]));
         if (!name || !lifecycle_method(name)) continue;
         const char *types=method_getTypeEncoding(methods[i]);
-        fprintf(stderr,"IOS_LIFECYCLE_ABI class=%.96s kind=%c selector=%.160s types=%.256s\n",
-            class_getName(cls),meta ? '+' : '-',name,types ? types : "<absent>");
+        fprintf(stderr,"IOS_LIFECYCLE_ABI class=%.96s kind=%c selector=%.160s types=%.256s implementation=%p\n",
+            class_getName(cls),meta ? '+' : '-',name,types ? types : "<absent>",(void *)method_getImplementation(methods[i]));
         emitted++;
     }
     free(methods);
@@ -50,10 +58,13 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
 {
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
     if (!enabled || strcmp(enabled,"1")) return;
-    const char *classes[]={"FBSWorkspace","FBSUIApplicationWorkspace","FBSWorkspaceClient",
-        "FBSScene","FBSSceneImpl","FBSSceneParameters","FBSMutableSceneParameters",
+    const char *classes[]={"FBSWorkspace","FBSScene","FBSSceneParameters","FBSMutableSceneParameters",
+        "FBSSceneIdentity","FBSSceneIdentityToken","FBSSceneDefinition","FBSMutableSceneDefinition",
+        "FBSSceneSpecification","FBSSceneSettings","FBSMutableSceneSettings",
+        "FBSSceneClientSettings","FBSMutableSceneClientSettings","FBSSceneTransitionContext",
         "UIApplicationSceneSpecification","UIApplicationSceneSettings",
-        "UIMutableApplicationSceneSettings","UIApplicationSceneClientSettings","UIApplication"};
+        "UIMutableApplicationSceneSettings","UIApplicationSceneClientSettings",
+        "UIMutableApplicationSceneClientSettings","UIApplicationSceneTransitionContext","UIApplication"};
     for (unsigned int i=0;i<sizeof(classes)/sizeof(*classes);i++) {
         Class cls=objc_getClass(classes[i]);
         if (!cls) { fprintf(stderr,"IOS_LIFECYCLE_CLASS_UNAVAILABLE class=%s\n",classes[i]); continue; }

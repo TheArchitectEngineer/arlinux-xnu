@@ -116,6 +116,11 @@ class Processes:
         for item in self.processes.values():
             runtime = Path(item['runtime'])
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
+            if self.environment.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1':
+                for image,symbol in [
+                    ('FrontBoardServices','-[FBSScene _initWithUpdater:identityToken:identity:specification:settings:initialClientSettings:]'),
+                    ('UIKitCore','-[UIApplication workspace:didCreateScene:withTransitionContext:completion:]')]:
+                    arguments.extend(['--lookup',f'/System/Library/PrivateFrameworks/{image}.framework/{image}',symbol])
             if 'DARLING_UNHANDLED_SERVICE_INLINE' in runtime.read_text(errors='replace'):
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZL14query_displaysv'])
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZN2CA7Display7Display6updateEv'])
