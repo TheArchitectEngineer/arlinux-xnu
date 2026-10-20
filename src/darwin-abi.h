@@ -3,7 +3,7 @@
  * XNU bsd/kern/syscalls.master, bsd/sys/{errno,fcntl,mman,stat,ulock}.h;
  * osfmk/kern/syscall_sw.c, mach/{kern_return,message}.h and mach/{mach_host,task}.defs,
  * arm/cpu_capabilities.h; libpthread-330.250.2 kern/kern_internal.h.
- * Repository pins/reference commits are recorded in docs/EXPERIMENT.md.
+ * Imported source identities are recorded in components/darling/ORIGINS.json.
  * MIG IDs below describe the observed legacy iOS ABI, not a kernel version
  * detection table. Add an interface name and source when extending this file.
  */

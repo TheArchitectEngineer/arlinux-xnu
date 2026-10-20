@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "extension-payload-retire-restart",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "share"
+        },
+        {
+          "do": "click",
+          "text": "^Send$"
+        },
+        {
+          "do": "click",
+          "text": "^EchoExtension$"
+        },
+        {
+          "do": "see",
+          "text": "payload-42"
+        },
+        {
+          "do": "helper",
+          "app": "share"
+        },
+        {
+          "do": "click",
+          "text": "^Reply$"
+        },
+        {
+          "do": "see",
+          "text": "Echo: ?payload-42"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "share"
+        },
+        {
+          "do": "helper-exit",
+          "app": "share"
+        },
+        {
+          "do": "launch",
+          "app": "share"
+        },
+        {
+          "do": "click",
+          "text": "^Send$"
+        },
+        {
+          "do": "click",
+          "text": "^EchoExtension$"
+        },
+        {
+          "do": "see",
+          "text": "payload-42"
+        },
+        {
+          "do": "helper",
+          "app": "share"
+        },
+        {
+          "do": "click",
+          "text": "^Reply$"
+        },
+        {
+          "do": "see",
+          "text": "Echo: ?payload-42"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "share"
+        },
+        {
+          "do": "helper-exit",
+          "app": "share"
+        }
+      ]
+    }
+  ]
+}

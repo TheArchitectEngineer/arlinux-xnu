@@ -1,0 +1,23 @@
+{
+  "id": "share",
+  "name": "Share",
+  "version": "1.0",
+  "kind": "application",
+  "language": "objc",
+  "source": "main.m",
+  "frameworks": [
+    "UIKit"
+  ],
+  "helpers": [
+    {
+      "name": "EchoExtension",
+      "source": "EchoExtension.m",
+      "frameworks": [
+        "UIKit"
+      ],
+      "kind": "extension",
+      "principalClass": "EchoExtension",
+      "point": "com.apple.share-services"
+    }
+  ]
+}

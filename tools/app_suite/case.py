@@ -29,6 +29,7 @@ class Case(Processes,Desktop):
         if action == 'launch':
             self.launch(name)
         elif action == 'stdout':
+            if self.apps[name]['kind']!='console': raise RuntimeError('GUI effects require composed pixels')
             item=self.processes[name]; deadline=time.monotonic()+8
             while step['text'] not in Path(item['stdout']).read_text(errors='replace'):
                 self.guard()
@@ -88,9 +89,9 @@ class Case(Processes,Desktop):
         elif action == 'helper':
             matches = self.helper_processes(name)
             if len(matches) != 1 or matches[0] == self.processes[name]['identity']:
-                raise RuntimeError('No unique independent XPC helper in this compatibility session')
+                raise RuntimeError('No unique independent extension helper in this compatibility session')
             if any(old['identity'] == matches[0] for old in self.helpers):
-                raise RuntimeError('XPC relaunch reused the old helper generation')
+                raise RuntimeError('Extension relaunch reused the old helper generation')
             record = {'app': name, 'identity': matches[0], 'binarySHA256': sha(ROOT / self.apps[name]['helper'])}
             self.helpers.append(record)
             self.steps[-1]['helper'] = record
@@ -98,7 +99,7 @@ class Case(Processes,Desktop):
             deadline = time.monotonic() + 5
             while self.helper_processes(name):
                 if time.monotonic() >= deadline:
-                    raise RuntimeError('XPC helper survived normal application close')
+                    raise RuntimeError('Extension helper survived normal application close')
                 time.sleep(.1)
         elif action == 'crash':
             item = self.processes[name]

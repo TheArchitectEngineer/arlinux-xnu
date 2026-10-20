@@ -3,7 +3,7 @@
 #include <sys/mman.h>
 static void *compute(void *value) { *(int *)value=42; return (void *)37; }
 @interface WorkersDelegate : UIResponder <UIApplicationDelegate>
-@property(strong) UIWindow *window; @property(strong) UILabel *result;
+@property(nonatomic,strong) UIWindow *window; @property(nonatomic,strong) UILabel *result;
 @end
 @implementation WorkersDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {

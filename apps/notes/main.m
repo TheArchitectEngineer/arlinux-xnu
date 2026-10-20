@@ -1,6 +1,6 @@
 #import "../shared/Screen.h"
 @interface NotesDelegate : UIResponder <UIApplicationDelegate>
-@property(strong) UIWindow *window; @property(strong) UILabel *result; @property(strong) UITextField *field;
+@property(nonatomic,strong) UIWindow *window; @property(nonatomic,strong) UILabel *result; @property(nonatomic,strong) UITextField *field;
 @end
 @implementation NotesDelegate
 - (NSURL *)noteURL {

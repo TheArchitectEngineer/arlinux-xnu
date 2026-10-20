@@ -26,7 +26,7 @@ for app in products['apps']:
     shutil.copytree(original,bundle)
     platform=bundle/'libarlinux-ios.dylib'
     if platform.exists():platform.unlink()
-    for binary in [bundle/app['name'],*[bundle/'XPCServices'/(h['name']+'.xpc')/h['name'] for h in app.get('helpers',[])]]:
+    for binary in [bundle/app['name'],*[bundle/'PlugIns'/(h['name']+'.appex')/h['name'] for h in app.get('helpers',[])]]:
         run(OUT/'convert',binary);binary.chmod(0o755)
     info=plistlib.loads((bundle/'Info.plist').read_bytes());info['LSMinimumSystemVersion']='11.0'
     (bundle/'Info.plist').write_bytes(plistlib.dumps(info))

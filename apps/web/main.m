@@ -1,7 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <WebKit/WebKit.h>
 @interface WebDelegate : UIResponder <UIApplicationDelegate>
-@property(strong) UIWindow *window; @property(strong) WKWebView *web;
+@property(nonatomic,strong) UIWindow *window; @property(nonatomic,strong) WKWebView *web;
 @end
 @implementation WebDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {

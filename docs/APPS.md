@@ -18,13 +18,13 @@ pinned firmware. apps/shared/Screen.h is fixture UI layout, never a runtime shim
 | Network | Objective-C / NSURLSession, HTTP, JSON, main queue | Genuine socket request logged by local HTTP peer plus visible answer 42 |
 | Web | Objective-C / WKWebView, WebKit helper/rendering, JavaScript, DOM | Actual DOM click changes WebCount 0 -> 1 in composed pixels |
 | SwiftCards | Swift 5 language / UIKit, generics, closures, Objective-C action dispatch | Real Deal click computes 6; close/relaunch resets state |
-| Services | Objective-C / selected firmware's private XPC extension | App requests bundled service, payload round trip, independent PID, retirement/restart |
+| Share | Objective-C / UIActivityViewController, NSItemProvider, NSExtensionContext | App requests bundled iOS sharing extension; payload round trip, independent PID, retirement/restart |
 
 Console programs are Darwin bottom-layer apps, not normal home-screen iOS apps.
 In particular fork is not an ordinary iOS App Store lifecycle requirement. They
-do not certify UIKit. The Services private declarations are intentionally local
-to that one platform-extension app; they are not a fabricated general-purpose SDK.
-Normal app coverage uses the public SDK.
+do not certify UIKit. Sharing uses the actual public iOS extension APIs. The retired macOS-only
+initWithServiceName/serviceListener fixture and its private declarations were
+removed after the real iOS SDK rejected them; no availability bypass is used.
 
 Current firmware uses UIApplicationDelegate, not iOS 13 scene delegates. Swift
 and SwiftUI are different axes: [Swift 5 runtime shipped with iOS 12.2](https://www.swift.org/blog/abi-stability-and-apple/),

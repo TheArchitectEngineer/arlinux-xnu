@@ -10,7 +10,7 @@ from .context import ROOT,command,sha,identity
 class Processes:
     def helper_processes(self, name):
         if self.reference:
-            raise RuntimeError('Private iOS service lifecycle is not certified by the Apple-host reference')
+            raise RuntimeError('iOS extension process identity is not certified by the Apple-host reference')
         binary = str(ROOT / self.apps[name]['helper'])
         matches = []
         for proc in Path('/proc').iterdir():
@@ -20,7 +20,7 @@ class Processes:
                 arguments = (proc / 'cmdline').read_bytes().split(b'\0')
                 if binary.encode() not in arguments:
                     continue
-                if b'--role' not in arguments or arguments[arguments.index(b'--role')+1] != b'service':
+                if b'--role' not in arguments or arguments[arguments.index(b'--role')+1] != self.apps[name].get('helperRole','service').encode():
                     continue
                 environment = (proc / 'environ').read_bytes().split(b'\0')
                 expected = ('ARLINUX_DARLING_PID=' + str(self.session['pid'])).encode()

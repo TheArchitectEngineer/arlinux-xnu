@@ -1,6 +1,6 @@
 #import "../shared/Screen.h"
 @interface NetworkDelegate : UIResponder <UIApplicationDelegate>
-@property(strong) UIWindow *window; @property(strong) UILabel *result;
+@property(nonatomic,strong) UIWindow *window; @property(nonatomic,strong) UILabel *result;
 @end
 @implementation NetworkDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {

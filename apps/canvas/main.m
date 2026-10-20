@@ -11,7 +11,7 @@
 }
 @end
 @interface CanvasDelegate : UIResponder <UIApplicationDelegate>
-@property(strong) UIWindow *window; @property(strong) UILabel *result; @property(strong) ArtView *art;
+@property(nonatomic,strong) UIWindow *window; @property(nonatomic,strong) UILabel *result; @property(nonatomic,strong) ArtView *art;
 @end
 @implementation CanvasDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {

@@ -14,6 +14,7 @@ int main(void) { @autoreleasepool {
     while (!fired && [deadline timeIntervalSinceNow]>0)
         [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:deadline];
     if (!fired) return 23;
-    printf("Foundation JSON unicode exception timer: 10\n"); fflush(stdout);
+    NSInteger sum=0; for (NSNumber *value in decoded[@"values"]) sum+=value.integerValue;
+    printf("Foundation JSON unicode exception timer: %ld\n",(long)sum); fflush(stdout);
     return getchar()=='q' ? 0 : 24;
 } }

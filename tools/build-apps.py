@@ -42,12 +42,13 @@ def main():
         record={**app,'binary':str((bundle/name).relative_to(ROOT)),
                 'sourceSHA256':hashlib.sha256((declaration.parent/app['source']).read_bytes()).hexdigest()}
         log=OUT/(app['id']+'.build.log')
-        def compile_source(source,destination,language,frameworks):
+        def compile_source(source,destination,language,frameworks,extension=False):
             flags=['-target',target,'-sdk' if language=='swift' else '-isysroot',sdk,'-g','-O']
             if language=='swift': flags+=['-swift-version','5']
             else:
                 flags+=['-Wall','-Wextra','-Werror','-Wno-deprecated-declarations']
                 if language=='objc': flags+=['-fobjc-arc','-fblocks']
+            if extension: flags+=['-fapplication-extension','-Wl,-e,_NSExtensionMain']
             args=['xcrun','swiftc' if language=='swift' else 'clang',*flags,str(source),'-o',str(destination)]
             for framework in frameworks: args+=['-framework',framework]
             result=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -57,12 +58,17 @@ def main():
         try:
             compile_source(declaration.parent/app['source'],bundle/name,app['language'],app['frameworks'])
             for helper in app.get('helpers',[]):
-                folder=bundle/'XPCServices'/(helper['name']+'.xpc');folder.mkdir(parents=True)
+                folder=bundle/'PlugIns'/(helper['name']+'.appex');folder.mkdir(parents=True)
                 (folder/'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':helper['name'],
-                    'CFBundleIdentifier':'io.arlinux.'+helper['name'],'CFBundlePackageType':'XPC!',
-                    'XPCService':{'ServiceType':'Application'}}))
-                compile_source(declaration.parent/helper['source'],folder/helper['name'],'objc',helper['frameworks'])
+                    'CFBundleName':helper['name'],'CFBundleDisplayName':helper['name'],
+                    'CFBundleIdentifier':'io.arlinux.'+name+'.'+helper['name'],'CFBundlePackageType':'XPC!',
+                    'CFBundleVersion':'1','CFBundleShortVersionString':'1.0','MinimumOSVersion':'12.0',
+                    'NSExtension':{'NSExtensionPointIdentifier':helper['point'],
+                        'NSExtensionPrincipalClass':helper['principalClass'],
+                        'NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationSupportsText':True}}}}))
+                compile_source(declaration.parent/helper['source'],folder/helper['name'],'objc',helper['frameworks'],extension=True)
                 record['helper']=str((folder/helper['name']).relative_to(ROOT))
+                record['helperRole']='application'
             record['build']='passed';record['binarySHA256']=hashlib.sha256((bundle/name).read_bytes()).hexdigest()
         except (OSError,RuntimeError) as error:
             record['build']='failed';record['error']=str(error)
