@@ -1050,6 +1050,14 @@ def capture_ipc_waits(process):
     objects = GuestObjects(process)
     backend = target.FindFirstGlobalVariable('darling_active')
     darling = backend.IsValid() and backend.GetValueAsUnsigned() != 0
+    if darling:
+        ports = {}
+        for name in ('native_bootstrap_port', 'native_display_port', 'native_render_port',
+                     'native_framework_render_port', 'native_framework_render_state'):
+            value = target.FindFirstGlobalVariable(name)
+            ports[name] = (value.GetValueAsUnsigned()
+                           if value.IsValid() and value.GetError().Success() else None)
+        print('NATIVE_SERVICE_PORTS ' + json.dumps(ports), flush=True)
     ulocks = target.FindFirstGlobalVariable('native_ulock_queues')
     if ulocks.IsValid():
         records = []

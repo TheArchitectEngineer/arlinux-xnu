@@ -82,8 +82,9 @@ def report(run_id, job_name):
         if log_format == 'gh-run-view':
             lines = [re.sub(r'^[^\t]+\t[^\t]+\t', '', line) for line in lines]
         lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
-        markers = ('APP_INPUT ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
+        markers = ('APP_INPUT ', 'APP_OUTCOME ', 'LLDB_RETRY_SKIPPED ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                    'DARLING_NATIVE_CONNECTED ', 'DARLING_RPC_ERROR ', 'DARLING_RPC_WAIT ',
+                   'DARLING_RENDER_RECEIVED ', 'NATIVE_SERVICE_PORTS ',
                    'DARLINGSERVER_RPC_ONLY ',
                    'DARLING_KQCHAN_OPEN ', 'DARLING_KQCHAN_EVENT ',
                    'DARLING_SERVICE_REPLY ',

@@ -93,14 +93,22 @@ method-lookup/CA layer-class path. The trace does not prove those locks' owner
 or a condition-variable cause. Syscalls 303/305 also return ENOSYS during real
 startup and are a genuine additional synchronization gap.
 
-Exact pending run: [39423551547](https://github.com/taowen/arlinux-xnu/actions/runs/39423551547),
-source 69377ac8b26c66aee2d01e4affc9ce25a798544f. Mutex/CV/RW calls now route
-through the same real XNU queue model, preserving updates, timeouts and BSD
-errors. Condition wait cannot safely coordinate with the old local mutex-credit
-model. The original-process attach decoder also records ulock expected/actual
-words and native thread/Mach-port identities. Inspect those to establish an
-owner/wait chain; do not call the CV change a proven fix before observing it.
-Continue this exact run while it remains live. No GUI lifecycle passes yet.
+Mutex/CV/RW calls now share real XNU queues. Run 39423551547 still showed an
+ulock waiter asleep with actual word 0. libplatform uses XNU's remaining-waiter
+return value to preserve the contention bit; the old futex wrapper always
+returned zero. Source d408f7c21c9481678b7f8e45231c380613d6a835 tracks real
+waiters and preserves that return contract.
+
+[Run 39424630148](https://github.com/taowen/arlinux-xnu/actions/runs/39424630148)
+captures original app 4217/start-ticks 19047. Its ulock queue snapshot is empty;
+main now waits in CA::Context::connect_remote for the 108-byte request's reply.
+The genuine CA server thread waits on receive name 10243, while GetPort and
+forwarding use name 10499. Different names alone do not prove different kernel
+objects. The next diagnostic records actual receive headers and service port
+identities; establish delivery before changing the renderer. Receipt SHA-256:
+4646e54db15925f01faec6ce40fd90dbab52a4cb2011856822a813c512cb3ffc.
+Original snapshot and runtime logs match that receipt. App still times out
+(124); no frame, input or complete GUI lifecycle has passed.
 
 Primary ABI reference: WebKit's
 [QuartzCoreSPI.h](https://github.com/WebKit/WebKit/blob/ebaa3acb4ca036ced8011e8bfb2e951dd2199696/Source/WebCore/PAL/pal/spi/cocoa/QuartzCoreSPI.h#L287-L299)

@@ -162,8 +162,19 @@ static long darling_mach(unsigned long number,const unsigned long long *r)
     case D_TRAP_THREAD_SELF: return darling_thread_self();
     case D_TRAP_REPLY_PORT: result=dserver_rpc_mach_reply_port(&port); return result ? 0 : port;
     case D_TRAP_SPECIAL_REPLY_PORT: result=dserver_rpc_thread_get_special_reply_port(&port); return result ? 0 : port;
-    case D_TRAP_MSG: case D_TRAP_MSG_OVERWRITE:
-        return dserver_rpc_mach_msg_overwrite((void *)r[0],r[1],r[2],r[3],r[4],r[5],r[6],number==D_TRAP_MSG_OVERWRITE ? (void *)r[7] : NULL);
+    case D_TRAP_MSG: case D_TRAP_MSG_OVERWRITE: {
+        result=dserver_rpc_mach_msg_overwrite((void *)r[0],r[1],r[2],r[3],r[4],r[5],r[6],number==D_TRAP_MSG_OVERWRITE ? (void *)r[7] : NULL);
+        /* Observe genuine QuartzCore requests/replies after kernel copyout.
+         * Bounded header read only; never call a guest method or alter rights. */
+        if (!result && (r[1]&D_MACH_RCV_MSG)) {
+            uint32_t header[6];
+            uint64_t buffer=number==D_TRAP_MSG_OVERWRITE && r[7] ? r[7] : r[0];
+            if (r[3]>=sizeof(header) && !guest_copy(header,buffer,sizeof(header),0) &&
+                header[5]>=40200 && header[5]<40400)
+                trace_record("DARLING_RENDER_RECEIVED id=0x",header[5],header[3],header[2]);
+        }
+        return result;
+    }
     case D_TRAP_PORT_ALLOCATE: return dserver_rpc_mach_port_allocate(r[0],r[1],(uint32_t *)r[2]);
     case D_TRAP_PORT_DEALLOCATE: return dserver_rpc_mach_port_deallocate(r[0],r[1]);
     case D_TRAP_PORT_MOD_REFS: return dserver_rpc_mach_port_mod_refs(r[0],r[1],r[2],r[3]);

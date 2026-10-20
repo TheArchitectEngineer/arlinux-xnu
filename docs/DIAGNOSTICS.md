@@ -225,3 +225,11 @@ map belong to that original process; failure-only lldb.log remains a separate
 attempt. Attaching changes scheduling and is not deterministic replay or a pass.
 The trace status is retained independently from the actual app result. No guest
 function is invoked; no firmware, process memory image or core is downloaded.
+
+The app step records app-outcome.json with source/run/attempt, original PID and
+start ticks, capture status and both actual process exit statuses. For an
+original timeout with a completed attach/decode/detach and nonempty thread
+identities, the workflow skips the separate LLDB retry. Crashes, failed captures
+and missing evidence retain the retry. APP_OUTCOME and LLDB_RETRY_SKIPPED appear
+in the existing report; skipping diagnostics does not change the failed app
+step or its status 124. The receipt hashes the outcome alongside its raw logs.

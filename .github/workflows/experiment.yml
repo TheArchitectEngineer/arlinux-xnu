@@ -335,6 +335,7 @@ jobs:
           fi
           wait "$ordinary" || status=$?
           app_status=$status
+          peer_status=0
           if [[ "$peer" != 0 ]]; then
             peer_status=0
             wait "$peer" || peer_status=$?
@@ -344,6 +345,35 @@ jobs:
           fi
           cat build/dyld/app.stdout build/dyld/app.runtime.log
           echo "APP_PROCESS_STATUS=$app_status"
+          python3 - "$app_status" "$peer" "$peer_status" <<'PY'
+          import json, os, pathlib, re, sys
+          root = pathlib.Path('build/dyld')
+          trace = root / 'ordinary-wait.log'
+          text = trace.read_text() if trace.exists() else ''
+          pid = re.search(r'^ORIGINAL_WAIT_PID=(\d+) ', text, re.M)
+          ticks = re.search(r'^ORIGINAL_WAIT_START_TICKS (\d+)$', text, re.M)
+          status = re.search(r'^ORIGINAL_WAIT_TRACE_STATUS=(\d+)$', text, re.M)
+          snapshot = {'pid': int(pid[1]) if pid else None,
+                      'startTicks': int(ticks[1]) if ticks else None,
+                      'status': int(status[1]) if status else None}
+          runtime = (root / 'app.runtime.log').read_text(errors='replace')
+          identities = [json.loads(line.removeprefix('NATIVE_THREAD_IDENTITIES '))
+                        for line in text.splitlines() if line.startswith('NATIVE_THREAD_IDENTITIES ')]
+          # Only suppress a retry for the original timeout with a completed
+          # attach/decode/detach. Crashes and incomplete evidence still retry.
+          captured = (snapshot['pid'] is not None and snapshot['startTicks'] is not None
+                      and snapshot['status'] == 0 and any(identities)
+                      and 'Traceback (most recent call last)' not in text)
+          outcome = {'commit': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID'],
+                     'runAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                     'appStatus': int(sys.argv[1]),
+                     'peerStatus': int(sys.argv[3]) if sys.argv[2] != '0' else None,
+                     'originalSnapshot': snapshot,
+                     'retryNeeded': not (int(sys.argv[1]) == 124 and captured
+                                          and 'DARWIN_NATIVE_FAULT ' not in runtime)}
+          (root / 'app-outcome.json').write_text(json.dumps(outcome, indent=2) + '\n')
+          print('APP_OUTCOME ' + json.dumps(outcome))
+          PY
           if [[ "$status" == 0 ]] && ! grep -q '^ARHELLO_READY ' build/dyld/app.stdout; then
             echo 'APP_STARTUP_INCOMPLETE process exited before the real UIKit window readiness callback'
             status=1
@@ -356,6 +386,15 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/dyld
+          if [[ -f build/dyld/app-outcome.json ]] && python3 - <<'PY'
+          import json, pathlib, sys
+          outcome = json.loads(pathlib.Path('build/dyld/app-outcome.json').read_text())
+          sys.exit(0 if outcome['retryNeeded'] is False else 1)
+          PY
+          then
+            echo 'LLDB_RETRY_SKIPPED original timeout captured in ordinary-wait.log; application remains failed'
+            exit 0
+          fi
           if [[ -f build/dyld/session.pid ]] && ! kill -0 "$(cat build/dyld/session.pid)" 2>/dev/null; then
             echo 'SESSION_SERVICE_UNAVAILABLE inspect session.log; no live provider for LLDB retry'
             cat build/dyld/session.log
