@@ -14,8 +14,8 @@ UIKit window, label and increment button. Source/TBD declarations are under
 guests/ARHello; real framework implementations come from the pinned firmware.
 
 Current integration attempt:
-[39378607772](https://github.com/taowen/arlinux-xnu/actions/runs/39378607772),
-source `bec89382a0a0f35c21c5332a293ad61bf6af432c`, dyld job `118482715181`.
+[39382175891](https://github.com/taowen/arlinux-xnu/actions/runs/39382175891),
+source `9871363bb87455c3ed931005c3acb1ab427b8f6d`, dyld job `118494174612`.
 Use `build.sh build --mode app --ipc darling` through the sole root entry.
 The taowen/darling parent gitlink pins our community server fork and upstream
 MIG/header dependencies; sources.lock.json records the community base.
@@ -72,12 +72,21 @@ EMFILE during FrontBoard initialization (39378124844). Queue objects now use
 real mmap/epoll allocations with stable published addresses and Linux resource
 errors. They remain process-lifetime objects; full retirement is incomplete.
 
-**ARHello still fails**, ordinary status 139 at 0x180b1d564. Failure-only LLDB
-independently reaches that address in libxpc `__xpc_connection_call_reply_async`:
-`ldr w0, [x1, #0xa8]` faults at 0xa8 with x1 zero. Its caller stack includes
-libdispatch's async Mach reply invocation. Determine where the actual second
-callback argument originates and is lost; do not skip the callback or presume
-the missing value is a Mach trailer context without following the real ABI.
+The libxpc async reply crash is fixed: its disconnect branch queries the reply
+port's context. The message/continuation retained its context, but the native
+bridge returned KERN_NOT_SUPPORTED for guard trap 41, leaving the actual port
+context zero. The bridge now forwards guard/unguard to Darling's existing RPCs.
+In the current LLDB attempt, port 0x3303 is guarded with context 0x30022c820,
+strict=false, result=0; the actual libxpc callback receives that same nonzero
+second argument. No context table or guard success is fabricated.
+
+**ARHello still fails startup.** The ordinary attempt exits with status 0
+before ARHELLO_READY. Its actual exit stack includes AssertionServices at
+0x1836bdc24, libxpc event handling and a dispatch worker. The LLDB attempt also
+exits 0 without a window-ready callback; it no longer hits the former SIGSEGV.
+The startup step now explicitly rejects a zero exit before the real app ready
+callback. A prior green run (39379317212) was only such an early zero exit,
+not a working app. Determine the AssertionServices event/exit condition next.
 
 The Wayland host child still supplies a real 1024x640@60Hz surface with a blank
 wl_shm buffer: **no application frame or input journey is validated**. The
@@ -87,21 +96,21 @@ The former 1260-byte XPC COPY_SEND/MAKE_SEND_ONCE request still needs an actual
 peer/reply observation on this backend; enqueue or right acceptance alone is
 not a preferences service response.
 
-Next action: trace the real libdispatch/libxpc asynchronous reply arguments,
+Next action: trace the actual AssertionServices exit caller and its XPC event,
 then continue this same app toward rendering/input/normal exit/relaunch and ARLinux
 integration. Keep native TLS, real port ownership, mapped OOL storage and
 direct Wayland. Extend S2C signals/FD mappings only from actual required flows.
 ## Exact evidence and inputs
 
-Latest source/run above: server job `118482268719`, native job `118482548736`.
+Latest source/run above: server job `118493546558`, native job `118494035151`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Native ELF | `a05e4e4d9118becc3b54bfacae45fb0f9496a00af40b67e2dd5c4dedfbbc4d0a` |
-| Darling server ELF | `884c7b11593580041af983e42f40fc3ab260a571d05a719edbf3804139f99855` |
-| Failed app evidence receipt | `81e08d55cc206e78b633fc41de60c5b5a51e26946130af285c6649ae75b91b43` |
-| Native receipt | `e302fb35adaef9460808bfef7b9779876ff774572cd656f7f5a354b51442265d` |
-| Server receipt | `837e02c2bd771abd28ac8a4ca26c6cde033025df1249b3d875e8f81c8b87e1f5` |
+| Native ELF | `41ccbd921faee7548ef6c29719618f3002e476627bf1d2c240eb26a3b39ba303` |
+| Darling server ELF | `29d0a91afd3e4d05e137911016f4d25f5ae3dd8daa69ebcfb226a9e04eceafbd` |
+| Failed app evidence receipt | `bf32e3e1ea5f0f4ce69833b87a6cbfbb7a2fa036da2648c7460aaa732c820d75` |
+| Native receipt | `3d4b442db427af90a6d1a5621e0dffd190bdbdfb79357d002620f72ae1215eb3` |
+| Server receipt | `749f40259058e0232f18e1b90f8a1de50272d7e8417ce70cc34d58f044d32786` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json. Selected firmware
 is iPhone7,2 / iOS 12.5.7 / 16H81. Actual input/cache metadata and runtime hashes

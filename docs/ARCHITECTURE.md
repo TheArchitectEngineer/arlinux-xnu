@@ -277,7 +277,9 @@ The generated RPC client uses per-thread Linux sockets, actual thread checkin
 and checkout, raw syscall hooks and no host TLS. Client memory access is
 authorized to the exact server PID. Self ports and port/message traps use the
 server's namespace; local queue code must not interpret those numeric names
-as old local objects. The native display registry retains actual send references;
+as old local objects. Guard and unguard traps also use community RPCs: a
+non-strict guard preserves its actual port context for XPC disconnect replies,
+and XNU owns guard validation. The native display registry retains actual send references;
 a host service thread keeps its own libc/TLS and receives/replies through real
 Mach ports. Its bootstrap slot is set by XNU with a copied send right. Current-task VM and clocks continue
 to use native Linux operations. The strict empty bank-voucher policy below

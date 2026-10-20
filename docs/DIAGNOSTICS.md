@@ -12,7 +12,10 @@ These are observed outputs, not a second acceptance framework. Missing logs
 remain unavailable; compilation errors remain failures even without app
 markers. Report prints only actual line-start markers, not echoed commands.
 LLDB status 0 means the diagnostic command completed; it does not change an
-application's failure. Receipt markers expose provenance; downloading a report
+application's failure. APP_PROCESS_STATUS preserves the real exit status;
+APP_STARTUP_INCOMPLETE rejects status 0 before the app's actual window-ready
+callback. DARWIN_EXIT_FRAME records a bounded real guest frame-pointer chain.
+Receipt markers expose provenance; downloading a report
 does not independently verify every artifact listed in a receipt. Raw logs
 remain the source for details outside the concise report.
 
@@ -20,6 +23,14 @@ With `--ipc darling`, dyld evidence also contains darling.log and the exact
 server PID/prefix used by the native client. DARLING_NATIVE_CONNECTED records
 actual self-port RPC results. DARLING_RPC_WAIT reads the generated call's saved
 header/body from a stopped native frame, or reports unavailable fields as null.
+Use `build.sh download --run-id RUN_ID --artifact linux-arm64-apple-dyld-evidence`
+when the exact attempt's debugger.runtime.log is needed. This selects only the
+textual diagnostic artifact; Apple firmware/cache remain on the runner. Verify
+the requested log against its receipt SHA-256 before correlating it. Ordinary
+and LLDB attempts use distinct processes/port namespaces: never match numeric
+port names across them. IPC_CALLBACK follows real send/continuation/hook objects;
+DARLING_PORT_CONSTRUCT/GUARD record the actual kernel-operation input/results.
+
 Do not interpret the legacy IPC endpoint array as Darling's server queues;
 the snapshot is suppressed when the community backend is active.
 DARLING_KQCHAN_EVENT records actual server-filled kevent data, including its
