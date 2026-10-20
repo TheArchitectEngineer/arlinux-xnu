@@ -21,7 +21,11 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
     const struct ipc_header *header=(const void *)request;
     struct ipc_header *out=(void *)response;
     unsigned long response_ool=0;
-    if (render && header->id==D_MIG_CA_COPY_DISPLAY_PROPERTIES && request_size==36) {
+    if (render && header->id==D_MIG_CA_COPY_DISPLAY_PROPERTIES && (request_size==36 || request_size==40)) {
+        if (request_size==40) {
+            uint32_t selector;__builtin_memcpy(&selector,request+36,sizeof(selector));
+            if (selector) { response[8]=D_KERN_INVALID_ARGUMENT;return 0; }
+        }
         uint32_t display_id; __builtin_memcpy(&display_id,request+32,sizeof(display_id));
         response[8]=D_KERN_INVALID_ARGUMENT;
         if (display_id==D_WAYLAND_MAIN_DISPLAY_ID) {
@@ -30,7 +34,8 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
                 (1000000000000ULL+native_display_refresh-1)/native_display_refresh : 0;
             int live=ipc_display_live();
             response[8]=live ? D_KERN_NOT_SUPPORTED : D_KERN_FAILURE;
-            if (live && native_display_refresh && rate<=0xffffff && frame_ns<=UINT32_MAX) {
+            if (live && native_display_refresh && native_display_width<=0xffff && native_display_height<=0xffff &&
+                rate<=0xffffff && frame_ns<=UINT32_MAX) {
                 uint64_t mode=native_display_width|((uint64_t)native_display_height<<D_CA_MODE_HEIGHT_SHIFT)|(rate<<D_CA_MODE_RATE_SHIFT);
                 long address=anonymous_aligned(PAGE16,PROT_READ|PROT_WRITE,0);
                 response[8]=D_KERN_RESOURCE_SHORTAGE;
@@ -39,6 +44,37 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
                     struct ipc_ool_descriptor descriptor={.address=address,.deallocate=deallocate,
                         .copy=D_MACH_MSG_VIRTUAL_COPY,.type=D_MACH_MSG_OOL_DESCRIPTOR,.size=sizeof(mode)};
                     out->bits|=D_MACH_MSG_COMPLEX;
+                    if (request_size==40) {
+                        struct darwin_display_properties_extended_prefix *prefix=(void *)response;
+                        prefix->descriptor_count=4;prefix->modes=descriptor;
+                        /* The software output has no HDR mode arrays or
+                         * hardware memory-entry resource. Transfer genuine
+                         * empty arrays/NULL port rather than fake device rights. */
+                        struct ipc_ool_descriptor empty={.copy=D_MACH_MSG_VIRTUAL_COPY,.type=D_MACH_MSG_OOL_DESCRIPTOR};
+                        prefix->supported_hdr=empty;prefix->preferred_hdr=empty;
+                        prefix->memory_entry=(struct darwin_display_port){.disposition=D_MACH_TYPE_MOVE_SEND};
+                        prefix->ndr[0]=0;prefix->ndr[1]=1;
+                        prefix->configuration_seed=1;prefix->connection_seed=1;
+                        unsigned char *buffer=(void *)response;
+                        unsigned int cursor=sizeof(*prefix);
+                        cursor=ipc_display_string(buffer,cursor,"arlinux-wayland-1",sizeof("arlinux-wayland-1"));
+                        cursor=ipc_display_string(buffer,cursor,"",sizeof(""));
+                        cursor=ipc_display_string(buffer,cursor,"ARLinux Wayland",sizeof("ARLinux Wayland"));
+                        struct darwin_display_properties_extended properties={
+                            .mode_bytes=sizeof(mode),.mode_count=1,.current_mode=mode,.preferred_mode=mode,
+                            .bounds={0,0,native_display_width,native_display_height},
+                            .frame={0,0,native_display_width,native_display_height},
+                            /* flags bit 0 means overscanned in this client;
+                             * the configured surface has normal uncropped bounds. */
+                            .logical_scale_bits={0x3f800000U,0x3f800000U},.point_scale_bits=0x3f800000U,
+                            .refresh_period_bits=native_display_period_bits,.heartbeat_period_bits=native_display_period_bits,
+                            .minimum_frame_duration=frame_ns
+                        };
+                        __builtin_memcpy(buffer+cursor,&properties,sizeof(properties));
+                        out->size=cursor+sizeof(properties);
+                        trace_record("DARWIN_RENDER_EXTENDED_PROPERTIES bytes=0x",out->size,native_display_width,native_display_height);
+                        return response_ool;
+                    }
                     struct darwin_display_properties_prefix *prefix=(void *)response;
                     prefix->descriptor_count=2; prefix->modes=descriptor;
                     /* No hardware shared-memory entry accompanies this
