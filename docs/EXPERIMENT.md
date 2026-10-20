@@ -43,9 +43,18 @@ scene-setting keys before changing the payload. Ordinary app exits 133 at
 0x1808c4878 (libdispatch); this is a separate execution from LLDB's exception.
 Neither attempt reaches ARHELLO_READY. No UIKit frame or interactive GUI passes.
 
-Exact pending run: [39404428141](https://github.com/taowen/arlinux-xnu/actions/runs/39404428141),
-source `c2bd4dbbd673a9fad641bc72b6df67413b285d23`, adds read-only display identity,
-configuration/mode codec and scene-diff block inspection. Continue this run;
+Display codec evidence: [run 39404428141](https://github.com/taowen/arlinux-xnu/actions/runs/39404428141),
+source `c2bd4dbbd673a9fad641bc72b6df67413b285d23`, confirms that scene
+displayIdentity forwards to displayConfiguration.identity. Actual XPC codecs
+expose identity/currentMode, pixelSize/bounds and other display fields. It still
+throws the nil insertion exception; these are protocol observations, not a fix.
+LLDB log SHA-256: `dcfdc6c10dd52b3f8fd7a175620addcf2dcbc5b84a0f9b5f4459a22713a14d6a` (receipt verified).
+
+Exact pending run: [39405060101](https://github.com/taowen/arlinux-xnu/actions/runs/39405060101),
+source `237e4e3cf6d78c709f7cd43168e42d8ce4fd8fe3`, captures scene setting
+blocks located inside the disassembled method range and complete display codecs.
+The branch-table page resolver correction in `83b6ecd` is not in that run;
+use it for the next dispatch if table addresses are missing. Continue this run;
 observation timeouts do not justify restarting it. Do not bypass nil assertions,
 invoke the app delegate directly or substitute a host-drawn app.
 
