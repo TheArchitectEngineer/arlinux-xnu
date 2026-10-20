@@ -27,8 +27,10 @@ The former report's 2,485 observations fit in 48 default output lines while all
 observations remain saved. A repeated hash-verified local-log report took 3.7s.
 
 Compiler reuse is shared ccache, not a restored build directory or old binary.
-The runner image/compiler-content fingerprint selects the Actions cache bucket;
-ccache checks source/header/options/compiler inputs and cached-output checksums.
+The compiler-content fingerprint selects the preferred Actions cache bucket;
+other snapshots on the same OS/architecture can seed it across runner image
+updates. ccache independently validates each result's actual compiler and headers;
+it checks source/options inputs and cached-output checksums as well.
 No sloppiness is enabled. It has a 256 MiB limit and records actual hit/miss
 counters in compiler-cache.json and COMPILER_CACHE_STATS. Save runs after
 successful compilation even if the genuine app fails, without changing that

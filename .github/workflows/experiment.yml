@@ -107,7 +107,7 @@ jobs:
           sudo apt-get install -y "${packages[@]}"
           python3 - <<'PY'
           import hashlib, os, pathlib
-          digest = hashlib.sha256(os.environ.get('ImageVersion', '').encode())
+          digest = hashlib.sha256()
           for name in ('cc', 'clang-18', 'clang++-18', 'ccache'):
               digest.update(name.encode())
               digest.update(pathlib.Path('/usr/bin', name).read_bytes())
@@ -122,6 +122,7 @@ jobs:
           key: compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ inputs.mode }}-${{ inputs.ipc }}-${{ github.sha }}
           restore-keys: |
             compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-
+            compiler-v1-${{ runner.os }}-${{ runner.arch }}-
       - name: Initialize compiler cache accounting
         id: cache_accounting
         run: ccache --zero-stats
