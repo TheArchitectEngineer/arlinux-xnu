@@ -160,10 +160,15 @@ static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
     const char *diffs[]={"FBSSceneSettingsDiff","FBSSceneClientSettingsDiff"};
     const char *classes[]={"UIApplicationSceneSettings","UIApplicationSceneClientSettings"};
     for (unsigned int i=0;i<2;i++) {
-        spc_dictionary_t *diff=spc_dictionary_create(),*changes=spc_dictionary_create();
+        spc_dictionary_t *diff=spc_dictionary_create(),*changes=spc_dictionary_create(),*objects=spc_dictionary_create();
         spc_dictionary_set_string(diff,"bs_encodedObjectClassName",diffs[i]);
         spc_dictionary_set_string(diff,"settingsClass",classes[i]);
         spc_dictionary_set_string(changes,"bs_encodedObjectClassName","BSSettings");
+        /* The real settingsByApplying... implementation reads class setting
+         * 1 from changes before allocating a first settings instance; outer
+         * settingsClass metadata alone does not supply that class change. */
+        spc_dictionary_set_string(objects,"1",classes[i]);
+        spc_dictionary_set_value(changes,"objects",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=objects});
         spc_dictionary_set_value(diff,"changes",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=changes});
         spc_dictionary_set_value(event,keys[i],(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=diff});
     }

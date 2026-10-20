@@ -138,6 +138,8 @@ def install_launch_breakpoints(target):
                         print('APP_LAUNCH_PROTOCOL ' + json.dumps({'method': label, 'address': hex(address)}), flush=True)
                         target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 256')
                         capture_code_references(target,address,256,'APP_LAUNCH_PROTOCOL_REFERENCE')
+                        if name=='_OBJC_CLASS_$_BSSettings':
+                            capture_protocol_blocks(target,address,256)
                     if name=='_OBJC_CLASS_$_FBSSceneSettings' and selector in ('init','frame','displayConfiguration','isBackgrounded'):
                         address=objects.u64(entry+16)
                         print('APP_SCENE_SETTINGS_CODE '+json.dumps({'method':selector,'address':hex(address)}),flush=True)
@@ -382,6 +384,33 @@ def install_service_breakpoints(target):
             breakpoint.SetScriptCallbackFunction('dyld_debugger.security_query')
             breakpoint.SetAutoContinue(True)
             print('SECURITY_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
+
+
+def capture_protocol_blocks(target, address, count):
+    """Read actual executable ADRP/ADD block callbacks used by the codec."""
+    objects=GuestObjects(target.GetProcess())
+    words=struct.unpack('<'+'I'*count,objects.read(address,count*4))
+    seen=set()
+    for index,word in enumerate(words[:-1]):
+        following=words[index+1]
+        if word&0x9f000000!=0x90000000 or following&0xff000000!=0x91000000 or word&31!=(following>>5)&31:
+            continue
+        immediate=((word>>29)&3)|(((word>>5)&0x7ffff)<<2)
+        if immediate&(1<<20): immediate-=1<<21
+        pointer=((address+index*4)&~4095)+(immediate<<12)
+        pointer+=((following>>10)&4095)<<(12 if following&(1<<22) else 0)
+        if pointer in seen or address<=pointer<address+count*4:
+            continue
+        region=lldb.SBMemoryRegionInfo()
+        error=target.GetProcess().GetMemoryRegionInfo(pointer,region)
+        if error.Fail() or not region.IsExecutable():
+            continue
+        seen.add(pointer)
+        print('APP_SETTINGS_CODEC_BLOCK '+json.dumps({'method':hex(address),'pc':hex(address+index*4),'block':hex(pointer)}),flush=True)
+        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(pointer)+' --count 128')
+        capture_code_references(target,pointer,128,'APP_SETTINGS_CODEC_REFERENCE')
+        if len(seen)>=4:
+            break
 
 
 def capture_code_references(target, address, count, label):
