@@ -219,16 +219,34 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
         (!peer->launch_reply || peer->launch_reply!=header->msgh_local_port) &&
         (!peer->scene_reply || peer->scene_reply!=header->msgh_local_port)) peer=peer->next;
     if (!peer) return -1;
+    int launch_reply=peer->launch_reply && peer->launch_reply==header->msgh_local_port;
+    int scene_reply=peer->scene_reply && peer->scene_reply==header->msgh_local_port;
+    uint32_t audit_bits=0;
+    if (audit) for (unsigned int i=0;i<8;i++) audit_bits|=audit[i];
+    /* XNU notify.defs: destroying an unused reply send-once right emits a
+     * header-only MACH_NOTIFY_SEND_ONCE with KERNEL_AUDIT_TOKEN. This is a
+     * cancellation, never an application reply or a successful scene. */
+    if ((launch_reply || scene_reply) && audit && !audit_bits &&
+        header->msgh_id==D_MACH_NOTIFY_SEND_ONCE && length==sizeof(*header) &&
+        header->msgh_bits==(D_MACH_TYPE_MOVE_SEND_ONCE<<D_MACH_MSG_LOCAL_BITS_SHIFT) &&
+        !header->msgh_remote_port && !header->msgh_voucher_port) {
+        uint32_t *port=scene_reply ? &peer->scene_reply : &peer->launch_reply;
+        int *state=scene_reply ? &peer->scene_state : &peer->launch_state;
+        fprintf(stderr,"SESSION_EVENT_REPLY_CANCELLED pid=%u incarnation=%u event=%s port=%u\n",
+            peer->pid,peer->incarnation,scene_reply ? "create-scene" : "launch",*port);
+        if (darwin_native_host_receive_destroy(*port)) abort();
+        *port=0; *state=-1; return 0;
+    }
     if (!audit || audit[5]!=peer->pid || audit[7]!=peer->incarnation) {
-        fprintf(stderr,"PROCESSINFO_PEER_IDENTITY_MISMATCH\n"); abort();
+        fprintf(stderr,"PROCESSINFO_PEER_IDENTITY_MISMATCH expected_pid=%u expected_incarnation=%u pid=%u incarnation=%u audit_bits=%x id=%x bits=%x bytes=%zu local=%u\n",
+            peer->pid,peer->incarnation,audit ? audit[5] : 0,audit ? audit[7] : 0,
+            audit_bits,header->msgh_id,header->msgh_bits,length,header->msgh_local_port); abort();
     }
     fprintf(stderr,"PROCESSINFO_MESSAGE id=%x bits=%x bytes=%zu reply=%u\n",header->msgh_id,header->msgh_bits,length,header->msgh_remote_port);
     fprintf(stderr,"SESSION_XPC_MESSAGE service=%s pid=%u incarnation=%u bytes=%zu\n",
         session_service_names[peer->service],peer->pid,peer->incarnation,length);
     /* Do not let upstream silently discard OOL resources. Actual process-state
      * protocol behavior is still being diagnosed, not acknowledged as success. */
-    int launch_reply=peer->launch_reply && peer->launch_reply==header->msgh_local_port;
-    int scene_reply=peer->scene_reply && peer->scene_reply==header->msgh_local_port;
     if (length<32 || header->msgh_id!=((launch_reply || scene_reply) ? 0x20000000 : 0x10000000)) {
         fprintf(stderr,"PROCESSINFO_MESSAGE_UNSUPPORTED\n"); abort();
     }
