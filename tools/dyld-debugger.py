@@ -1086,6 +1086,19 @@ def capture_ipc_waits(process):
     for thread in process:
         for frame in thread:
             function = frame.GetFunctionName() or ''
+            if 'native_workloop_sync_wait' in function:
+                record = {'tid': thread.GetThreadID()}
+                for name, fields in (('note', ('sync_state', 'sync_tid', 'sync_active')),
+                                     ('queue', ('dynamic_id', 'client_owner', 'owner_tid'))):
+                    value = frame.FindVariable(name)
+                    if value.IsValid() and value.GetError().Success():
+                        value = value.Dereference()
+                    for field in fields:
+                        member = value.GetChildMemberWithName(field)
+                        record[field] = (member.GetValue() if member.IsValid() and
+                                         member.GetError().Success() else None)
+                print('NATIVE_WORKLOOP_WAIT ' + json.dumps(record), flush=True)
+                break
             if 'native_ulock' in function:
                 record = {'tid': thread.GetThreadID(), 'framePC': hex(frame.GetPC())}
                 try:

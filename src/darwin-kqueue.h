@@ -143,7 +143,8 @@ static long native_workloop_sync_change(struct native_kqueue *queue,struct darwi
     if (!note && (event->flags&(D_EV_ADD|D_EV_DELETE))==(D_EV_ADD|D_EV_DELETE)) return 0;
     if (note && !(note->event.fflags&(D_NOTE_WL_SYNC_WAIT|D_NOTE_WL_SYNC_WAKE))) return -EINVAL;
     if (note && note->sync_state==2) return -ENOENT;
-    if (note && note->sync_state==1 && command==D_NOTE_WL_SYNC_WAKE) return -EALREADY;
+    if (note && note->sync_state==1 && command==D_NOTE_WL_SYNC_WAKE &&
+        !(event->flags&D_EV_DELETE)) return -EALREADY;
     if (!note && (!(event->flags&D_EV_ADD) || (event->flags&D_EV_DELETE))) return -ENOENT;
     if (!note && !(event->flags&D_EV_DISABLE)) return -EINVAL;
     if (command==D_NOTE_WL_SYNC_WAIT && !waiter) return -ENOTSUP;
@@ -179,9 +180,9 @@ static long native_workloop_sync_change(struct native_kqueue *queue,struct darwi
         trace_record("DARWIN_WORKLOOP_SYNC_WAKE ident=0x",event->ident,queue->dynamic_id,woke);
         return woke<0 ? woke : 0;
     }
-    if (!note->sync_state) {
-        note->sync_tid=caller->tid; note->sync_active=1; *waiter=note;
-    }
+    /* Even an already-latched wake completes the synchronous registration;
+     * pin its slot until copyout and do not start an asynchronous worker. */
+    note->sync_tid=caller->tid; note->sync_active=1; *waiter=note;
     return 0;
 }
 static long native_workloop_sync_wait(struct native_kqueue *queue,struct native_knote *note)
