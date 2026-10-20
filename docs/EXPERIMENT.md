@@ -111,8 +111,19 @@ RPC now routes this operation to XNU's real membership implementation. Verify
 actual membership and renderer receipt/reply before calling this a fix.
 Receipt SHA-256:
 4646e54db15925f01faec6ce40fd90dbab52a4cb2011856822a813c512cb3ffc.
-Original snapshot and runtime logs match that receipt. App still times out
-(124); no frame, input or complete GUI lifecycle has passed.
+Original snapshot and runtime logs match that receipt.
+
+[Run 39425899111](https://github.com/taowen/arlinux-xnu/actions/runs/39425899111),
+source 21d9a8e3b648e4847cbf57c29e0a321fa7e71567, verifies actual port-set moves
+and delivery to the genuine CA server. The peer receives the 40303/40341/40309
+reply IDs and reaches ARHELLO_READY. It later exits 0 through a framework path;
+that is not an observed user-requested normal close. The original app instead
+exits 133 at libdispatch PC 0x1808c4878 after our workloop rejects fflags 0x84
+(SYNC_WAIT | DISCOVER_OWNER). Implement real synchronous wait/wake and ownership;
+do not return success as a hint. Receipt
+ebbee5a1188a663bc2afa67876833b671dde0e175dbd22c38cb5d95501a0cea2
+matches the downloaded outcomes and both runtime logs. No pixel capture, real
+input or complete GUI lifecycle has passed. Window readiness alone is weaker.
 
 Primary ABI reference: WebKit's
 [QuartzCoreSPI.h](https://github.com/WebKit/WebKit/blob/ebaa3acb4ca036ced8011e8bfb2e951dd2199696/Source/WebCore/PAL/pal/spi/cocoa/QuartzCoreSPI.h#L287-L299)

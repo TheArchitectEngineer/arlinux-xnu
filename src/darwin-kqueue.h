@@ -330,6 +330,14 @@ static long native_kqueue_changes(struct native_kqueue *queue,uint64_t changes,u
             trace_call(0,0,event.ident); trace_call(1,0,(long)event.filter);
             trace_call(2,0,event.flags); trace_call(3,0,event.fflags);
             trace_call(4,0,event.xflags); trace_call(5,0,result);
+            if (event.filter==D_EVFILT_WORKLOOP) {
+                const char detail[]="DARWIN_WORKLOOP_ERROR_STATE queue/owner/servicer/qos/udata/ext0..3 follows\n";
+                RAW(SYS_write,2,detail,sizeof(detail)-1,0,0,0);
+                trace_call(0,0,queue->dynamic_id); trace_call(1,0,queue->client_owner);
+                trace_call(2,0,queue->owner_tid); trace_call(3,0,event.qos);
+                trace_call(4,0,event.udata);
+                for (unsigned int x=0;x<4;x++) trace_call(5+x,0,event.ext[x]);
+            }
         }
         if (result || (event.flags&D_EV_RECEIPT)) {
             if (emitted==capacity) return result ? result : -ENOBUFS;

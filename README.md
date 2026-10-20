@@ -57,9 +57,16 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 ./build.sh build --mode playcover  # same iOS binary, PlayCover conversion on macOS
 ./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
 ./build.sh status --run-id RUN_ID
-./build.sh report --run-id RUN_ID --job dyld-userland # concise diagnosis + raw logs
+./build.sh report --run-id RUN_ID --job native-userland # outcomes, timings and saved raw logs
 ./build.sh download --run-id RUN_ID
 ```
+
+The Linux app experiment builds the Mach core and native launcher, then runs
+the real dyld/console/app journeys in one ARM64 job (`native-userland`). One
+toolchain installation serves the whole iteration. Artifacts and SHA-256
+receipts remain separate for each product; Apple inputs stay transient on the
+runner. Reports default to outcomes and key evidence; `report --verbose` prints
+all observations. Older runs retain their original job names.
 
 [Execution design and unresolved ABI constraints](docs/ARCHITECTURE.md) defines
 the host/kernel/guest boundary.

@@ -1,12 +1,19 @@
 # Diagnosing the actual application journey
 
 Use the existing `build.sh` entry. Start with `status --run-id RUN_ID`, then
-`report --run-id RUN_ID --job dyld-userland`. Report reads an existing Actions
+`report --run-id RUN_ID --job native-userland`. Report reads an existing Actions
 run; it never builds, dispatches or executes guest code on the workstation.
 It records the run's source commit and latest attempt, failed step, actual
 application status, LLDB status, exception text, original fault PC and receipt
 markers. Full logs and their SHA-256 accompany the JSON report under
 `build/runs/RUN_ID/attempt-N/`. Omit `--job` to include all jobs.
+
+Current Linux iterations use a single ARM64 job for core, launcher and dyld/app,
+installing the toolchain once. Historical runs may instead have dyld-userland
+and darling-ipc jobs. Default report output includes per-step timings, original
+and peer outcomes/window callbacks, and key fault/wait/delivery evidence. Full
+observations remain in the report JSON/raw log; use --verbose to print them.
+Window readiness is an app callback, not proof of pixels, input or lifecycle.
 
 These are observed outputs, not a second acceptance framework. Missing logs
 remain unavailable; compilation errors remain failures even without app
@@ -233,3 +240,9 @@ identities, the workflow skips the separate LLDB retry. Crashes, failed captures
 and missing evidence retain the retry. APP_OUTCOME and LLDB_RETRY_SKIPPED appear
 in the existing report; skipping diagnostics does not change the failed app
 step or its status 124. The receipt hashes the outcome alongside its raw logs.
+
+For failed workloop changes, DARWIN_WORKLOOP_ERROR_STATE retains the actual
+dynamic queue ID, client Mach owner, Linux servicer TID, QoS, udata and all four
+extension words alongside DARWIN_KEVENT_ERROR. A synchronous waiter uses its
+own ident, distinct from the workloop's dynamic ID; do not infer the queue ID
+from that ident or treat a missing wait/wake command as an advisory hint.

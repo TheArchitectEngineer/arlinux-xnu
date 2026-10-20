@@ -44,7 +44,7 @@ receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
 # Expose provenance and executable hashes in Actions logs. Diagnosing a run
 # must not require downloading its kernel objects or complete artifact archive.
 print('EXPERIMENT_RECEIPT ' + json.dumps({
-    'job': receipt['job'], 'commit': receipt['commit'], 'runId': receipt['runId'],
+    'job': receipt['job'], 'directory': args.directory, 'commit': receipt['commit'], 'runId': receipt['runId'],
     'outcomeBeforeUpload': args.outcome, 'filesRecorded': len(files),
     'receiptSHA256': hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
 }))
@@ -54,5 +54,5 @@ for item in files:
 summary = os.environ.get('GITHUB_STEP_SUMMARY')
 if summary:
     with open(summary, 'a') as stream:
-        stream.write(f"### {receipt['job']}\n\nExecution before upload: **{args.outcome}**. "
+        stream.write(f"### {receipt['job']} / {args.directory}\n\nExecution before upload: **{args.outcome}**. "
                      f"Commit: `{receipt['commit']}`. Files recorded: {len(files)}.\n")

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+from datetime import datetime
 
 
 REPO = 'taowen/arlinux-xnu'
@@ -21,7 +22,7 @@ def api(endpoint):
     return result.stdout
 
 
-def report(run_id, job_name):
+def report(run_id, job_name, verbose=False):
     """Read existing execution evidence; never dispatch or execute a guest."""
     run = json.loads(api('actions/runs/' + run_id))
     attempt = run['run_attempt']
@@ -42,12 +43,22 @@ def report(run_id, job_name):
               'conclusion': run['conclusion'], 'jobs': []}
     print(f"Run {run_id}, attempt {attempt}, source {run['head_sha']}")
     print(f"Actions: {run['status']} / {run['conclusion']}; {run['html_url']}")
+    if run['status'] == 'completed':
+        seconds = (datetime.fromisoformat(run['updated_at']) -
+                   datetime.fromisoformat(run['created_at'])).total_seconds()
+        print(f"Dispatch-to-completion: {seconds:.0f}s (including runner queues)")
     for job in jobs:
         if job_name and job['name'] != job_name:
             continue
         item = {key: job[key] for key in ('id', 'name', 'status', 'conclusion', 'steps')}
         result['jobs'].append(item)
         print(f"\n{job['name']}: {job['status']} / {job['conclusion']}")
+        durations = [(step['name'], (datetime.fromisoformat(step['completed_at']) -
+                                    datetime.fromisoformat(step['started_at'])).total_seconds())
+                     for step in job['steps'] if step.get('completed_at') and step.get('started_at')]
+        item['stepDurationsSeconds'] = dict(durations)
+        for name, seconds in sorted(durations, key=lambda entry: entry[1], reverse=True)[:3]:
+            print(f"  Time: {seconds:.0f}s {name}")
         for step in job['steps']:
             if step['conclusion'] not in (None, 'success', 'skipped'):
                 print(f"  Step {step['number']}: {step['name']} -> {step['conclusion']}")
@@ -91,7 +102,7 @@ def report(run_id, job_name):
                    'DARLING_SERVER_UNAVAILABLE ', 'darlingserver duct-tape panic: ',
                    'DARLING_S2C_MEMORY ', 'DARLING_PSYNCH ', 'NATIVE_THREAD_IDENTITIES ', 'NATIVE_ULOCK_WAIT ', 'NATIVE_ULOCK_QUEUES ', 'DARLING_CODE_COPY_COMPLETE ',
                    'SESSION_MACH_CORE_STARTED ', 'SESSION_MACH_CORE_FAILED ', 'UNIFIED_SESSION_PID ',
-                   'DARWIN_WORKLOOP_SOFT_DELETE ',
+                   'DARWIN_WORKLOOP_SOFT_DELETE ', 'DARWIN_WORKLOOP_ERROR_STATE ',
                    'DARWIN_CODESIGN_QUERY ', 'SECURITY_QUERY ', 'SECURITY_RETURN ',
                    'EXCEPTION_CALLER_CODE ', 'EXCEPTION_CALLER_REFERENCE ',
                    'DICTIONARY_NIL_INPUT ', 'DICTIONARY_INPUT_READ_ERROR ', 'HID_CLIENT_REFERENCE ',
@@ -128,6 +139,7 @@ def report(run_id, job_name):
                            'DARLING_PORT_GUARD ': 5,
                            'DARLING_S2C_MEMORY ': 6, 'DARLING_PSYNCH ': 10, 'DARLING_UNSUPPORTED_SERVICE ': 6, 'DARLING_SERVICE_DESCRIPTOR ': 5,
                            'DARWIN_WORKLOOP_SOFT_DELETE ': 2,
+                           'DARWIN_WORKLOOP_ERROR_STATE ': 9,
                            'DARWIN_CODESIGN_QUERY ': 6,
                            'DARWIN_EVENT_DELIVERY ': 3, 'DARWIN_NATIVE_FAULT ': 3,
                            'DARWIN_DISPLAY_QUERY ': 3, 'DARWIN_RENDER_DISPLAY_LIST ': 3,
@@ -149,8 +161,33 @@ def report(run_id, job_name):
                 # interleave, so do not infer a synthetic causal event from it.
                 item['observations'].extend('  context: ' + text for text in lines[index+1:index+1+count])
                 break
-        for line in item['observations']:
-            print('  ' + line)
+        # Keep full observations in the JSON and raw log. Default output must
+        # expose outcomes before the many historical instrumentation markers.
+        if verbose:
+            for line in item['observations']:
+                print('  ' + line)
+        else:
+            concise = ('APP_OUTCOME ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
+                       'LLDB_RETRY_SKIPPED ', 'APP_STARTUP_INCOMPLETE ',
+                       'ORIGINAL_WAIT_PID=', 'ORIGINAL_WAIT_START_TICKS ', 'ORIGINAL_WAIT_TRACE_STATUS=',
+                       'NATIVE_SERVICE_PORTS ', 'NATIVE_ULOCK_QUEUES ', 'NATIVE_ULOCK_WAIT ',
+                       'NORMAL_RUNTIME_FAULT_PC ', 'DARWIN_NATIVE_FAULT ', 'DARWIN_KEVENT_ERROR ',
+                       'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
+                       'NATIVE_SERVICE_FAILURE ', 'DARLING_RENDER_RECEIVED ',
+                       'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_RENDER_FORWARD ',
+                       'DARWIN_WORKLOOP_ERROR_STATE ',
+                       'EXPERIMENT_RECEIPT ')
+            shown = set()
+            for index, line in enumerate(item['observations']):
+                if line.startswith(concise) and line not in shown:
+                    print('  ' + line)
+                    shown.add(line)
+                    if line.startswith(('DARWIN_WORKLOOP_ERROR_STATE ', 'DARWIN_NATIVE_FAULT ', 'DARWIN_KEVENT_ERROR ')):
+                        for context in item['observations'][index+1:index+10]:
+                            if not context.startswith('  context: '):
+                                break
+                            print('  ' + context)
+            print(f"  Full observations: {len(item['observations'])}; use --verbose or the saved JSON/raw log")
         # An uncaught failure can have no application markers (e.g. compiler
         # error). Preserve actionable Actions errors instead of a blank report.
         item['errors'] = [line for line in lines if line.startswith('##[error]') or
@@ -172,6 +209,7 @@ def main():
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--job', help='Exact job name for report; default: all jobs')
+    parser.add_argument('--verbose', action='store_true', help='Print all diagnostic observations in report')
     parser.add_argument('--artifact', help='Download only this named artifact from the exact run')
     args = parser.parse_args()
     if args.command in ('report', 'download') and (not args.run_id or not args.run_id.isdecimal()):
@@ -181,7 +219,7 @@ def main():
     if args.artifact and args.command != 'download':
         parser.error('--artifact is only supported by download')
     if args.command == 'report':
-        report(args.run_id, args.job)
+        report(args.run_id, args.job, args.verbose)
         return
     repo = REPO
     if args.command == 'build':
