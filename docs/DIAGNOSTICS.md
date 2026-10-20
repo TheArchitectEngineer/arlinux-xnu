@@ -30,6 +30,7 @@ product hash are checked before execution. No older app binaries are reused.
 The default `all` still builds/runs the full collection and cross-app scenarios.
 
 `--wait` follows the exact dispatch URL, never another run with the same commit.
+Job/step transitions and completed-job failures are shown while the run is live.
 Observation failures keep following that run without redispatch. It then reports
 results and optionally downloads the safe execution artifact, verifying its
 receipt against the exact producer log and every retained file. For an existing
@@ -42,6 +43,17 @@ The step's effect wait and diagnostic collection time are recorded separately.
 These are observed facts, not an automatic root-cause verdict. Full logs and
 original-process stacks remain available. Compare dispatch-to-completion and
 job start offsets; compiler cache hits alone do not measure feedback latency.
+
+Measured Counter lifecycle-diagnostic feedback: run
+[39503145757](https://github.com/taowen/arlinux-xnu/actions/runs/39503145757) took
+241 seconds; parallel run
+[39504112474](https://github.com/taowen/arlinux-xnu/actions/runs/39504112474) took
+158 seconds (34% shorter). Linux job start moved from second 79 to second 6;
+selected SDK compilation took 18 seconds. Both fail the same required GUI step.
+The new run separates 8.024 seconds of effect waiting from 12.297 seconds of
+original-process diagnosis. These are individual measured runs, not a latency
+promise; runner queues/network still vary. Firmware remains transient and fully
+hash-verified, and no Apple firmware/cache is uploaded for caching.
 
 ## Start with the effect that failed
 

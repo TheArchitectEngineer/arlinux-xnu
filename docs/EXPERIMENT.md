@@ -74,6 +74,15 @@ initial snapshot; its receipt
 96791ee1da826d551d92b184711c979df58f56ec322f93c564325f68ae67ed48 and all 20
 files were verified. Abrupt backend termination itself remains untested.
 
+The optimized pipeline was exercised by Counter run
+[39504112474](https://github.com/taowen/arlinux-xnu/actions/runs/39504112474),
+source 53ad33eebc6e17c7749de0be74bda80bb7c96a08. Parallel SDK/Linux preparation,
+single-app compilation and same-run receipt handoff completed. The single
+build --wait --evidence invocation followed the exact run, reported the failed
+GUI step, verified receipt
+e7633b43e6f24130a74afe3f29a7a2043c58c158633d81bb25ebf8f0692203e8 and all
+20 files, and exited nonzero. This improves feedback, not UIKit compatibility.
+
 ## Direction and next implementation
 
 Preserve original Apple application semantics where useful; replace platform

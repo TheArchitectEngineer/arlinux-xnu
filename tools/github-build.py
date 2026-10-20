@@ -59,19 +59,33 @@ def collect_evidence(run):
         print(f'  Verified {artifact}: receipt plus {count} files; {directory}')
 
 
-def wait_for_run(run_id):
+def wait_for_run(run_id,commit):
     previous=None
+    job_states={};reported_failures=set()
     while True:
         try:run=json.loads(api('actions/runs/'+run_id))
         except SystemExit:
             print(f'Observation unavailable; keep following run {run_id}, no redispatch',flush=True)
-            time.sleep(30)
+            time.sleep(15)
             continue
+        if run['head_sha']!=commit:raise SystemExit('Dispatched source differs from the selected pushed commit')
         status=(run['status'],run['conclusion'])
         if status!=previous:
             print(f'Run {run_id}: {status[0]} / {status[1]}',flush=True);previous=status
         if run['status']=='completed':return
-        time.sleep(30)
+        try:
+            jobs=json.loads(api(f"actions/runs/{run_id}/attempts/{run['run_attempt']}/jobs?per_page=100"))['jobs']
+        except SystemExit:
+            jobs=[]  # Keep the known run, not a replacement dispatch.
+        for job in jobs:
+            current=next((step['name'] for step in job['steps'] if step['status']=='in_progress'),None)
+            state=(job['status'],job['conclusion'],current)
+            if state!=job_states.get(job['id']):
+                print(f"  {job['name']}: {state[0]} / {state[1]}"+(f' / {current}' if current else ''),flush=True)
+                job_states[job['id']]=state
+            if job['conclusion']=='failure' and job['id'] not in reported_failures:
+                report(run_id,job['name']);reported_failures.add(job['id'])
+        time.sleep(10)
 
 
 def api(endpoint):
@@ -248,7 +262,7 @@ def main():
             match=re.search(r'https://github\.com/'+re.escape(repo)+r'/actions/runs/(\d+)',dispatch_output)
             if not match:raise SystemExit('Dispatch accepted but exact run URL was not returned; inspect status, do not redispatch')
             run_id=match[1]
-            wait_for_run(run_id)
+            wait_for_run(run_id,expected)
             result=report(run_id,None,args.verbose)
             if args.evidence:collect_evidence(result)
             if result['conclusion']!='success':raise SystemExit(1)
