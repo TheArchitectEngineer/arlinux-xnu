@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Runner-internal fixture compilation. Public entry: build.sh only."""
+import argparse
 import hashlib
 import json
 import os
@@ -17,8 +18,14 @@ def command(*args):
     return subprocess.check_output(list(map(str,args)),stderr=subprocess.STDOUT)
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--app',default='all')
+    args=parser.parse_args()
     if sys.platform!='darwin' or platform.machine() not in ('arm64','x86_64') or os.environ.get('GITHUB_ACTIONS')!='true':
         raise SystemExit('App compilation requires a hosted macOS SDK runner through build.sh')
+    declarations={json.loads(path.read_text())['id']:path for path in sorted((ROOT/'apps').glob('*/app.json'))}
+    selected=set(declarations) if args.app=='all' else set(args.app.split(','))
+    if not selected or not selected<=set(declarations):parser.error('Unknown app selection')
     OUT.mkdir(parents=True,exist_ok=False)
     sdk=command('xcrun','--sdk','iphoneos','--show-sdk-path').decode().strip()
     firmware=json.loads((ROOT/'sources.lock.json').read_text())['iosUserland']
@@ -34,7 +41,8 @@ def main():
             '-framework','UIKit','-framework','CoreFoundation','-framework','CoreGraphics',
             '-Wl,-install_name,@loader_path/libarlinux-ios.dylib')
     products=[]
-    for declaration in sorted((ROOT/'apps').glob('*/app.json')):
+    for app_id in sorted(selected):
+        declaration=declarations[app_id]
         app=json.loads(declaration.read_text()); name=app['name']; bundle=OUT/(name+'.app'); bundle.mkdir()
         info={'CFBundleExecutable':name,'CFBundleIdentifier':'io.arlinux.'+name,
               'CFBundleName':name,'CFBundleVersion':'1','CFBundleShortVersionString':app['version'],
@@ -54,7 +62,7 @@ def main():
             if extension: flags+=['-fapplication-extension','-Wl,-e,_NSExtensionMain']
             extra=[]
             if app['kind']=='application':
-                inspector=OUT/(app['id']+'-inspection.o')
+                inspector=OUT/'inspection.o'
                 if not inspector.exists():
                     command('xcrun','clang','-target',target,'-isysroot',sdk,'-fobjc-arc','-fblocks','-Wno-deprecated-declarations','-c',ROOT/'apps/shared/Inspect.m','-o',inspector)
                 extra=[str(inspector)]
@@ -83,7 +91,7 @@ def main():
             record['build']='failed';record['error']=str(error)
         products.append(record)
         print('APP_BUILD '+json.dumps({'id':app['id'],'status':record['build'],'error':record.get('error','').splitlines()[:2] if record.get('error') else None}),flush=True)
-    (OUT/'products.json').write_text(json.dumps({'source':os.environ['GITHUB_SHA'],
+    (OUT/'products.json').write_text(json.dumps({'source':os.environ['GITHUB_SHA'],'selection':args.app,
         'runId':os.environ['GITHUB_RUN_ID'],'apps':products},indent=2)+'\n')
     return 0 if all(app['build']=='passed' for app in products) else 1
 

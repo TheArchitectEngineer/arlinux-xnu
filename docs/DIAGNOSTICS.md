@@ -20,6 +20,29 @@ in the app's stderr (`IOS_LIFECYCLE_ABI`, `IOS_HOST_WINDOW`). It invokes no app
 actions or private framework lifecycle methods. This flag defaults off and is
 not forwarded to the Apple-host reference. It is diagnosis, not launch success.
 
+## Short feedback loop
+
+Use `./build.sh build --app counter --lifecycle-context --wait --evidence` for
+one current boundary. It compiles only Counter plus its real shared adapter;
+Linux preparation runs concurrently with the SDK job. The app artifact name
+binds the producer receipt digest and run attempt; source/run/attempt plus every
+product hash are checked before execution. No older app binaries are reused.
+The default `all` still builds/runs the full collection and cross-app scenarios.
+
+`--wait` follows the exact dispatch URL, never another run with the same commit.
+Observation failures keep following that run without redispatch. It then reports
+results and optionally downloads the safe execution artifact, verifying its
+receipt against the exact producer log and every retained file. For an existing
+run use `./build.sh report --run-id RUN_ID --job native-userland --evidence`.
+Verified evidence is isolated under build/runs/RUN_ID/attempt-N/ARTIFACT.
+
+APP_DIAGNOSIS records the first failed step, blocked steps, original process
+identity, screenshot paths/hashes and bounded runtime/window/session witnesses.
+The step's effect wait and diagnostic collection time are recorded separately.
+These are observed facts, not an automatic root-cause verdict. Full logs and
+original-process stacks remain available. Compare dispatch-to-completion and
+job start offsets; compiler cache hits alone do not measure feedback latency.
+
 ## Start with the effect that failed
 
 | Question | Authoritative evidence | Limit |

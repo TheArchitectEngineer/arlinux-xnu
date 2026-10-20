@@ -25,16 +25,17 @@ GitHub CLI are required. Compilation and execution happen only on hosted runners
 
 ```bash
 ./build.sh build                         # entire app collection plus two-app scenarios
-./build.sh build --app counter           # explicitly partial feedback
+./build.sh build --app counter --wait --evidence # partial flow, then verified evidence
 ./build.sh build --app counter --reference # same input and journey on Linux and Apple host
 ./build.sh status --run-id RUN_ID
 ./build.sh report --run-id RUN_ID
 ./build.sh download --run-id RUN_ID --artifact ios-app-results-linux
 ```
 
-One macOS Intel job uses Xcode 16.4's real iPhoneOS SDK to cross-compile ARM64
-C, Objective-C and Swift apps. Linux ARM64 builds the production runtime with ccache, verifies
-the exact same-run app products and prepares the pinned iOS 16.7.16 userland.
+One macOS Intel job uses Xcode 16.4's real iPhoneOS SDK to cross-compile the
+selected ARM64 apps. Linux ARM64 starts in parallel: it builds the production
+runtime with ccache and prepares the pinned iOS 16.7.16 userland, then receives
+and verifies exact same-run/attempt app products before execution.
 Each independent journey gets a fresh shared Mach session and fresh app state;
 relaunch keeps only that journey's state. Concurrency scenarios alone share
 multiple app processes within one journey. Failures do not block unrelated apps.

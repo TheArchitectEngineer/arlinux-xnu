@@ -6,11 +6,72 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import time
 from datetime import datetime
 
 
 REPO = 'taowen/arlinux-xnu'
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def verify_result_files(directory, expected, run):
+    data=(directory/'receipt.json').read_bytes()
+    if hashlib.sha256(data).hexdigest()!=expected:
+        raise ValueError('Receipt digest differs from the exact producing job log')
+    receipt=json.loads(data)
+    if (receipt['repository'],receipt['commit'],str(receipt['runId']),str(receipt['runAttempt']))!=(
+            REPO,run['commit'],str(run['runId']),str(run['attempt'])):
+        raise ValueError('Evidence source/run/attempt mismatch')
+    seen=set()
+    for entry in receipt['files']:
+        relative=entry['path'];path=directory/relative
+        if ('\\' in relative or ':' in relative or relative.startswith('/') or
+                any(part in ('','..','.') for part in relative.split('/')) or
+                not path.resolve().is_relative_to(directory.resolve()) or path.is_symlink()):
+            raise ValueError('Unsafe evidence path')
+        if relative.casefold() in seen:raise ValueError('Duplicate evidence path')
+        seen.add(relative.casefold())
+        if path.stat().st_size!=entry['bytes'] or hashlib.sha256(path.read_bytes()).hexdigest()!=entry['sha256']:
+            raise ValueError('Evidence integrity mismatch: '+relative)
+    return len(seen)
+
+
+def collect_evidence(run):
+    for job in run['jobs']:
+        artifact={'native-userland':'ios-app-results-linux','apple-reference':'ios-app-results-apple'}.get(job['name'])
+        if not artifact or job['status']!='completed' or job['conclusion']=='skipped':continue
+        receipts=[json.loads(line[len('EXPERIMENT_RECEIPT '):]) for line in job.get('observations',[])
+                  if line.startswith('EXPERIMENT_RECEIPT ')]
+        matches=[receipt for receipt in receipts if receipt['directory']=='build/results'
+                 and receipt['commit']==run['commit'] and str(receipt['runId'])==str(run['runId'])]
+        if len(matches)!=1:
+            print(f'  {artifact}: producing receipt unavailable; no evidence verified')
+            continue
+        directory=ROOT/'build/runs'/str(run['runId'])/f"attempt-{run['attempt']}"/artifact
+        expected=matches[0]['receiptSHA256']
+        if not directory.exists():
+            directory.parent.mkdir(parents=True,exist_ok=True)
+            subprocess.run(['gh','run','download',str(run['runId']),'--repo',REPO,
+                '--name',artifact,'--dir',str(directory)],check=True,timeout=120)
+        try:count=verify_result_files(directory,expected,run)
+        except (OSError,ValueError,KeyError) as error:
+            raise SystemExit('Evidence verification failed: '+str(error)) from error
+        print(f'  Verified {artifact}: receipt plus {count} files; {directory}')
+
+
+def wait_for_run(run_id):
+    previous=None
+    while True:
+        try:run=json.loads(api('actions/runs/'+run_id))
+        except SystemExit:
+            print(f'Observation unavailable; keep following run {run_id}, no redispatch',flush=True)
+            time.sleep(30)
+            continue
+        status=(run['status'],run['conclusion'])
+        if status!=previous:
+            print(f'Run {run_id}: {status[0]} / {status[1]}',flush=True);previous=status
+        if run['status']=='completed':return
+        time.sleep(30)
 
 
 def api(endpoint):
@@ -61,6 +122,11 @@ def report(run_id, job_name, verbose=False):
         item = {key: job[key] for key in ('id', 'name', 'status', 'conclusion', 'steps')}
         result['jobs'].append(item)
         print(f"\n{job['name']}: {job['status']} / {job['conclusion']}")
+        if job.get('started_at'):
+            offset=(datetime.fromisoformat(job['started_at'])-datetime.fromisoformat(run['created_at'])).total_seconds()
+            print(f'  Start offset: {offset:.0f}s from dispatch (includes dependency/runner waits)')
+        current=next((step['name'] for step in job['steps'] if step['status']=='in_progress'),None)
+        if current:print('  Running: '+current)
         durations = [(step['name'], (datetime.fromisoformat(step['completed_at']) -
                                     datetime.fromisoformat(step['started_at'])).total_seconds())
                      for step in job['steps'] if step.get('completed_at') and step.get('started_at')]
@@ -113,7 +179,7 @@ def report(run_id, job_name, verbose=False):
         if log_format == 'gh-run-view':
             lines = [re.sub(r'^[^\t]+\t[^\t]+\t', '', line) for line in lines]
         lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
-        markers=('APP_BUILD ','APP_CASE ','APP_SUITE ','APP_INPUT_VERIFIED ',
+        markers=('APP_BUILD ','APP_CASE ','APP_DIAGNOSIS ','APP_SUITE ','APP_INPUT_VERIFIED ','APP_INPUT_HANDOFF ',
                  'COMPILER_CACHE_STATS ','EXPERIMENT_RECEIPT ')
         item['observations']=[line for line in lines if line.startswith(markers)]
         for line in (lines if verbose else item['observations']):
@@ -128,6 +194,7 @@ def report(run_id, job_name, verbose=False):
     path.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     print('\nReport: ' + str(path))
     print('LLDB command success describes evidence collection only. App status 0 alone does not certify a GUI journey.')
+    return result
 
 
 def main():
@@ -140,6 +207,8 @@ def main():
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--job', help='Exact job name for report; default: all jobs')
     parser.add_argument('--verbose', action='store_true', help='Print all diagnostic observations in report')
+    parser.add_argument('--evidence',action='store_true',help='Report and download/hash-verify the exact completed execution evidence')
+    parser.add_argument('--wait',action='store_true',help='Follow the exact newly dispatched run, then report its result without redispatch')
     parser.add_argument('--artifact', help='Download only this named artifact from the exact run')
     args = parser.parse_args()
     if args.command in ('report', 'download') and (not args.run_id or not args.run_id.isdecimal()):
@@ -148,8 +217,12 @@ def main():
         parser.error('--job is only supported by report')
     if args.artifact and args.command != 'download':
         parser.error('--artifact is only supported by download')
+    if args.wait and args.command!='build':parser.error('--wait is only supported by build')
+    if args.evidence and not (args.command=='report' or (args.command=='build' and args.wait)):
+        parser.error('--evidence requires report or build --wait')
     if args.command == 'report':
-        report(args.run_id, args.job, args.verbose)
+        result=report(args.run_id, args.job, args.verbose)
+        if args.evidence:collect_evidence(result)
         return
     repo = REPO
     if args.command == 'build':
@@ -168,6 +241,18 @@ def main():
         print('Dispatching exact pushed source ' + expected, flush=True)
         command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'app=' + args.app, '-f', 'reference=' + str(args.reference).lower(),
                    '-f','lifecycle_context='+str(args.lifecycle_context).lower()]
+        dispatched=subprocess.run(['gh',*command,'--repo',repo],capture_output=True,text=True,check=True)
+        dispatch_output=dispatched.stdout+dispatched.stderr
+        print(dispatch_output, end='',flush=True)
+        if args.wait:
+            match=re.search(r'https://github\.com/'+re.escape(repo)+r'/actions/runs/(\d+)',dispatch_output)
+            if not match:raise SystemExit('Dispatch accepted but exact run URL was not returned; inspect status, do not redispatch')
+            run_id=match[1]
+            wait_for_run(run_id)
+            result=report(run_id,None,args.verbose)
+            if args.evidence:collect_evidence(result)
+            if result['conclusion']!='success':raise SystemExit(1)
+        return
     elif args.command == 'status':
         command = (['run', 'view', args.run_id] if args.run_id else
                    ['run', 'list', '--workflow', 'experiment.yml', '--limit', '5'])

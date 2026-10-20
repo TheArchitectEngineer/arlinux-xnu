@@ -68,7 +68,11 @@ implementation; no scene construction or UIKit lifecycle delivery is implemented
 
 The subsequent window-state correction consults real Linux child status when
 reading backend liveness, so an ungraceful backend exit cannot leave a stale
-alive/active snapshot. Its hosted validation is pending.
+alive/active snapshot. Run [39503145757](https://github.com/taowen/arlinux-xnu/actions/runs/39503145757),
+source 6b3bda4b0b612edeecab08b494c80d7b78c67fef, compiled and exercised the
+initial snapshot; its receipt
+96791ee1da826d551d92b184711c979df58f56ec322f93c564325f68ae67ed48 and all 20
+files were verified. Abrupt backend termination itself remains untested.
 
 ## Direction and next implementation
 

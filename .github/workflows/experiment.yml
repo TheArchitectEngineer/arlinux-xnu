@@ -16,6 +16,7 @@ name: iOS app collection
         type: boolean
 permissions:
   contents: read
+  actions: read
 jobs:
   apps:
     outputs:
@@ -28,8 +29,10 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
     - uses: actions/checkout@v4
-    - name: Build all source-owned iOS apps with the Apple SDK
-      run: python3 tools/build-apps.py
+    - name: Build selected source-owned iOS apps with the Apple SDK
+      env:
+        APP_SELECTION: ${{ inputs.app }}
+      run: python3 tools/build-apps.py --app "$APP_SELECTION"
     - name: Record app products
       id: products_receipt
       if: always()
@@ -37,12 +40,10 @@ jobs:
     - uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: ios-app-inputs
+        name: ios-app-inputs-${{ github.run_attempt }}-${{ steps.products_receipt.outputs.sha256 }}
         path: build/apps/
         retention-days: 30
   native-userland:
-    needs: apps
-    if: always() && needs.apps.result != 'cancelled'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
     env:
@@ -137,19 +138,20 @@ jobs:
         ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native "${rpc_flags[@]}" -c src/macho-native.c -o build/native/macho-native.o
         ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native -c build/native/xdg-shell-protocol.c -o build/native/xdg-shell-protocol.o
         cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
-    - uses: actions/download-artifact@v4
-      with:
-        name: ios-app-inputs
-        path: build/apps/
-    - name: Verify exact app input products
-      env:
-        APP_INPUT_RECEIPT: ${{ needs.apps.outputs.receipt }}
-      run: python3 tools/verify-app-inputs.py
     - name: Prepare real pinned iOS userland
       run: |-
         mkdir -p build/results
         python3 tools/prepare-ios-userland.py 2>&1 | tee build/results/input.log
       shell: bash
+    - name: Receive same-run app products after parallel preparation
+      id: app_inputs
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: python3 tools/receive-app-inputs.py
+    - name: Verify exact app input products
+      env:
+        APP_INPUT_RECEIPT: ${{ steps.app_inputs.outputs.receipt }}
+      run: python3 tools/verify-app-inputs.py
     - name: Start real compositor and input seat
       shell: bash
       run: |
@@ -268,7 +270,7 @@ jobs:
     - uses: actions/checkout@v4
     - uses: actions/download-artifact@v4
       with:
-        name: ios-app-inputs
+        name: ios-app-inputs-${{ github.run_attempt }}-${{ needs.apps.outputs.receipt }}
         path: build/apps/
     - name: Verify exact app input products
       env:
