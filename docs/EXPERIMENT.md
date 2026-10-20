@@ -19,60 +19,55 @@ and two cross-app scenarios; selected runs never certify the whole collection.
 
 ## Current failed GUI effect
 
-Run [39509111323](https://github.com/taowen/arlinux-xnu/actions/runs/39509111323),
-source **9872f7dd13b0b8ca53eea5769df5c43a1eb7a7ca**, selected Counter. Receipt
-**d427fe5e26f446f91cedb00794b893710c5beadec2f4cb0fc9e9c93193de8a6b**
-and all 20 files were verified by the single build --wait --evidence command.
-The run fails; no Counter launch delegate, useful content or input is accepted.
+Run [39511482501](https://github.com/taowen/arlinux-xnu/actions/runs/39511482501),
+source **e92132e2a30265a9037b47dcbb333752e3857935**, selected Counter. Receipt
+**aa844eff64c391ce48a831b4719280adf56e46dd11d4b76641a925e6e7d5271f**
+and all 21 files were verified by the single build --wait --evidence command.
+The run fails; useful composed app content and input are not accepted.
 
 - The guest reads actual host window state: 1024 x 600, 60000 mHz, configured,
   active, backend-alive, audited PID/incarnation. Kernel child status also masks
   stale alive/active flags; abrupt backend termination itself remains untested.
-- The platform adapter now enters the real FBSScene initializer with original
-  identity/specification/settings/client-settings objects and an actual
-  FBSSerialQueue/updater definition. The initializer returns and UIKit scene
-  delivery begins; this is not successful app launch.
-- The prior settings-class assertion is gone: configured mutable settings are
-  copied back to their immutable specification class. Scene initialization and
-  delivery now execute on the actual FBSSerialQueue, not the timer callback.
-- The missing canHaveAgent selector is resolved. The original fault now occurs
-  at 0x19b910ac8 in FBSBasicSceneAgent scene:reviewEvent:withCompletion:.
-  Same-cache code compares the agent's scene against the supplied scene;
-  the referenced assertion is `_scene == scene`. Investigate genuine agent
-  initialization/binding rather than bypassing that invariant.
-- The opt-in loaded FBSSceneUpdater comparison traversed two protocols and 26
-  methods: no missing methods, no raw encoding differences, no truncation.
-  The report preserves fault context and separate scene stages. The selected
-  scene initializer now retains 2908 instruction bytes rather than stopping at
-  768; all selected contexts ended before the 4096-byte budget. These are
-  diagnostic facts, not app acceptance. Total feedback took 146 seconds and
-  original-process diagnosis 12.815 seconds; timing varies between runners.
-  Session scene registration, complete enumeration,
-  focus updates, input, host-process/remote endpoint support and normal close
-  remain unfinished.
+- The genuine FBSScene initializer returns with original specification/settings
+  objects and an actual FBSSerialQueue. Creation now goes through FBSScene's
+  agent notification, which binds the agent before entering UIKit. The old
+  direct workspace callback and its `_scene == scene` failure are removed.
+- Original App delegate execution reaches UIWindow makeKeyAndVisible. Run
+  39510457131's original stacks identified CAContext remote connection request
+  40203; no render-server reply was fabricated. The current software backend
+  selects Apple's actual localContextWithOptions: constructor instead. The
+  original CAContext is successfully created; this is not displayed pixels.
+- The input adapter now owns actual UIKit key-window focus locally. The prior
+  remote keyboard NSXPC token-encoding failure is gone; the local token still
+  rejects remote capability export. External input/keyboard are unimplemented.
+- Genuine App delegate execution returns: COUNTER_READY, original label/button
+  view tree, Count: 0 and 1024 x 600 viewport are observed. The scene creation
+  notification returns. These establish startup, not GUI acceptance: the
+  composed screenshot is still black and no app frame has been presented.
+- The current fatal boundary is Apple's CALayer backing-store update:
+  CABackingStorePrepareUpdates_ -> init_max_renderable_iosurface ->
+  IOSurfaceClientGetPropertyMaximum -> _iosConnectInitalize assertion
+  "unable to locate IOSurface kernel service". Adapt the software backing-store
+  path or supply a real host-backed resource; do not suppress the assertion or
+  advertise an imaginary IOSurface driver. Inspect the original rendering path
+  before choosing an alternative; preserve layer/text rendering semantics.
+- Counter's journey now also clicks after relaunch and requires Count: 1.
+  Original-process fatal-service diagnosis preserves waiting caller stacks;
+  default non-diagnostic fatal exits remain unchanged.
 
-The prior run
-[39506273079](https://github.com/taowen/arlinux-xnu/actions/runs/39506273079),
-source 9617a69fbe2c921626b1ebce2267fa245f1edbb2, failed before scene creation.
-Its verified receipt is
-ed63db08eb4b4a21d5c08f47b536a7a1adff7dd8af3e71bb1ea4d3934fcd39b6 (20 files).
-Same-cache token-constructor code rejects nil endpoints and validates the remote
-service identity. The replacement local token is an immutable subclass with
-real local identity/copy/equality/hash, no remote endpoint and explicitly
-unsupported remote encoding. It passed those early constructor checks in the
-current run. No remote Apple capability or service success is fabricated.
-Local exception logging retains the original name/reason and rethrows.
+Session scene registration, complete workspace enumeration, compositor focus
+updates, input, host-process/remote endpoint support and normal close remain
+unfinished. No app/control callback is invoked by the harness or adapter.
 
 ## Verified regression and reference limits
 
-Run [39504697195](https://github.com/taowen/arlinux-xnu/actions/runs/39504697195),
-source 2326e771feaa4ba5bc9b67f9ec63965858259bfb, passed Console and Foundation
+Run [39510457131](https://github.com/taowen/arlinux-xnu/actions/runs/39510457131),
+source d0ecaf5031e08d01e165e469987ecf2755f65227, passed Console and Foundation
 (fullSuite=false). Receipt
-fbed9e7d32538114fb9a03ccdff762720b37d22bf166fd6396ce7b6e8a876e45 and all
-23 files were verified. Console covers real allocation, computing pthread,
+772a735292885abe6304ff820004fe7ad667967a012e388f9d3e071fa228055c and all
+33 files were verified. Counter failed separately. Console covers real allocation, computing pthread,
 external stdin, normal exit and a fresh relaunch. Foundation covers Unicode JSON,
-exception unwind, NSTimer computation and normal exit. They have not been rerun
-against the newly introduced scene adapter. Swift/UIKit has no passing Linux
+exception unwind, NSTimer computation and normal exit. Swift/UIKit has no passing Linux
 journey and must be included after Counter startup progresses.
 
 Earlier loader/Mach/runtime repairs retain actual file identities, mapped

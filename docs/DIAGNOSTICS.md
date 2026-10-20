@@ -112,6 +112,11 @@ The Linux journey harness enables ARLINUX_STOP_ON_FAULT for original app
 processes. A fault first records registers and bounded kernel mappings, marks
 the journey failed, and stops the original process for existing read-only LLDB
 collection. Debugger collection or forced cleanup never counts as normal exit.
+The same opt-in collector now retains fatal service-request failures: after
+recording DARLING_RPC_ERROR, the runtime raises SIGABRT on the rejecting thread
+so waiting original client threads can be inspected. Without the diagnostic
+flag the fatal exit remains unchanged. Run 39510457131 retained the actual
+UIWindow -> CAContext remote-connection stack that exit_group previously lost.
 Atlas Image metadata reads require a matched actual fault symbol and a complete
 writable-map bounds check; no guest calls or executable-memory dumps are added.
 The same original-process collection can decode its registered dyld image-info

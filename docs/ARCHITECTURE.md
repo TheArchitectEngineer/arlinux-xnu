@@ -45,6 +45,18 @@ original QuartzCore does not imply that its Apple GPU/compositor backend works.
 The present software layer renderer is a starting point, not completed graphics
 compatibility.
 
+The software backend's ios-rendering.m selects the original CAContext local
+constructor when UIKit requests its window context. It preserves original
+context/layer behavior while avoiding a nonexistent Apple render server. Hosted
+run 39511482501 confirms construction, not presentation. ios-input.m owns actual
+UIKit key-window focus locally instead of exporting the local scene token to
+Apple's remote keyboard arbiter. Host input and keyboard delivery remain to be
+implemented and verified. That run reaches real App launch and original UIKit
+label/button state, then aborts when CALayer backing-store preparation queries
+an absent IOSurface kernel service. The next graphics boundary is software
+backing-store allocation; empty composed pixels remain a failed journey.
+Remote context sharing is unsupported.
+
 ### Lifecycle boundary and next implementation
 
 The previous implementation encoded legacy FrontBoard launch/scene events in
