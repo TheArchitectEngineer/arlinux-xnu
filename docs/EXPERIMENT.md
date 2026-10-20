@@ -50,13 +50,29 @@ expose identity/currentMode, pixelSize/bounds and other display fields. It still
 throws the nil insertion exception; these are protocol observations, not a fix.
 LLDB log SHA-256: `dcfdc6c10dd52b3f8fd7a175620addcf2dcbc5b84a0f9b5f4459a22713a14d6a` (receipt verified).
 
-Exact pending run: [39405060101](https://github.com/taowen/arlinux-xnu/actions/runs/39405060101),
-source `237e4e3cf6d78c709f7cd43168e42d8ce4fd8fe3`, captures scene setting
-blocks located inside the disassembled method range and complete display codecs.
-The branch-table page resolver correction in `83b6ecd` is not in that run;
-use it for the next dispatch if table addresses are missing. Continue this run;
-observation timeouts do not justify restarting it. Do not bypass nil assertions,
-invoke the app delegate directly or substitute a host-drawn app.
+[Run 39405060101](https://github.com/taowen/arlinux-xnu/actions/runs/39405060101),
+source `237e4e3cf6d78c709f7cd43168e42d8ce4fd8fe3`, captures both scene
+setting blocks. Actual object dispatch subtracts 2 from the setting key; its
+six signed offsets at 0x183841334 start with -0x304, reaching 0x183841030:
+class validation followed by setDisplayConfiguration:. Thus object setting 2
+is display configuration; no firmware-specific runtime address is introduced.
+LLDB log SHA-256: `f8fff0cf693c33b163e9b4f6a4827b637f7f75460919397e7cd6f156791ebd24` (receipt verified).
+It still fails on nil display identity; no GUI acceptance passes.
+
+Exact pending run: [39405811356](https://github.com/taowen/arlinux-xnu/actions/runs/39405811356),
+source `6155178ecca033e3f2c45904a896d44b94467bdf`, publishes actual Wayland
+geometry/refresh/backend PID to the independent session using native Mach IPC.
+The service uses kernel audit sender PID/incarnation, validates backend
+parentage and retains both pidfds; either process exit retires the record.
+Verify SESSION_DISPLAY_REGISTERED/RETIRED against each actual app/backend and
+check that the session remains alive. The data is not yet encoded into initial
+scene settings; the pending run is expected to retain the nil identity failure.
+It also includes the corrected read-only switch table page resolver.
+Continue this exact run; observation timeouts do not justify restarting it.
+Next implement setting 2's actual FBSDisplayConfiguration/identity/mode codecs
+using these live dimensions, then verify genuine UIKit scene progression.
+Do not bypass nil assertions, invoke the app delegate directly or substitute a
+host-drawn app.
 
 Header-only MACH_NOTIFY_SEND_ONCE cancellation is handled only on outstanding
 reply ports with the exact kernel notification and zero audit identity; it is
