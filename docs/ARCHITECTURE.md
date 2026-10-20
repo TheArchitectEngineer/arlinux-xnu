@@ -140,6 +140,11 @@ COPY_SEND/MOVE_SEND messages with no body rights use real queues and bounded wai
 guard destruction and broader port ownership remain unsupported. A successful
 allocation is not evidence of an XPC server or a complete IPC journey.
 
+Inline messages have a bounded 16 KiB capacity, not full XNU reliable-message
+capacity. Oversize sends fail with SEND_TOO_LARGE; unreadable user buffers fail
+with INVALID_DATA. Fixed-size timer notifications use fixed-size stack storage.
+Larger message ownership/storage still needs implementation.
+
 Queue packets capture the actual Linux sender audit identity at send time.
 Receives construct packed Darwin trailers from that identity, the port context
 and its actual receive sequence. Too-small LARGE receives retain the message

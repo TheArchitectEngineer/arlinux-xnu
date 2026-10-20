@@ -13,8 +13,8 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39362388407](https://github.com/taowen/arlinux-xnu/actions/runs/39362388407),
-source `ab0b3fff342ed62399f186d1efabcdbab1db97a5`, dyld job `118431436939`.
+[39364012679](https://github.com/taowen/arlinux-xnu/actions/runs/39364012679),
+source `cf61e92e1ebce7e89aecdbbab2461a6fcdd233e6`, dyld job `118436647929`.
 The host child connects directly to headless Weston, configures a 1024x640
 xdg-shell surface and submits an actual wl_shm buffer. Its entered output
 advertises 60000 mHz refresh. A real frame callback
@@ -37,23 +37,35 @@ calendar/continuous kevent timer correction eliminates the observed unsupported
 0x9c timer flags, reaching an actual wait in run 39357483030. These historical
 observations are not repeated by every later thread interleaving.
 
-Current failure: ordinary app status 124. The app now successfully registers
-ARHello.gsEvents as receive queue 0x1f03 (DARWIN_SERVICE_REGISTER status 0).
-The earlier KERN_FAILURE (5), captured by the real __GSWriteStackshot callback
-in run 39361738985, no longer appears. This confirms the registration fix,
-not a completed event-delivery or display journey. The registry uses actual
-name/send-right bindings; no launchd/XPC server is fabricated.
+Current failure: ordinary app status 133 at 0x180b1d1b8 in libxpc.
+The actual preceding branch references "Data corruption: Malformed Mach
+message or kernel bug." Run 39363495230 established one cause: our 1024-byte
+transport rejected a readable 1260-byte XPC request before attempting to copy
+it. Current inline capacity is one guest page (16 KiB), and capacity overflow
+returns SEND_TOO_LARGE rather than invalid user data. Timer notifications use
+fixed-size temporary storage so nested receives do not reserve a full message
+on every timer probe. Larger messages still need dynamically owned storage.
 
-The new main-thread stack is native_ulock -> libdispatch ->
-__UIKitPreferencesOnce -> UIApplicationInstantiateSingleton. A background
-initializer waits in CFPREFERENCES_IS_WAITING_FOR_SYSTEM_CFPREFSD and XPC reply
-receive; two reply queues are empty. The runtime also rejects actual
-mach_port_destruct calls (trap 25) with KERN_NOT_SUPPORTED (46). Apple's pinned
-libdispatch explicitly destroys the receive right of a disconnected special
-reply port to break its blocked mach_msg receive. Inspect those destruction
-arguments and implement the real right lifecycle/wakeup before attributing
-this hang solely to a missing preferences server. A timeout or an empty
-preferences reply would hide the missing behavior.
+That 1260-byte request now reaches header validation and returns
+MACH_SEND_INVALID_HEADER (0x10000010), not the earlier invalid-data error.
+Its actual header is bits 0x1513, size 0x4ec, destination 0x1303, reply 0xf03,
+voucher 0, ID 0x10000000, with inline XPC serialization beginning 0x40585043.
+This is COPY_SEND plus MAKE_SEND_ONCE for the reply right, without a complex
+body. The generic local transport currently rejects all reply-right transfers.
+Implement actual send-once ownership/name allocation and delivery before
+accepting this request; stripping the local port or its disposition would
+silently lose the reply path. Then establish which real peer owns the target
+queue; enqueue alone cannot stand in for a preferences daemon response.
+
+Special-reply destruction is now implemented for empty, unguarded queues and
+actually executes: trap 25 destroys reply port 0xf03 and preserves one dead-name
+reference. The following receive starts after destruction and returns
+INVALID_NAME. No DARWIN_REPLY_RECEIVE_DIED marker has yet verified wakeup of an
+already blocked receiver. Tombstones remain until exit; general guarded/queued
+message cleanup, reclamation and concurrent reference mutation remain gaps.
+Earlier run 39362388407 verifies successful ARHello.gsEvents registration.
+The later XPC failure may occur before that milestone in a different thread
+interleaving; absence of the registration marker is not a registration regression.
 
 Direct kevent receive buffers now implement real allocation, stack/forward
 placement, trailer sizing and residual writeback; workqueue workers reserve
@@ -61,13 +73,8 @@ receive storage above their actual guest callback stacks. The earlier explicit
 ENOTSUP is gone, but no successful buffer-message delivery marker has yet been
 observed. Do not claim this receive path is accepted by the app journey.
 
-Rejected send options in run 39360652820 matched the pinned Apple libdispatch's
-QoS/importance hints. The current run accepts those under ordinary Linux
-scheduling, distinguishes a priority argument from a notification port, and
-preserves real send/receive errors. No rejected-option marker repeats; the
-application still stalls, so this does not establish working XPC peers.
-The receipt SHA-256 is
-`95b6156ce98da5642d906afb2169883ee7fb16386c01a3725583da81ede4eab0`.
+The current receipt SHA-256 is
+`136cc2d486a418495974512e9c35a5d224a93f188c1acfd7a7d27cd751174f27`.
 LLDB_COMMAND_STATUS=0 describes evidence capture only.
 
 Both independent real-libSystem console journeys still pass: worker return 37,
@@ -120,13 +127,14 @@ integration journey remain incomplete.
 
 ### Current boundary and next action
 
-Trace mach_port_destruct arguments in the actual failed-send recovery and
-implement receive-right destruction and real wakeup, including the special
-reply port's disconnected state. Preserve send/dead-name references and avoid
-recycling an endpoint while a receiver still uses it. Then follow the next
-actual framework operation. CADisplay list and properties already pass; do not
-restart that completed ABI investigation. Rendering/input/close/relaunch remain
-required; never mark the blank backend surface as application output.
+Implement real header reply-right transfer for the observed noncomplex
+COPY_SEND/MAKE_SEND_ONCE request. Mach send-once names require distinct rights
+and lifetime from the receive object; do not pretend an extra send reference
+on the same name is a send-once right. Keep queued ownership, receive-copyout
+failure, destruction and consumption coherent. Verify actual delivery and the
+peer's reply, then follow the next framework operation. Rendering, input,
+normal close, relaunch and ARLinux integration remain required; a blank backend
+surface never counts as application output.
 
 Display-list routine 40231 was measured in run 39352885663: 24-byte request,
 56-byte complex reply with one LP64 OOL descriptor, NDR and matching byte count.
@@ -179,10 +187,10 @@ Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
 never reached the button; the accepted run uses the actual macOS HID queue.
 
 Latest app failure receipt:
-`95b6156ce98da5642d906afb2169883ee7fb16386c01a3725583da81ede4eab0`.
-Native runtime SHA-256: `e895666a1b6f7a09ae1a372716018f9f05a9688baa28778ba93c5774578d75f5`.
-Local text: build/runs/39362388407/attempt-1/job-118431436939.log
-and job-118431301550.log. Both independent real-libSystem console launches
+`136cc2d486a418495974512e9c35a5d224a93f188c1acfd7a7d27cd751174f27`.
+Native runtime SHA-256: `911f4276acbf43d23b4de68d6dcd6c63d7f3aa9099ad2771001cc4d7f5934a12`.
+Local text: build/runs/39364012679/attempt-1/job-118436647929.log
+and job-118436517742.log. Both independent real-libSystem console launches
 still complete. Earlier intermediate failures remain in Actions/Git history.
 
 ### Reproducible inputs and evidence

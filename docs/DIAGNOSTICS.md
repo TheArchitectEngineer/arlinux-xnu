@@ -120,3 +120,18 @@ with KERN_FAILURE (5), before synchronous stackshot reporting blocked.
 When the individual job-log endpoint is unavailable, report now falls back to
 gh run view for the exact run/attempt/job and records the raw log format and
 SHA-256; marker parsing removes only the known transport prefix.
+
+For a libxpc BRK, capture_normal_fault now reuses the bounded ADRP/ADD literal
+reader as FAULT_REFERENCE. Nearby strings can describe different branches;
+match the actual PC and instruction path before naming an assertion. Run
+39363495230 verifies the reader at 0x180b1d1b8: the preceding literal says
+"Data corruption: Malformed Mach message or kernel bug." The corresponding
+DARWIN_MACH_SEND_DATA_REJECTED record shows a valid 1260-byte request rejected
+by our old 1024-byte capacity, before any guest buffer read. That local limit
+must not masquerade as invalid guest memory. Observe the real queue send/receive
+after changing capacity; accepting the input alone is not transport success.
+
+DARWIN_REPLY_PORT_DESTROYED verifies shutdown and dead-name conversion;
+DARWIN_REPLY_RECEIVE_DIED separately records an actual blocked receive returning
+PORT_DIED. Destruction before a subsequent receive can instead produce
+INVALID_NAME. A destruction marker alone does not verify waiter wakeup.
