@@ -130,6 +130,15 @@ separate replies from two concurrent apps. The decoded response requests task
 suspension policy; it is not proof that a scene exists, an app delegate ran or
 a process was suspended. Continue at actual main-scene creation.
 
+For create-scene, run 39397655202 verifies actual delivery and the nil-settings
+assertion in FBSSceneImpl. The session now treats the exact kernel send-once
+cancellation as cancellation, preserving a live service for diagnosis. A zero
+audit token must never authenticate an application message or mark a reply
+successful. BSSettings object-map values need the real object codec. Executable
+cache mappings include strings: codec block identification must require actual
+stack-block storage and code prologues, not executable permissions alone. Older
+APP_SETTINGS_CODEC_BLOCK labels include literals and require disassembly review.
+
 ## Primary references
 
 - [LLDB breakpoint scripts](https://lldb.llvm.org/use/tutorials/breakpoint-triggered-scripts.html)

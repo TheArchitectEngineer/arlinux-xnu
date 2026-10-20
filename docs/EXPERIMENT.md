@@ -12,8 +12,8 @@ none of that complete multi-process/Android journey has passed.
 
 Current app: **ARHello 1.0** (`io.arlinux.ARHello`), source in guests/ARHello,
 using the real pinned UIKit/frameworks. Latest executed source:
-`baa76908d9ba96a5a849bb9ed0b56239e6815d9e`,
-[run 39394942049](https://github.com/taowen/arlinux-xnu/actions/runs/39394942049).
+`5c8d22d5a66af81458f949d4521e243569438b9b`,
+[run 39399351865](https://github.com/taowen/arlinux-xnu/actions/runs/39399351865).
 Use the sole build.sh entry, `build --mode app --ipc darling`.
 
 Two genuine dyld/libSystem console journeys still pass: malloc, pthread join
@@ -22,63 +22,73 @@ Darling/XNU owns real Mach rights/messages; current-task VM/time/BSD remain
 Linux-backed. Synchronous anonymous S2C mapping works for observed OOL flows;
 file/fixed/executable mappings and asynchronous callbacks remain incomplete.
 
-The independent session (Linux PID 4290) owns bootstrap, process-info and two
-FrontBoard listeners. Concurrent ARHello PIDs 4298 and 4299 both check in,
-register actual task/listener rights, and associate their real workspace
-process metadata. Kernel audit PID/incarnation binds each connection; Linux
-pidfds drive release of retained rights/records on exit. Submitted task rights
-remain capabilities, not independently verified task-to-PID mappings.
-No virtual PID 1/root audit identity is fabricated. Early exited/recycled
-check-ins now release their rights instead of aborting the session; this race
-branch has not yet been forced in the complete app journey.
+The independent session owns bootstrap, process-info and two FrontBoard
+listeners. Actual kernel audit identities and Linux pidfds bind/retire client
+connections and their real Mach rights. BKSWorkspace message 11 registration,
+workspace connect metadata and genuine UIApplication launch events/replies
+remain implemented. Submitted task rights are capabilities, not independently
+verified task-to-PID mappings. No PID 1/root identity is fabricated.
 
-BKSWorkspace.init's signed message 11 registration is identified from actual
-constructor code. FrontBoard workspace message 0 carries
-FBSWorkspaceConnectEvent/FBSProcessHandle; association requires its PID to match
-the audited sender. The session retains this connection's application metadata.
-System-app facility registration/operations remain explicitly unsupported.
+Main-scene event routing is now established from actual code: workspace message
+5 -> _queue_handleCreateScene:. The event carries a per-process sceneID and
+UIApplicationSceneSpecification, then settings/clientSettings diffs. Both
+ordinary apps (4290/4289) reach this stage but exit 133 without ARHELLO_READY.
+The independent debugger process (4386) confirms actual create-scene delivery,
+FBSWorkspace client:handleCreateScene:withCompletion:, then throws
+NSInternalInconsistencyException: `Invalid condition not satisfying: settings != nil`.
+Main-scene objects, app initialization, geometry/activation, frames and input
+are not established.
 
-Run 39393971710 establishes the real UIApplication workspace dispatcher:
-message 1 routes to _queue_handleLaunch:, with an FBSUIApplicationLaunchEvent
-whose base event encoding has no additional fields. The session now delivers
-that event over each actual client connection and provides a genuine send-once
-reply path. Both ordinary app PIDs receive it and reply; debugger PID 4405 also
-replies. Its actual callbacks include _queue_handleLaunch:,
-workspace:didLaunchWithCompletion: and
-_handleApplicationLaunchEventWithCompletion:. Replies contain
-FBSUIApplicationLaunchResponseEvent/FBSUIApplicationLaunchResponse with
-taskSuspend=true and taskSuspendOnLock=true. No process-suspension behavior is
-claimed from decoding those flags.
+The live codec reads FBSSettingsDiff's changes/settingsClass. Its concrete
+settingsByApplyingToMutableCopyOfSettings: reads class setting 1 from changes
+before constructing the first settings object. The current payload supplies
+BSSettings.objects["1"] as a raw class-name string, but the actual object-map
+callback calls a further typed decoder and still produces the nil-settings
+failure. Do not claim the current encoding creates settings. Inspect that
+actual decoder rather than adding speculative fields or bypassing assertions.
+The latest ordinary fault PC is 0x1809bbf6c; debugger and ordinary attempts stay
+separate. Older run 39396795755's fault also killed the session on a notification.
 
-**Startup still fails.** Both ordinary apps time out at 30 seconds (124),
-without ARHELLO_READY. No main-scene creation/_runWithMainScene: or application
-initialization delegate has been observed. The launch handshake alone updates
-UIKit launch state and returns policy; it does not create the main scene.
-Wayland still submits a blank host buffer, not an application frame. Helpers,
-full state/crash isolation, interactive lifecycle and Android remain unproven.
+That session defect is fixed and verified: an unused reply send-once right
+produces header-only MACH_NOTIFY_SEND_ONCE (71) with kernel audit token zero.
+Only the exact notification on an outstanding event reply is accepted as
+cancellation; it is never a successful scene reply. Logs show cancellation and
+client retirement while the shared service remains alive for later clients.
+System-app facility operations, complete crash isolation, helper spawning,
+normal GUI exit/relaunch and Android remain incomplete.
 
-Next: implement real main-scene creation/activation through the workspace,
-using the actual create-scene dispatcher and event/settings codecs. Preserve
-the separate launch-reply evidence; do not manufacture scene state or invoke
-the app delegate directly. Diagnose actual UIKit/QuartzCore requirements as
-its genuine scene path advances, then verify display/input/exit/relaunch,
-concurrent apps, requested helpers and ARLinux integration.
+Pending exact run: [39400670557](https://github.com/taowen/arlinux-xnu/actions/runs/39400670557),
+source `d201bac04eb1f09ed42665def485818823c845e6`, narrows actual codec block
+identification and captures nearby direct decoder callees. Continue observing
+this same run; do not restart on a local timeout. The previous block reader
+incorrectly included string literals because executable cache mappings also
+contain strings. Use the actual stack-block storage/prologue and resulting
+code; old APP_SETTINGS_CODEC_BLOCK labels alone do not prove callable blocks.
+In the pinned cache the real object callback reaches 0x183696318; this address
+is diagnostic context, not a runtime version-specific hook.
+
+Next: read the pending run's actual typed object decoder, correct initial scene
+settings encoding, and verify that the genuine scene constructor progresses.
+Then derive actual display geometry/activation and rendering/input requirements.
+Keep normal exit/relaunch, two concurrent interactive apps, requested helpers
+and ARLinux integration as acceptance requirements. Do not call the app delegate
+directly, remove settings assertions or substitute a host-drawn app.
 
 ## Exact evidence and inputs
 
-Latest run jobs: server `118535237409`, native `118535673592`, app
-`118535958267`. Downloaded session/app/peer/LLDB textual logs match the receipt.
+Latest run jobs: server `118549883649`, native `118550192389`, app
+`118550430829`. Downloaded session/app/peer/LLDB textual logs match the receipt.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Native ELF | `3c99de98e7481abf67f8a876d7de360307b7b8fcb40a0dde66efa6bbbccce53c` |
-| Darling server ELF | `cb0ef60765aba1e190f2a355a3f64028ebe8285493e43293d700e005abf0852c` |
-| App evidence receipt | `e4ca94e92b1d1ec926232205db7f975c405790cb5f9ac1a41bf46520ca6fbda2` |
-| Native receipt | `71fb387c8a18939525643d68e7de9e3e2b5c72162601fbb067a9539e1ffc60bb` |
-| Server receipt | `f5bcefa8b5319d45a399cbc1a92a363e3168b447d4c2638f153193db0e21ec01` |
-| Session log | `1c431f76acebce964be59c671db5865300d162d8b69b2f819d32f9b756155e83` |
-| Session decoded dictionaries | `ffa0de930c7a20165c69661e37beebc5fd36ce7007641db012392ae10c00fb62` |
-| LLDB log | `e46db857533ecec8b81e0db583ba930bd9411ea2e91e341ae530eda8ccf67ac6` |
+| Native ELF | `dfad36a0820c5e0956da1479f99191956fcefbad641da5eec8322aaf03fc34ac` |
+| Darling server ELF | `7864a8ed318cab5ea78cec751b9c4623a07176a2222bc6ac91f2f1db4d2e1c9a` |
+| App evidence receipt | `04c98e651a22d602bdfccc6b6cec2e4bda9c3eaeb27dfcb11a8ea7c2afb64e7f` |
+| Native receipt | `028ce19bbaab3cb4c94b354f5487b48638cf1cb6edf6f858ac578c4a0e1db568` |
+| Server receipt | `f42d3b0c7e80a70c6ff581090bd88c3bd3fa521eac22ab598506112487f36838` |
+| Session log | `c784eb4aeda45bdcf4b331a8d5fefd9c4966538f9277a63dea1d9d6a60219e7c` |
+| Session decoded dictionaries | `df6852a70ab1e0985d7f0f1a912fd40127b3e1890c8535ec6bc717baf19ed2ee` |
+| LLDB log | `9ff1086f3623905d3f9b07431507d8adf997c726f06de1b03b626336ebc8c459` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain

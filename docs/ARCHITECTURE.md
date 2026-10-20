@@ -399,6 +399,11 @@ stack alone does not identify a missing daemon or establish its protocol.
   LLDB confirms the actual FrontBoard/UIKit launch callbacks. Main-scene creation,
   application initialization/display/input and helper spawning remain incomplete;
   a launch response or transport success does not establish app startup.
+  Create-scene message 5 now reaches the genuine FBSWorkspace scene path; its
+  current settings encoding still fails FBSSceneImpl's non-null assertion.
+  Header-only kernel send-once cancellation on an outstanding event reply is
+  retired separately from client authentication, so a dropped reply does not
+  abort the shared session or masquerade as scene completion.
 
 The private libxpc mapping's launchd trust predicate now accepts only the actual
 independent session provider's PID, effective UID and Linux-backed incarnation.
