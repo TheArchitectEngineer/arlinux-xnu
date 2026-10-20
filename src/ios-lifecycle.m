@@ -28,7 +28,7 @@
 - (void)setDisplayConfiguration:(id)display;
 - (void)setFrame:(CGRect)frame;
 - (void)setForeground:(BOOL)foreground;
-- (void)workspace:(id)workspace didCreateScene:(id)scene withTransitionContext:(id)context completion:(id)completion;
+- (void)_callOutQueue_agent_didCreateWithTransitionContext:(id)context completion:(void (^)(void))completion;
 @end
 
 static const struct arlinux_ios_platform_api *host;
@@ -117,7 +117,7 @@ static void create_scene(UIApplication *app,const struct arlinux_ios_window_stat
     require_method(specificationClass,"specification","@16@0:8",YES);
     require_method(monitorClass,"mainConfiguration","@16@0:8",NO);
     require_method([app class],"_workspace","@16@0:8",NO);
-    require_method([app class],"workspace:didCreateScene:withTransitionContext:completion:","v48@0:8@16@24@32@?40",NO);
+    require_method(sceneClass,"_callOutQueue_agent_didCreateWithTransitionContext:completion:","v32@0:8@16@?24",NO);
     owned_workspace=[[app _workspace] retain];
     if (!owned_workspace || !definitionClass) unsupported("workspace/definition");
     owned_identifier=[[NSString alloc] initWithFormat:@"arlinux:%u:%u:main",window->pid,window->incarnation];
@@ -164,9 +164,14 @@ static void create_scene(UIApplication *app,const struct arlinux_ios_window_stat
             install_registry();
             id context=[[[[specification transitionContextClass] alloc] init] autorelease];
             if (!context) unsupported("transition context");
-            scene_stage="UIKit scene delivery";
+            /* The genuine scene creation notification binds its agent before
+             * UIApplicationSceneClientAgent dispatches into UIKit. Calling
+             * UIApplication's workspace callback directly skipped that binding
+             * and trapped later at FBSBasicSceneAgent's _scene == scene check.
+             * Keep the original agent event/completion path intact. */
+            scene_stage="scene-agent creation delivery";
             fprintf(stderr,"IOS_SCENE_DELIVER_BEGIN identifier=%s\n",owned_identifier.UTF8String);
-            [app workspace:owned_workspace didCreateScene:owned_scene withTransitionContext:context completion:^{
+            [owned_scene _callOutQueue_agent_didCreateWithTransitionContext:context completion:^{
                 fprintf(stderr,"IOS_SCENE_DELIVERY_COMPLETION\n");
             }];
             fprintf(stderr,"IOS_SCENE_DELIVER_RETURNED app_acceptance=false\n");
