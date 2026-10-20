@@ -329,6 +329,7 @@ jobs:
                 -o 'thread backtrace all --count 24' \
                 -o 'script import importlib.util,sys; spec=importlib.util.spec_from_file_location("dyld_debugger","tools/dyld-debugger.py"); helper=importlib.util.module_from_spec(spec); sys.modules[spec.name]=helper; spec.loader.exec_module(helper)' \
                 -o 'script helper.capture_ipc_waits(lldb.debugger.GetSelectedTarget().GetProcess())' \
+                -o 'script helper.capture_render_api_code(lldb.debugger.GetSelectedTarget().GetProcess())' \
                 -o 'register read pc sp x0 x1 x2 x3 x4 x5 x6 x7' \
                 -o 'process detach' >> build/dyld/ordinary-wait.log 2>&1 || trace_status=$?
               echo "ORIGINAL_WAIT_TRACE_STATUS=$trace_status" >> build/dyld/ordinary-wait.log

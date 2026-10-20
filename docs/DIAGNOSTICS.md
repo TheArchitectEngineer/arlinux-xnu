@@ -258,7 +258,8 @@ transport and implement required input behavior against actual Wayland events.
 ## Original-process startup waits
 
 The existing app journey now records an attach snapshot after 12 seconds if the
-original app is still alive without its actual window-ready callback. It checks
+original app is still alive, including after its window-ready callback (which
+does not prove pixel presentation). It checks
 the child of the known timeout process and its exact ELF executable, records PID
 and process start ticks, then uses bounded runner-root LLDB attachment to read
 all-thread stacks and the existing capture_ipc_waits decoder. It detaches before

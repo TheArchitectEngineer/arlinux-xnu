@@ -1027,6 +1027,30 @@ def resume_bounded(process, seconds=12):
         debugger.SetAsync(asynchronous)
 
 
+def capture_render_api_code(process):
+    """Bounded read-only inspection of exact exports recorded by this loader."""
+    wanted = {'_CARenderSoftwareSetDestination': 32, '_CARenderOGLNew_': 96,
+              '_CARenderContextById': 32, '_CARenderServerRenderDisplay': 32}
+    target = process.GetTarget()
+    seen = set()
+    for line in Path('build/dyld/app.runtime.log').read_text(errors='replace').splitlines():
+        match = re.fullmatch(r'NATIVE_RENDER_EXPORT symbol=(\S+) address=(0x[0-9a-f]+)', line)
+        if not match or match[1] not in wanted or match[1] in seen:
+            continue
+        name, address = match[1], int(match[2], 16)
+        seen.add(name)
+        region = lldb.SBMemoryRegionInfo()
+        error = process.GetMemoryRegionInfo(address, region)
+        if error.Fail() or not region.IsExecutable() or address + wanted[name]*4 > region.GetRegionEnd():
+            print('RENDER_API_UNAVAILABLE ' + name, flush=True)
+            continue
+        print('RENDER_API_CODE ' + json.dumps({'symbol': name, 'address': hex(address),
+                                             'pid': process.GetProcessID()}), flush=True)
+        target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(address) +
+                                          ' --count ' + str(wanted[name]))
+        capture_code_references(target, address, wanted[name], 'RENDER_API_REFERENCE')
+
+
 def capture_ipc_waits(process):
     """Read saved Mach arguments and actual queues; never run guest methods."""
     target = process.GetTarget()

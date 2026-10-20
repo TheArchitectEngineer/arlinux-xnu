@@ -32,7 +32,7 @@ matches downloaded app outcomes, both runtime logs and peer stdout.
 Current functional blockers:
 
 - BackBoard HID focus: the actual NSXPC client requests
-  `com.apple.backboard.hid.focus`; the bootstrap rejects the missing service.
+  `com.apple.backboard.hid.focus`; rejecting the missing service causes exit.
   Exit caller 0x183822e34 belongs to its invalidation handler (literal:
   "backboarrd must be going down, exiting"). Implement real focus/input behavior
   backed by Wayland; suppressing exit or holding an empty endpoint is not a fix.
@@ -42,6 +42,22 @@ Current functional blockers:
 - The new sync-wait path does not supply XNU turnstile priority inheritance or
   the workloop control syscall. Continue diagnosing required scheduling behavior
   from actual app contention. A wait registration alone is not a wake proof.
+
+Current diagnostic candidate adds an audited receive endpoint for HID focus,
+with a fatal unimplemented-operation path before any semantic reply. In run
+[39432695199](https://github.com/taowen/arlinux-xnu/actions/runs/39432695199),
+source b6d8038cc098978d8e97cba7bc4aac210bfa4180, lookup succeeds for both apps;
+neither opens the lazy XPC connection or submits an invocation. Both reach
+ARHELLO_READY and remain alive until timeout 124. This demonstrates service
+discovery/liveness only, not a focus implementation. Receipt
+f1c4149f228bd50466cb5ad63b90b3ebc812381e6a69fef8d243243fbe848961
+matches outcomes, both stdout files and session logs. The public runtime header
+[BKSEventFocusIPCInterface](https://github.com/nst/iOS-Runtime-Headers/blob/9b00d90cdccdc95b8029441919bcfb7fb44c8816/protocols/BKSEventFocusIPCInterface.h)
+declares flush(NSSet), but this cache's actual invocation is still unobserved.
+Next exact run [39433710099](https://github.com/taowen/arlinux-xnu/actions/runs/39433710099),
+source 0e810ff4c948bcfdd3a74a5f88f6eafcef12ca28, captures the original live app
+after readiness, real Wayland activation changes and actual CARender exports.
+Continue that handle while live; no pixel/input/lifecycle pass is claimed.
 
 Verified substrate milestones:
 
