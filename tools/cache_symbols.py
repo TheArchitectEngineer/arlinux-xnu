@@ -197,7 +197,7 @@ class CacheSymbols:
 
     def disassemble(self,address,size):
         """Bounded, read-only instructions from the UUID-matched cache."""
-        if size<=0 or size>2048 or size%4:raise ValueError('Invalid diagnostic code extent')
+        if size<=0 or size>4096 or size%4:raise ValueError('Invalid diagnostic code extent')
         member,offset=self.locate(address,size)
         code=member.data[offset:offset+size]
         source='\n'.join(' '.join(f'0x{byte:02x}' for byte in code[i:i+4]) for i in range(0,len(code),4))
@@ -214,7 +214,7 @@ class CacheSymbols:
         start=max(nearest[0],pc-512,base)
         # Display::update inlines its MIG decoder. Keep its full bounded
         # descriptor/string validation rather than cutting it after a header.
-        maximum=2048 if nearest[1] and 'display' in nearest[1].lower() else 768
+        maximum=4096 if nearest[1] and 'display' in nearest[1].lower() else 768
         end=min(start+maximum,base+length)
         following=min((value for value,name in symbols if value>pc),default=end)
         end=min(end,following)

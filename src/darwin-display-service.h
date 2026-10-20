@@ -89,7 +89,10 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
 #define IPC_STRING(x) IPC_STRING_INNER(x)
             static const char list[]="<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                 "<plist version=\"1.0\"><array><dict>"
-                "<key>kCADisplayName</key><string>ARLinux Wayland</string>"
+                /* QuartzCore uses this protocol name to select its main
+                 * display. It is a role, not a claim of physical LCD hardware;
+                 * the actual backend remains explicitly named Wayland. */
+                "<key>kCADisplayName</key><string>LCD</string>"
                 "<key>kCADisplayDeviceName</key><string>Wayland</string>"
                 "<key>kCADisplayId</key><integer>" IPC_STRING(D_WAYLAND_MAIN_DISPLAY_ID) "</integer>"
                 "</dict></array></plist>";
