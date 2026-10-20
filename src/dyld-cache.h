@@ -87,9 +87,13 @@ static uint64_t load_native_cache(const char *root)
         need(cache_contains(image.address,sizeof(struct header),1),"cached Mach-O header bounds");
         const unsigned char *bytes=(void *)image.address;
         struct header mh; memcpy(&mh,bytes,sizeof(mh));
-        need(mh.magic==0xfeedfacf && mh.cpu==0x0100000c && (mh.subtype&0xffffff)==0 &&
-             mh.type==6 && mh.ncmds<=256 && cache_contains(image.address,sizeof(mh)+mh.sizeofcmds,1),
-             "unsupported cached Mach-O");
+        int supported=mh.magic==0xfeedfacf && mh.cpu==0x0100000c && (mh.subtype&0xffffff)==0 &&
+             mh.type==6 && mh.ncmds<=256 && cache_contains(image.address,sizeof(mh)+mh.sizeofcmds,1);
+        if (!supported) fprintf(stderr,"NATIVE_CACHE_IMAGE_REJECT path=%s address=%#" PRIx64
+            " magic=%#x cpu=%#x subtype=%#x type=%u commands=%u command_bytes=%u mapped=%d\n",
+            (const char *)file+image.path_offset,image.address,mh.magic,mh.cpu,mh.subtype,
+            mh.type,mh.ncmds,mh.sizeofcmds,cache_contains(image.address,sizeof(mh)+mh.sizeofcmds,1));
+        need(supported,"unsupported cached Mach-O");
         uint64_t pos=sizeof(mh),end=pos+mh.sizeofcmds;
         uint64_t linkedit_address=0,linkedit_offset=0,linkedit_size=0;
         for (uint32_t n=0;n<mh.ncmds;n++) {
