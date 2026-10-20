@@ -17,8 +17,14 @@ execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY "${DARLING_SOURCE}"
 configure_file("${DARLING_SOURCE}/src/include/darling-config.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/include/darling-config.h")
 include_directories("${DARLING_SOURCE}/src/include" "${CMAKE_CURRENT_BINARY_DIR}/include")
+add_compile_definitions(DARLING)
+# Match the upstream parent policy for pre-C99 XNU/MIG sources on modern Clang.
+add_compile_options(-Wno-error=implicit-function-declaration -Wno-error=implicit-int
+    -Wno-error=int-conversion -Wno-error=incompatible-function-pointer-types
+    -Wno-error=incompatible-pointer-types)
 
 add_subdirectory("${DARLING_SOURCE}/src/external/bootstrap_cmds" bootstrap_cmds)
+target_include_directories(migcom PRIVATE "${DARLING_SOURCE}/basic-headers")
 include("${DARLING_SOURCE}/cmake/mig.cmake")
 add_subdirectory("${DARLING_SOURCE}/src/libsimple" libsimple-linux)
 
