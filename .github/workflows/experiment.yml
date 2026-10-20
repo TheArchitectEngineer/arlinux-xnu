@@ -211,10 +211,17 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64-native-darwin
+          path: build/native/
       - name: Install Apple filesystem reader
         run: |
           sudo apt-get update
           sudo apt-get install -y 7zip llvm-18 lldb-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev weston libwayland-client0
+      - name: Verify native runtime input
+        shell: bash
+        run: (cd build/native && sha256sum -c SHA256SUMS)
       - name: Start unified iOS session
         if: inputs.ipc == 'darling'
         shell: bash
@@ -250,7 +257,6 @@ jobs:
           set -euo pipefail
           mkdir -p build/dyld
           uname -a > build/dyld/environment.txt
-          (cd build/native && sha256sum -c SHA256SUMS)
           chmod +x build/native/macho-native
           python3 tools/prepare-ios-userland.py 2>&1 | tee build/dyld/input.log
           llvm-objdump-18 --macho --private-headers build/ios-input/dyld > build/dyld/loader-commands.txt
