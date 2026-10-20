@@ -120,13 +120,31 @@ and all 43 retained files. Actual fsgetpath calls return the 62-byte pathname fo
 the real cache identity. Counter and Swift no longer fault at Atlas; both remain
 alive until failing GUI state/pixel acceptance. Console and Foundation still pass.
 
-Counter's original main thread is now inside GSEventRunModal / CFRunLoopRun,
-waiting on a real Mach receive. The genuine before-waiting observer is installed,
-but no didFinishLaunching ready marker or usable frame is present. This is not
-normal GUI startup or lifecycle acceptance. The next collection reads compact
-metadata also for live failed apps, to verify the shared-cache representation,
-and retains original UIKit/GraphicsServices wait call sites. Determine the real
-missing startup event/service response before changing lifecycle behavior.
+Run [39490110268](https://github.com/taowen/arlinux-xnu/actions/runs/39490110268),
+source 365ac1fc9edf674d15515fdf8791f20c320515f8, verified receipt
+**f86db208aaaf0e4a42a6e43b67682714150a186965362868c52d9e5f0ec95c95**
+and all 43 retained files. The actual stopped process has a 672-byte compact
+snapshot with flags 5, shared-cache base 0x180000000, 2705 bitmap bits and only
+two non-cache images. Both image addresses match the real image-info table.
+This directly confirms the cache identity/snapshot repair, not just no crash.
+
+Counter's main thread waits in GSEventRunModal / CFRunLoopRun. The genuine
+before-waiting observer exists, but didFinishLaunching, frames and GUI input do
+not pass. Session logs show packed bootstrap requests rejected as MIG_BAD_ID.
+Run [39490481773](https://github.com/taowen/arlinux-xnu/actions/runs/39490481773),
+source 6d4073c499db534a2f08d49e1fa1777c42aadf44, verified receipt
+**9f11b1cf8a9076b21dc557ecb12ed77d213009ffbc023b12d2aa658cdd79f505**
+and all 43 retained files. Read-only CPX5 decoding identifies message 0x40000324
+as the lookup for com.apple.frontboard.systemappservices: type 7, flags 512,
+handle and lookup-handle zero. Its dictionary omits subsystem/routine, whereas
+the old entry accepts only message 0x10000000 with those dictionary fields.
+The initial empty-dictionary request 0x40000388 is not yet understood.
+
+Next read the actual private interface routine and message pack/unpack functions
+to establish reply framing, then route measured packed lookups to existing real
+service/rights ownership. Public xpc_pipe_routine wrappers only tail-branch to
+the private interface routine. No guessed reply or successful scene is supplied;
+Console/Foundation still pass and UIKit acceptance remains failed.
 
 The same-cache reader uses declared slide-v2 pointer metadata for constant
 CFStrings, bounded decoded instructions and actual call/branch observations.
