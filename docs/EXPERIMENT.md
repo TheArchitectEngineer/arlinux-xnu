@@ -9,10 +9,17 @@ No third-party iOS app, Linux UI or Android integration has passed.
 
 Current integration experiment: `build.sh build --mode darling` builds the
 community ARM64 darlingserver from the parent gitlink in sources.lock.json.
+[Run 39366405665](https://github.com/taowen/arlinux-xnu/actions/runs/39366405665),
+source `3a01205f217f2b24e1500283923a0b7c2f52c4f6`, job `118444158513`, built
+the actual ARM64 Linux server successfully. Executable SHA-256:
+`0c42db11d276c93cc9cbb0dee37cdefc2f5046c4302e51fcf7724c55a621b7a1`;
+receipt SHA-256:
+`0524855d7eab9f4ae6c2089919f62312baaec0bc9ef8474e3c859f36230cbb51`.
 The thin components/darling adapter consumes upstream CMake targets and their
-MIG/RPC generators. This mode does not run ARHello or replace its local IPC yet.
-Its artifact and receipt establish compiler results only; the next gates are
-real RPC integration, 16 KiB guest semantics and the same UIKit app journey.
+MIG/RPC generators. Parent-pinned XNU and pthread supply MIG header symlinks.
+This mode does not execute the server, run ARHello or replace its local IPC yet.
+The next gates are real RPC integration, 16 KiB guest semantics and the same
+UIKit app journey.
 
 Current application: **ARHello 1.0** (`io.arlinux.ARHello`), a programmatic
 UIKit window, label and increment button. Its interfaces/TBD files contain only

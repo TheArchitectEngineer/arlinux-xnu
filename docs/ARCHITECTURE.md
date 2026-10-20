@@ -277,8 +277,15 @@ server/host bridge so Darling's host libc never runs under guest TLS.
 The community memory initializer derives PAGE_SHIFT_CONST from the host page
 size: this is not proof of fixed 16 KiB guests on a 4 KiB runner. Its CMake also
 needs parent-provided libsimple, MIG and generated RPC targets. ARM64 source
-support is verified by inspection; our iOS app journey and Android integration
-remain unverified. Any required component edits belong in a pinned fork.
+support now builds on our ARM64 runner (run 39366405665); execution, our iOS app
+journey and Android integration remain unverified. The upstream server's
+generated client RPC exposes socket, send/receive and process/thread hooks;
+these can use our raw Linux syscall path without changing guest TLS. The full
+server already supplies the dtape host hooks, avoiding a second implementation
+of its scheduler and memory access. Its current launcher also prepares a full
+Darling prefix and launchd; isolate the server lifecycle needed by our native
+launcher before attempting application integration. Any required component
+edits belong in a pinned fork.
 
 First-fit mutex slow waits consume real futex-backed wake credits; the genuine
 pthread library still owns its lock state and owner compare-and-swap. Other
