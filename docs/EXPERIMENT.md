@@ -19,9 +19,9 @@ and two cross-app scenarios; selected runs never certify the whole collection.
 
 ## Current failed GUI effect
 
-Run [39507197204](https://github.com/taowen/arlinux-xnu/actions/runs/39507197204),
-source **b5251c60f56101b0dbf0646ac19d0c41a5b1c2c8**, selected Counter. Receipt
-**8deff26a85336b0d29272f8646152278950ee33592fe73fdd876a9e005d891f4**
+Run [39507887262](https://github.com/taowen/arlinux-xnu/actions/runs/39507887262),
+source **a4796e1905e2048cf4f205c766278e7e72ed326d**, selected Counter. Receipt
+**030a4dc58d83da0729ec0ff7d8d97645930783dc8f9b9d1c1f813666e3fbc091**
 and all 20 files were verified by the single build --wait --evidence command.
 The run fails; no Counter launch delegate, useful content or input is accepted.
 
@@ -31,14 +31,17 @@ The run fails; no Counter launch delegate, useful content or input is accepted.
 - The platform adapter now enters the real FBSScene initializer with original
   identity/specification/settings/client-settings objects and an actual
   FBSSerialQueue/updater definition. This is not successful scene creation.
-- The original trap PC is 0x19b93237c, within that initializer's explicit
-  "settings class differs from specification" failure path. A mutable settings
-  object was passed where the exact immutable specification class is required.
-- The current change copies configured settings back to their immutable form
-  and schedules scene initialization/delivery on the genuine callout queue.
-  Those changes await hosted validation. Session scene registration, complete
-  enumeration, focus updates, input, host-process/remote endpoint support and
-  normal close remain unfinished.
+- The prior settings-class assertion is gone: configured mutable settings are
+  copied back to their immutable specification class. Scene initialization and
+  delivery now execute on the actual FBSSerialQueue, not the timer callback.
+- The current original exception is NSInvalidArgumentException, stage "scene
+  initialization": -[ARLinuxSceneUpdater canHaveAgent] is unrecognized. No
+  UIKit scene-delivery marker or actual app UI is reached.
+- The current change allows the genuine framework scene agent to be created
+  and adds opt-in runtime protocol-description evidence for FBSSceneUpdater.
+  It awaits hosted validation. Session scene registration, complete enumeration,
+  focus updates, input, host-process/remote endpoint support and normal close
+  remain unfinished.
 
 The prior run
 [39506273079](https://github.com/taowen/arlinux-xnu/actions/runs/39506273079),

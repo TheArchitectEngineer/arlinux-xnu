@@ -67,6 +67,9 @@ static void require_method(Class cls,const char *name,const char *types,BOOL met
 @property(nonatomic,retain) id reportedClientSettings;
 @end
 @implementation ARLinuxSceneUpdater
+/* Permit the genuine FBSScene/UIKit agent to be instantiated. This is a
+ * software lifecycle policy, not an agent-ready or launch-success result. */
+- (BOOL)canHaveAgent { return YES; }
 - (id)endpoint { return nil; } /* No remote scene endpoint is exported yet. */
 - (id)hostProcess { unsupported("hostProcess"); return nil; }
 - (void)scene:(id)scene didUpdateClientSettings:(id)settings withDiff:(id)diff transitionContext:(id)context

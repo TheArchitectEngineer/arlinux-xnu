@@ -60,6 +60,15 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
 {
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
     if (!enabled || strcmp(enabled,"1")) return;
+    Protocol *protocol=objc_getProtocol("FBSSceneUpdater");
+    if (protocol) for (unsigned int required=0;required<2;required++) {
+        unsigned int count=0;
+        struct objc_method_description *methods=protocol_copyMethodDescriptionList(protocol,required,YES,&count);
+        for (unsigned int i=0;i<count && i<64;i++)
+            fprintf(stderr,"IOS_LIFECYCLE_PROTOCOL protocol=FBSSceneUpdater required=%u selector=%.160s types=%.256s\n",
+                required,sel_getName(methods[i].name),methods[i].types ? methods[i].types : "<absent>");
+        free(methods);
+    }
     const char *classes[]={"FBSWorkspace","FBSScene","FBSSceneParameters","FBSMutableSceneParameters",
         "FBSSceneIdentity","FBSSceneIdentityToken","FBSSceneDefinition","FBSMutableSceneDefinition",
         "FBSSceneSpecification","FBSSceneSettings","FBSMutableSceneSettings",
