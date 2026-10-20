@@ -277,6 +277,7 @@ jobs:
           export XDG_RUNTIME_DIR="$PWD/build/dyld/wayland-runtime"
           export WAYLAND_DISPLAY=arlinux-ios
           mkdir -p "$XDG_RUNTIME_DIR"
+          echo "ARLINUX_CAPTURE_DIR=$PWD/build/dyld" >> "$GITHUB_ENV"
           chmod 700 "$XDG_RUNTIME_DIR"
           echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
           echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" >> "$GITHUB_ENV"
@@ -394,6 +395,32 @@ jobs:
           # Even reaching UIApplicationMain is only a startup milestone. The
           # display, touch, normal close and relaunch journey is still required.
           exit "$status"
+      - name: Encode actual CoreGraphics frame captures
+        if: always() && inputs.mode == 'app'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, struct, zlib
+          def chunk(kind, payload):
+              return struct.pack('>I', len(payload)) + kind + payload + struct.pack('>I', zlib.crc32(kind + payload))
+          for path in pathlib.Path('build/dyld').glob('frame-*.bgra'):
+              data = path.read_bytes()
+              width, height, stride = struct.unpack('<III', data[:12])
+              if not (0 < width <= 8192 and 0 < height <= 8192 and stride == width*4 and len(data) == 12+stride*height):
+                  raise SystemExit('Incomplete actual frame capture: ' + str(path))
+              pixels = data[12:]
+              rows = bytearray()
+              for y in range(height):
+                  row = pixels[y*stride:(y+1)*stride]
+                  rgb = bytearray(width*3)
+                  rgb[0::3], rgb[1::3], rgb[2::3] = row[2::4], row[1::4], row[0::4]
+                  rows += b'\0' + rgb
+              png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+              png += chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b'')
+              path.with_suffix('.png').write_bytes(png)
+              path.unlink()
+              print('APP_FRAME_CAPTURE ' + str(path.with_suffix('.png')))
+          PY
       - name: Dynamically trace the actual failed dyld journey
         if: failure() && (steps.dyld_console.outcome == 'failure' || steps.ios_app.outcome == 'failure')
         shell: bash
@@ -560,6 +587,7 @@ jobs:
           path: |
             build/dyld/
             !build/dyld/wayland-runtime/**
+            !build/dyld/*.bgra
           retention-days: 30
   playcover-reference:
     if: always() && needs.native-userland.result == 'success' && inputs.mode == 'playcover'

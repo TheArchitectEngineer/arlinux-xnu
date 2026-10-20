@@ -118,6 +118,8 @@ def report(run_id, job_name, verbose=False):
                    'DARLING_RENDER_RECEIVED ', 'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_SERVICE_PORTS ',
                    'HIDFOCUS_REQUEST_UNIMPLEMENTED ', 'SESSION_SERVICE_FAILED ',
                    'WAYLAND_TOPLEVEL_FOCUS ',
+                   'UI_RUNLOOP_OBSERVER_', 'UI_LAYER_FRAME ', 'UI_BITMAP_CONTEXT_UNAVAILABLE ',
+                   'UI_FRAME_CAPTURE', 'WAYLAND_APP_FRAME_', 'APP_FRAME_CAPTURE ',
                    'DARLINGSERVER_RPC_ONLY ',
                    'DARLING_KQCHAN_OPEN ', 'DARLING_KQCHAN_EVENT ',
                    'DARLING_SERVICE_REPLY ',
@@ -199,6 +201,8 @@ def report(run_id, job_name, verbose=False):
                        'NATIVE_SERVICE_FAILURE ', 'DARLING_RENDER_RECEIVED ',
                        'HIDFOCUS_REQUEST_UNIMPLEMENTED ', 'SESSION_SERVICE_FAILED ',
                        'WAYLAND_TOPLEVEL_FOCUS ',
+                       'UI_RUNLOOP_OBSERVER_', 'UI_LAYER_FRAME ', 'UI_BITMAP_CONTEXT_UNAVAILABLE ',
+                       'UI_FRAME_CAPTURE', 'WAYLAND_APP_FRAME_', 'APP_FRAME_CAPTURE ',
                        'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_RENDER_FORWARD ',
                        'DARWIN_WORKLOOP_ERROR_STATE ', 'DARWIN_WORKLOOP_SYNC_', 'NATIVE_WORKLOOP_WAIT ',
                        'EXPERIMENT_RECEIPT ')

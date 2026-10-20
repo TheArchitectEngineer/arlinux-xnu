@@ -247,6 +247,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
     return guest_copy(&out,destination,sizeof(out),1);
 }
 
+static void native_ui_install_observer(void);
 #include "darling-native.h"
 #include "darwin-filesystem.h"
 #include "darwin-process.h"
@@ -256,6 +257,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 #include "darwin-psynch.h"
 #include "darwin-kqueue.h"
 #include "darwin-workqueue.h"
+#include "darwin-ui.h"
 
 static void dispatch(int signal, siginfo_t *info, void *context)
 {

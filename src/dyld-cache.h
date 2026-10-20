@@ -119,6 +119,7 @@ static uint64_t load_native_cache(const char *root)
     /* Cache images may alias the same Mach-O. Adapt each image only once so a
      * rewritten TSD read cannot be mistaken for an original CPU metadata read. */
     uint64_t render_start=0,render_get_port=0;
+    struct darwin_ui_api ui_api={0};
     uint64_t *seen=calloc(header.images_count,sizeof(uint64_t));
     need(seen!=NULL,"cache image bookkeeping");
     size_t images=0,rewritten=0;
@@ -163,7 +164,10 @@ static uint64_t load_native_cache(const char *root)
                      memchr(file+image.path_offset,0,size-image.path_offset),"cache symbol/image path bounds");
                 int xpc_image=!strcmp((const char *)file+image.path_offset,"/usr/lib/system/libxpc.dylib");
                 int render_image=!strcmp((const char *)file+image.path_offset,"/System/Library/Frameworks/QuartzCore.framework/QuartzCore");
-                if (xpc_image || render_image) {
+                int cf_image=!strcmp((const char *)file+image.path_offset,"/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation");
+                int cg_image=!strcmp((const char *)file+image.path_offset,"/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics");
+                int objc_image=!strcmp((const char *)file+image.path_offset,"/usr/lib/libobjc.A.dylib");
+                if (xpc_image || render_image || cf_image || cg_image || objc_image) {
                     uint32_t table[4]; memcpy(table,bytes+pos+8,sizeof(table));
                     need(range(table[0],(uint64_t)table[1]*16,size) && range(table[2],table[3],size),
                          "cache service symbol bounds");
@@ -174,6 +178,30 @@ static uint64_t load_native_cache(const char *root)
                         if (name>=table[3] || symbol[4]&0xe0 || (symbol[4]&0xe)!=0xe || !symbol[5]) continue;
                         const char *text=(const char *)file+table[2]+name;
                         need(memchr(text,0,table[3]-name)!=NULL,"cache symbol name termination");
+                        uint64_t *ui_target=NULL;
+                        if (cf_image) {
+                            if (!strcmp(text,"_CFRunLoopGetMain")) ui_target=&ui_api.runloop_main;
+                            if (!strcmp(text,"_CFRunLoopObserverCreate")) ui_target=&ui_api.observer_create;
+                            if (!strcmp(text,"_CFRunLoopAddObserver")) ui_target=&ui_api.observer_add;
+                            if (!strcmp(text,"_kCFRunLoopCommonModes")) {
+                                need(cache_contains(address,8,1),"CF run loop mode address");
+                                memcpy(&ui_api.common_modes,(void *)address,8);
+                            }
+                        }
+                        if (objc_image) {
+                            if (!strcmp(text,"_objc_getClass")) ui_target=&ui_api.objc_class;
+                            if (!strcmp(text,"_sel_registerName")) ui_target=&ui_api.selector;
+                            if (!strcmp(text,"_objc_msgSend")) ui_target=&ui_api.message;
+                        }
+                        if (cg_image) {
+                            if (!strcmp(text,"_CGColorSpaceCreateDeviceRGB")) ui_target=&ui_api.color_space;
+                            if (!strcmp(text,"_CGBitmapContextCreate")) ui_target=&ui_api.bitmap_create;
+                        }
+                        if (ui_target) {
+                            need(cache_contains(address,4,4),"UIKit software output function address");
+                            *ui_target=address;
+                            fprintf(stderr,"NATIVE_UI_API symbol=%s address=%#" PRIx64 "\n",text,address);
+                        }
                         if (render_image) {
                             if (!strncmp(text,"_CARender",9) && cache_contains(address,4,4))
                                 fprintf(stderr,"NATIVE_RENDER_EXPORT symbol=%s address=%#" PRIx64 "\n",text,address);
@@ -202,6 +230,7 @@ static uint64_t load_native_cache(const char *root)
 
     }
     free(seen);
+    darwin_native_ui_api(&ui_api);
     if (render_start && render_get_port) {
         need(cache_contains(render_start,4,4) && cache_contains(render_get_port,4,4),"QuartzCore entry point bounds");
         darwin_native_render_api(render_start,render_get_port);
