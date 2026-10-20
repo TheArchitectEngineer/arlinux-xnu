@@ -9,6 +9,7 @@
 #include <poll.h>
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
+#include <sys/timerfd.h>
 #include <linux/futex.h>
 static unsigned long host_send_refs,clock_send_refs[2];
 #define IPC_ENDPOINTS 64
@@ -17,6 +18,7 @@ struct ipc_endpoint {
     uint32_t name,generation; int used,kind,read_fd,write_fd;
     unsigned long send_refs; uint64_t context; uint32_t options;
     int queue_mutex,special_tid; uint32_t queue_limit,queued,sequence,space_sequence;
+    int packet_fd,timer_fd,timer_pending; uint64_t timer_deadline;
 };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 static uint32_t native_bootstrap_port,native_display_port,native_render_port;
@@ -32,6 +34,10 @@ struct ipc_ool_descriptor {
 _Static_assert(sizeof(struct ipc_ool_descriptor)==16,"Darwin LP64 OOL descriptor ABI");
 #include "darwin-display.h"
 struct ipc_packet { struct darwin_audit_token sender; unsigned char message[IPC_BYTES]; };
+struct ipc_timer_message {
+    struct ipc_header header; uint64_t unused[3];
+} __attribute__((packed,aligned(4)));
+_Static_assert(sizeof(struct ipc_timer_message)==48,"Darwin mk_timer_expire message ABI");
 static void native_reply_wait(uint32_t);
 static void ipc_queue_lock(struct ipc_endpoint *endpoint)
 {
@@ -42,6 +48,35 @@ static void ipc_queue_unlock(struct ipc_endpoint *endpoint)
 {
     __atomic_store_n(&endpoint->queue_mutex,0,__ATOMIC_RELEASE);
     RAW(SYS_futex,&endpoint->queue_mutex,FUTEX_WAKE_PRIVATE,1,0,0,0);
+}
+/* Caller owns queue_mutex. timerfd supplies the real expiry; the socket packet
+ * keeps an already delivered notification alive across cancel/rearm. No worker
+ * or host libc/TLS is needed. Timer messages originate in this compatibility
+ * machine's kernel service (zero kernel audit token), not in the app. */
+static long ipc_timer_capture(struct ipc_endpoint *endpoint)
+{
+    if (endpoint->timer_fd<0) return 0;
+    uint64_t expirations;
+    long bytes=RAW(SYS_read,endpoint->timer_fd,&expirations,sizeof(expirations),0,0,0);
+    if (bytes==-EAGAIN) return 0;
+    if (bytes!=sizeof(expirations)) return bytes<0 ? bytes : -EIO;
+    endpoint->timer_deadline=0;
+    if (endpoint->timer_pending) return 0;
+    struct ipc_timer_message message={.header={
+        .bits=D_MACH_TYPE_MOVE_SEND<<D_MACH_MSG_LOCAL_BITS_SHIFT,
+        .size=sizeof(message),.local=endpoint->name}};
+    struct ipc_packet packet;
+    for (volatile uint32_t *word=(uint32_t *)&packet.sender;
+         word<(uint32_t *)(&packet.sender+1);word++) *word=0;
+    __builtin_memcpy(packet.message,&message,sizeof(message));
+    unsigned long size=sizeof(packet.sender)+sizeof(message);
+    bytes=RAW(SYS_sendto,endpoint->write_fd,&packet,size,MSG_DONTWAIT|MSG_NOSIGNAL,0,0);
+    if (bytes!=(long)size) return bytes<0 ? bytes : -EIO;
+    endpoint->queued++; endpoint->timer_pending=1;
+    const char label[]="DARWIN_TIMER_EXPIRED port follows\n";
+    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    trace_call(0,0,endpoint->name);
+    return 0;
 }
 static long ipc_enqueue(struct ipc_endpoint *endpoint,const void *message,unsigned long size)
 {
@@ -91,16 +126,19 @@ static long ipc_enqueue_wait(struct ipc_endpoint *endpoint,const void *message,u
  * not reconstructed from the receiving thread's credentials. */
 static long ipc_peek(struct ipc_endpoint *endpoint,struct ipc_packet *packet)
 {
-    long bytes=RAW(SYS_recvfrom,endpoint->read_fd,packet,sizeof(*packet),MSG_PEEK|MSG_DONTWAIT,0,0);
+    long error=ipc_timer_capture(endpoint);
+    if (error) return error;
+    long bytes=RAW(SYS_recvfrom,endpoint->packet_fd,packet,sizeof(*packet),MSG_PEEK|MSG_DONTWAIT,0,0);
     if (bytes<0) return bytes;
     if (bytes<(long)(sizeof(packet->sender)+sizeof(struct ipc_header))) return -EIO;
     return bytes-sizeof(packet->sender);
 }
 static long ipc_consume(struct ipc_endpoint *endpoint,struct ipc_packet *packet,long size)
 {
-    long bytes=RAW(SYS_recvfrom,endpoint->read_fd,packet,sizeof(*packet),MSG_DONTWAIT,0,0);
+    long bytes=RAW(SYS_recvfrom,endpoint->packet_fd,packet,sizeof(*packet),MSG_DONTWAIT,0,0);
     if (bytes!=size+(long)sizeof(packet->sender)) return bytes<0 ? bytes : -EIO;
     endpoint->queued--; endpoint->sequence++;
+    if (endpoint->timer_fd>=0) endpoint->timer_pending=0;
     __atomic_fetch_add(&endpoint->space_sequence,1,__ATOMIC_RELEASE);
     RAW(SYS_futex,&endpoint->space_sequence,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
     return 0;
@@ -135,6 +173,7 @@ static unsigned long ipc_receive_locked(struct ipc_endpoint *endpoint,uint64_t a
     for (unsigned int i=size;i<aligned;i++) output[i]=0;
     struct darwin_context_trailer trailer={.size=trailer_size,.sequence=endpoint->sequence,
         .sender={packet.sender.euid,packet.sender.egid},.audit=packet.sender,.context=endpoint->context};
+    if (endpoint->timer_fd>=0) trailer.sender[1]=1; /* KERNEL_SECURITY_TOKEN_VALUE */
     __builtin_memcpy(output+aligned,&trailer,trailer_size);
     if (guest_copy(output,address,*total_size,1)) return D_MACH_RCV_INVALID_DATA;
     return ipc_consume(endpoint,&packet,size) ? D_MACH_RCV_INTERRUPTED : D_KERN_SUCCESS;
@@ -173,6 +212,8 @@ static uint32_t ipc_port_create(int kind)
             (endpoint->generation+D_PORT_GENERATION_STEP)&D_PORT_GENERATION_MASK : D_PORT_GENERATION_TAG;
         endpoint->name=((i+D_REPLY_PORT_INDEX_BASE)<<D_PORT_NAME_INDEX_SHIFT)|endpoint->generation;
         endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=kind;
+        endpoint->packet_fd=pair[0]; endpoint->timer_fd=-1;
+        endpoint->timer_pending=0; endpoint->timer_deadline=0;
         endpoint->send_refs=0; endpoint->context=0; endpoint->options=0;
         endpoint->queue_mutex=0; endpoint->queued=0; endpoint->sequence=0;
         endpoint->special_tid=0;
@@ -183,6 +224,65 @@ static uint32_t ipc_port_create(int kind)
     return 0;
 }
 static uint32_t ipc_reply_port(void) { return ipc_port_create(0); }
+static uint32_t ipc_timer_create(void)
+{
+    uint32_t name=ipc_reply_port();
+    if (!name) return D_MACH_PORT_NULL;
+    struct ipc_endpoint *endpoint=ipc_find(name);
+    long timer=RAW(SYS_timerfd_create,CLOCK_MONOTONIC,TFD_NONBLOCK|TFD_CLOEXEC,0,0,0,0);
+    long poller=timer<0 ? -1 : RAW(SYS_epoll_create1,EPOLL_CLOEXEC,0,0,0,0,0);
+    long error=timer<0 || poller<0;
+    struct epoll_event event={.events=EPOLLIN};
+    if (!error) error=RAW(SYS_epoll_ctl,poller,EPOLL_CTL_ADD,endpoint->packet_fd,&event,0,0);
+    if (!error) error=RAW(SYS_epoll_ctl,poller,EPOLL_CTL_ADD,timer,&event,0,0);
+    if (error) {
+        if (timer>=0) RAW(SYS_close,timer,0,0,0,0,0);
+        if (poller>=0) RAW(SYS_close,poller,0,0,0,0,0);
+        RAW(SYS_close,endpoint->packet_fd,0,0,0,0,0);
+        RAW(SYS_close,endpoint->write_fd,0,0,0,0,0);
+        __atomic_store_n(&endpoint->used,0,__ATOMIC_RELEASE);
+        return D_MACH_PORT_NULL;
+    }
+    endpoint->timer_fd=timer; endpoint->read_fd=poller;
+    return name;
+}
+static unsigned long ipc_timer_control(unsigned int number,const unsigned long long *r)
+{
+    struct ipc_endpoint *endpoint=ipc_find(r[0]);
+    if (!endpoint) return D_KERN_INVALID_NAME;
+    if (endpoint->kind || endpoint->timer_fd<0) return D_KERN_INVALID_ARGUMENT;
+    /* A normal timer may fire at its exact deadline, within any requested
+     * leeway. Critical scheduling/other flag policies are not implemented. */
+    if (number==D_TRAP_TIMER_ARM_LEEWAY && r[1]) return D_KERN_NOT_SUPPORTED;
+    ipc_queue_lock(endpoint);
+    if (number==D_TRAP_TIMER_DESTROY) {
+        __atomic_store_n(&endpoint->used,1,__ATOMIC_RELEASE);
+        RAW(SYS_close,endpoint->timer_fd,0,0,0,0,0);
+        RAW(SYS_close,endpoint->packet_fd,0,0,0,0,0);
+        RAW(SYS_close,endpoint->write_fd,0,0,0,0,0);
+        RAW(SYS_close,endpoint->read_fd,0,0,0,0,0);
+        ipc_queue_unlock(endpoint);
+        __atomic_store_n(&endpoint->used,0,__ATOMIC_RELEASE);
+        return D_KERN_SUCCESS;
+    }
+    long error=ipc_timer_capture(endpoint);
+    uint64_t previous=endpoint->timer_deadline;
+    struct itimerspec spec={0};
+    uint64_t deadline=number==D_TRAP_TIMER_CANCEL ? 0 :
+        number==D_TRAP_TIMER_ARM_LEEWAY ? r[2] : r[1];
+    if (number!=D_TRAP_TIMER_CANCEL) {
+        /* timerfd zero disarms; Darwin zero is an already elapsed deadline. */
+        uint64_t time=deadline ? deadline : 1;
+        spec.it_value=(struct timespec){time/1000000000,time%1000000000};
+    }
+    if (!error) error=RAW(SYS_timerfd_settime,endpoint->timer_fd,TFD_TIMER_ABSTIME,&spec,0,0,0);
+    if (!error) endpoint->timer_deadline=deadline;
+    ipc_queue_unlock(endpoint);
+    if (error) return D_KERN_FAILURE;
+    if (number==D_TRAP_TIMER_CANCEL && r[1] && guest_copy(&previous,r[1],sizeof(previous),1))
+        return D_KERN_INVALID_ADDRESS;
+    return D_KERN_SUCCESS;
+}
 static unsigned long ipc_port_allocate(const unsigned long long *r)
 {
     if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
@@ -214,7 +314,7 @@ static unsigned long ipc_port_insert_right(const unsigned long long *r)
     if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
     struct ipc_endpoint *port=ipc_find(r[1]);
     if (!port) return D_KERN_INVALID_NAME;
-    if (port->kind) return D_KERN_INVALID_RIGHT;
+    if (port->kind || port->timer_fd>=0) return D_KERN_INVALID_RIGHT;
     /* Only making a send right from this task's own receive right is supported.
      * A rename, cross-task transfer or send-once right needs different ownership. */
     if (r[1]!=r[2] || r[3]!=D_MACH_TYPE_MAKE_SEND) return D_KERN_NOT_SUPPORTED;
