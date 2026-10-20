@@ -49,12 +49,25 @@ rendering acceptance. Next inspect canvas creation and lifecycle/activation
 before changing more scene fields. Do not invoke the app delegate directly,
 remove assertions or substitute a host-drawn app.
 
-Exact pending run: [39406917636](https://github.com/taowen/arlinux-xnu/actions/runs/39406917636),
-source `369fdf6dc5dcb59a27d4f27efd58db33a9b4e687`, adds read-only tracing
-of _UICanvas, _UIApplicationCanvas, lifecycle monitor and UIApplication scene
-settings, including real class methods. This is diagnosis of the same actual
-app journey, not an injected delegate call. Continue that exact run; local
-observation timeouts do not justify restarting it.
+Canvas diagnosis: [run 39406917636](https://github.com/taowen/arlinux-xnu/actions/runs/39406917636),
+source `369fdf6dc5dcb59a27d4f27efd58db33a9b4e687`, reaches genuine
+_UICanvas class factories, _UIApplicationCanvas initWithScene:,
+scene:didUpdateWithDiff:transitionContext:completion: and
+_transitionLifecycleStateWithTransitionContext:completion:. Thus canvas creation
+is established. The current sender omits transitionContext; the actual
+lifecycle block reads _lifecycleActionType from it before choosing activation
+or deactivation handlers. No ARHELLO_READY or window journey passes.
+LLDB log SHA-256 `c204a5037e9d1bf05a9abdbd1f93a1f4462c8944b0661a8bb95be6ac38854899`
+was verified against its receipt.
+
+Exact pending run: [39407602453](https://github.com/taowen/arlinux-xnu/actions/runs/39407602453),
+source `fb3f1e7b5cf4ac814e8de4fb15375d82c38b8ceb`, reads actual
+UIApplicationSceneTransitionContext getters/setters, lifecycle monitors and
+the complete activation branch table. Resolve the setting key/type and action
+value from this code, then send a real initial launch transition context with
+the create-scene event. This is diagnosis of the same actual app journey, not
+an injected delegate call. Continue that exact run; local observation timeouts
+do not justify restarting it.
 
 Header-only MACH_NOTIFY_SEND_ONCE cancellation is accepted only on outstanding
 reply ports with the exact kernel notification and zero audit identity; it is
