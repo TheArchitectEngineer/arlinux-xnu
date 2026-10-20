@@ -14,7 +14,7 @@
     if (saved) self.result.text=[@"Saved: " stringByAppendingString:saved];
     self.field=[[UITextField alloc] initWithFrame:CGRectMake(20,145,280,40)];
     self.field.placeholder=@"Edit"; self.field.borderStyle=UITextBorderStyleRoundedRect; [view addSubview:self.field];
-    Button(view,@"Save",self,@selector(save:),210); [self.window makeKeyAndVisible]; return YES;
+    Button(view,@"Save",self,@selector(save:),210); [self.window makeKeyAndVisible]; AppInspectionStart(self.window); return YES;
 }
 - (void)save:(id)sender {
     (void)sender; [self.field resignFirstResponder]; NSError *error=nil;

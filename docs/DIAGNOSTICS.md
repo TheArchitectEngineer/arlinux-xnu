@@ -11,7 +11,7 @@ remain on hosted runners, never WSL or the workstation.
 | Question | Authoritative evidence | Limit |
 | --- | --- | --- |
 | Which user step failed? | apps/result.json and APP_CASE / APP_SUITE | Blocked steps have not run; submitted input is not observed delivery |
-| Was content actually displayed? | Full composed screenshot + SHA-256 + OCR TSV/text | Raw CG buffers, readiness and frame callbacks are insufficient |
+| Was content actually displayed? | Unmodified composed screenshot, exact window/control geometry, pixel statistics/hash | Raw CG buffers, readiness and frame callbacks are insufficient |
 | Did the original app crash? | Its generation's runtime log, fault PC and same-cache symbols | A debugger replay can have different scheduling |
 | Which process was inspected? | Recorded PID/start ticks/executable; original-process.lldb.log | LLDB status 0 means collection succeeded, never app acceptance |
 | Which threads/queues wait? | Original-process bounded stacks/registers plus actual runtime wait/queue traces | Empty queues identify a wait, not the missing sender |
@@ -31,7 +31,9 @@ Each original app generation has .stdout, .stderr and .runtime.log. The harness
 passes an actual inherited trace descriptor to the runtime; guest writes to stderr
 remain on descriptor 2. Native per-syscall traces no longer split dyld diagnostics
 into tiny interleaved fragments. Host loader/Wayland diagnostics may still share
-.stderr; neither stream is an acceptance oracle.
+.stderr; neither stream alone is an acceptance oracle. Source-owned apps export read-only
+UIKit/DOM state; GUI acceptance additionally requires actual composed pixels.
+No OCR or AI recognizer is used.
 
 ## Runtime boundaries
 

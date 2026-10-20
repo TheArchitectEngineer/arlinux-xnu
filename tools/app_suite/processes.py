@@ -54,6 +54,7 @@ class Processes:
         trace = prefix.with_suffix('.runtime.log').open('wb')
         self.streams += [stdout, stderr, trace]
         env = self.environment.copy()
+        env['ARLINUX_WINDOW_MODE']='fullscreen'
         env['ARLINUX_TRACE_FD'] = str(trace.fileno())
         capture = self.directory / f'{name}-{number}-renderer'
         capture.mkdir()

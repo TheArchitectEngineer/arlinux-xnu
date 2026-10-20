@@ -9,7 +9,7 @@ static void *compute(void *value) { *(int *)value=42; return (void *)37; }
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
     (void)app; (void)options; UIView *view; self.window=Screen(@"Workers",&view); self.result=Label(view,@"Ready",85);
     Button(view,@"Thread",self,@selector(thread:),145); Button(view,@"Memory",self,@selector(memory:),205);
-    Button(view,@"Queue",self,@selector(queue:),265); [self.window makeKeyAndVisible]; return YES;
+    Button(view,@"Queue",self,@selector(queue:),265); [self.window makeKeyAndVisible]; AppInspectionStart(self.window); return YES;
 }
 - (void)thread:(id)sender {
     (void)sender; int value=0; void *reply=0; pthread_t thread;

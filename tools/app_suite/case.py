@@ -17,6 +17,7 @@ class Case(Processes,Desktop):
         self.output=output
         self.environment=environment
         self.http=None
+        self.painted={}
         self.directory = output / case['id']
         self.directory.mkdir(parents=True, exist_ok=False)
         self.processes, self.streams, self.generations = {}, [], []
@@ -40,7 +41,6 @@ class Case(Processes,Desktop):
             stream.write(step['text'].encode());stream.flush()
         elif action == 'http-start':
             self.http=HttpFixture(self.directory);self.http.start()
-            if self.reference:self.prepare_http_permission()
         elif action == 'http-request':
             if not self.http or not self.http.received(): raise RuntimeError('No real HTTP request reached fixture')
         elif action == 'pixels':
@@ -49,26 +49,20 @@ class Case(Processes,Desktop):
             self.observe(step['text'])
         elif action == 'click':
             target = self.observe(step['text'], word=True)
-            self.click_word(target)
+            self.click_target(target)
         elif action == 'focus':
             if self.reference:
                 command(ROOT/'build/reference-tools/desktop-events','focus',self.processes[name]['process'].pid)
                 self.current=name
                 return
-            pattern = re.compile('^' + re.escape(self.apps[name]['name']) + '$', re.I)
-            deadline = time.monotonic() + 8
+            deadline=time.monotonic()+8
             while True:
                 self.guard()
-                words, _ = self.snapshot('focus')
-                matches = [item for item in words if pattern.search(item['text'])]
-                if len(matches) == 1:
-                    self.click_word(matches[0])
-                    self.current = name
-                    break
-                if time.monotonic() >= deadline:
-                    raise RuntimeError('Cannot locate/focus the actual app surface: ' + name)
-                command('xdotool', 'key', '--clearmodifiers', 'alt+Tab')
-                time.sleep(.3)
+                log=Path(self.processes[name]['stdout']).with_suffix('.stderr').read_text(errors='replace')
+                events=re.findall(r'WAYLAND_TOPLEVEL_FOCUS[^\n]*activated=(0|1)',log)
+                if events and events[-1]=='1':self.current=name;break
+                if time.monotonic()>=deadline:raise RuntimeError('Actual compositor did not focus requested app')
+                command('xdotool','key','--clearmodifiers','alt+Tab');time.sleep(.2)
         elif action == 'type':
             if self.reference: command(ROOT/'build/reference-tools/desktop-events','type',step['text'])
             else: command('xdotool', 'type', '--clearmodifiers', '--delay', '40', step['text'])

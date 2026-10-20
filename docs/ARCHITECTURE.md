@@ -34,7 +34,8 @@ remain an observable failure, and each replacement must run real app journeys.
 | darwin-ui.h | Per-process UIKit/CG state; real main-loop layer rendering | Replacing app views or synthesizing control callbacks |
 | native-display.h | Host-TLS Wayland child; surface, shared buffers and release events | Guest UIKit/libc calls |
 | src/diagnostics | Optional bounded evidence | Supplying runtime semantics or declaring acceptance |
-| tools/app_suite | External user actions and observed effects | Guest method injection, fake backends, runtime workarounds |
+| apps/shared/Inspect.m | Read-only real UIKit/accessibility properties and frames in source-owned apps | Calling control actions, setting state or substituting a framework |
+| tools/app_suite | External user actions, state plus composed pixel effects | Guest method injection, fake backends, runtime workarounds |
 
 Application and service processes join the shared session before any optional
 display registration. Headless services must not create a window or depend on

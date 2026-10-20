@@ -5,7 +5,7 @@
 @implementation NetworkDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
     (void)app; (void)options; UIView *view; self.window=Screen(@"Network",&view); self.result=Label(view,@"Offline",85);
-    Button(view,@"Fetch",self,@selector(fetch:),160); [self.window makeKeyAndVisible]; return YES;
+    Button(view,@"Fetch",self,@selector(fetch:),160); [self.window makeKeyAndVisible]; AppInspectionStart(self.window); return YES;
 }
 - (void)fetch:(id)sender {
     (void)sender;

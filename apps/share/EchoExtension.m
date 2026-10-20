@@ -16,6 +16,7 @@
         });
     }];
 }
+- (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; AppInspectionStart(self.view); }
 - (void)reply:(id)sender {
     (void)sender; if (!self.payload) return;
     NSExtensionItem *item=[NSExtensionItem new]; item.attributedContentText=[[NSAttributedString alloc] initWithString:self.payload];

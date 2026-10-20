@@ -190,6 +190,8 @@ static void native_wayland_run(int ready_fd,int pixels_fd,int notify,struct darw
     xdg_toplevel_add_listener(top,&native_toplevel_listener,&w);
     xdg_toplevel_set_title(top,"ARLinux Wayland backend - no app frame yet");
     xdg_toplevel_set_app_id(top,"io.arlinux.darwin-display");
+    const char *mode=getenv("ARLINUX_WINDOW_MODE");
+    if (mode && !strcmp(mode,"fullscreen")) xdg_toplevel_set_fullscreen(top,NULL);
     wl_surface_commit(w.surface);
     while (w.running) {
         if (wl_display_dispatch_pending(w.display)<0) break;

@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import "Inspect.h"
 static inline UILabel *Label(UIView *view, NSString *text, CGFloat y) {
     UILabel *label=[[UILabel alloc] initWithFrame:CGRectMake(20,y,280,45)];
     label.text=text; label.textColor=UIColor.blackColor; [view addSubview:label]; return label;

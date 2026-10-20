@@ -25,12 +25,13 @@ def main():
     if not selected or not selected<=set(apps):parser.error('Unknown app selection')
     output=ROOT/'build/results/apps';output.mkdir(parents=True,exist_ok=False)
     cases=[];inputs=[]
-    for app in sorted(selected):
+    for app in sorted(selected,key=lambda app:(app=="network",app)):
         path=ROOT/'apps'/app/'journeys.json';inputs.append(path)
         for case in json.loads(path.read_text())['cases']:cases.append({**case,'id':app+'--'+case['id'],'owner':app})
     if args.app=='all':
         for path in sorted((ROOT/'apps/scenarios').glob('*.json')):
             inputs.append(path);case=json.loads(path.read_text());cases.append({**case,'id':'session--'+case['id'],'owner':'session'})
+    cases.sort(key=lambda case:case['owner']=='network')
     results=[]
     for case in cases:
         try:

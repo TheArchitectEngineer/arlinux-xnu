@@ -11,7 +11,7 @@ final class SwiftDelegate: UIResponder, UIApplicationDelegate {
         label.textColor = .black; label.text = "SwiftCards: 0"; controller.view.addSubview(label)
         let button = UIButton(type: .system); button.frame = CGRect(x: 20,y: 180,width: 280,height: 50)
         button.setTitle("Deal", for: .normal); button.addTarget(self,action: #selector(deal),for: .touchUpInside)
-        controller.view.addSubview(button); self.window = window; window.makeKeyAndVisible(); return true
+        controller.view.addSubview(button); self.window = window; window.makeKeyAndVisible(); AppInspectionStart(window); return true
     }
     @objc func deal() {
         let card = Card(values:[2,3,5]); let transform: (Int)->Int = { $0 * 2 }

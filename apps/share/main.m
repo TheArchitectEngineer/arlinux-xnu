@@ -6,7 +6,7 @@
 @implementation ShareDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
     (void)app; (void)options; UIView *view; self.window=Screen(@"Share",&view); self.result=Label(view,@"Ready",85);
-    Button(view,@"Send",self,@selector(send:),160); [self.window makeKeyAndVisible]; return YES;
+    Button(view,@"Send",self,@selector(send:),160); [self.window makeKeyAndVisible]; AppInspectionStart(self.window); return YES;
 }
 - (void)send:(id)sender {
     (void)sender;

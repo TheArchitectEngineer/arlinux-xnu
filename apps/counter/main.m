@@ -1,6 +1,7 @@
 /* Counter 1.0: an actual programmatic UIKit application. No simulated window,
  * substitute event loop or host-drawn replica is used for acceptance. */
 #import <UIKit/UIKit.h>
+#import "../shared/Inspect.h"
 #include <unistd.h>
 
 enum { TextAlignmentCenter=1, ButtonTypeSystem=1, ControlStateNormal=0,
@@ -33,7 +34,7 @@ enum { TextAlignmentCenter=1, ButtonTypeSystem=1, ControlStateNormal=0,
     [button addTarget:self action:@selector(increment:) forControlEvents:ControlEventTouchUpInside];
     [view addSubview:button];
     [_window setRootViewController:controller];
-    [_window makeKeyAndVisible];
+    [_window makeKeyAndVisible]; AppInspectionStart(_window);
     const char ready[]="COUNTER_READY version=1.0 UIKit window made visible\n";
     write(1,ready,sizeof(ready)-1);
     return 1;

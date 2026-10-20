@@ -1,84 +1,97 @@
-import csv
-import io
+"""Deterministic external input, structured UIKit state and composed pixel checks.
+No OCR, image matching model, injected action or replacement framework.
+"""
 import json
 import re
 import time
+from pathlib import Path
 from .context import ROOT,command,sha
 
 class Desktop:
-    def snapshot(self, label):
-        path = self.directory / f'{len(self.observations):03d}-{label}.png'
+    def snapshot(self,label):
+        path=self.directory/f'{len(self.observations):03d}-{label}.png'
         command('screencapture','-x',path) if self.reference else command('scrot',path)
-        if self.reference:
-            result=command(ROOT/'build/reference-tools/desktop-events','ocr',path,capture_output=True,text=True)
-            path.with_suffix('.ocr.json').write_text(result.stdout)
-            words=json.loads(result.stdout)
-        else:
-            result = command('tesseract', path, 'stdout', '--psm', '11', 'tsv',capture_output=True,text=True)
-            path.with_suffix('.tsv').write_text(result.stdout)
-            words=[row for row in csv.DictReader(io.StringIO(result.stdout),delimiter='\t') if row['text'].strip()]
-        text = ' '.join(word['text'] for word in words)
-        path.with_suffix('.txt').write_text(text + '\n')
-        self.observations.append({'screenshot': str(path.relative_to(self.output)),
-                                  'sha256': sha(path), 'text': text,
-                                  'timeMonotonic': time.monotonic()})
-        return words, text
+        observation={'screenshot':str(path.relative_to(self.output)),'sha256':sha(path),'timeMonotonic':time.monotonic()}
+        self.observations.append(observation)
+        return path
 
-    def observe(self, pattern, word=False):
-        deadline = time.monotonic() + 8
-        regex = re.compile(pattern, re.I)
+    def inspection(self):
+        item=self.processes[self.current]
+        events=[]
+        for line in Path(item['stdout']).read_text(errors='replace').splitlines():
+            if line.startswith('APP_INSPECTION '):
+                try:events.append(json.loads(line[15:]))
+                except ValueError:pass  # original writer has not completed its line
+        if not events:return None
+        self.observations_state=events[-1]
+        return events[-1]
+
+    def window(self,state):
+        if self.reference:
+            bounds=json.loads(command(ROOT/'build/reference-tools/desktop-events','bounds',self.processes[self.current]['process'].pid,capture_output=True,text=True).stdout)
+            return bounds[0],bounds[1],bounds[2]/state['viewport'][0],bounds[2]/state['viewport'][0]
+        ids=command('xdotool','search','--onlyvisible','--class','[Ww]eston',capture_output=True,text=True).stdout.split()
+        if len(ids)!=1:raise RuntimeError('No unique real nested compositor window')
+        geometry=command('xdotool','getwindowgeometry','--shell',ids[0],capture_output=True,text=True).stdout
+        fields=dict(line.split('=',1) for line in geometry.splitlines() if '=' in line)
+        stderr=Path(self.processes[self.current]['stdout']).with_suffix('.stderr').read_text(errors='replace')
+        sizes=re.findall(r'WAYLAND_BACKEND_READY width=(\d+) height=(\d+)',stderr)
+        if not sizes:raise RuntimeError('No actual configured fullscreen framebuffer geometry')
+        width,height=map(int,sizes[-1])
+        return int(fields['X']),int(fields['Y']),int(fields['WIDTH'])/width,int(fields['HEIGHT'])/height
+
+    def screen_rect(self,state,rect):
+        x,y,sx,sy=self.window(state)
+        return [round(x+rect[0]*sx),round(y+rect[1]*sy),max(1,round(rect[2]*sx)),max(1,round(rect[3]*sy))]
+
+    def sample(self,path,rect):
+        if self.reference:
+            return json.loads(command(ROOT/'build/reference-tools/desktop-events','sample',path,*rect,capture_output=True,text=True).stdout)
+        from PIL import Image
+        import hashlib
+        x,y,w,h=rect
+        with Image.open(path) as image:
+            if x<0 or y<0 or x+w>image.width or y+h>image.height:raise RuntimeError('Target is outside actual composed display')
+            crop=image.convert('RGB').crop((x,y,x+w,y+h));pixels=list(crop.getdata())
+        return {'pixels':len(pixels),'ink':sum(min(p)<220 for p in pixels),'white':sum(min(p)>240 for p in pixels),
+                'red':sum(p[0]>200 and p[1]<70 and p[2]<70 for p in pixels),
+                'green':sum(p[1]>200 and p[0]<70 and p[2]<70 for p in pixels),
+                'sha256':hashlib.sha256(crop.tobytes()).hexdigest()}
+
+    def observe(self,pattern,word=False):
+        deadline=time.monotonic()+8;regex=re.compile(pattern,re.I)
         while True:
-            self.guard()
-            words, text = self.snapshot('observe')
-            if word:
-                matches = [item for item in words if regex.search(item['text'])]
-                if len(matches) == 1:
-                    return matches[0]
-                if len(matches) > 1:
-                    raise RuntimeError('Ambiguous visible control: ' + pattern)
-            elif regex.search(text):
-                return
-            if time.monotonic() >= deadline:
-                raise RuntimeError('Required compositor-visible effect missing: ' + pattern)
-            time.sleep(.5)
+            self.guard();state=self.inspection()
+            matches=[] if not state else [item for item in state['elements'] if regex.search(item['text']) and (not word or item['interactive'])]
+            if len(matches)>1:raise RuntimeError('Ambiguous structured UI target: '+pattern)
+            if matches:
+                path=self.snapshot('observe');rect=self.screen_rect(state,matches[0]['rect']);pixels=self.sample(path,rect)
+                self.observations[-1].update(uiState=state,target=matches[0],screenRect=rect,pixels=pixels)
+                # Actual text/control must have ink against the fixture's white UI.
+                # Readiness, exported UIKit state or a frame callback alone cannot pass.
+                key=(self.current,self.processes[self.current]['generation'],tuple(matches[0]['rect']))
+                old=self.painted.get(key)
+                changed=not old or old['text']==matches[0]['text'] or old['sha256']!=pixels['sha256']
+                if changed and pixels['ink']>=8 and pixels['white']>=pixels['pixels']//2:
+                    self.painted[key]={'text':matches[0]['text'],'sha256':pixels['sha256']}
+                    return {**matches[0],'screenRect':rect}
+            if time.monotonic()>=deadline:raise RuntimeError('Missing structured UI state or actual composited pixels: '+pattern)
+            time.sleep(.2)
 
-    def click_word(self, target):
-        x = int(float(target['left']) + float(target['width'])/2)
-        y = int(float(target['top']) + float(target['height'])/2)
-        if self.reference:
-            command(ROOT/'build/reference-tools/desktop-events','click',x,y)
-            return
-        command('xdotool', 'mousemove', '--sync', x, y)
-        command('xdotool', 'mousedown', '1')
-        time.sleep(.08)
-        command('xdotool', 'mouseup', '1')
+    def click_target(self,target):
+        x,y,w,h=target['screenRect'];x+=w//2;y+=h//2
+        if self.reference:command(ROOT/'build/reference-tools/desktop-events','click',x,y)
+        else:
+            command('xdotool','mousemove','--sync',x,y);command('xdotool','mousedown','1')
+            time.sleep(.08);command('xdotool','mouseup','1')
 
     def observe_pixels(self,step):
         deadline=time.monotonic()+8
         while True:
-            self.guard();self.snapshot('pixels')
-            image=self.directory / self.observations[-1]['screenshot'].split('/')[-1]
-            if self.reference:
-                count=int(command(ROOT/'build/reference-tools/desktop-events','pixels',image,step['color'],capture_output=True,text=True).stdout)
-            else:
-                from PIL import Image
-                colors=Image.open(image).convert('RGB').getdata()
-                channel={'red':0,'green':1}[step['color']]
-                count=sum(pixel[channel]>200 and all(pixel[i]<70 for i in range(3) if i!=channel) for pixel in colors)
-            self.observations[-1]['colorEffect']={'color':step['color'],'pixels':count,'minimum':step['minimum']}
-            if count>=step['minimum']:return
+            self.guard();state=self.inspection()
+            if state:
+                path=self.snapshot('pixels');rect=self.screen_rect(state,[0,0,*state['viewport']]);pixels=self.sample(path,rect)
+                self.observations[-1].update(screenRect=rect,pixels=pixels)
+                if pixels[step['color']]>=step['minimum']:return
             if time.monotonic()>=deadline:raise RuntimeError('Missing composed color effect: '+step['color'])
-            time.sleep(.5)
-
-    def prepare_http_permission(self):
-        # macOS attributes the ephemeral loopback peer to its Python runner.
-        # Approve only that exact infrastructure prompt, retaining actual screenshots.
-        deadline=time.monotonic()+3
-        while time.monotonic()<deadline:
-            words,text=self.snapshot('http-peer-permission')
-            if re.search(r'Python.*find devices on local networks',text,re.I):
-                buttons=[item for item in words if item['text']=='Allow']
-                if len(buttons)!=1:raise RuntimeError('Cannot uniquely identify local HTTP peer permission button')
-                self.observations[-1]['fixturePermission']='Allow local network for ephemeral Python HTTP peer'
-                self.click_word(buttons[0]);return
             time.sleep(.2)

@@ -38,7 +38,7 @@ future input because they may bundle their own pre-stable runtime.
 Workers owns three short journeys, not one combined pass. Each other app owns a
 single bounded user flow. apps/scenarios contains only concurrent relaunch and
 crash-isolation flows using Counter and Workers. The common runner owns process,
-external desktop input, screenshots, stdout for console apps, bounded diagnostics
+external desktop input, structured read-only UI state, screenshots, stdout for console apps, bounded diagnostics
 and cleanup; it knows no app selectors, fake callbacks or app-specific outcomes.
 
 No app is a prerequisite for another app's acceptance. Each journey owns a fresh
@@ -48,13 +48,24 @@ failures are retained and fail that app rather than disappearing from selection.
 The all selection requires every case including the two session scenarios.
 Subsets explicitly record fullSuite=false. Forced cleanup never proves close.
 
-Linux input goes through Xvfb -> Weston X11 backend -> real Wayland seat. The
-Apple-host reference uses host desktop events, not injected Objective-C actions.
-Composed screenshots and OCR (Linux Tesseract; Apple Vision) establish GUI effects. Canvas additionally counts
-actual screenshot color pixels; app callback text alone cannot prove drawing.
-Network requires both the app-visible response and the real HTTP peer log.
-The Apple reference records screenshots when accepting only its ephemeral Python
-HTTP peer local-network prompt; unrelated system dialogs remain failures.
+Linux input goes through Xvfb -> Weston X11 backend -> real Wayland seat.
+The normal fullscreen window policy gives an actual configured output geometry;
+focus is checked against real compositor activation events. The Apple-host
+reference uses native window bounds and desktop events. The source-owned UIKit
+apps publish read-only public view/accessibility properties and actual frames;
+Web uses its genuine DOM and WebKit script-message transport. The observer never
+calls actions, sets view state or implements a framework. No OCR, Vision model,
+image recognition model or template matcher is used.
+
+Clicks use actual exported control frames transformed through actual host window
+geometry. Acceptance combines the real widget/DOM value with unmodified composed
+screenshots and simple pixel statistics. A changed label must change that label's
+pixel-region hash; a missing/blank button cannot pass merely by being in the view
+tree. These checks prove visible content/redraw and color effects, not recognition
+of every rendered glyph. Canvas requires actual red/green pixels. Network requires
+both the app-visible response and actual HTTP peer log. The Apple-host loopback
+peer may require system network consent; this stays an explicit infrastructure
+failure and is ordered last so it cannot obscure unrelated cases.
 Console stdout is accepted only for console apps; every process exit is checked.
 Original PID/start identity, binaries/input hashes, stdout/stderr/runtime streams,
 screenshots, step status, bounded original-process stacks and cleanup are retained.

@@ -44,12 +44,18 @@ def main():
         log=OUT/(app['id']+'.build.log')
         def compile_source(source,destination,language,frameworks,extension=False):
             flags=['-target',target,'-sdk' if language=='swift' else '-isysroot',sdk,'-g','-O']
-            if language=='swift': flags+=['-swift-version','5']
+            if language=='swift': flags+=['-swift-version','5','-import-objc-header',str(ROOT/'apps/shared/Inspect.h')]
             else:
                 flags+=['-Wall','-Wextra','-Werror','-Wno-deprecated-declarations']
                 if language=='objc': flags+=['-fobjc-arc','-fblocks']
             if extension: flags+=['-fapplication-extension','-Wl,-e,_NSExtensionMain']
-            args=['xcrun','swiftc' if language=='swift' else 'clang',*flags,str(source),'-o',str(destination)]
+            extra=[]
+            if app['kind']=='application':
+                inspector=OUT/(app['id']+'-inspection.o')
+                if not inspector.exists():
+                    command('xcrun','clang','-target',target,'-isysroot',sdk,'-fobjc-arc','-fblocks','-Wno-deprecated-declarations','-c',ROOT/'apps/shared/Inspect.m','-o',inspector)
+                extra=[str(inspector)]
+            args=['xcrun','swiftc' if language=='swift' else 'clang',*flags,str(source),*extra,'-o',str(destination)]
             for framework in frameworks: args+=['-framework',framework]
             result=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
             with log.open('ab') as stream:
