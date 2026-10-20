@@ -26,6 +26,8 @@
 #include <time.h>
 #include <fcntl.h>
 #include <linux/stat.h>
+#include <sys/vfs.h>
+#include <sys/statvfs.h>
 #include <sched.h>
 
 extern long darwin_raw(long, long, long, long, long, long, long);
@@ -242,6 +244,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 }
 
 #include "darling-native.h"
+#include "darwin-filesystem.h"
 #include "darwin-process.h"
 #include "darwin-ipc.h"
 #include "darwin-threads.h"
@@ -623,6 +626,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         break;
     }
     case D_SYS_STAT64: case D_SYS_FSTAT64: case D_SYS_LSTAT64: result=guest_stat(r[0],r[1],r[D_ARM64_SYSCALL_REGISTER]); break;
+    case D_SYS_FSTATFS64: result=native_fstatfs(r[0],r[1]); break;
+    case D_SYS_GETDIRENTRIES64: result=native_getdirentries(r); break;
     case D_SYS_GETUID: result=RAW(SYS_getuid,0,0,0,0,0,0); break;
     case D_SYS_GETEUID: result=RAW(SYS_geteuid,0,0,0,0,0,0); break;
     case D_SYS_GETGID: result=RAW(SYS_getgid,0,0,0,0,0,0); break;

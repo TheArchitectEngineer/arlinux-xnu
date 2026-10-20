@@ -1,0 +1,130 @@
+/* Linux-backed directory ABI adapter. Reference: VibeDarling/darling-xnu
+ * 40bc7ec, libsystem_kernel's stat/fstatfs.c and dirent/getdirentries.c.
+ * Use real descriptors, mount metadata and seek cookies; no synthetic bundle
+ * entries. All operations remain TLS-independent under guest libSystem. */
+#pragma once
+static long native_fd_path(int fd,char path[1024])
+{
+    char link[64]="/proc/self/fd/",digits[12];
+    unsigned int n=14,k=0,value=(unsigned int)fd;
+    do { digits[k++]='0'+value%10; value/=10; } while(value);
+    while(k) link[n++]=digits[--k];
+    link[n]=0;
+    long bytes=RAW(SYS_readlinkat,AT_FDCWD,link,path,1023,0,0);
+    if (bytes<0) return bytes;
+    if (bytes==1023) return -ENAMETOOLONG;
+    path[bytes]=0; return 0;
+}
+static int native_mount_token(char **cursor,char *out,unsigned int capacity)
+{
+    while (**cursor==' ') (*cursor)++;
+    unsigned int n=0;
+    while (**cursor && **cursor!=' ') {
+        unsigned char c=*(*cursor)++;
+        if (c=='\\' && (*cursor)[0]>='0' && (*cursor)[0]<='7' &&
+            (*cursor)[1]>='0' && (*cursor)[1]<='7' && (*cursor)[2]>='0' && (*cursor)[2]<='7') {
+            c=((*cursor)[0]-'0')*64+((*cursor)[1]-'0')*8+(*cursor)[2]-'0';
+            *cursor+=3;
+        }
+        if (n+1>=capacity) return 0;
+        out[n++]=c;
+    }
+    out[n]=0; return n!=0;
+}
+static long native_fstatfs(int fd,unsigned long destination)
+{
+    struct statfs actual={0};
+    long error=RAW(SYS_fstatfs,fd,&actual,0,0,0,0);
+    if(error) return error;
+    if (actual.f_bsize<=0 || (uint64_t)actual.f_bsize>INT32_MAX) return -EOVERFLOW;
+    struct darwin_statfs64 out={0};
+    out.block_size=out.io_size=actual.f_bsize;
+    out.blocks=actual.f_blocks; out.free_blocks=actual.f_bfree;
+    out.available_blocks=actual.f_bavail; out.files=actual.f_files; out.free_files=actual.f_ffree;
+    __builtin_memcpy(out.fsid,&actual.f_fsid,sizeof(out.fsid));
+    out.type=actual.f_type; /* Opaque Linux filesystem type, as in Darling. */
+    /* Linux ST_* -> Darwin MNT_*; unrepresented flags are not claimed. */
+    if(actual.f_flags&ST_RDONLY) out.flags|=D_MNT_RDONLY;
+    if(actual.f_flags&ST_NOSUID) out.flags|=D_MNT_NOSUID;
+    if(actual.f_flags&ST_NODEV) out.flags|=D_MNT_NODEV;
+    if(actual.f_flags&ST_NOEXEC) out.flags|=D_MNT_NOEXEC;
+    if(actual.f_flags&ST_SYNCHRONOUS) out.flags|=D_MNT_SYNCHRONOUS;
+    if(actual.f_flags&ST_NOATIME) out.flags|=D_MNT_NOATIME;
+    char path[1024]; error=native_fd_path(fd,path); if(error) return error;
+    long mounts=RAW(SYS_openat,AT_FDCWD,"/proc/self/mounts",O_RDONLY|O_CLOEXEC,0,0,0);
+    if(mounts<0) return mounts;
+    char buffer[1024],line[4096]; unsigned int used=0,best=0; int overflow=0;
+    for (;;) {
+        long bytes=RAW(SYS_read,mounts,buffer,sizeof(buffer),0,0,0);
+        if(bytes<0) { error=bytes; break; }
+        if(!bytes) break;
+        for(long i=0;i<bytes;i++) {
+            if(buffer[i]!='\n') {
+                if(used+1<sizeof(line)) line[used++]=buffer[i]; else overflow=1;
+                continue;
+            }
+            line[used]=0;
+            if(!overflow) {
+                char source[1024],point[1024],type[16],*cursor=line;
+                if(native_mount_token(&cursor,source,sizeof(source)) &&
+                   native_mount_token(&cursor,point,sizeof(point)) &&
+                   native_mount_token(&cursor,type,sizeof(type))) {
+                    unsigned int n=0; while(point[n] && path[n]==point[n]) n++;
+                    if(!point[n] && n>=best && (n==1 || !path[n] || path[n]=='/')) {
+                        best=n;
+                        __builtin_memcpy(out.mount_point,point,n+1);
+                        unsigned int s=0; while(source[s]) s++;
+                        __builtin_memcpy(out.mount_source,source,s+1);
+                        s=0; while(type[s]) s++;
+                        __builtin_memcpy(out.type_name,type,s+1);
+                    }
+                }
+            }
+            used=0; overflow=0;
+        }
+    }
+    RAW(SYS_close,mounts,0,0,0,0,0);
+    if(error) return error;
+    if(!best) return -ENOENT;
+    return guest_copy(&out,destination,sizeof(out),1);
+}
+static long native_getdirentries(const unsigned long long *r)
+{
+    /* Linux d_name starts at byte 19; Darwin's inode64 name starts at 21.
+     * Repack variable records, retaining real inode/type and opaque cookies. */
+    char input[4096],output[8192] __attribute__((aligned(8)));
+    unsigned long capacity=r[2];
+    if(capacity<24) return -EINVAL;
+    long start=RAW(SYS_lseek,r[0],0,SEEK_CUR,0,0,0);
+    if(start<0) return start;
+    if(r[3] && guest_copy(&start,r[3],sizeof(start),1)) return -EFAULT;
+    long bytes=RAW(SYS_getdents64,r[0],input,sizeof(input),0,0,0);
+    if(bytes<=0) return bytes;
+    unsigned int position=0,used=0; uint64_t cookie=start;
+    while(position<(unsigned int)bytes) {
+        uint16_t length; uint64_t inode,next;
+        if(bytes-position<20) return -EIO;
+        __builtin_memcpy(&inode,input+position,8);
+        __builtin_memcpy(&next,input+position+8,8);
+        __builtin_memcpy(&length,input+position+16,2);
+        if(length<20 || length>(unsigned long)bytes-position) return -EIO;
+        unsigned int name=0;
+        while(19+name<length && input[position+19+name]) name++;
+        if(19+name==length || name>UINT16_MAX) return -EIO;
+        unsigned int size=(__builtin_offsetof(struct darwin_dirent64,name)+name+1+7)&~7U;
+        if(size>capacity-used || size>sizeof(output)-used) {
+            long error=RAW(SYS_lseek,r[0],cookie,SEEK_SET,0,0,0);
+            if(error<0) return error;
+            if(!used) return -EINVAL;
+            break;
+        }
+        struct darwin_dirent64 *entry=(void *)(output+used);
+        __builtin_memset(entry,0,size);
+        entry->inode=inode; entry->seek_offset=next;
+        entry->record_length=size; entry->name_length=name; entry->type=input[position+18];
+        __builtin_memcpy(entry->name,input+position+19,name+1);
+        used+=size; position+=length; cookie=next;
+    }
+    long error=guest_copy(output,r[1],used,1);
+    return error ? error : (long)used;
+}

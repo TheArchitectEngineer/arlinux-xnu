@@ -45,6 +45,7 @@ enum darwin_syscall {
     D_SYS_STAT64 = 338,
     D_SYS_FSTAT64 = 339,
     D_SYS_LSTAT64 = 340,
+    D_SYS_GETDIRENTRIES64 = 344, D_SYS_FSTATFS64 = 346,
     D_SYS_BSDTHREAD_CREATE = 360,
     D_SYS_BSDTHREAD_TERMINATE = 361,
     D_SYS_BSDTHREAD_CTL = 364,
@@ -160,6 +161,25 @@ enum darwin_device_layout {
 enum darwin_open_flags {
     D_O_NONBLOCK = 0x4,
     D_O_NOFOLLOW = 0x100, D_O_DIRECTORY = 0x100000, D_O_CLOEXEC = 0x1000000
+};
+/* XNU bsd/sys/{mount,dirent}.h LP64 inode64 records. */
+struct darwin_statfs64 {
+    uint32_t block_size; int32_t io_size;
+    uint64_t blocks,free_blocks,available_blocks,files,free_files;
+    int32_t fsid[2];
+    uint32_t owner,type,flags,subtype;
+    char type_name[16],mount_point[1024],mount_source[1024];
+    uint32_t extended_flags,reserved[7];
+};
+enum darwin_mount_flags {
+    D_MNT_RDONLY=1, D_MNT_SYNCHRONOUS=2, D_MNT_NOEXEC=4,
+    D_MNT_NOSUID=8, D_MNT_NODEV=16, D_MNT_NOATIME=0x10000000
+};
+struct darwin_dirent64 {
+    uint64_t inode,seek_offset;
+    uint16_t record_length,name_length;
+    uint8_t type;
+    char name[];
 };
 enum darwin_vm_flags {
     D_VM_FLAGS_ANYWHERE = 1, D_VM_FLAGS_TAG_MASK = 0xff000000U,

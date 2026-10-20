@@ -78,7 +78,7 @@ def security_query(frame, location, internal_dict):
               'caller': hex(caller), 'arguments': [hex(value) for value in registers]}
     if symbol == '_SecTaskCopyValueForEntitlement':
         try:
-            record['entitlement'] = GuestObjects(process).string(registers[1])
+            record['entitlement'] = GuestObjects(process).cfstring(registers[1])
         except (ValueError, UnicodeError, SystemError) as error:
             record['entitlementReadError'] = str(error)
     print('SECURITY_QUERY ' + json.dumps(record), flush=True)
