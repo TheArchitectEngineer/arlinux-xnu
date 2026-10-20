@@ -770,6 +770,19 @@ static void fault(int signal,siginfo_t *info,void *context)
     __builtin_unreachable();
 }
 
+int darwin_native_dyld_info(uint64_t address,uint64_t length)
+{
+    if(!address || !length || length>D_VM_MAX_ALLOCATION || address>=D_GUEST_COMMPAGE_RO ||
+       length>D_GUEST_COMMPAGE_RO-address) return -EINVAL;
+#ifdef ARLINUX_DARLING
+    if(darling_active) {
+        int result=dserver_rpc_set_dyld_info(address,length);
+        trace_record("DARLING_DYLD_INFO bytes=0x",length,address,result);
+        return result;
+    }
+#endif
+    return -ENOTSUP;
+}
 void darwin_native_connect(void)
 {
     native_trace_prepare();

@@ -32,11 +32,6 @@ static void need(int ok,const char *message)
  * never cstrings, linkedit or other data. Initial scope is our static ARM64
  * program; arbitrary literal pools, dylibs, runtime code and arm64e are not
  * established. No guest file/signature is changed on disk. */
-struct section64 {
-    char name[16],segment[16];
-    uint64_t address,size;
-    uint32_t offset,align,reloff,nreloc,flags,reserved1,reserved2,reserved3;
-};
 #include "arm64-adapt.h"
 static void rewrite_tls(struct image *im)
 {
@@ -116,6 +111,10 @@ int main(int argc,char **argv)
                 dyld.entry,dyld.header_address,dyld.slide);
     }
     darwin_native_connect();
+    if(dynamic) {
+        need(dyld.dyld_info_address && dyld.dyld_info_size,"interpreter lacks actual dyld image-info section");
+        need(!darwin_native_dyld_info(dyld.dyld_info_address,dyld.dyld_info_size),"register actual interpreter image info");
+    }
     native_framework_services_enabled=options.role!=NATIVE_CONSOLE;
     if (native_framework_services_enabled)
         need(!darwin_native_session_join(),"join authenticated compatibility session");

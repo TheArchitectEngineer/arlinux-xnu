@@ -21,12 +21,18 @@ struct segment {
     uint64_t address,size,offset,filesize;
     uint32_t maxprot,prot,nsects,flags;
 };
+struct section64 {
+    char name[16],segment[16]; uint64_t address,size;
+    uint32_t offset,align,reloff,nreloc,flags,reserved1,reserved2,reserved3;
+};
+_Static_assert(sizeof(struct section64)==80,"Mach-O section_64 ABI");
 struct entry_command { struct command lc; uint64_t entryoff,stacksize; };
 struct image {
     unsigned char *bytes; size_t size;
     struct segment segments[MAX_SEGMENTS]; size_t count;
     uint64_t entry;
     uint64_t header_address,slide;
+    uint64_t dyld_info_address,dyld_info_size;
     uint32_t filetype;
     uint32_t signature_bytes;
     unsigned char uuid[16];
@@ -76,6 +82,19 @@ static void load_image(const char *path,struct image *im,int dynamic) {
             }
             im->segments[im->count++]=s;
             if(!s.offset && s.filesize>=sizeof(h)) im->header_address=s.address;
+            need(s.nsects<=128 && range(sizeof(s),(uint64_t)s.nsects*sizeof(struct section64),cmd.size),
+                 "Mach-O section table bounds");
+            if(h.type==MH_DYLINKER) for(uint32_t n=0;n<s.nsects;n++) {
+                struct section64 section;
+                memcpy(&section,im->bytes+pos+sizeof(s)+(uint64_t)n*sizeof(section),sizeof(section));
+                if(memcmp(section.name,"__all_image_info",16))continue;
+                need(!im->dyld_info_address && section.size>=8 && section.address<=UINT64_MAX-im->slide,
+                     "invalid or duplicate dyld image-info section");
+                section.address+=im->slide;
+                need((s.prot&3)==3 && section.address>=s.address && range(section.address-s.address,section.size,s.size),
+                     "dyld image-info mapping bounds");
+                im->dyld_info_address=section.address;im->dyld_info_size=section.size;
+            }
         } else if(cmd.cmd==LC_MAIN) {
             need(cmd.size>=sizeof(struct entry_command) && entryoff==UINT64_MAX,"invalid or duplicate main entry");
             struct entry_command e; memcpy(&e,im->bytes+pos,sizeof(e)); entryoff=e.entryoff;

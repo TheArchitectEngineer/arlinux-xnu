@@ -3,6 +3,7 @@
 
 long darwin_native_memory(unsigned long size,int protection);
 void darwin_native_connect(void);
+int darwin_native_dyld_info(uint64_t address,uint64_t length);
 int darwin_native_services_enabled(void);
 int darwin_native_session_start(void);
 int darwin_native_session_join(void);
