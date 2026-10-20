@@ -90,8 +90,8 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
     case D_WQ_RETURN: {
         struct native_thread *thread=native_current_thread();
         if (!thread || !thread->workqueue || r[1] || r[2] || r[3]) return -EINVAL;
-        /* Returning zero asks real libpthread to exit and clean up the worker.
-         * Work is already consumed by libdispatch; no pending callback is lost. */
+        /* The signal-return owner re-enters libpthread with the actual XNU
+         * exit upcall. Returning to __workq_kernreturn would trap, even on 0. */
         return 0;
     }
     case D_WQ_SHOULD_NARROW:
@@ -125,4 +125,34 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
     }
     default: return -ENOTSUP;
     }
+}
+
+/* Successful workq returns replace the saved guest context, as XNU does.
+ * Resume through Linux rt_sigreturn so the alternate stack and signal mask
+ * are restored before the next guest callback/trap. No nested guest execution
+ * occurs inside the SIGSYS handler. Event counts describe actual collected
+ * events; ordinary completed batches enter genuine libpthread cleanup. */
+static int native_workqueue_resume(ucontext_t *uc,long result)
+{
+    unsigned long long *r=uc->uc_mcontext.regs;
+    if (result<0 || r[D_ARM64_SYSCALL_REGISTER]!=D_SYS_WORKQ_KERNRETURN) return 0;
+    unsigned long operation=r[0];
+    if (operation!=D_WQ_RETURN && operation!=D_WQ_KEVENT_RETURN && operation!=D_WQ_WORKLOOP_RETURN) return 0;
+    struct native_thread *thread=native_current_thread();
+    if (!thread || !thread->workqueue) return 0;
+    uint64_t buffer=r[1] ? r[1] : native_event_buffer(thread);
+    uint64_t flags=thread->flags|D_WQ_REUSE;
+    int count=D_WQ_EXIT_NKEVENT;
+    if (operation!=D_WQ_RETURN) {
+        flags|=thread->workloop_id ? D_WQ_WORKLOOP : D_WQ_KEVENT|D_WQ_EVENT_MANAGER;
+        count=result;
+    } else buffer=0;
+    trace_record("DARWIN_WORKQUEUE_UPCALL flags=0x",flags,workqueue_start_callback,(unsigned long)count);
+    __builtin_memset(r,0,31*sizeof(*r));
+    r[0]=thread->pthread;r[1]=thread->port;r[2]=thread->stack_low;
+    r[3]=buffer;r[4]=flags;r[5]=(uint64_t)(int64_t)count;
+    uc->uc_mcontext.sp=thread->guest_sp;
+    uc->uc_mcontext.pc=workqueue_start_callback;
+    uc->uc_mcontext.pstate&=~CARRY;
+    return 1;
 }
