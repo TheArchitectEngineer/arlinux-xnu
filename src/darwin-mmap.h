@@ -157,7 +157,9 @@ static long native_file_mmap(const unsigned long long *r)
 }
 static long native_mmap(const unsigned long long *r)
 {
-    if (r[3]==(D_MAP_PRIVATE|D_MAP_ANON) && r[4]==(unsigned long)-1 && !r[5] && !r[0])
+    /* Darwin fd is a signed 32-bit int. The real libSystem wrapper passes
+     * -1 as w4=0xffffffff; upper register bits are not its sign extension. */
+    if (r[3]==(D_MAP_PRIVATE|D_MAP_ANON) && (int32_t)r[4]==-1 && !r[5] && !r[0])
         return darwin_native_memory(r[1],r[2]);
     long result=native_file_mmap(r);
     static unsigned int traces;

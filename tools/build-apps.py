@@ -73,7 +73,7 @@ def main():
         except (OSError,RuntimeError) as error:
             record['build']='failed';record['error']=str(error)
         products.append(record)
-        print('APP_BUILD '+json.dumps({'id':app['id'],'status':record['build'],'error':record.get('error')}),flush=True)
+        print('APP_BUILD '+json.dumps({'id':app['id'],'status':record['build'],'error':record.get('error','').splitlines()[:2] if record.get('error') else None}),flush=True)
     (OUT/'products.json').write_text(json.dumps({'source':os.environ['GITHUB_SHA'],
         'runId':os.environ['GITHUB_RUN_ID'],'apps':products},indent=2)+'\n')
     return 0 if all(app['build']=='passed' for app in products) else 1

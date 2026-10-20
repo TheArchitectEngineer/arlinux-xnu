@@ -60,7 +60,7 @@ class Processes:
         env['ARLINUX_CAPTURE_DIR'] = str(capture)
         app = self.apps[name]
         if app['build'] != 'passed':
-            raise RuntimeError('App build failed: ' + app.get('error','inspect build log'))
+            raise RuntimeError('App build failed: '+name+'; inspect ios-app-inputs/'+name+'.build.log')
         binary = ROOT / app['binary']
         arguments=[str(ROOT / 'build/native/macho-native'), '--role', app['kind'], '--dyld',
             str(ROOT / 'build/ios-input/dyld'), '--root', str(ROOT / 'build/ios-input/filesystem/root'),
@@ -104,5 +104,7 @@ class Processes:
             for item in commands:
                 args += ['-o', item]
             result = subprocess.run(args, stdout=log, stderr=subprocess.STDOUT, timeout=15)
+        command(sys.executable,ROOT/'tools/symbolicate-cache.py',cache,
+                self.directory/'original-process.lldb.log',self.directory/'original-process.symbols.json',capture_output=True)
         self.diagnostic = {'identity': live['identity'], 'status': result.returncode,
                            'target': 'current app' if live['app'] == self.current else 'surviving peer'}
