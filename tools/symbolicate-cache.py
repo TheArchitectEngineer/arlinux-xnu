@@ -29,6 +29,15 @@ fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(
     r'DARWIN_FAULT_REGISTER index=0x([0-9a-fA-F]+) pc=\S+ result=0x([0-9a-fA-F]+)',trace) if int(index,16)<31]
 records=[];matched=set()
 with CacheSymbols(args.cache) as cache:
+    targets=[]
+    for pc in returns:
+        if pc in faults:continue
+        try:call=cache.return_call(pc)
+        except ValueError:continue # Original app/host addresses are outside this cache.
+        if call:
+            records.append({'originalCall':call})
+            targets.append(int(call['target'],16))
+    frames=sorted(set(frames+targets))
     for image in cache.images():
         for register,address in fault_arguments:
             for base,size in image['cstring']:

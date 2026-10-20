@@ -136,6 +136,33 @@ class CacheSymbols:
                 return value+add if value else 0
         return value
 
+    def return_call(self,pc):
+        """Resolve only an actual BL and bounded B / ADRP-LDR-BR cache stubs."""
+        member,offset=self.locate(pc-4,4);word=member.unpack('<I',offset)[0]
+        if word&0xfc000000!=0x94000000:return None
+        def branch(address,word):
+            immediate=word&0x3ffffff
+            if immediate&0x2000000:immediate-=0x4000000
+            return address+immediate*4
+        target=branch(pc-4,word);hops=[]
+        for _ in range(3):
+            member,offset=self.locate(target,12)
+            first,second,third=member.unpack('<III',offset)
+            if first&0xfc000000==0x14000000:
+                following=branch(target,first)
+            elif first&0x9f000000==0x90000000 and second&0xffc00000==0xf9400000 and third&0xfffffc1f==0xd61f0000:
+                base=first&31;destination=second&31
+                if (second>>5)&31!=base or (third>>5)&31!=destination:break
+                immediate=((first>>5)&0x7ffff)<<2 | ((first>>29)&3)
+                if immediate&0x100000:immediate-=0x200000
+                slot=(target&~4095)+(immediate<<12)+((second>>10)&4095)*8
+                following=self.typed_pointer(slot)
+            else:break
+            hops.append({'stub':hex(target),'target':hex(following)})
+            if following==target:break
+            target=following
+        return {'returnPC':hex(pc),'instruction':hex(pc-4),'target':hex(target),'stubHops':hops}
+
     def constant_string(self,image,address):
         """Only a declared 32-byte constant CFString backed by its C-string section."""
         if not any(base<=address and address+32<=base+size and (address-base)%32==0
