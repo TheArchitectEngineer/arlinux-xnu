@@ -29,7 +29,8 @@ def main():
                  'sdk':sdk,'target':target,'host':platform.platform(),'hostArchitecture':platform.machine()}
     (OUT/'environment.json').write_text(json.dumps(environment,indent=2)+'\n')
     command('xcrun','clang','-target',target,'-isysroot',sdk,'-dynamiclib',
-            ROOT/'src/ios-platform.c','-o',OUT/'libarlinux-ios.dylib',
+            ROOT/'src/ios-platform.c',ROOT/'src/diagnostics/ios-lifecycle.m',
+            '-o',OUT/'libarlinux-ios.dylib',
             '-framework','UIKit','-framework','CoreFoundation','-framework','CoreGraphics',
             '-Wl,-install_name,@loader_path/libarlinux-ios.dylib')
     products=[]

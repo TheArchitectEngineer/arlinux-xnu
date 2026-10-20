@@ -12,6 +12,14 @@ every failure. Use explicit targeted cache lookups only for the current failed
 effect. Production framework adaptation is allowed; the diagnostic harness must
 remain read-only with respect to app/framework behavior.
 
+For the current lifecycle boundary investigation, opt in with
+`./build.sh build --app counter --lifecycle-context`. The injected platform
+library reads actual loaded Objective-C method signatures and samples the real
+host window-state API for ten seconds on the genuine main run loop. Evidence is
+in the app's stderr (`IOS_LIFECYCLE_ABI`, `IOS_HOST_WINDOW`). It invokes no app
+actions or private framework lifecycle methods. This flag defaults off and is
+not forwarded to the Apple-host reference. It is diagnosis, not launch success.
+
 ## Start with the effect that failed
 
 | Question | Authoritative evidence | Limit |

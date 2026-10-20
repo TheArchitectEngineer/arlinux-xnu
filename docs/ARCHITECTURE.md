@@ -59,7 +59,12 @@ or deactivate it on real focus changes, and request normal termination on host
 close. Each event belongs to a specific process incarnation and scene; queued
 events, acknowledgements and cleanup must agree across process exit/relaunch.
 Rendering and input remain separate consumers of the same scene identity and
-geometry. The contract is a design target, not an implemented API.
+geometry. The lifecycle event contract is a design target. The version-2
+platform API currently exposes an actual window snapshot: agreed buffer
+geometry, refresh, compositor activation, explicit close request, backend
+liveness and audited app PID/incarnation. A bounded sequence-checked read
+avoids torn host updates. These facts are not yet converted into UIKit
+scene/lifecycle transitions.
 
 Use the existing injected platform library as the adaptation seam. Inspect the
 real UIKit/FrontBoard startup path to choose the narrowest framework-facing

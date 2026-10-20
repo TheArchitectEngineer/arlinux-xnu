@@ -135,6 +135,7 @@ def main():
     parser.add_argument('command', choices=['build', 'status', 'report', 'download'])
     parser.add_argument('--app',default='all',help='all or comma-separated source-owned app IDs; subset runs are explicitly partial')
     parser.add_argument('--reference',action='store_true',help='Also run the same app journeys on the Apple-host reference')
+    parser.add_argument('--lifecycle-context',action='store_true',help='Opt-in read-only loaded lifecycle ABI and host window-state evidence on Linux')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--job', help='Exact job name for report; default: all jobs')
@@ -165,7 +166,8 @@ def main():
             raise SystemExit('Selected local ref is not pushed: ' + args.ref +
                              ' local=' + expected + ' remote=' + remote)
         print('Dispatching exact pushed source ' + expected, flush=True)
-        command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'app=' + args.app, '-f', 'reference=' + str(args.reference).lower()]
+        command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'app=' + args.app, '-f', 'reference=' + str(args.reference).lower(),
+                   '-f','lifecycle_context='+str(args.lifecycle_context).lower()]
     elif args.command == 'status':
         command = (['run', 'view', args.run_id] if args.run_id else
                    ['run', 'list', '--workflow', 'experiment.yml', '--limit', '5'])

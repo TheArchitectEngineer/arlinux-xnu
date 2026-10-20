@@ -754,7 +754,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case D_SYS_PLATFORM:
         if (r[3] == ARLINUX_IOS_PLATFORM_QUERY) {
             result=r[0]==ARLINUX_IOS_PLATFORM_ABI_VERSION && ui.pixels && ui.control ?
-                (long)(uintptr_t)native_ios_platform_attach : -ENOTSUP;
+                (long)(uintptr_t)&native_ios_platform_api : -ENOTSUP;
         } else if (r[3] == D_PLATFORM_SET_TSD) {
             __asm__ volatile("msr tpidr_el0,%0" :: "r"(r[0]) : "memory");
             result = 0;

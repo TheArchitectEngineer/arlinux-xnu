@@ -11,6 +11,7 @@ static struct native_ui_state {
     struct darwin_frame_control *control;
     uint32_t width,height,sequence;
     int notify,observer,drawing;
+    uint32_t pid,incarnation;
     char capture_path[1024];
 } ui={.notify=-1};
 enum { NATIVE_CG_ALPHA_NONE_SKIP_FIRST=6, NATIVE_CG_BYTE_ORDER_32_LITTLE=2U<<12 };
@@ -27,6 +28,9 @@ void darwin_native_ui_output(void *pixels,uint32_t width,uint32_t height,
 {
     ui.pixels=pixels; ui.width=width; ui.height=height;
     ui.control=control; ui.notify=notify;
+    if (darwin_native_host_identity(&ui.pid,&ui.incarnation)) {
+        ui.pid=0; ui.incarnation=0;
+    }
     /* Called before guest entry, while the host's own libc/TLS is active. */
     const char *directory=getenv("ARLINUX_CAPTURE_DIR");
     if (directory) {
@@ -116,3 +120,26 @@ static long native_ios_platform_attach(void)
     RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
     return 0;
 }
+static long native_ios_window_read(struct arlinux_ios_window_state *state,unsigned long size)
+{
+    if (!state || size!=sizeof(*state)) return -EINVAL;
+    if (!ui.control || !ui.pid) return -ENOTSUP;
+    /* The backend can change state while the guest runs. Retry a bounded
+     * number of times; do not spin forever after a writer exits mid-update. */
+    for (unsigned int i=0;i<16;i++) {
+        uint32_t before=__atomic_load_n(&ui.control->window_sequence,__ATOMIC_SEQ_CST);
+        if (before&1) continue;
+        struct arlinux_ios_window_state value={.generation=before,.pid=ui.pid,.incarnation=ui.incarnation};
+        value.width=__atomic_load_n(&ui.control->width,__ATOMIC_RELAXED);
+        value.height=__atomic_load_n(&ui.control->height,__ATOMIC_RELAXED);
+        value.refresh_millihz=__atomic_load_n(&ui.control->refresh_millihz,__ATOMIC_RELAXED);
+        value.flags=__atomic_load_n(&ui.control->window_flags,__ATOMIC_RELAXED);
+        if (before!=__atomic_load_n(&ui.control->window_sequence,__ATOMIC_SEQ_CST)) continue;
+        *state=value; return 0;
+    }
+    return -EAGAIN;
+}
+static const struct arlinux_ios_platform_api native_ios_platform_api={
+    .version=ARLINUX_IOS_PLATFORM_ABI_VERSION,.size=sizeof(struct arlinux_ios_platform_api),
+    .attach=native_ios_platform_attach,.read_window=native_ios_window_read
+};

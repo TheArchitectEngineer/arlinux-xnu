@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <sys/eventfd.h>
+#include "ios-platform-abi.h"
 static int native_display_enabled;
 static void *native_display_pixels;
 struct native_wl_output { struct wl_output *object; uint32_t refresh; };
@@ -25,6 +26,22 @@ struct native_wayland {
     uint32_t width,height;
     int ready_fd,pixels_fd,notify_fd,running,configured,ready,xrgb,focused;
 };
+static void native_window_publish(struct native_wayland *w,uint32_t flags)
+{
+    __atomic_fetch_add(&w->control->window_sequence,1,__ATOMIC_SEQ_CST);
+    __atomic_store_n(&w->control->width,w->width,__ATOMIC_RELAXED);
+    __atomic_store_n(&w->control->height,w->height,__ATOMIC_RELAXED);
+    __atomic_store_n(&w->control->refresh_millihz,
+        w->current_output ? w->current_output->refresh : 0,__ATOMIC_RELAXED);
+    __atomic_store_n(&w->control->window_flags,flags,__ATOMIC_RELAXED);
+    __atomic_fetch_add(&w->control->window_sequence,1,__ATOMIC_SEQ_CST);
+}
+static uint32_t native_window_flags(const struct native_wayland *w)
+{
+    return ARLINUX_IOS_WINDOW_BACKEND_ALIVE |
+        (w->configured ? ARLINUX_IOS_WINDOW_CONFIGURED : 0) |
+        (w->focused>0 ? ARLINUX_IOS_WINDOW_ACTIVE : 0);
+}
 static void native_wm_ping(void *data,struct xdg_wm_base *shell,uint32_t serial)
 { (void)data; xdg_wm_base_pong(shell,serial); }
 static const struct xdg_wm_base_listener native_wm_listener={.ping=native_wm_ping};
@@ -87,6 +104,7 @@ static void native_wl_frame(void *data,struct wl_callback *callback,uint32_t tim
 {
     struct native_wayland *w=data; (void)time; wl_callback_destroy(callback);
     if (!w->ready) {
+        native_window_publish(w,native_window_flags(w));
         uint32_t geometry[3]={w->width,w->height,w->current_output ? w->current_output->refresh : 0};
         need(write(w->ready_fd,geometry,sizeof(geometry))==(ssize_t)sizeof(geometry),"Wayland readiness reply");
         close(w->ready_fd); w->ready=1;
@@ -141,9 +159,14 @@ static void native_toplevel_configure(void *data,struct xdg_toplevel *top,int32_
         if (width>0) w->width=width;
         if (height>0) w->height=height;
     }
+    native_window_publish(w,native_window_flags(w));
 }
 static void native_toplevel_close(void *data,struct xdg_toplevel *top)
-{ (void)top; ((struct native_wayland *)data)->running=0; }
+{
+    struct native_wayland *w=data; (void)top;
+    native_window_publish(w,native_window_flags(w)|ARLINUX_IOS_WINDOW_CLOSE_REQUESTED);
+    w->running=0;
+}
 static const struct xdg_toplevel_listener native_toplevel_listener={
     .configure=native_toplevel_configure,.close=native_toplevel_close
 };
@@ -208,6 +231,8 @@ static void native_wayland_run(int ready_fd,int pixels_fd,int notify,struct darw
             native_submit_frames(&w);
         }
     }
+    uint32_t final_flags=__atomic_load_n(&w.control->window_flags,__ATOMIC_RELAXED);
+    native_window_publish(&w,final_flags&~ARLINUX_IOS_WINDOW_BACKEND_ALIVE);
     wl_display_disconnect(w.display); _exit(0);
 }
 static void native_display_open(void)

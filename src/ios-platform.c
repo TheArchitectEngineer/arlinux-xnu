@@ -3,6 +3,7 @@
  * Application binaries and their controls are not patched or replaced.
  */
 #include "ios-platform-abi.h"
+void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api);
 __attribute__((constructor)) static void arlinux_ios_platform_start(void)
 {
     register unsigned long version __asm__("x0")=ARLINUX_IOS_PLATFORM_ABI_VERSION;
@@ -12,5 +13,8 @@ __attribute__((constructor)) static void arlinux_ios_platform_start(void)
     __asm__ volatile("svc #0x80\n\tcset %w1, cs"
         : "+r"(version),"=r"(failed) : "r"(operation),"r"(number) : "cc","memory");
     if (failed || !version) __builtin_trap();
-    if (((arlinux_ios_platform_attach_fn)version)()) __builtin_trap();
+    const struct arlinux_ios_platform_api *api=(const void *)version;
+    if (api->version!=ARLINUX_IOS_PLATFORM_ABI_VERSION || api->size!=sizeof(*api) ||
+        !api->attach || !api->read_window || api->attach()) __builtin_trap();
+    arlinux_ios_lifecycle_diagnose(api);
 }

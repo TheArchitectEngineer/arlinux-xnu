@@ -183,8 +183,8 @@ int main(int argc,char **argv)
         }
         /* Explicit read-only dyld diagnostics may enter the guest. Never copy
          * arbitrary host environment or credentials into the Apple process. */
-        const char *diagnostic_names[]={"DYLD_PRINT_LIBRARIES","DYLD_PRINT_SEGMENTS"};
-        uint64_t diagnostics[2]={0};size_t diagnostic_count=0;
+        const char *diagnostic_names[]={"DYLD_PRINT_LIBRARIES","DYLD_PRINT_SEGMENTS","ARLINUX_DIAGNOSE_LIFECYCLE"};
+        uint64_t diagnostics[sizeof(diagnostic_names)/sizeof(diagnostic_names[0])]={0};size_t diagnostic_count=0;
         for(size_t i=0;i<sizeof(diagnostic_names)/sizeof(diagnostic_names[0]);i++) {
             const char *value=getenv(diagnostic_names[i]);
             if(!value || strcmp(value,"1")) continue;
@@ -195,7 +195,7 @@ int main(int argc,char **argv)
         }
         /* Header/argc/argv, optional env, and three Apple strings. Count the
          * actual entries; stack alignment does not depend on magic slot totals. */
-        uint64_t initial[12];size_t count=0;
+        uint64_t initial[16];size_t count=0;
         initial[count++]=im.header_address;initial[count++]=1;
         initial[count++]=name;initial[count++]=0;
         if(environment)initial[count++]=environment;

@@ -10,6 +10,10 @@ name: iOS app collection
         description: Also run the same app inputs on the Apple-host reference
         default: false
         type: boolean
+      lifecycle_context:
+        description: Read-only loaded lifecycle ABI and host window-state evidence
+        default: false
+        type: boolean
 permissions:
   contents: read
 jobs:
@@ -180,6 +184,7 @@ jobs:
     - name: Run independent app-owned user journeys
       env:
         APP_SELECTION: ${{ inputs.app }}
+        ARLINUX_DIAGNOSE_LIFECYCLE: ${{ inputs.lifecycle_context && '1' || '0' }}
       run: python3 tools/run-apps.py --app "$APP_SELECTION"
     - name: Encode actual CoreGraphics frame captures
       if: always()
