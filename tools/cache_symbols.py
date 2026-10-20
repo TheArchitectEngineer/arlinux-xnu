@@ -89,7 +89,7 @@ class CacheSymbols:
             if magic!=0xfeedfacf or cpu!=0x100000c or subtype&0xffffff or kind not in (6,7) or count>256:raise ValueError('Unsupported image: '+name)
             self.locate(address,32+size)
             cursor,end=start+32,start+32+size
-            executable=[];linkedit=None;tables=[]
+            executable=[];cstring=[];linkedit=None;tables=[]
             for _ in range(count):
                 cmd,size=member.unpack('<II',cursor)
                 if size<8 or size%8 or cursor+size>end:raise ValueError('Invalid command: '+name)
@@ -98,12 +98,18 @@ class CacheSymbols:
                     segment=member.unpack('<16sQQQQIIII',cursor+8)
                     if segment[0].rstrip(b'\0')==b'__LINKEDIT':linkedit=segment[1:5]
                     if segment[6]&4:executable.append((segment[1],segment[2]))
+                    sections=segment[7]
+                    if sections>128 or 72+sections*80>size:raise ValueError('Invalid section table')
+                    for n in range(sections):
+                        section=cursor+72+n*80
+                        if member.unpack('<I',section+64)[0]&255==2: # S_CSTRING_LITERALS
+                            cstring.append(member.unpack('<QQ',section+32))
                 elif cmd==2:
                     if size!=24:raise ValueError('Invalid symbol command')
                     tables.append(member.unpack('<IIII',cursor+8))
                 cursor+=size
             if cursor!=end:raise ValueError('Invalid command extent')
-            yield {'name':name,'address':address,'executable':executable,'linkedit':linkedit,'tables':tables}
+            yield {'name':name,'address':address,'executable':executable,'cstring':cstring,'linkedit':linkedit,'tables':tables}
     def symbols(self,image):
         tables=[]
         for offset,count,strings,size in image['tables']:

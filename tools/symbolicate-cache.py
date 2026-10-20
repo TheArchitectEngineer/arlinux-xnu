@@ -21,9 +21,20 @@ patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_EXIT_FRAME nr=\S+ pc=(0x[0-9a
           r'DARWIN_NATIVE_FAULT[^\n]*\nDARWIN_CALL nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)']
 frames=sorted({int(pc,16) for pattern in patterns for pc in re.findall(pattern,trace)})
+fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(
+    r'DARWIN_FAULT_REGISTER index=0x([0-9a-fA-F]+) pc=\S+ result=0x([0-9a-fA-F]+)',trace) if int(index,16)<8]
 records=[];matched=set()
 with CacheSymbols(args.cache) as cache:
     for image in cache.images():
+        for register,address in fault_arguments:
+            for base,size in image['cstring']:
+                if base<=address<base+size:
+                    maximum=min(512,base+size-address)
+                    member,offset=cache.locate(address,maximum)
+                    data=member.data[offset:offset+maximum]
+                    records.append({'faultRegister':register,'address':hex(address),'image':image['name'],
+                        'literal':data.split(b'\0',1)[0].decode('utf-8',errors='replace'),'truncated':b'\0' not in data,
+                        'note':'Original fault argument points into a declared cache C-string section'})
         if args.bootstrap_context and image['name']=='/usr/lib/system/libxpc.dylib':
             records.append({'image':image['name'],'bootstrapCandidates':cache.bootstrap_context(image)})
         ranges=image['executable']

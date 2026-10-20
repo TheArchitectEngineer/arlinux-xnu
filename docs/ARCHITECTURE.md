@@ -49,6 +49,15 @@ threads, renderer and Wayland child. Rights/messages use Darling/XNU across real
 processes. A virtual PID 1 is not invented. Full task-right/PID verification,
 helper launch policy and crash resource cleanup remain unfinished.
 
+Before guest entry the loader publishes the interpreter's actual
+`__all_image_info` Mach-O section through Darling's dyld-info registration API.
+TASK_DYLD_INFO is then a genuine MIG reply about storage maintained by dyld;
+returning zero metadata would not implement that loader contract. The scalar
+mach_msg2 adapter decodes Apple's packed arguments and uses those same Mach
+queues/kobjects. Vector/auxiliary messages and separate-header forms remain
+unsupported; Apple's CFI routing policy is not enforced by this trusted-input
+runtime. Registering metadata or translating a request alone is not IPC acceptance.
+
 The application loader inserts the source-built libarlinux-ios.dylib through
 the genuine dyld environment. Its constructor queries a versioned private ABI
 and calls the returned attachment entry point as a normal guest call. It installs
