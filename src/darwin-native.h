@@ -3,7 +3,7 @@
 
 long darwin_native_memory(unsigned long size,int protection);
 int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refresh_millihz,
-                                   uint32_t refresh_bits,int32_t backend_pid);
+                                   uint64_t period_bits,int32_t backend_pid);
 uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t output,
                                     int32_t target,uint64_t instance,uint64_t flags);
 

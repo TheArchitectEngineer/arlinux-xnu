@@ -19,7 +19,8 @@ struct ipc_endpoint {
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 static uint32_t native_bootstrap_port,native_display_port,native_render_port;
 static uint32_t native_display_width,native_display_height;
-static uint32_t native_display_refresh,native_display_refresh_bits;
+static uint32_t native_display_refresh;
+static uint64_t native_display_period_bits;
 static int32_t native_display_pid;
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
 /* XNU message.h: LP64 OOL uses flags before size, unlike the 32-bit form. */
@@ -27,6 +28,7 @@ struct ipc_ool_descriptor {
     uint64_t address; uint8_t deallocate,copy,padding,type; uint32_t size;
 } __attribute__((packed,aligned(4)));
 _Static_assert(sizeof(struct ipc_ool_descriptor)==16,"Darwin LP64 OOL descriptor ABI");
+#include "darwin-display.h"
 struct ipc_packet { struct darwin_audit_token sender; unsigned char message[IPC_BYTES]; };
 static void native_reply_wait(uint32_t);
 static void ipc_queue_lock(struct ipc_endpoint *endpoint)
@@ -176,14 +178,14 @@ static uint32_t ipc_reply_port(void)
  * The public lookup API is redirected here by name in the private cache map.
  * Only an actually created Linux display is registered. Other names fail. */
 int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refresh_millihz,
-                                   uint32_t refresh_bits,int32_t backend_pid)
+                                   uint64_t period_bits,int32_t backend_pid)
 {
     if (!width || !height || width>8192 || height>8192 || backend_pid<=0 || native_bootstrap_port) return -1;
     native_bootstrap_port=ipc_reply_port(); native_display_port=ipc_reply_port(); native_render_port=ipc_reply_port();
     if (!native_bootstrap_port || !native_display_port || !native_render_port) return -1;
     ipc_find(native_bootstrap_port)->send_refs=1;
     native_display_width=width; native_display_height=height;
-    native_display_refresh=refresh_millihz; native_display_refresh_bits=refresh_bits;
+    native_display_refresh=refresh_millihz; native_display_period_bits=period_bits;
     native_display_pid=backend_pid;
     return 0;
 }
@@ -346,13 +348,62 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             header->id>INT32_MAX-D_MIG_REPLY_ID_OFFSET) return D_MACH_SEND_INVALID_HEADER;
         /* MIG host_info: header, NDR, flavor, output count. Unknown routines
          * get a genuine MIG error reply rather than a successful empty body. */
-        uint32_t response[18]; unsigned long response_ool=0;
-        for (volatile uint32_t *word=response;word<response+18;word++) *word=0;
+        uint32_t response[IPC_BYTES/4]; unsigned long response_ool=0;
+        for (volatile uint32_t *word=response;word<response+IPC_BYTES/4;word++) *word=0;
         struct ipc_header *out=(void *)response;
         out->bits=D_MACH_TYPE_MOVE_SEND_ONCE<<D_MACH_MSG_LOCAL_BITS_SHIFT; out->size=36; out->local=reply->name;
         out->id=header->id+D_MIG_REPLY_ID_OFFSET;
         response[7]=1; /* NDR little-endian integer representation */
         response[8]=(uint32_t)D_MIG_BAD_ID; /* MIG_BAD_ID */
+        if (render && header->id==D_MIG_CA_COPY_DISPLAY_PROPERTIES && r[2]==36) {
+            uint32_t display_id; __builtin_memcpy(&display_id,request+32,sizeof(display_id));
+            response[8]=D_KERN_INVALID_ARGUMENT;
+            if (display_id==D_WAYLAND_MAIN_DISPLAY_ID) {
+                uint64_t rate=((uint64_t)native_display_refresh*D_CA_MODE_RATE_SCALE+500)/1000;
+                uint64_t frame_ns=native_display_refresh ?
+                    (1000000000000ULL+native_display_refresh-1)/native_display_refresh : 0;
+                int live=ipc_display_live();
+                response[8]=live ? D_KERN_NOT_SUPPORTED : D_KERN_FAILURE;
+                if (live && native_display_refresh && rate<=0xffffff && frame_ns<=UINT32_MAX) {
+                    uint64_t mode=native_display_width|((uint64_t)native_display_height<<D_CA_MODE_HEIGHT_SHIFT)|(rate<<D_CA_MODE_RATE_SHIFT);
+                    long address=anonymous_aligned(PAGE16,PROT_READ|PROT_WRITE,0);
+                    response[8]=D_KERN_RESOURCE_SHORTAGE;
+                    if ((unsigned long)address<(unsigned long)-4095) {
+                        response_ool=address; __builtin_memcpy((void *)address,&mode,sizeof(mode));
+                        struct ipc_ool_descriptor descriptor={.address=address,.deallocate=1,
+                            .copy=D_MACH_MSG_VIRTUAL_COPY,.type=D_MACH_MSG_OOL_DESCRIPTOR,.size=sizeof(mode)};
+                        out->bits|=D_MACH_MSG_COMPLEX;
+                        struct darwin_display_properties_prefix *prefix=(void *)response;
+                        prefix->descriptor_count=2; prefix->modes=descriptor;
+                        /* No hardware shared-memory entry accompanies this
+                         * software display. A transferred NULL send right is
+                         * the actual absent resource, not a fake device port. */
+                        prefix->memory_entry=(struct darwin_display_port){.disposition=D_MACH_TYPE_MOVE_SEND};
+                        prefix->ndr[0]=0; prefix->ndr[1]=1;
+                        prefix->configuration_seed=1; prefix->connection_seed=1;
+                        unsigned char *buffer=(void *)response;
+                        unsigned int cursor=sizeof(*prefix);
+                        cursor=ipc_display_string(buffer,cursor,"arlinux-wayland-1",sizeof("arlinux-wayland-1"));
+                        cursor=ipc_display_string(buffer,cursor,"",sizeof(""));
+                        cursor=ipc_display_string(buffer,cursor,"ARLinux Wayland",sizeof("ARLinux Wayland"));
+                        struct darwin_display_properties properties={
+                            .mode_bytes=sizeof(mode),.current_mode=mode,.preferred_mode=mode,
+                            .bounds={0,0,native_display_width,native_display_height},
+                            .frame={0,0,native_display_width,native_display_height},
+                            .flags=D_CA_DISPLAY_SUPPORTED,.refresh_period_bits=native_display_period_bits,
+                            .heartbeat_period_bits=native_display_period_bits,
+                            .minimum_frame_duration=frame_ns
+                        };
+                        __builtin_memcpy(buffer+cursor,&properties,sizeof(properties));
+                        out->size=cursor+sizeof(properties);
+                        const char label[]="DARWIN_RENDER_PROPERTIES width/height/millihz/mode follows\n";
+                        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                        trace_call(0,pc,native_display_width); trace_call(1,pc,native_display_height);
+                        trace_call(2,pc,native_display_refresh); trace_call(3,pc,mode);
+                    }
+                }
+            }
+        }
         if (render && header->id==D_MIG_CA_COPY_DISPLAY_LIST && r[2]==sizeof(struct ipc_header)) {
             int live=ipc_display_live();
             response[8]=live ? D_KERN_RESOURCE_SHORTAGE : D_KERN_FAILURE;

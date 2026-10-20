@@ -165,8 +165,8 @@ static void native_display_open(void)
     if (!received) { kill(child,SIGTERM); waitpid(child,NULL,0); need(0,"Wayland backend did not configure a surface"); }
     native_display_pixels=mmap(NULL,(size_t)geometry[0]*geometry[1]*4,PROT_READ|PROT_WRITE,MAP_SHARED,pixels,0);
     need(native_display_pixels!=MAP_FAILED,"map real Wayland framebuffer"); close(pixels);
-    float refresh=(float)geometry[2]/1000.0f; uint32_t refresh_bits;
-    memcpy(&refresh_bits,&refresh,sizeof(refresh_bits));
-    need(!darwin_native_display_register(geometry[0],geometry[1],geometry[2],refresh_bits,child),"register native Wayland display endpoint");
+    double period=geometry[2] ? 1000.0/(double)geometry[2] : 0; uint64_t period_bits;
+    memcpy(&period_bits,&period,sizeof(period_bits));
+    need(!darwin_native_display_register(geometry[0],geometry[1],geometry[2],period_bits,child),"register native Wayland display endpoint");
     native_display_enabled=1;
 }
