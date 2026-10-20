@@ -159,10 +159,19 @@ static long native_file_mmap(const unsigned long long *r)
 }
 static long native_mmap(const unsigned long long *r)
 {
-    /* Darwin fd is a signed 32-bit int. The real libSystem wrapper passes
-     * -1 as w4=0xffffffff; upper register bits are not its sign extension. */
-    if ((r[3]&~(unsigned long)D_MAP_UNIX03)==(D_MAP_PRIVATE|D_MAP_ANON) && (int32_t)r[4]==-1 && !r[5] && !r[0])
-        return darwin_native_memory(r[1],r[2]);
+    /* XNU kern_mman.c uses MAP_ANON's fd as VM allocation metadata, not
+     * a file descriptor. -1 and alias/tag-only values both request ordinary
+     * real anonymous memory. Purgeable/superpage/chunk semantics are not
+     * silently treated as ordinary mappings. Darwin's fd is signed 32-bit. */
+    uint32_t allocation_flags=(uint32_t)r[4];
+    if ((r[3]&~(unsigned long)D_MAP_UNIX03)==(D_MAP_PRIVATE|D_MAP_ANON) &&
+        ((int32_t)allocation_flags==-1 || !(allocation_flags&~D_VM_FLAGS_TAG_MASK)) && !r[5] && !r[0]) {
+        long result=darwin_native_memory(r[1],r[2]);
+        static unsigned int anonymous_traces;
+        if (__atomic_fetch_add(&anonymous_traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT)
+            trace_record("DARWIN_ANON_MMAP tag=0x",allocation_flags,r[1],result);
+        return result;
+    }
     long result=native_file_mmap(r);
     static unsigned int traces;
     if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
