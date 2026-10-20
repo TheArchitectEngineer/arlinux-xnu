@@ -32,21 +32,6 @@ static long native_thread_ctl(const unsigned long long *r)
     struct native_thread *thread=native_current_thread();
     if (!thread) return -ESRCH;
     switch (r[0]) {
-    case D_WQ_SETUP_DISPATCH: {
-        /* XNU pthread_workqueue.c stores serial/label offsets. Modern
-         * libpthread then installs its callbacks and opens the workqueue. */
-        if(!r[1] || r[2]<16 || r[2]>128 || r[3])return -EINVAL;
-        struct darwin_workq_dispatch_config cfg={0};
-        unsigned long bytes=r[2]<sizeof(cfg) ? r[2] : sizeof(cfg);
-        if(guest_copy(&cfg,r[1],bytes,0))return -EFAULT;
-        if(cfg.flags || cfg.version<1 || cfg.version>2)return -ENOTSUP;
-        if(cfg.version==2 && r[2]<sizeof(cfg))return -EINVAL;
-        if(cfg.version==1)cfg.label_offset=0;
-        native_dispatch_config=cfg;
-        workqueue_registered=1;workqueue_has_kevents=1;
-        trace_record("DARWIN_DISPATCH_CONFIG version=0x",cfg.version,cfg.serial_offset,cfg.label_offset);
-        return 0;
-    }
     case D_CTL_MAX_PARALLELISM:
         if (r[1]>6 || (r[2]&~1UL) || r[3]) return -EINVAL;
         return 1; /* Actual inherited single-CPU affinity. */
@@ -80,6 +65,21 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
         return 0;
     }
     switch (r[0]) {
+    case D_WQ_SETUP_DISPATCH: {
+        /* XNU pthread_workqueue.c stores serial/label offsets. Modern
+         * libpthread then installs its callbacks and opens the workqueue. */
+        if(!r[1] || r[2]<16 || r[2]>128 || r[3])return -EINVAL;
+        struct darwin_workq_dispatch_config cfg={0};
+        unsigned long bytes=r[2]<sizeof(cfg) ? r[2] : sizeof(cfg);
+        if(guest_copy(&cfg,r[1],bytes,0))return -EFAULT;
+        if(cfg.flags || cfg.version<1 || cfg.version>2)return -ENOTSUP;
+        if(cfg.version==2 && r[2]<sizeof(cfg))return -EINVAL;
+        if(cfg.version==1)cfg.label_offset=0;
+        native_dispatch_config=cfg;
+        workqueue_registered=1;workqueue_has_kevents=1;
+        trace_record("DARWIN_DISPATCH_CONFIG version=0x",cfg.version,cfg.serial_offset,cfg.label_offset);
+        return 0;
+    }
     case D_WQ_NEWSPISUPP:
         /* Direct delivery uses the real process workqueue kqueue below. */
         if (r[1] || r[2]>D_PTHREAD_MAX_SIZE || (r[3]&~1UL)) return -ENOTSUP;

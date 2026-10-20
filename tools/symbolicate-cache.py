@@ -22,7 +22,7 @@ patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_EXIT_FRAME nr=\S+ pc=(0x[0-9a
           r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)']
 frames=sorted({int(pc,16) for pattern in patterns for pc in re.findall(pattern,trace)})
 fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(
-    r'DARWIN_FAULT_REGISTER index=0x([0-9a-fA-F]+) pc=\S+ result=0x([0-9a-fA-F]+)',trace) if int(index,16)<8]
+    r'DARWIN_FAULT_REGISTER index=0x([0-9a-fA-F]+) pc=\S+ result=0x([0-9a-fA-F]+)',trace) if int(index,16)<31]
 records=[];matched=set()
 with CacheSymbols(args.cache) as cache:
     for image in cache.images():
