@@ -67,6 +67,31 @@ semantics when adding support; a successful registration reply alone is not
 rendering. No ARHELLO_READY, UIKit frame, real input or complete GUI lifecycle
 passes yet. Keep ordinary and debugger attempts separate.
 
+[Run 39420355213](https://github.com/taowen/arlinux-xnu/actions/runs/39420355213),
+source 4ea2cef5343fdfb33ef786694c6825e1233e2c55, decodes the actual failure:
+four port descriptors (first two NULL, two real send rights), then one 149-byte
+OOL mapping. The trailing NDR/scalars are at offsets 92, 96, 100 and 104 with
+values 0, 1, 0 and 149. The blocked guest stack is in QuartzCore's
+Context::connect_remote overloads. The OOL payload content is not decoded;
+do not guess that all five resources are shared memory or assign port roles.
+
+Exact candidate run: [39421509125](https://github.com/taowen/arlinux-xnu/actions/runs/39421509125),
+source 97b00aeae004cfabb875a2ccdc22ef8255b2c14f. It resolves genuine
+CARenderServerStart/GetPort from the current cache and calls them on the
+original guest-TSD lookup thread. Measured Wayland display metadata stays in
+the adapter; other actual render requests are forwarded to the real framework
+port with the original reply right and transferred resources. No registration
+reply, context or rendered frame is fabricated. Observe NATIVE_RENDER_FRAMEWORK_
+and NATIVE_RENDER_FORWARD, real startup errors and app progress before claiming
+this candidate works. Continue this exact run while it remains live.
+
+Primary ABI reference: WebKit's
+[QuartzCoreSPI.h](https://github.com/WebKit/WebKit/blob/ebaa3acb4ca036ced8011e8bfb2e951dd2199696/Source/WebCore/PAL/pal/spi/cocoa/QuartzCoreSPI.h#L287-L299)
+declares these entry points and a CoreGraphics rendering path. This is an
+implementation candidate, not evidence that the selected iOS runtime can render
+on Linux. Older community 40202/four-port examples do not define the observed
+40203/four-port-plus-OOL protocol.
+
 The runtime source now lives in components/darling, with native client and
 server-side support identified by the same enclosing Git commit. ORIGINS.json
 retains import history/licenses; no Darling submodule is fetched. The first
@@ -119,15 +144,15 @@ explains abort-reason/abort routing; compare it with the actual cache code.
 
 ## Exact evidence and inputs
 
-Latest failure evidence is run 39418764026; downloaded ordinary/debugger runtime,
-session logs and both console outputs match its receipt. Receipt SHA-256:
-`29002584322903a9df0b97f2c397d981b8832fd974e3870835ea06c63532841d`.
+Latest failure evidence is run 39420355213; downloaded ordinary/debugger runtime
+and session logs match its receipt. Receipt SHA-256:
+`b4503275d2d6e688ab8086b26f14a493829fbb7746ee183c25046d2f22b700d8`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| app.runtime.log | `e14723a2a163f49861d4c5351425b4b88c0b33d97c5690f63b53f92730d164a8` |
-| debugger.runtime.log | `84e476fe0595f77efe8cd4afe59ebcc021365dde0b0371e18df7acfa9690375f` |
-| session.log | `efb3e94c316b6c4a6dd284027ac5bc3d5f3f8f9d87427d65d930351cbdadab94` |
+| app.runtime.log | `77c4e2a1c45da967be903ba36b7fc908d734b9b086094d2cdc9558968b130360` |
+| debugger.runtime.log | `755eb8ae3afd503b004888162e1b80c1532f3745b7274f8a9bb74bf2d6c36ce1` |
+| session.log | `763d3d5fb097ef68e8b80320efb914a338566266503363dadc8f9984168fe5b0` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain
