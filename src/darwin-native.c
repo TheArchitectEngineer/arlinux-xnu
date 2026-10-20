@@ -287,6 +287,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             return;
         }
         if (number==D_TRAP_PORT_ALLOCATE || number==D_TRAP_PORT_MOD_REFS || number==D_TRAP_PORT_INSERT_RIGHT ||
+            number==D_TRAP_PORT_DESTRUCT ||
             number==D_TRAP_PORT_INSERT_MEMBER || number==D_TRAP_PORT_EXTRACT_MEMBER) {
             const char label[]="DARWIN_PORT_OPERATION trap/arguments follows\n";
             RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
@@ -294,6 +295,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             for (unsigned int i=0;i<4;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
             r[0]=number==D_TRAP_PORT_ALLOCATE ? ipc_port_allocate(r) :
                  number==D_TRAP_PORT_MOD_REFS ? ipc_port_mod_refs(r) :
+                 number==D_TRAP_PORT_DESTRUCT ? ipc_special_reply_destruct(r) :
                  number==D_TRAP_PORT_INSERT_RIGHT ? ipc_port_insert_right(r) :
                  ipc_port_member(r,number==D_TRAP_PORT_INSERT_MEMBER);
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
@@ -354,7 +356,9 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             else {
                 struct ipc_endpoint *endpoint=ipc_find(r[1]);
                 struct native_thread *thread=native_thread_port(r[1]);
-                if (endpoint && ipc_drop_send(endpoint)) {
+                if (endpoint && endpoint->kind==3 && __atomic_load_n(&endpoint->dead_refs,__ATOMIC_ACQUIRE)) {
+                    __atomic_fetch_sub(&endpoint->dead_refs,1,__ATOMIC_ACQ_REL); r[0]=0;
+                } else if (endpoint && ipc_drop_send(endpoint)) {
                     r[0]=0;
                 } else if (thread && __atomic_load_n(&thread->refs,__ATOMIC_ACQUIRE)) {
                     __atomic_fetch_sub(&thread->refs,1,__ATOMIC_ACQ_REL); r[0]=0;

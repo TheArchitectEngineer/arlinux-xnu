@@ -377,7 +377,7 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
                 } else {
                     ipc_queue_lock(endpoint);
                     struct ipc_packet packet;
-                    long size=ipc_peek(endpoint,&packet);
+                    long size=__atomic_load_n(&endpoint->kind,__ATOMIC_ACQUIRE) ? -ECANCELED : ipc_peek(endpoint,&packet);
                     unsigned long message_size=0,total_size=0;
                     unsigned long status=D_KERN_SUCCESS;
                     if (size>=0 && (event.fflags&D_MACH_RCV_MSG)) {
@@ -424,7 +424,10 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
                         if (rearm) { native_kqueue_unlock(); return rearm; }
                         continue;
                     }
-                    if (size<0) { native_kqueue_unlock(); return size; }
+                    if (size==-ECANCELED) {
+                        event.flags|=D_EV_VANISHED|D_EV_ONESHOT;
+                        event.fflags=0; event.data=0;
+                    } else if (size<0) { native_kqueue_unlock(); return size; }
                 }
             } else if (event.filter==D_EVFILT_TIMER || event.filter==D_EVFILT_MEMORYSTATUS ||
                 event.filter==D_EVFILT_WORKLOOP || (event.filter==D_EVFILT_USER &&

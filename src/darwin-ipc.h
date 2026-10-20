@@ -16,7 +16,7 @@ static unsigned long host_send_refs,clock_send_refs[2];
 #define IPC_BYTES 1024
 struct ipc_endpoint {
     uint32_t name,generation; int used,kind,read_fd,write_fd;
-    unsigned long send_refs; uint64_t context; uint32_t options;
+    unsigned long send_refs,dead_refs; uint64_t context; uint32_t options;
     int queue_mutex,special_tid; uint32_t queue_limit,queued,sequence,space_sequence;
     int packet_fd,timer_fd,timer_pending; uint64_t timer_deadline;
     uint32_t sync_destination;
@@ -94,6 +94,9 @@ static long ipc_enqueue(struct ipc_endpoint *endpoint,const void *message,unsign
     if (error) return error;
     __builtin_memcpy(packet.message,message,size);
     ipc_queue_lock(endpoint);
+    if (__atomic_load_n(&endpoint->kind,__ATOMIC_ACQUIRE)) {
+        ipc_queue_unlock(endpoint); return -EPIPE;
+    }
     long result=-EAGAIN;
     if (endpoint->queued<endpoint->queue_limit) {
         unsigned long bytes=size+sizeof(packet.sender);
@@ -162,6 +165,7 @@ static unsigned long ipc_receive_locked(struct ipc_endpoint *endpoint,uint64_t a
                                         unsigned long capacity,unsigned long options,
                                         unsigned long *message_size,unsigned long *total_size)
 {
+    if (__atomic_load_n(&endpoint->kind,__ATOMIC_ACQUIRE)==3) return D_MACH_RCV_PORT_DIED;
     struct ipc_packet packet;
     long size=ipc_peek(endpoint,&packet);
     if (size==-EAGAIN) return D_MACH_RCV_TIMED_OUT;
@@ -222,7 +226,7 @@ static uint32_t ipc_port_create(int kind)
         endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=kind;
         endpoint->packet_fd=pair[0]; endpoint->timer_fd=-1;
         endpoint->timer_pending=0; endpoint->timer_deadline=0; endpoint->sync_destination=0;
-        endpoint->send_refs=0; endpoint->context=0; endpoint->options=0;
+        endpoint->send_refs=0; endpoint->dead_refs=0; endpoint->context=0; endpoint->options=0;
         endpoint->queue_mutex=0; endpoint->queued=0; endpoint->sequence=0;
         endpoint->special_tid=0;
         endpoint->space_sequence=0; endpoint->queue_limit=D_PORT_QLIMIT_DEFAULT;
@@ -332,9 +336,10 @@ static unsigned long ipc_port_insert_right(const unsigned long long *r)
 static unsigned long ipc_port_mod_refs(const unsigned long long *r)
 {
     if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
-    if (r[2]!=D_PORT_RIGHT_SEND) return D_KERN_NOT_SUPPORTED;
+    if (r[2]!=D_PORT_RIGHT_SEND && r[2]!=D_PORT_RIGHT_DEAD_NAME) return D_KERN_NOT_SUPPORTED;
     struct ipc_endpoint *endpoint=ipc_find(r[1]);
-    unsigned long *references=endpoint ? &endpoint->send_refs :
+    if (r[2]==D_PORT_RIGHT_DEAD_NAME && (!endpoint || endpoint->kind!=3)) return D_KERN_INVALID_RIGHT;
+    unsigned long *references=endpoint ? (r[2]==D_PORT_RIGHT_DEAD_NAME ? &endpoint->dead_refs : &endpoint->send_refs) :
         r[1]==CURRENT_HOST_PORT ? &host_send_refs :
         r[1]==SYSTEM_CLOCK_PORT ? &clock_send_refs[0] :
         r[1]==CALENDAR_CLOCK_PORT ? &clock_send_refs[1] : NULL;
@@ -349,6 +354,42 @@ static unsigned long ipc_port_mod_refs(const unsigned long long *r)
         if (__atomic_compare_exchange_n(references,&current,next,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))
             return D_KERN_SUCCESS;
     }
+}
+static unsigned long ipc_special_reply_destruct(const unsigned long long *r)
+{
+    if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
+    struct ipc_endpoint *endpoint=ipc_find(r[1]);
+    if (!endpoint) return D_KERN_INVALID_NAME;
+    ipc_queue_lock(endpoint);
+    unsigned long status=D_KERN_NOT_SUPPORTED;
+    /* libdispatch disconnects an owned special reply receive right from
+     * another thread. No task ownership check against the caller's TID.
+     * Broader guarded/queued-message destruction needs resource cleanup. */
+    if (endpoint->kind) status=D_KERN_INVALID_RIGHT;
+    else if (endpoint->special_tid && !endpoint->options && endpoint->timer_fd<0 && !endpoint->queued) {
+        int64_t delta=(int32_t)r[2];
+        unsigned long refs=__atomic_load_n(&endpoint->send_refs,__ATOMIC_ACQUIRE);
+        if (r[3] || delta>0 || (uint64_t)-delta>refs) status=D_KERN_INVALID_ARGUMENT;
+        else {
+            long result=RAW(SYS_shutdown,endpoint->packet_fd,SHUT_RDWR,0,0,0,0);
+            status=result ? D_KERN_FAILURE : D_KERN_SUCCESS;
+            if (!result) {
+                /* Keep a tombstone and the shutdown socket until exit: a
+                 * receiver/knote can still hold this endpoint or a dup fd.
+                 * Reusing its slot/fd now could wake the wrong operation. */
+                __atomic_store_n(&endpoint->dead_refs,refs+delta,__ATOMIC_RELEASE);
+                __atomic_store_n(&endpoint->send_refs,0,__ATOMIC_RELEASE);
+                __atomic_store_n(&endpoint->kind,3,__ATOMIC_RELEASE);
+                __atomic_fetch_add(&endpoint->space_sequence,1,__ATOMIC_RELEASE);
+                RAW(SYS_futex,&endpoint->space_sequence,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
+                const char label[]="DARWIN_REPLY_PORT_DESTROYED name/dead-references follows\n";
+                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                trace_call(0,0,endpoint->name); trace_call(1,0,refs+delta);
+            }
+        }
+    }
+    ipc_queue_unlock(endpoint);
+    return status;
 }
 /* A registry for this standalone compatibility machine, not launchd/XPC.
  * Public APIs are redirected by symbol in the private cache map. */
@@ -436,7 +477,7 @@ uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_
     int32_t pid=flags ? RAW(SYS_getpid,0,0,0,0,0,0) : 0;
     if (!pid && native_service_static(service)) return D_BOOTSTRAP_NAME_IN_USE;
     struct ipc_endpoint *endpoint=port ? ipc_find(port) : NULL;
-    if (port && (!endpoint || endpoint->kind || endpoint->timer_fd>=0 ||
+    if (port && (!endpoint || endpoint->kind || endpoint->timer_fd>=0 || endpoint->special_tid ||
         !__atomic_load_n(&endpoint->send_refs,__ATOMIC_ACQUIRE))) return D_KERN_INVALID_RIGHT;
     native_registry_lock();
     struct native_service_binding *entry=NULL,*empty=NULL;
@@ -480,7 +521,7 @@ uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t 
     uint32_t status=D_BOOTSTRAP_UNKNOWN_SERVICE;
     if (port) {
         struct ipc_endpoint *endpoint=ipc_find(port);
-        if (endpoint) {
+        if (endpoint && !endpoint->kind) {
             status=guest_copy(&port,output,sizeof(port),1) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
             if (!status) __atomic_fetch_add(&endpoint->send_refs,1,__ATOMIC_ACQ_REL);
         }
@@ -561,6 +602,10 @@ static long ipc_semaphore_wait(uint32_t name,const struct timespec *timeout)
 static unsigned long ipc_receive_complete(struct ipc_endpoint *endpoint,unsigned long status)
 {
     __atomic_store_n(&endpoint->sync_destination,0,__ATOMIC_RELEASE);
+    if (status==D_MACH_RCV_PORT_DIED) {
+        const char label[]="DARWIN_REPLY_RECEIVE_DIED port follows\n";
+        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0); trace_call(0,0,endpoint->name);
+    }
     return status;
 }
 static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
@@ -762,7 +807,9 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             struct ipc_endpoint *endpoint=ipc_find(name);
             response[8]=D_KERN_INVALID_NAME;
             if (endpoint) {
-                if (endpoint->kind==2) type=D_PORT_TYPE_PORT_SET;
+                if (endpoint->kind==3) {
+                    if (__atomic_load_n(&endpoint->dead_refs,__ATOMIC_ACQUIRE)) type=D_PORT_TYPE_DEAD_NAME;
+                } else if (endpoint->kind==2) type=D_PORT_TYPE_PORT_SET;
                 else {
                     if (!endpoint->kind) type=D_PORT_TYPE_RECEIVE;
                     if (__atomic_load_n(&endpoint->send_refs,__ATOMIC_ACQUIRE)) type|=D_PORT_TYPE_SEND;
