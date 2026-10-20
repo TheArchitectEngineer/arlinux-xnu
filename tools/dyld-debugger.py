@@ -42,6 +42,8 @@ def install_service_breakpoints(target):
 
 
 def capture_display_code(target):
+    captured = set()
+
     def calls(address, count):
         instructions = target.ReadInstructions(target.ResolveLoadAddress(address), count)
         for instruction in instructions:
@@ -51,8 +53,39 @@ def capture_display_code(target):
                     yield int(operand, 16)
 
     def disassemble(label, address, count):
+        if address in captured:
+            return
+        captured.add(address)
         print(label, hex(address), flush=True)
         target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(address) + ' --count ' + str(count))
+
+    def references(address, count):
+        objects = GuestObjects(target.GetProcess())
+        words = struct.unpack('<' + 'I'*count, objects.read(address, count*4))
+        for index, word in enumerate(words[:-1]):
+            following = words[index+1]
+            # Adjacent AArch64 ADRP + ADD (immediate), using the same base.
+            if word & 0x9f000000 != 0x90000000 or following & 0xff000000 != 0x91000000:
+                continue
+            if (word & 31) != ((following >> 5) & 31):
+                continue
+            immediate = ((word >> 29) & 3) | (((word >> 5) & 0x7ffff) << 2)
+            if immediate & (1 << 20):
+                immediate -= 1 << 21
+            pointer = ((address+index*4) & ~4095) + (immediate << 12)
+            pointer += ((following >> 10) & 4095) << (12 if following & (1 << 22) else 0)
+            text = None
+            try:
+                text = objects.cfstring(pointer)
+            except (ValueError, UnicodeError):
+                try:
+                    candidate = objects.cstring(pointer)
+                    if 3 <= len(candidate) <= 256 and all(32 <= ord(c) < 127 for c in candidate):
+                        text = candidate
+                except (ValueError, UnicodeError):
+                    pass
+            if text:
+                print('DISPLAY_REFERENCE ' + json.dumps({'pc': hex(address+index*4), 'address': hex(pointer), 'text': text}), flush=True)
 
     for symbol in diagnostic_symbols():
         if symbol.get('symbol') == '_BKSDisplayServicesStart':
@@ -91,7 +124,13 @@ def capture_display_code(target):
                         if name in ('mainDisplay', 'displays') or name.lstrip('_').startswith('initWith'):
                             disassemble('DISPLAY_METHOD_CODE', implementation, 96)
                             for child in list(dict.fromkeys(calls(implementation, 48)))[:3]:
-                                disassemble('DISPLAY_METHOD_CALLEE_CODE', child, 96)
+                                if kind == 'class' and name in ('mainDisplay', 'displays'):
+                                    disassemble('DISPLAY_METHOD_CALLEE_CODE', child, 400)
+                                    references(child, 400)
+                                    for grandchild in list(dict.fromkeys(calls(child, 64)))[:6]:
+                                        disassemble('DISPLAY_METHOD_CALLEE_CODE', grandchild, 180)
+                                else:
+                                    disassemble('DISPLAY_METHOD_CALLEE_CODE', child, 96)
             except (ValueError, UnicodeError) as error:
                 print('OBJC_DISPLAY_DECODE_ERROR', str(error), flush=True)
 
