@@ -5,15 +5,17 @@ Linux/Android. **No complete iOS app journey has passed on Linux/Android yet.** 
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.
 
-The native ARM64 path runs a real dyld/libSystem console through memory, TLS,
-threads, input, normal exit and restart. ARHello 1.0 now enters real UIKit on
-Linux, executes real background tasks and renders an upright UIKit label into
-shared CoreGraphics/Wayland buffers in two independent processes. The button
-is still absent; input and the complete GUI lifecycle remain unverified. A
-native Wayland backend supplies real geometry, modes and refresh rate. The same iOS binary, converted
-with PlayCover on a macOS ARM64 runner, completes display, real mouse input,
-normal exit and relaunch under LLDB. Linux GUI and Android integration remain
-unverified.
+The native ARM64 path executes real dyld/libSystem with memory, TLS, threads,
+console input, exit and restart. Two original UIKit apps render real text into Wayland;
+system controls and complete GUI interaction remain broken. The required app
+suite now checks composed pixels, real input, normal exit/relaunch, concurrent
+apps, crash isolation and an application-requested XPC helper. Failed or blocked
+steps fail the suite. See [journeys](docs/JOURNEYS.md), [architecture](docs/ARCHITECTURE.md)
+and the concise [current handoff](docs/EXPERIMENT.md).
+
+The same ARHello binary has an independent PlayCover/macOS reference journey.
+It supplies behavior comparison, not Linux or Android acceptance. Apple firmware
+and frameworks are never redistributed here.
 
 A [full-system XNU reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
 provides a behavior comparison. Compilation is not application compatibility.
@@ -30,7 +32,8 @@ A shared session service must provide bootstrap, service registration and
 process-state management, reusing Darling/XNU cross-process Mach rights and
 messages. The independent session now connects two concurrent app processes,
 delivers real FrontBoard launch events and receives each framework response;
-process exit releases its retained rights. Real UIKit scene creation and a framework reply are observed; interactive apps
+process exit has a retained-right cleanup path, whose full behavior remains
+unverified. Real UIKit scene creation and a framework reply are observed; interactive apps
 and the complete multi-process journey remain unverified.
 This includes auxiliary/XPC processes requested by a single app, not only
 separate foreground apps; their launch and lifetime belong to the session.
@@ -52,9 +55,8 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 ./build.sh build --mode host       # explicit historical host/shim diagnostics
 ./build.sh build                   # default: native Darwin console journey
 ./build.sh build --mode dyld       # real dyld/libSystem console journey
-./build.sh build --mode app        # ARHello 1.0 real UIKit on Linux
+./build.sh build --mode app        # required real-app suite, shared Darling session
 ./build.sh build --mode darling    # build pinned community ARM64 IPC server; no app run
-./build.sh build --mode app --ipc darling # opt-in community IPC integration journey
 ./build.sh build --mode playcover  # same iOS binary, PlayCover conversion on macOS
 ./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
 ./build.sh status --run-id RUN_ID
