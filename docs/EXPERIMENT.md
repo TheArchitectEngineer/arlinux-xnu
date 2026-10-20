@@ -14,8 +14,8 @@ UIKit window, label and increment button. Source/TBD declarations are under
 guests/ARHello; real framework implementations come from the pinned firmware.
 
 Current integration attempt:
-[39383448706](https://github.com/taowen/arlinux-xnu/actions/runs/39383448706),
-source `6db45272a7f62693f4973637513e15df72da2c82`, dyld job `118498073035`.
+[39384447686](https://github.com/taowen/arlinux-xnu/actions/runs/39384447686),
+source `df458047907779d9a14cf64ef57fb2663b5d5854`, dyld job `118501354331`.
 Use `build.sh build --mode app --ipc darling` through the sole root entry.
 The taowen/darling parent gitlink pins our community server fork and upstream
 MIG/header dependencies; sources.lock.json records the community base.
@@ -104,6 +104,19 @@ the framework's exit or invent a successful connection.
 
 The downloaded textual lldb.log SHA-256 matches its receipt:
 `fdabf8ea0fa9f6cdba09fc6156163c7e3e5508a854429d9cb4ac56269d4e084a`.
+
+The current run links the pinned unmodified community libspc codec in the
+host-TLS service thread. Actual bootstrap requests decode as subsystem 3,
+routine 804 (0x324), zero handle/lookup-handle. FrontBoard requests use type 7,
+flags 0 and receive encoded 64-byte XPC error dictionaries (registry result
+1102); assertiond processinfoservice uses type 1, flags 8 and remains
+unsupported. Darling's bootstrap_priv.h defines flag 8 as privileged-server
+lookup. The app still exits before ARHELLO_READY: no process-info service or
+privileged provider is established. Complex requests are rejected because this
+upstream codec ignores OOL descriptors; malformed inline requests retain its
+fatal behavior. No new Mach namespace or rights table is introduced.
+Current lldb.log SHA-256, verified against its receipt:
+`ec5fc84f14afd5d8b7da3620287c2b593fc7614b34b52be2d9cd2a73c364e282`.
 
 The Wayland host child still supplies a real 1024x640@60Hz surface with a blank
 wl_shm buffer: **no application frame or input journey is validated**. The

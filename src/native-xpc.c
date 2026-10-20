@@ -44,6 +44,7 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     /* libspc connection.c: spc_domain_routine / spc_look_up_endpoint.
      * Only this process's default namespace is currently implemented. */
     if (subsystem==3 && routine==0x324 && name &&
+        spc_dictionary_get_uint64(message->content,"type")==7 &&
         !spc_dictionary_get_uint64(message->content,"handle") &&
         !spc_dictionary_get_uint64(message->content,"lookup-handle"))
         error=darwin_native_service_lookup(bootstrap,(uintptr_t)name,(uintptr_t)&port,0,0,
@@ -55,6 +56,9 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
         .id=0x20000000,.content=reply};
     spc_mach_message_t *encoded=spc_serialize(&response);
     if (!encoded || encoded->header.msgh_size>capacity) abort();
+    /* Upstream's malloc-backed header does not initialize the voucher field.
+     * This host service has no voucher to transfer. */
+    encoded->header.msgh_voucher_port=MACH_PORT_NULL;
     memcpy(output,encoded,encoded->header.msgh_size);
     fprintf(stderr,"BOOTSTRAP_XPC_REPLY error=%d port=%u bytes=%u\n",error,port,encoded->header.msgh_size);
     free(encoded);

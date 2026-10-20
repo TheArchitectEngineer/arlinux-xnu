@@ -338,7 +338,8 @@ build does not depend on a CPU instruction-emulation engine.
 
 ## Community reuse decisions
 
-Source review (2026-10-20); these candidates are not new runtime dependencies.
+Source review (2026-10-20); only libspc below has since been linked into the
+experimental native host service. Other candidates remain research references.
 Keep the pinned Darlingserver/XNU IPC backend. For the current AssertionServices
 early exit, first identify the actual XPC connection, event and request; the exit
 stack alone does not identify a missing daemon or establish its protocol.
@@ -359,6 +360,13 @@ stack alone does not identify a missing daemon or establish its protocol.
   Its decoder ignores OOL descriptors and aborts/exits on several errors; it is
   not a drop-in production transport. Any extracted code needs actual descriptor
   ownership and bounded decoding, using the existing Mach backend.
+  The current host service builds its four unmodified codec/container C files
+  through the existing workflow, with a Linux LP64 Mach ABI adapter. It accepts
+  only inline bootstrap messages, rejects complex requests before decoding,
+  and retains upstream's fatal malformed-input behavior for trusted firmware.
+  Routine 0x324 queries the actual registry; absent services remain errors.
+  Reply send references are retained until XNU completes the actual send.
+  This is not yet a general peer-facing XPC implementation or an assertiond.
 - [VibeDarling Wayland backend](https://github.com/VibeDarling/darling-cocotron/tree/f0e1b1b28c439af9fcd01f039d74fbfe958f3067/AppKit/Wayland.backend)
   supplies window/configure, shared buffers, input and EGL subwindows. Reviewed
   `WaylandWindow.m` is MIT-licensed. Reuse applicable host-side pieces; its
