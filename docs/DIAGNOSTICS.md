@@ -114,5 +114,9 @@ stackshot through synchronous XPC, then block in the reporting path. A wait in
 CrashReporterSupport therefore does not identify the original registration
 error. The runner resolves __GSWriteStackshot by symbol in the same cache and
 captures its bounded C-string argument as GRAPHICS_FAILURE before continuing.
-The callback neither suppresses the failure nor invokes guest methods. Its
-first actual hit still needs runner verification.
+The callback neither suppresses the failure nor invokes guest methods. Run
+39361738985 verifies its first actual hit: ARHello.gsEvents registration failed
+with KERN_FAILURE (5), before synchronous stackshot reporting blocked.
+When the individual job-log endpoint is unavailable, report now falls back to
+gh run view for the exact run/attempt/job and records the raw log format and
+SHA-256; marker parsing removes only the known transport prefix.

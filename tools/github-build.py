@@ -55,20 +55,33 @@ def report(run_id, job_name):
             item['logState'] = 'not fetched: job running or skipped'
             continue
         log_path = output / f"job-{job['id']}.log"
+        log_format = 'actions-job-api'
         try:
             data = api(f"actions/jobs/{job['id']}/logs")
         except SystemExit:
-            item['logState'] = 'unavailable (not evidence of success)'
-            print('  ' + item['logState'])
-            continue
+            # The individual-job endpoint can fail while the run ZIP remains
+            # readable. Let gh use its run-log association for this exact job
+            # and attempt; never silently substitute another execution.
+            fallback = subprocess.run(['gh', 'run', 'view', run_id, '--repo', REPO,
+                                       '--attempt', str(attempt), '--job', str(job['id']), '--log'],
+                                      capture_output=True, timeout=60)
+            if fallback.returncode or not fallback.stdout:
+                item['logState'] = 'unavailable (not evidence of success)'
+                print('  ' + item['logState'])
+                continue
+            data = fallback.stdout
+            log_format = 'gh-run-view'
         log_path.write_bytes(data)
         item['logState'] = 'downloaded'
         item['logFile'] = log_path.name
         item['logSHA256'] = hashlib.sha256(data).hexdigest()
+        item['logFormat'] = log_format
         # Match only actual output at line start after the Actions timestamp,
         # never echoed shell/Python source containing the same marker.
-        lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line)
-                 for line in data.decode('utf-8', errors='replace').splitlines()]
+        lines = data.decode('utf-8', errors='replace').splitlines()
+        if log_format == 'gh-run-view':
+            lines = [re.sub(r'^[^\t]+\t[^\t]+\t', '', line) for line in lines]
+        lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
         markers = ('APP_INPUT ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                    'GUEST_EXIT_STATUS ', 'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
                    'SERVICE_LOOKUP ', 'SERVICE_LOOKUP_LIMIT ',
