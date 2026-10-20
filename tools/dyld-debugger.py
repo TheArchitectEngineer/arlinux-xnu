@@ -74,7 +74,7 @@ def launch_callback(frame, location, internal_dict):
     breakpoint = location.GetBreakpoint()
     name = _launch_entries[breakpoint.GetID()]
     objects = GuestObjects(frame.GetThread().GetProcess())
-    if name == '_xpc_dictionary_set_uint64':
+    if name in ('_xpc_dictionary_set_uint64', '_xpc_dictionary_set_int64'):
         try:
             key = objects.cstring(frame.FindRegister('x1').GetValueAsUnsigned())
         except (ValueError, UnicodeError, SystemError):
@@ -86,6 +86,8 @@ def launch_callback(frame, location, internal_dict):
           'caller': hex(frame.FindRegister('lr').GetValueAsUnsigned())}), flush=True)
     target = frame.GetThread().GetProcess().GetTarget()
     target.GetDebugger().HandleCommand('thread backtrace --count 12')
+    target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(frame.GetPC()) + ' --count 128')
+    capture_code_references(target, frame.GetPC(), 128, 'APP_LAUNCH_REFERENCE')
     caller = frame.FindRegister('lr').GetValueAsUnsigned()
     target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(caller-96) + ' --count 96')
     capture_code_references(target, caller-96, 96, 'APP_LAUNCH_REFERENCE')
@@ -98,10 +100,11 @@ def install_launch_breakpoints(target):
     objects = GuestObjects(target.GetProcess())
     for symbol in diagnostic_symbols():
         name = symbol.get('symbol', '')
-        if name == '_xpc_dictionary_set_uint64':
+        if name in ('_xpc_dictionary_set_uint64', '_xpc_dictionary_set_int64'):
             entries = [(name, int(symbol['address'], 16))]
         elif name in ('_OBJC_CLASS_$_UIApplication', '_OBJC_CLASS_$_BKSProcess',
-                       '_OBJC_CLASS_$_FBSWorkspace'):
+                       '_OBJC_CLASS_$_BKSWorkspace', '_OBJC_CLASS_$_FBSWorkspace',
+                       '_OBJC_CLASS_$_FBSWorkspaceClient'):
             entries = []
             try:
                 cls = int(symbol['address'], 16)
@@ -112,8 +115,8 @@ def install_launch_breakpoints(target):
                 for index in range(count):
                     entry = methods+8+index*size
                     selector = objects.cstring(objects.u64(entry))
-                    if any(part in selector.lower() for part in
-                           ('launch', 'initializ', 'checkin', 'connect', 'scene', '_run')):
+                    if name == '_OBJC_CLASS_$_BKSWorkspace' or any(part in selector.lower() for part in
+                           ('launch', 'initializ', 'checkin', 'connect', 'scene', '_run', 'bootstrap')):
                         address = objects.u64(entry+16)
                         label = name + ' ' + selector
                         print('APP_LAUNCH_METHOD ' + json.dumps({'method': label,

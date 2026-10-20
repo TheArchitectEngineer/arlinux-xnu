@@ -359,9 +359,12 @@ jobs:
               --lookup /usr/lib/system/libxpc.dylib _xpc_connection_create_mach_service \
               --lookup /usr/lib/system/libxpc.dylib _xpc_connection_set_event_handler \
               --lookup /usr/lib/system/libxpc.dylib _xpc_dictionary_set_uint64 \
+              --lookup /usr/lib/system/libxpc.dylib _xpc_dictionary_set_int64 \
               --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$_UIApplication' \
               --lookup /System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices '_OBJC_CLASS_$_BKSProcess' \
+              --lookup /System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices '_OBJC_CLASS_$_BKSWorkspace' \
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspace' \
+              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspaceClient' \
               --lookup /usr/lib/system/libxpc.dylib __xpc_connection_call_event_handler \
               --lookup /usr/lib/system/libxpc.dylib __xpc_mach_port_get_context \
               --lookup /usr/lib/system/libdispatch.dylib '_dispatch_mach_send_with_result_and_async_reply_4libxpc' \
