@@ -153,11 +153,11 @@ class Processes:
                             f'n=next((min(1024,end-a) for begin,end in {ranges!r} if begin<=a<end),0); '+
                             'print("ATLAS_IMAGE_PATH",p.ReadCStringFromMemory(a,n,e) if n else "outside writable metadata maps",e)')
                         break
-            info=re.findall(r'DARLING_DYLD_INFO bytes=\S+ pc=(0x[0-9a-f]+) result=0x0+ ',runtime)
-            if info:
-                script=ROOT/'tools/app_suite/dyld_metadata.py'
-                commands.insert(-1,'script import runpy; '+
-                    f'runpy.run_path({str(script)!r})["collect"](lldb.debugger.GetSelectedTarget(),{int(info[-1],16)},{live["runtime"]!r})')
+        info=re.findall(r'DARLING_DYLD_INFO bytes=\S+ pc=(0x[0-9a-f]+) result=0x0+ ',runtime)
+        if info:
+            script=ROOT/'tools/app_suite/dyld_metadata.py'
+            commands.insert(-1,'script import runpy; '+
+                f'runpy.run_path({str(script)!r})["collect"](lldb.debugger.GetSelectedTarget(),{int(info[-1],16)},{live["runtime"]!r})')
         with (self.directory / 'original-process.lldb.log').open('wb') as log:
             args = ['sudo', '-n', 'timeout', '--kill-after=2', '10', 'lldb-18', '--batch', '--attach-pid', str(pid)]
             for item in commands:

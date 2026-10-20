@@ -110,12 +110,23 @@ images as individual address deltas in 16K units, losing low bits from images
 inside the shared cache. This explains why the true image table and the later
 compact-derived Image can disagree without an actual dylib unload.
 
-The current fix resolves mapped file identities from real kernel mappings,
-re-stats candidate paths to verify device/inode, and translates into the real
-guest root/bundle. It fails for unknown identities instead of fabricating a
-cache path. Runtime confirmation still requires successful fsgetpath, an actual
-compact shared-cache record and no recurrence of the original Atlas fault.
-GUI rendering/input/lifecycle acceptance remains outstanding.
+Source 533f6a4 resolves mapped file identities from real kernel mappings,
+re-stats candidate paths to verify device/inode, and translates into the actual
+guest root/bundle. Unknown identities fail instead of receiving fabricated paths.
+Run [39489195554](https://github.com/taowen/arlinux-xnu/actions/runs/39489195554),
+source **533f6a4534821c498193313752406a1c4693e2ae**, verified receipt SHA-256
+**c4ef150d056f30e331b801a663e04870b72e20bd770b9e42e3ead6c433cc1059**
+and all 43 retained files. Actual fsgetpath calls return the 62-byte pathname for
+the real cache identity. Counter and Swift no longer fault at Atlas; both remain
+alive until failing GUI state/pixel acceptance. Console and Foundation still pass.
+
+Counter's original main thread is now inside GSEventRunModal / CFRunLoopRun,
+waiting on a real Mach receive. The genuine before-waiting observer is installed,
+but no didFinishLaunching ready marker or usable frame is present. This is not
+normal GUI startup or lifecycle acceptance. The next collection reads compact
+metadata also for live failed apps, to verify the shared-cache representation,
+and retains original UIKit/GraphicsServices wait call sites. Determine the real
+missing startup event/service response before changing lifecycle behavior.
 
 The same-cache reader uses declared slide-v2 pointer metadata for constant
 CFStrings, bounded decoded instructions and actual call/branch observations.

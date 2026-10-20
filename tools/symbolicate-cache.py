@@ -24,13 +24,14 @@ frames=sorted({int(pc,16) for pattern in patterns for pc in re.findall(pattern,t
 faults={int(pc,16) for pc in re.findall(r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
 returns={int(pc,16):int(index,16) for index,pc in re.findall(
     r'DARWIN_(?:EXIT|FAULT)_FRAME nr=0x([0-9a-fA-F]+) pc=(0x[0-9a-fA-F]+)',trace)}
-def lookup_pc(pc):return pc-4 if pc in returns and pc not in faults else pc
+stack_returns={int(pc,16) for index,pc in re.findall(r'frame #(\d+): (0x[0-9a-fA-F]+)',trace) if int(index)>0}
+def lookup_pc(pc):return pc-4 if (pc in returns or pc in stack_returns) and pc not in faults else pc
 fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(
     r'DARWIN_FAULT_REGISTER index=0x([0-9a-fA-F]+) pc=\S+ result=0x([0-9a-fA-F]+)',trace) if int(index,16)<31]
 records=[];matched=set()
 with CacheSymbols(args.cache) as cache:
     targets=[]
-    for pc in returns:
+    for pc in set(returns)|stack_returns:
         if pc in faults:continue
         try:call=cache.return_call(pc)
         except ValueError:continue # Original app/host addresses are outside this cache.
@@ -75,6 +76,8 @@ with CacheSymbols(args.cache) as cache:
             if nearest:record.update(nearestSymbol=nearest[1],symbolAddress=hex(nearest[0]),displacement=address-nearest[0])
             if pc in faults or (pc in returns and returns[pc]<=3) or (nearest and 'display' in nearest[1].lower()):
                 record['faultContext']=cache.fault_context(image,address,symbols)
+            elif 'UIKitCore.framework/' in image['name'] or 'GraphicsServices.framework/' in image['name']:
+                record['waitContext']=cache.fault_context(image,address,symbols)
             records.append(record)
     for pc in frames:
         if pc not in matched:records.append({'pc':hex(pc),'status':'outside-cache','note':'Requires original app/interpreter or host symbols'})

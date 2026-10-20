@@ -13,8 +13,11 @@ import lldb
 
 def collect(target, info_address, runtime_path):
     process=target.GetProcess()
+    maps=Path(runtime_path).read_text()
+    if 'DARWIN_FAULT_MAPS_BEGIN' not in maps:
+        maps=Path(f'/proc/{process.GetProcessID()}/maps').read_text()
     ranges=[(int(b,16),int(e,16),p) for b,e,p in re.findall(
-        r'^([0-9a-f]+)-([0-9a-f]+) ([-rwxps]{4}) ',Path(runtime_path).read_text(),re.M)]
+        r'^([0-9a-f]+)-([0-9a-f]+) ([-rwxps]{4}) ',maps,re.M)]
 
     def capacity(address):
         return next((end-address for begin,end,permissions in ranges
