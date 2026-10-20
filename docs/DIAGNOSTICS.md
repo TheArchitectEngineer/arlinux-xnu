@@ -149,3 +149,17 @@ DARWIN_REPLY_PORT_DESTROYED verifies shutdown and dead-name conversion;
 DARWIN_REPLY_RECEIVE_DIED separately records an actual blocked receive returning
 PORT_DIED. Destruction before a subsequent receive can instead produce
 INVALID_NAME. A destruction marker alone does not verify waiter wakeup.
+
+After a fix, compare the actual throwing thread and callers before equating
+identical exception text. Run 39372733667 still reports a nil dictionary value,
+but the throwing caller has moved from UIKit entitlement handling to BackBoard
+HID initialization. EXCEPTION_CALLER_CODE/REFERENCE capture bounded actual caller
+instructions/literals; SECURITY_QUERY/RETURN observe actual task creation and
+entitlement entry/return values without invoking guest methods. Codesign traces
+also include the operation, actual signature bytes and process incarnation.
+
+The pinned community IOKit reference (`darlinghq/darling-iokituser`,
+`0b989e3ad71f96fcd28b842ef8ea9bb8214dc7cd`, hid.subproj/IOHIDEventSystemClient.c)
+creates a CF runtime object but exposes empty devices/properties and no event
+delivery. It is not evidence of usable HID input. Preserve Darling's real Mach
+transport and implement required input behavior against actual Wayland events.

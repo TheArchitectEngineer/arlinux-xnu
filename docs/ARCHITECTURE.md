@@ -291,8 +291,13 @@ establishes real display queries/OOL copies and a 112-byte kqchannel receive
 into the caller's stack data area. Synchronous S2C anonymous mappings use the
 native low-address allocator. Guest granules and host-page hook counts remain
 distinct. File/fixed/executable mappings and asynchronous S2C signal handling
-remain incomplete. Workloop cancellation/rearm currently fails with ENOENT;
-the UIKit display/input journey and Android integration remain unverified.
+remain incomplete. XNU's missing-note ADD|DELETE workloop soft-delete semantics
+are now preserved before ownership/debounce processing; a plain missing DELETE
+still returns ENOENT. Real task audit/security tokens come from Linux credentials,
+PID and start ticks in our server fork, rather than a zero token. Native csops
+reports actual unsigned status and no entitlement blob for an unsigned Mach-O;
+embedded, unvalidated signatures remain unsupported, never labelled CS_VALID.
+The UIKit display/input journey and Android integration remain unverified.
 
 First-fit mutex slow waits consume real futex-backed wake credits; the genuine
 pthread library still owns its lock state and owner compare-and-swap. Other

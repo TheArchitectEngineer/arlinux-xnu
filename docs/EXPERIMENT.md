@@ -14,8 +14,8 @@ UIKit window, label and increment button. Source/TBD declarations are under
 guests/ARHello; real framework implementations come from the pinned firmware.
 
 Current integration attempt:
-[39370264712](https://github.com/taowen/arlinux-xnu/actions/runs/39370264712),
-source `c037bd2368f4fe15148d306b8948b166bd2e1b3a`, dyld job `118456691278`.
+[39372733667](https://github.com/taowen/arlinux-xnu/actions/runs/39372733667),
+source `3598d76f2462619abe5f032289a1498cb7f6d916`, dyld job `118464449133`.
 Use `build.sh build --mode app --ipc darling` through the sole root entry.
 The taowen/darling parent gitlink pins our community server fork and upstream
 MIG/header dependencies; sources.lock.json records the community base.
@@ -48,12 +48,25 @@ suppressed knote scan state (run 39369011861); a real cooperative processing
 mutex and scoped scan state fix that assertion without removing it. Channel
 read flags/residual extensions preserve caller-owned kevent data storage.
 
-**ARHello still fails**, ordinary status 133 at 0x1808c5810. The actual BRK path
-references `BUG IN LIBDISPATCH: Unexpected error from kevent`. A workloop update
-for ident 0x300217740, filter -17, flags 7 (ADD|DELETE|ENABLE), fflags 1 and
-xflags 0 returns Linux -ENOENT. It follows the observed Mach event delivery.
-Inspect the actual XNU/libdispatch workloop cancellation/rearm lifecycle;
-ignoring ENOENT or merely retaining a dummy note would not establish ownership.
+The missing-note workloop ADD|DELETE soft delete now follows XNU's actual
+kevent_register semantics. Run 39371022211 passes the former libdispatch BRK
+and registers ARHello.gsEvents. No dummy note is created and a plain missing
+DELETE still fails. Current runs preserve that progress.
+
+The next entitlement failure exposed unimplemented csops. The loader now
+records actual signature metadata; unsigned ARHello returns unsigned status
+and EINVAL for an absent entitlement blob, following XNU/Security semantics.
+The server's real Linux credentials, PID and start-tick incarnation populate
+its task audit token. Embedded unvalidated signatures remain unsupported.
+
+**ARHello still fails**, ordinary status 133 at 0x1809bbf6c. Failure-only LLDB
+now reaches a different throwing thread: BackBoardServices
+`____getHIDEventSystemClient_block_invoke`, caller 0x18382b22c, constructs a
+three-entry NSDictionary with a nil first value. UIKit's main thread is waiting
+in `_classicMode`; the earlier entitlement throwing stack is absent from this
+traced attempt. Identical exception text alone must not be treated as the same
+cause. Actual caller disassembly is in the log; identify the nil dictionary
+value and its producer before assuming a missing HID device or service.
 
 The Wayland host child still supplies a real 1024x640@60Hz surface with a blank
 wl_shm buffer: **no application frame or input journey is validated**. The
@@ -63,21 +76,21 @@ The former 1260-byte XPC COPY_SEND/MAKE_SEND_ONCE request still needs an actual
 peer/reply observation on this backend; enqueue or right acceptance alone is
 not a preferences service response.
 
-Next action: fix the measured workloop lifecycle error, then continue this
-same app toward actual rendering/input/normal exit/relaunch and ARLinux
+Next action: trace the actual BackBoard HID dictionary inputs and producer,
+then continue this same app toward rendering/input/normal exit/relaunch and ARLinux
 integration. Keep native TLS, real port ownership, mapped OOL storage and
 direct Wayland. Extend S2C signals/FD mappings only from actual required flows.
 ## Exact evidence and inputs
 
-Latest source/run above: server job `118456313438`, native job `118456551266`.
+Latest source/run above: server job `118463999136`, native job `118464300129`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Native ELF | `9f614f267002f0e19f8b99b7307bdfea96078d8a8b23303b4eb9ccf08c63dc5e` |
-| Darling server ELF | `6545dea43a2e7a9b732b326bef7e2ad87e192c1d1306f3b6138af153693a82f8` |
-| Failed app evidence receipt | `1108431f06520bdf831873a33f4d9b4eed17855303012b90b2b468f8fd0ca8ff` |
-| Native receipt | `bc0d76160c1e19b11b3adc00b6aa6bda3886cceb510e247aa6d57c854c73374d` |
-| Server receipt | `af2ceb0370973aac50a6e0f96e80fefa1efb6303b549deee0899cd40606ef442` |
+| Native ELF | `f0761d28054863d9bc0e68c7ad8ff1715273b1dcc6d54053b862b20cf2adeb7f` |
+| Darling server ELF | `bd246b6bd09ea0867c6573c7a1dddf1cba5e3049538f0a3d506756bdb8beef0e` |
+| Failed app evidence receipt | `d2a2ecf1095e98e5396f1900410a2fe0524b21d8e2a238bc89bf9cab34d07e85` |
+| Native receipt | `54ef218f662d74c4eb5dc1b22973d5199370006341e965acb846d9f66fa97bfa` |
+| Server receipt | `f46a1d64ca03fa5cea72969ed3684c4b1b8ec64d6e7ed0bd8e05c26fa60a724d` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json. Selected firmware
 is iPhone7,2 / iOS 12.5.7 / 16H81. Actual input/cache metadata and runtime hashes
