@@ -13,11 +13,14 @@ struct native_knote {
 };
 #include "darling-kqueue.h"
 struct native_kqueue {
+    struct native_kqueue *next;
     int used,fd,worker,owner_tid;
     uint64_t dynamic_id; uint32_t priority,client_owner,ownership_epoch;
     struct native_knote watches[D_KQUEUE_WATCHES];
 };
-static struct native_kqueue native_kqueues[D_KQUEUE_COUNT];
+/* Published nodes retain stable addresses for workers/readers until process
+ * exit. A queue consumes real mapping/epoll resources, not an arbitrary slot. */
+static struct native_kqueue *native_kqueues;
 static int native_kqueue_mutex,workqueue_kqueue=-1;
 static unsigned int native_kevent_errors;
 static unsigned int native_workloop_cancels;
@@ -43,9 +46,8 @@ static void native_kqueue_owner(struct native_kqueue *queue,uint32_t port)
 static void native_event_owner_exit(uint64_t port)
 {
     native_kqueue_lock();
-    for (unsigned int i=0;i<D_KQUEUE_COUNT;i++)
-        if (native_kqueues[i].used && native_kqueues[i].client_owner==port)
-            native_kqueue_owner(native_kqueues+i,0);
+    for (struct native_kqueue *queue=native_kqueues;queue;queue=queue->next)
+        if (queue->client_owner==port) native_kqueue_owner(queue,0);
     native_kqueue_unlock();
 }
 /* A synchronous special-reply wait yields this thread's workloop ownership
@@ -59,31 +61,31 @@ static void native_reply_wait(uint32_t name)
 }
 static struct native_kqueue *native_kqueue_find(int fd)
 {
-    for (unsigned int i=0;i<D_KQUEUE_COUNT;i++)
-        if (__atomic_load_n(&native_kqueues[i].used,__ATOMIC_ACQUIRE) && native_kqueues[i].fd==fd)
-            return native_kqueues+i;
+    for (struct native_kqueue *queue=__atomic_load_n(&native_kqueues,__ATOMIC_ACQUIRE);queue;queue=queue->next)
+        if (queue->fd==fd) return queue;
     return NULL;
 }
 /* Caller holds the namespace lock while publishing a newly allocated queue. */
-static long native_kqueue_create_locked(void)
+static long native_kqueue_create_locked(uint64_t dynamic_id)
 {
-    for (unsigned int i=0;i<D_KQUEUE_COUNT;i++) if (!native_kqueues[i].used) {
-        long fd=RAW(SYS_epoll_create1,EPOLL_CLOEXEC,0,0,0,0,0);
-        if (fd>=0) {
-            native_kqueues[i].fd=fd;
-            native_kqueues[i].dynamic_id=0; native_kqueues[i].owner_tid=0;
-            native_kqueues[i].priority=0;
-            native_kqueues[i].client_owner=0; native_kqueues[i].ownership_epoch=0;
-            __atomic_store_n(&native_kqueues[i].used,1,__ATOMIC_RELEASE);
-        }
+    unsigned long size=(sizeof(struct native_kqueue)+D_GUEST_PAGE_SIZE-1)&~(D_GUEST_PAGE_SIZE-1UL);
+    long memory=anonymous_aligned(size,PROT_READ|PROT_WRITE,0);
+    if ((unsigned long)memory>=(unsigned long)-4095) return memory;
+    long fd=RAW(SYS_epoll_create1,EPOLL_CLOEXEC,0,0,0,0,0);
+    if(fd<0) {
+        RAW(SYS_munmap,memory,size,0,0,0,0);
         return fd;
     }
-    return -EMFILE;
+    struct native_kqueue *queue=(void *)memory;
+    queue->fd=fd; queue->dynamic_id=dynamic_id; queue->used=1;
+    queue->next=native_kqueues;
+    __atomic_store_n(&native_kqueues,queue,__ATOMIC_RELEASE);
+    return fd;
 }
 static long native_kqueue_create(void)
 {
     native_kqueue_lock();
-    long result=native_kqueue_create_locked();
+    long result=native_kqueue_create_locked(0);
     native_kqueue_unlock();
     return result;
 }
@@ -613,7 +615,7 @@ static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
         if (!workqueue_opened || !workqueue_has_kevents) return -EINVAL;
         native_kqueue_lock();
         if (workqueue_kqueue<0) {
-            long created=native_kqueue_create_locked();
+            long created=native_kqueue_create_locked(0);
             if (created<0) { native_kqueue_unlock(); return created; }
             workqueue_kqueue=created;
         }
@@ -650,14 +652,14 @@ static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
     if (!workqueue_opened || !workqueue_has_kevents) return -EINVAL;
     struct native_kqueue *queue=NULL;
     native_kqueue_lock();
-    for (unsigned int i=0;i<D_KQUEUE_COUNT;i++)
-        if (native_kqueues[i].used && native_kqueues[i].dynamic_id==r[0]) { queue=native_kqueues+i; break; }
+    for (struct native_kqueue *candidate=native_kqueues;candidate;candidate=candidate->next)
+        if (candidate->dynamic_id==r[0]) { queue=candidate; break; }
     if (queue && (flags&D_KEVENT_MUST_NOT_EXIST)) { native_kqueue_unlock(); return -EEXIST; }
     if (!queue && (flags&D_KEVENT_MUST_EXIST)) { native_kqueue_unlock(); return -ENOENT; }
     if (!queue) {
-        long fd=native_kqueue_create_locked();
+        long fd=native_kqueue_create_locked(r[0]);
         if (fd<0) { native_kqueue_unlock(); return fd; }
-        queue=native_kqueue_find(fd); queue->dynamic_id=r[0];
+        queue=native_kqueue_find(fd);
     }
     native_kqueue_unlock();
     /* Polling a bound workloop belongs to its actual servicer. Registration

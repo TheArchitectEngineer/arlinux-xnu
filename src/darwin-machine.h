@@ -28,7 +28,6 @@ static uint32_t darling_task_port=0x103U,darling_host_port=0x203U;
 #define D_RUNTIME_BAD_TRANSPORT_EXIT 126
 #define D_PTHREAD_MAX_SIZE (64UL * 1024)
 #define D_WORKQUEUE_STACK_SIZE (512UL * 1024)
-#define D_KQUEUE_COUNT 8
 #define D_KQUEUE_WATCHES 128
 #define D_KQUEUE_BATCH 16
 #define D_KQUEUE_BUFFER_OFFSET 512
