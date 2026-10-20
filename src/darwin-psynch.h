@@ -1,4 +1,4 @@
-/* The observed libpthread first-fit mutex slow path. Userland owns its E-bit,
+/* Historical local backend only: the observed libpthread first-fit mutex slow path. Userland owns its E-bit,
  * generation counts and owner CAS. Each unlock-drop posts exactly one wake
  * credit; a late waiter consumes the prepost instead of losing the wake.
  * Linux futex waits park actual threads. Fair-share/shared/condition/RW-lock
@@ -44,16 +44,28 @@ static long native_psynch_mutex(const unsigned long long *r)
     }
 }
 
-/* The real iOS libpthread uses these generation-based operations (XNU
- * syscalls.master). Reuse the pinned Darling/XNU queues and returned update
- * bits; the native mutex credit protocol above is not a read/write lock. */
-static long native_psynch_rw(const unsigned long long *r,int *bsd_error)
+/* XNU syscalls.master and the integrated generated RPC define the same psynch
+ * ABI. Condition waits coordinate mutex drop and wait enqueueing, so all
+ * mutex/CV/RW operations must share the real XNU queues on this backend. */
+static long native_psynch(const unsigned long long *r,int *bsd_error)
 {
 #ifdef ARLINUX_DARLING
     if (darling_active) {
         uint32_t update=0;
         int status;
         switch (r[D_ARM64_SYSCALL_REGISTER]) {
+        case D_SYS_PSYNCH_MUTEXWAIT:
+            status=dserver_rpc_psynch_mutexwait(r[0],r[1],r[2],r[3],r[4],&update); break;
+        case D_SYS_PSYNCH_MUTEXDROP:
+            status=dserver_rpc_psynch_mutexdrop(r[0],r[1],r[2],r[3],r[4],&update); break;
+        case D_SYS_PSYNCH_CVBROAD:
+            status=dserver_rpc_psynch_cvbroad(r[0],r[1],r[2],r[3],r[4],r[5],r[6],&update); break;
+        case D_SYS_PSYNCH_CVSIGNAL:
+            status=dserver_rpc_psynch_cvsignal(r[0],r[1],r[2],r[3],r[4],r[5],r[6],r[7],&update); break;
+        case D_SYS_PSYNCH_CVWAIT:
+            status=dserver_rpc_psynch_cvwait(r[0],r[1],r[2],r[3],r[4],r[5],r[6],r[7],&update); break;
+        case D_SYS_PSYNCH_CVCLRPREPOST:
+            status=dserver_rpc_psynch_cvclrprepost(r[0],r[1],r[2],r[3],r[4],r[5],r[6],&update); break;
         case D_SYS_PSYNCH_RW_RDLOCK:
             status=dserver_rpc_psynch_rw_rdlock(r[0],r[1],r[2],r[3],r[4],&update); break;
         case D_SYS_PSYNCH_RW_WRLOCK:
@@ -64,11 +76,11 @@ static long native_psynch_rw(const unsigned long long *r,int *bsd_error)
         }
         static unsigned int traces;
         if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
-            const char label[]="DARLING_PSYNCH_RW syscall/status/update/address/lgen/ugen/writers/flags follows\n";
+            const char label[]="DARLING_PSYNCH syscall/status/update then actual argument-index/value follows\n";
             RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
             trace_call(r[D_ARM64_SYSCALL_REGISTER],0,status);
             trace_call(0,0,update);
-            for (unsigned int i=0;i<5;i++) trace_call(i+1,0,r[i]);
+            for (unsigned int i=0;i<8;i++) trace_call(i+1,0,r[i]);
         }
         /* Positive server codes are already Darwin BSD errno values, unlike
          * negative Linux transport failures. Preserve that distinction. */
@@ -76,5 +88,8 @@ static long native_psynch_rw(const unsigned long long *r,int *bsd_error)
         return status ? status : (long)update;
     }
 #endif
-    (void)r; (void)bsd_error; return -ENOTSUP;
+    (void)bsd_error;
+    if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXWAIT ||
+        r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXDROP) return native_psynch_mutex(r);
+    return -ENOTSUP;
 }

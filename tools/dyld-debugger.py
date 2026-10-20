@@ -1050,9 +1050,37 @@ def capture_ipc_waits(process):
     objects = GuestObjects(process)
     backend = target.FindFirstGlobalVariable('darling_active')
     darling = backend.IsValid() and backend.GetValueAsUnsigned() != 0
+    native_threads = target.FindFirstGlobalVariable('native_threads')
+    if native_threads.IsValid():
+        records = []
+        for index in range(min(native_threads.GetNumChildren(), 64)):
+            entry = native_threads.GetChildAtIndex(index)
+            state = entry.GetChildMemberWithName('state')
+            if not state.IsValid() or state.GetValueAsUnsigned() == 0:
+                continue
+            record = {'index': index}
+            for field in ('tid', 'state', 'port', 'pthread', 'workqueue', 'workloop_id', 'event_queue', 'launch_state', 'priority'):
+                value = entry.GetChildMemberWithName(field)
+                record[field] = value.GetValue() if value.IsValid() and value.GetError().Success() else None
+            records.append(record)
+        print('NATIVE_THREAD_IDENTITIES ' + json.dumps(records), flush=True)
     for thread in process:
         for frame in thread:
             function = frame.GetFunctionName() or ''
+            if 'native_ulock' in function:
+                record = {'tid': thread.GetThreadID(), 'framePC': hex(frame.GetPC())}
+                try:
+                    pointer = frame.FindVariable('r')
+                    if not pointer.IsValid() or pointer.GetError().Fail() or not pointer.GetValue():
+                        raise ValueError('Saved ulock arguments unavailable')
+                    registers = struct.unpack('<4Q', objects.read(pointer.GetValueAsUnsigned(), 32))
+                    record.update({'operation': hex(registers[0]), 'address': hex(registers[1]),
+                                   'expected': hex(registers[2]), 'timeoutMicroseconds': registers[3],
+                                   'actualWord': hex(struct.unpack('<I', objects.read(registers[1], 4))[0])})
+                except (ValueError, SystemError) as error:
+                    record['readError'] = str(error)
+                print('NATIVE_ULOCK_WAIT ' + json.dumps(record), flush=True)
+                break
             if darling and 'dserver_rpc_explicit_' in function:
                 record = {'tid': thread.GetThreadID(), 'function': function,
                           'framePC': hex(frame.GetPC())}

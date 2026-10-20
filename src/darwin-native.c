@@ -492,11 +492,13 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         result=r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_REGISTER ? native_thread_register(r) : native_thread_create(r,&uc->uc_sigmask);
         break;
     }
+    case D_SYS_PSYNCH_MUTEXWAIT: case D_SYS_PSYNCH_MUTEXDROP:
+    case D_SYS_PSYNCH_CVBROAD: case D_SYS_PSYNCH_CVSIGNAL: case D_SYS_PSYNCH_CVWAIT:
+    case D_SYS_PSYNCH_CVCLRPREPOST:
     case D_SYS_PSYNCH_RW_RDLOCK: case D_SYS_PSYNCH_RW_WRLOCK: case D_SYS_PSYNCH_RW_UNLOCK:
-        result=native_psynch_rw(r,&bsd_error); break;
+        result=native_psynch(r,&bsd_error); break;
     case D_SYS_KQUEUE: result=native_kqueue_create(); break;
     case D_SYS_KEVENT_QOS: case D_SYS_KEVENT_ID: case D_SYS_BSDTHREAD_CTL:
-    case D_SYS_PSYNCH_MUTEXWAIT: case D_SYS_PSYNCH_MUTEXDROP:
     case D_SYS_WORKQ_OPEN: case D_SYS_WORKQ_KERNRETURN: {
         static unsigned int requests;
         if (__atomic_fetch_add(&requests,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
@@ -505,8 +507,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,0);
             unsigned int count=(r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_QOS ||
                                 r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_ID) ? 8 :
-                (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXWAIT ||
-                 r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXDROP) ? 5 : 4;
+                4;
             for (unsigned int i=0;i<count;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
             if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_ID && r[2]) {
                 struct darwin_kevent_qos event;
@@ -528,8 +529,6 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_QOS) result=native_kevent_qos(r,&uc->uc_sigmask);
         else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_ID) result=native_kevent_id(r,&uc->uc_sigmask);
         else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_CTL) result=native_thread_ctl(r);
-        else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXWAIT ||
-                 r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXDROP) result=native_psynch_mutex(r);
         else result=native_workqueue(r,&uc->uc_sigmask);
         break;
     }
