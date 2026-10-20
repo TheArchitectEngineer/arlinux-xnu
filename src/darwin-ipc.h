@@ -504,6 +504,20 @@ int darwin_native_host_receive_destroy(uint32_t port)
 #endif
     (void)port; return D_KERN_NOT_SUPPORTED;
 }
+int darwin_native_host_receive_create(uint32_t *port)
+{
+#ifdef ARLINUX_DARLING
+    if (darling_active) return dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,port);
+#endif
+    (void)port; return D_KERN_NOT_SUPPORTED;
+}
+int darwin_native_host_send(void *message,uint32_t size)
+{
+#ifdef ARLINUX_DARLING
+    if (darling_active) return dserver_rpc_mach_msg_overwrite(message,D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT,size,0,0,100,0,NULL);
+#endif
+    (void)message; (void)size; return D_KERN_NOT_SUPPORTED;
+}
 uint32_t darwin_native_bootstrap_peer(uint64_t token_address)
 {
     struct darwin_audit_token peer,self;
@@ -556,7 +570,7 @@ void *darwin_native_service_run(void *unused)
     }
     unsigned int traces=0;
     for (;;) {
-        if (native_session_manager) arlinux_xpc_reap();
+        if (native_session_manager) arlinux_xpc_session_tick(set);
         unsigned char request[IPC_BYTES+256]; uint32_t response[IPC_BYTES/4];
         int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_RCV_MSG|(3U<<24)|
             (native_session_manager ? D_MACH_RCV_TIMEOUT : 0),0,sizeof(request),set,100,0,NULL);

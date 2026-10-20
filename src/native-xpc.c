@@ -88,8 +88,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
 /* Connection associations only; XNU owns the transferred rights and queues. */
 static struct processinfo_peer {
     spc_connection_t connection;
-    uint32_t pid,incarnation,task,endpoint;
-    int pidfd,service;
+    uint32_t pid,incarnation,task,endpoint,launch_reply;
+    int pidfd,service,launch_state;
     spc_message_t *workspace_registration;
     struct processinfo_peer *next;
 } *processinfo_peers;
@@ -100,6 +100,7 @@ static void session_peer_destroy(struct processinfo_peer *peer)
 {
     if ((peer->task && darwin_native_host_port_deallocate(peer->task)) ||
         (peer->endpoint && darwin_native_host_port_deallocate(peer->endpoint)) ||
+        (peer->launch_reply && darwin_native_host_receive_destroy(peer->launch_reply)) ||
         darwin_native_host_port_deallocate(peer->connection.send_port) ||
         darwin_native_host_receive_destroy(peer->connection.receive_port)) abort();
     if (peer->pidfd>=0) close(peer->pidfd);
@@ -107,7 +108,36 @@ static void session_peer_destroy(struct processinfo_peer *peer)
     free(peer);
 }
 
-void arlinux_xpc_reap(void)
+static void session_send_launch(struct processinfo_peer *peer,uint32_t set)
+{
+    /* Run 39393971710: the real UIApplication workspace dispatcher routes
+     * signed message 1 to _queue_handleLaunch:. Its event inherits the empty
+     * FBSWorkspaceEvent encoding. Use a real send-once reply path because the
+     * framework creates an XPC reply and calls its genuine launch delegate. */
+    enum { FBS_UIAPPLICATION_LAUNCH=1 };
+    if (darwin_native_host_receive_create(&peer->launch_reply) ||
+        darwin_native_host_join(peer->launch_reply,set)) abort();
+    spc_dictionary_t *event=spc_dictionary_create(),*dictionary=spc_dictionary_create();
+    spc_dictionary_set_string(event,"bs_encodedObjectClassName","FBSUIApplicationLaunchEvent");
+    spc_dictionary_set_value(dictionary,"event",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=event});
+    spc_dictionary_set_int64(dictionary,"message",FBS_UIAPPLICATION_LAUNCH);
+    spc_message_t message={.remote_port={peer->connection.send_port,D_MACH_TYPE_COPY_SEND},
+        .local_port={peer->launch_reply,D_MACH_TYPE_MAKE_SEND_ONCE},.id=0x10000000,.content=dictionary};
+    spc_mach_message_t *encoded=spc_serialize(&message);
+    if (!encoded) abort();
+    encoded->header.msgh_voucher_port=0;
+    int status=darwin_native_host_send(encoded,encoded->header.msgh_size);
+    free(encoded); spc_dictionary_destroy(dictionary);
+    peer->launch_state=status ? -1 : 1;
+    fprintf(stderr,"SESSION_LAUNCH_SEND pid=%u incarnation=%u status=%d reply=%u\n",
+        peer->pid,peer->incarnation,status,peer->launch_reply);
+    if (status) {
+        if (darwin_native_host_receive_destroy(peer->launch_reply)) abort();
+        peer->launch_reply=0;
+    }
+}
+
+void arlinux_xpc_session_tick(uint32_t set)
 {
     struct processinfo_peer **slot=&processinfo_peers;
     while (*slot) {
@@ -116,7 +146,10 @@ void arlinux_xpc_reap(void)
         int ready=poll(&fd,1,0);
         if (ready<0 && errno==EINTR) continue;
         if (ready<0) { perror("poll session client pidfd"); abort(); }
-        if (!ready) { slot=&peer->next; continue; }
+        if (!ready) {
+            if (peer->workspace_registration && !peer->launch_state) session_send_launch(peer,set);
+            slot=&peer->next; continue;
+        }
         if (!(fd.revents&POLLIN)) { fprintf(stderr,"PROCESSINFO_PIDFD_ERROR events=%x\n",fd.revents); abort(); }
         fprintf(stderr,"PROCESSINFO_RETIRED pid=%u incarnation=%u service=%s\n",peer->pid,peer->incarnation,session_service_names[peer->service]);
         *slot=peer->next; session_peer_destroy(peer);
@@ -159,7 +192,8 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
         return 0;
     }
     struct processinfo_peer *peer=processinfo_peers;
-    while (peer && peer->connection.receive_port!=header->msgh_local_port) peer=peer->next;
+    while (peer && peer->connection.receive_port!=header->msgh_local_port &&
+        (!peer->launch_reply || peer->launch_reply!=header->msgh_local_port)) peer=peer->next;
     if (!peer) return -1;
     if (!audit || audit[5]!=peer->pid || audit[7]!=peer->incarnation) {
         fprintf(stderr,"PROCESSINFO_PEER_IDENTITY_MISMATCH\n"); abort();
@@ -169,7 +203,8 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
         session_service_names[peer->service],peer->pid,peer->incarnation,length);
     /* Do not let upstream silently discard OOL resources. Actual process-state
      * protocol behavior is still being diagnosed, not acknowledged as success. */
-    if (length<32 || header->msgh_id!=0x10000000) {
+    int launch_reply=peer->launch_reply && peer->launch_reply==header->msgh_local_port;
+    if (length<32 || header->msgh_id!=(launch_reply ? 0x20000000 : 0x10000000)) {
         fprintf(stderr,"PROCESSINFO_MESSAGE_UNSUPPORTED\n"); abort();
     }
     if (header->msgh_bits&MACH_MSGH_BITS_COMPLEX) {
@@ -190,6 +225,16 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
     }
     spc_message_t *message=spc_deserialize(request);
     if (!message) abort();
+    if (launch_reply) {
+        fprintf(stderr,"SESSION_LAUNCH_REPLY pid=%u incarnation=%u fields=%zu\n",peer->pid,peer->incarnation,message->content->num_items);
+        fprintf(stdout,"SESSION_LAUNCH_REPLY_DICTIONARY pid=%u\n",peer->pid);
+        spc_dump(message->content); fflush(stdout);
+        spc_message_destroy(message);
+        if (header->msgh_remote_port && darwin_native_host_port_deallocate(header->msgh_remote_port)) abort();
+        if (darwin_native_host_receive_destroy(peer->launch_reply)) abort();
+        peer->launch_reply=0; peer->launch_state=2;
+        return 0;
+    }
     int error=D_ENOTSUP;
     /* Actual BKSWorkspace.init registration, observed in run 39391469924:
      * message 11 carries its listener endpoint and submitted task capability.
