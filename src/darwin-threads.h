@@ -222,7 +222,11 @@ static long native_ulock(const unsigned long long *r)
     if ((operation!=D_UL_COMPARE_AND_WAIT && operation!=D_UL_UNFAIR_LOCK) || (r[1]&3)) return -EINVAL;
     if (!r[1]) return -EFAULT;
     int wait=r[D_ARM64_SYSCALL_REGISTER]==D_SYS_ULOCK_WAIT;
-    unsigned long flags=wait ? D_UL_WAIT_WORKQ_DATA_CONTENTION|D_UL_WAIT_CANCEL_POINT :
+    /* XNU's adaptive spin is optional before the same blocking wait. All
+     * guest threads share one actual CPU affinity: while this waiter runs,
+     * its different owner cannot also be on-core. Use the real futex wait
+     * directly, preserving comparison, wakeups, timeout and waiter counts. */
+    unsigned long flags=wait ? D_UL_WAIT_WORKQ_DATA_CONTENTION|D_UL_WAIT_CANCEL_POINT|D_UL_WAIT_ADAPTIVE_SPIN :
         D_UL_WAKE_ALLOW_NON_OWNER|D_UL_WAKE_ALL;
     if (r[0]&~(unsigned long)(D_UL_NO_ERRNO|D_UL_OPERATION_MASK|flags)) return -ENOTSUP;
     native_ulock_lock();
