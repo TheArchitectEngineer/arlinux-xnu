@@ -86,6 +86,48 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     return 1;
 }
 
+/* Actual Wayland geometry belongs to the sender's audited process incarnation.
+ * Retain a pidfd rather than trusting a PID supplied in the message body. */
+static struct session_display {
+    uint32_t pid,incarnation,width,height,refresh,backend;
+    int pidfd,backend_pidfd;
+    struct session_display *next;
+} *session_displays;
+
+int arlinux_session_display(void *request,unsigned long length,const uint32_t *audit)
+{
+    mach_msg_header_t *header=request;
+    if (header->msgh_id!=D_SESSION_DISPLAY_REGISTER) return 0;
+    const uint32_t *fields=(const uint32_t *)request+6;
+    if (length!=40 || header->msgh_size!=40 || header->msgh_bits!=(D_MACH_TYPE_MOVE_SEND<<8) ||
+        header->msgh_remote_port || header->msgh_voucher_port || !audit || !audit[5] ||
+        !fields[0] || !fields[1] || fields[0]>8192 || fields[1]>8192 || !fields[2] ||
+        !fields[3] || !darwin_native_host_child(fields[3],audit[5]) || !darwin_native_host_process_matches(audit[5],audit[7])) {
+        fprintf(stderr,"SESSION_DISPLAY_INVALID\n"); abort();
+    }
+    for (struct session_display *display=session_displays;display;display=display->next) {
+        if (display->pid==audit[5] && display->incarnation==audit[7]) {
+            fprintf(stderr,"SESSION_DISPLAY_DUPLICATE pid=%u\n",audit[5]); abort();
+        }
+    }
+    int fd=syscall(SYS_pidfd_open,audit[5],0),backend_fd=syscall(SYS_pidfd_open,fields[3],0);
+    if (fd<0 || backend_fd<0 || !darwin_native_host_process_matches(audit[5],audit[7]) ||
+        !darwin_native_host_child(fields[3],audit[5])) {
+        if (fd>=0) close(fd);
+        if (backend_fd>=0) close(backend_fd);
+        fprintf(stderr,"SESSION_DISPLAY_SENDER_EXITED pid=%u\n",audit[5]);
+        return 1;
+    }
+    struct session_display *display=calloc(1,sizeof(*display));
+    if (!display) abort();
+    display->pid=audit[5]; display->incarnation=audit[7]; display->pidfd=fd; display->backend_pidfd=backend_fd;
+    display->width=fields[0]; display->height=fields[1]; display->refresh=fields[2]; display->backend=fields[3];
+    display->next=session_displays; session_displays=display;
+    fprintf(stderr,"SESSION_DISPLAY_REGISTERED pid=%u incarnation=%u width=%u height=%u refresh_millihz=%u backend=%u\n",
+        display->pid,display->incarnation,display->width,display->height,display->refresh,display->backend);
+    return 1;
+}
+
 /* Connection associations only; XNU owns the transferred rights and queues. */
 static struct processinfo_peer {
     spc_connection_t connection;
@@ -184,6 +226,18 @@ static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
 
 void arlinux_xpc_session_tick(uint32_t set)
 {
+    struct session_display **display_slot=&session_displays;
+    while (*display_slot) {
+        struct session_display *display=*display_slot;
+        struct pollfd fds[2]={{.fd=display->pidfd,.events=POLLIN},{.fd=display->backend_pidfd,.events=POLLIN}};
+        int ready=poll(fds,2,0);
+        if (ready<0 && errno==EINTR) continue;
+        if (ready<0 || (ready && !((fds[0].revents|fds[1].revents)&POLLIN))) abort();
+        if (!ready) { display_slot=&display->next; continue; }
+        fprintf(stderr,"SESSION_DISPLAY_RETIRED pid=%u incarnation=%u\n",display->pid,display->incarnation);
+        *display_slot=display->next; close(display->pidfd); close(display->backend_pidfd); free(display);
+    }
+
     struct processinfo_peer **slot=&processinfo_peers;
     while (*slot) {
         struct processinfo_peer *peer=*slot;

@@ -448,6 +448,14 @@ int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refre
     native_display_width=width; native_display_height=height;
     native_display_refresh=refresh_millihz; native_display_period_bits=period_bits;
     native_display_pid=backend_pid;
+#ifdef ARLINUX_DARLING
+    if (darling_active) {
+        uint32_t message[10]={D_MACH_TYPE_COPY_SEND,sizeof(message),native_bootstrap_port,0,0,
+            D_SESSION_DISPLAY_REGISTER,width,height,refresh_millihz,(uint32_t)backend_pid};
+        int status=darwin_native_host_send(message,sizeof(message));
+        if (status) return status;
+    }
+#endif
     return 0;
 }
 static int ipc_display_live(void)
@@ -510,6 +518,15 @@ int darwin_native_host_receive_create(uint32_t *port)
     if (darling_active) return dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,port);
 #endif
     (void)port; return D_KERN_NOT_SUPPORTED;
+}
+int darwin_native_host_child(uint32_t pid,uint32_t parent)
+{
+#ifdef ARLINUX_DARLING
+    uint64_t ticks=0; uint32_t actual_parent=0;
+    return !native_proc_start(pid,&ticks,&actual_parent) && actual_parent==parent;
+#else
+    (void)pid; (void)parent; return 0;
+#endif
 }
 int darwin_native_host_send(void *message,uint32_t size)
 {
@@ -584,6 +601,8 @@ void *darwin_native_service_run(void *unused)
         if (trailer->type || trailer->size<52 || trailer_offset+trailer->size>sizeof(request))
             darling_abort("missing service requester audit trailer");
         uint32_t requester[8]; __builtin_memcpy(requester,&trailer->audit,sizeof(requester));
+        if (native_session_manager && header->local==native_bootstrap_port &&
+            arlinux_session_display(request,header->size,requester)) continue;
         int processinfo=arlinux_xpc_session(request,header->size,response,sizeof(response),native_session_ports,set,requester);
         if (!processinfo) continue;
         if (processinfo>0) {

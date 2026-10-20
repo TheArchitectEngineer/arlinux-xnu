@@ -19,9 +19,14 @@ enum darwin_session_service { D_SESSION_PROCESSINFO, D_SESSION_WORKSPACE,
 #define D_SESSION_SYSTEMAPP_NAME "com.apple.frontboard.systemappservices"
 int arlinux_xpc_session(void *request,unsigned long length,void *response,unsigned long capacity,const uint32_t *listeners,uint32_t set,const uint32_t *audit);
 void arlinux_xpc_session_tick(uint32_t set);
+/* Private native display registration, delivered over real audited Mach IPC. */
+#define D_SESSION_DISPLAY_REGISTER 0x41524450U
+int arlinux_session_display(void *request,unsigned long length,const uint32_t *audit);
+
 int darwin_native_host_receive_create(uint32_t *port);
 int darwin_native_host_send(void *message,uint32_t size);
 int darwin_native_host_process_matches(uint32_t pid,uint32_t incarnation);
+int darwin_native_host_child(uint32_t pid,uint32_t parent);
 int darwin_native_host_receive_destroy(uint32_t port);
 int darwin_native_host_join(uint32_t port,uint32_t set);
 int darwin_native_system_lookup(const char *name,uint64_t type,uint64_t flags,uint32_t *port);
