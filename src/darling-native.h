@@ -167,7 +167,21 @@ static long darling_mach(unsigned long number,const unsigned long long *r)
     case D_TRAP_PORT_INSERT_RIGHT: return dserver_rpc_mach_port_insert_right(r[0],r[1],r[2],r[3]);
     case D_TRAP_PORT_INSERT_MEMBER: return dserver_rpc_mach_port_insert_member(r[0],r[1],r[2]);
     case D_TRAP_PORT_EXTRACT_MEMBER: return dserver_rpc_mach_port_extract_member(r[0],r[1],r[2]);
-    case D_TRAP_PORT_CONSTRUCT: return dserver_rpc_mach_port_construct(r[0],(void *)r[1],r[2],(uint32_t *)r[3]);
+    case D_TRAP_PORT_CONSTRUCT: {
+        struct darwin_port_options options={0};
+        int readable=!guest_copy(&options,r[1],sizeof(options),0);
+        long result=dserver_rpc_mach_port_construct(r[0],(void *)r[1],r[2],(uint32_t *)r[3]);
+        uint32_t name=0;
+        if (!result) guest_copy(&name,r[3],sizeof(name),0);
+        static unsigned int traces;
+        if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
+            const char marker[]="DARLING_PORT_CONSTRUCT target/flags/context/name/result follows\n";
+            RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+            trace_call(0,0,r[0]); trace_call(1,0,readable ? options.flags : UINT32_MAX);
+            trace_call(2,0,r[2]); trace_call(3,0,name); trace_call(4,0,result);
+        }
+        return result;
+    }
     case D_TRAP_PORT_DESTRUCT: return dserver_rpc_mach_port_destruct(r[0],r[1],r[2],r[3]);
     case D_TRAP_SEMAPHORE_SIGNAL: return dserver_rpc_semaphore_signal(r[0]);
     case D_TRAP_SEMAPHORE_WAIT: return dserver_rpc_semaphore_wait(r[0]);

@@ -207,7 +207,7 @@ def dictionary_inputs(frame, location, internal_dict):
 
 def install_service_breakpoints(target):
     for symbol in diagnostic_symbols():
-        if symbol.get('symbol') in ('__exit', '__xpc_connection_call_reply_async',
+        if symbol.get('symbol') in ('__exit', '__xpc_connection_call_reply_async', '__xpc_mach_port_get_context',
                 '_dispatch_mach_send_with_result_and_async_reply_4libxpc',
                 '__dispatch_mach_msg_async_reply_invoke$VARIANT$mp'):
             breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
