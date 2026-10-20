@@ -1,8 +1,132 @@
 """Runner-only helpers for the existing real-application LLDB diagnosis."""
 from pathlib import Path
+import json
 import re
+import struct
 import time
 import lldb
+
+
+def install_exception_breakpoint(target):
+    path = Path('build/dyld/diagnostic-symbols.json')
+    if path.exists():
+        for symbol in json.loads(path.read_text()):
+            if symbol.get('symbol') == '_objc_exception_throw':
+                address = int(symbol['address'], 16)
+                breakpoint = target.BreakpointCreateByAddress(address)
+                print('OBJC_EXCEPTION_BREAKPOINT', hex(address), breakpoint.GetID(), flush=True)
+                return breakpoint
+    print('OBJC_EXCEPTION_BREAKPOINT unavailable in actual cache symbols', flush=True)
+    return None
+
+
+class GuestObjects:
+    """Read-only LP64 metadata decoder, not an injected Objective-C method call.
+
+    Layout references: Apple objc4-750.1 isa.h/objc-runtime-new.h and
+    CF-1153.18 CFString.c. Bounds/unknown classes fail explicitly. The real
+    class ivar table supplies instance offsets; NSException offsets are never
+    guessed. No runtime compiler or host TLS operation runs in the guest.
+    """
+    ISA_CLASS_MASK = 0x0000000ffffffff8
+    CLASS_DATA_MASK = 0x00007ffffffffff8
+    RW_REALIZED = 1 << 31
+    MAX_STRING = 16384
+
+    def __init__(self, process):
+        self.process = process
+
+    def read(self, address, size):
+        if not address or size < 0 or size > self.MAX_STRING*2:
+            raise ValueError('Invalid bounded object read')
+        error = lldb.SBError()
+        data = self.process.ReadMemory(address, size, error)
+        if error.Fail() or len(data) != size:
+            raise ValueError('Guest memory unavailable at ' + hex(address))
+        return data
+
+    def u64(self, address):
+        return struct.unpack('<Q', self.read(address, 8))[0]
+
+    def u32(self, address):
+        return struct.unpack('<I', self.read(address, 4))[0]
+
+    def cstring(self, address):
+        error = lldb.SBError()
+        value = self.process.ReadCStringFromMemory(address, self.MAX_STRING, error)
+        if error.Fail():
+            raise ValueError('Guest C string unavailable at ' + hex(address))
+        return value
+
+    def object_class(self, address):
+        isa = self.u64(address)
+        return isa & self.ISA_CLASS_MASK if isa & 1 else isa
+
+    def class_ro(self, cls):
+        data = self.u64(cls+32) & self.CLASS_DATA_MASK
+        return self.u64(data+8) if self.u32(data) & self.RW_REALIZED else data
+
+    def class_name(self, address):
+        return self.cstring(self.u64(self.class_ro(self.object_class(address))+24))
+
+    def cfstring(self, address):
+        name = self.class_name(address)
+        if name not in ('__NSCFString', '__NSCFConstantString', 'NSCFString'):
+            raise ValueError('Unsupported string representation: ' + name)
+        flags = self.read(address+8, 1)[0]
+        inline = flags & 0x60 == 0
+        explicit = flags & 5 != 4
+        contents = address+16+(8 if explicit else 0) if inline else self.u64(address+16)
+        length = self.u64(address+(16 if inline else 24)) if explicit else self.read(contents, 1)[0]
+        if length > self.MAX_STRING:
+            raise ValueError('String exceeds diagnostic bound')
+        contents += 1 if flags & 4 else 0
+        data = self.read(contents, length*(2 if flags & 0x10 else 1))
+        return data.decode('utf-16-le' if flags & 0x10 else 'ascii')
+
+    def exception(self, address):
+        result = {'object': hex(address), 'class': self.class_name(address), 'ivars': {}}
+        cls, seen = self.object_class(address), set()
+        while cls and cls not in seen and len(seen) < 16:
+            seen.add(cls)
+            ro = self.class_ro(cls)
+            instance_size, table = self.u32(ro+8), self.u64(ro+48)
+            if table:
+                entry_size, count = self.u32(table) & 0xffff, self.u32(table+4)
+                if entry_size != 32 or count > 256:
+                    raise ValueError('Unsupported ivar metadata layout')
+                for index in range(count):
+                    entry = table+8+index*entry_size
+                    name = self.cstring(self.u64(entry+8))
+                    if name not in ('_name', '_reason', 'name', 'reason'):
+                        continue
+                    offset = self.u32(self.u64(entry))
+                    if offset+8 > instance_size:
+                        raise ValueError('Ivar outside declared instance size')
+                    value = self.u64(address+offset)
+                    record = {'offset': offset, 'value': hex(value)}
+                    try:
+                        record['text'] = self.cfstring(value) if value else None
+                    except (ValueError, UnicodeError) as error:
+                        record['decodeError'] = str(error)
+                    result['ivars'][name] = record
+            cls = self.u64(cls+8)
+        return result
+
+
+def capture_exception(process, breakpoint):
+    if breakpoint is None:
+        return
+    thread = process.GetSelectedThread()
+    if thread.GetStopReason() != lldb.eStopReasonBreakpoint or thread.GetStopReasonDataAtIndex(0) != breakpoint.GetID():
+        return
+    address = thread.GetFrameAtIndex(0).FindRegister('x0').GetValueAsUnsigned()
+    print('OBJC_EXCEPTION_OBJECT', hex(address), flush=True)
+    try:
+        print('OBJC_EXCEPTION ' + json.dumps(GuestObjects(process).exception(address)), flush=True)
+    except (ValueError, UnicodeError) as error:
+        print('OBJC_EXCEPTION_DECODE_ERROR', str(error), flush=True)
+        process.GetTarget().GetDebugger().HandleCommand('memory read --format x --size 8 --count 8 ' + hex(address))
 
 
 def resume_bounded(process, seconds=12):

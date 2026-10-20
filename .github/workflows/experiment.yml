@@ -185,6 +185,13 @@ jobs:
         run: |
           mkdir -p build/dyld
           printf '+q' > build/dyld/debugger.stdin
+          cache=build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64
+          ordinary=build/dyld/app.runtime.log
+          if [[ ! -f "$ordinary" ]]; then ordinary=build/dyld/runtime-1.log; fi
+          if [[ -f "$cache" && -f "$ordinary" ]]; then
+            python3 tools/symbolicate-cache.py "$cache" "$ordinary" build/dyld/diagnostic-symbols.json \
+              --lookup /usr/lib/libobjc.A.dylib _objc_exception_throw
+          fi
           status=0
           timeout 45 lldb-18 --batch -o 'command source -e true -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?
           cat build/dyld/lldb.log

@@ -12,6 +12,7 @@ process handle -s false -n false -p true SIGSYS
 # Add the real Mach-O's symbols at the loader's declared slide.
 script import os; target = lldb.debugger.GetSelectedTarget(); dyld_module = target.AddModule(os.path.abspath("build/ios-input/dyld"), "arm64-apple-ios", None); print("DYLD_SYMBOL_MODULE", dyld_module.IsValid()); assert dyld_module.IsValid(), "LLDB could not read the real Mach-O"
 script load_error = target.SetModuleLoadAddress(dyld_module, 0x200000000); print(load_error); assert load_error.Success(), "Cannot relocate dyld symbols"
+script exception_bp = helper.install_exception_breakpoint(target)
 image list
 register read pc sp x0 x1
 thread backtrace all
@@ -28,7 +29,7 @@ thread backtrace all
 disassemble --frame --count 20
 thread step-inst
 register read pc sp x0 x1
-breakpoint disable
+script policy_bp.SetEnabled(False)
 # Observe the exact cache registration ABI, rather than guessing from source.
 script cache_bp = target.BreakpointCreateByName("__fcntl"); print(cache_bp); assert cache_bp.GetNumResolvedLocations() > 0, "fcntl breakpoint unresolved"
 script helper.resume_bounded(target.GetProcess())
@@ -36,13 +37,14 @@ script process = target.GetProcess(); stopped = process.GetState() == lldb.eStat
 script lldb.debugger.HandleCommand("register read pc x0 x1 x2") if stopped else None
 script lldb.debugger.HandleCommand("memory read --format x --size 8 --count 3 $x2") if cache_hit else None
 script lldb.debugger.HandleCommand("thread backtrace all") if stopped else None
-breakpoint disable
+script cache_bp.SetEnabled(False)
 script helper.resume_bounded(process) if cache_hit else None
 
 # A real program can report failure and exit normally. Preserve that result;
 # only inspect registers/kill when a live process actually stopped on a fault.
 process status
 script stopped = process.GetState() == lldb.eStateStopped; print("GUEST_EXIT_STATUS", process.GetExitStatus()) if process.GetState() == lldb.eStateExited else None
+script helper.capture_exception(process, exception_bp) if stopped else None
 script lldb.debugger.HandleCommand("thread backtrace all") if stopped else None
 script lldb.debugger.HandleCommand("register read") if stopped else None
 script lldb.debugger.HandleCommand("disassemble --frame --count 16") if stopped else None

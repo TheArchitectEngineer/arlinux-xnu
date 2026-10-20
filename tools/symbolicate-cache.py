@@ -6,14 +6,19 @@ Format reference: Apple dyld-655.1 dyld_cache_format.h. The nearest available
 symbol is diagnostic context, not proof that an unavailable local symbol has
 that function name. This is called inside the sole build workflow.
 """
+import argparse
 import json
 import mmap
 from pathlib import Path
 import re
 import struct
-import sys
-
-cache_path, log_path, output_path = map(Path, sys.argv[1:])
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('cache', type=Path)
+parser.add_argument('trace', type=Path)
+parser.add_argument('output', type=Path)
+parser.add_argument('--lookup', action='append', nargs=2, default=[], metavar=('IMAGE', 'SYMBOL'))
+args = parser.parse_args()
+cache_path, log_path, output_path = args.cache, args.trace, args.output
 trace = log_path.read_text()
 frames = sorted({int(item, 16) for item in
                  re.findall(r'frame #\d+: (0x[0-9a-fA-F]+)', trace) +
@@ -87,7 +92,9 @@ with cache_path.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.
         if cursor != end:
             raise ValueError('Invalid cache command extent')
         matches = [pc for pc in frames if any(base <= pc < base+length for base, length in executable)]
-        if not matches:
+        image_path = string(path_offset)
+        requested = {name for image, name in args.lookup if image == image_path}
+        if not matches and not requested:
             continue
         if start in local_tables:
             tables.append(local_tables[start])
@@ -103,6 +110,11 @@ with cache_path.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.
                     name = string(strings+index, min(8192, string_bytes-index))
                     symbols.append((value, name))
         symbols.sort()
+        for value, name in sorted(set(symbols)):
+            if name in requested:
+                record = {'image': image_path, 'symbol': name, 'address': hex(value)}
+                records.append(record)
+                print('CACHE_SYMBOL '+json.dumps(record), flush=True)
         for pc in matches:
             candidates = [(value, name) for value, name in symbols if value <= pc]
             nearest = max(candidates, default=None)
