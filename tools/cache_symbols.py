@@ -128,6 +128,49 @@ class CacheSymbols:
                 if kind&0xe0 or kind&0xe!=0xe or not section or index>=size:continue
                 yield value,smember.string(strings+index,min(8192,size-index))
 
+    def disassemble(self,address,size):
+        """Bounded, read-only instructions from the UUID-matched cache."""
+        if size<=0 or size>1024 or size%4:raise ValueError('Invalid diagnostic code extent')
+        member,offset=self.locate(address,size)
+        code=member.data[offset:offset+size]
+        source='\n'.join(' '.join(f'0x{byte:02x}' for byte in code[i:i+4]) for i in range(0,len(code),4))
+        process=subprocess.run(['llvm-mc-18','--disassemble','--triple=aarch64','--print-imm-hex'],
+            input=source,text=True,capture_output=True,timeout=5,check=True)
+        return {'address':hex(address),'bytes':size,'instructions':process.stdout,
+                'decoderDiagnostics':process.stderr,
+                'note':'Branch immediates are relative to their instruction; observation only'}
+
+    def fault_context(self,image,pc,symbols):
+        """Original fault's bounded function and named direct callees, never replay."""
+        base,length=next((base,length) for base,length in image['executable'] if base<=pc<base+length)
+        nearest=max(((value,name) for value,name in symbols if value<=pc),default=(pc,None))
+        start=max(nearest[0],pc-512,base)
+        end=min(start+768,base+length)
+        following=min((value for value,name in symbols if value>pc),default=end)
+        end=min(end,following)
+        record=self.disassemble(start,end-start)
+        record.update(symbol=nearest[1],faultPC=hex(pc))
+        names=dict(symbols);calls={}
+        member,offset=self.locate(start,end-start)
+        for i in range(0,end-start,4):
+            word=member.unpack('<I',offset+i)[0]
+            if word&0xfc000000!=0x94000000:continue
+            immediate=word&0x3ffffff
+            if immediate&0x2000000:immediate-=0x4000000
+            target=start+i+immediate*4
+            if target in names:calls[target]=names[target]
+        record['directCalls']=[{'address':hex(address),'symbol':name} for address,name in sorted(calls.items())]
+        callees=[]
+        for address,name in sorted(calls.items()):
+            if not any(part in name.lower() for part in ('bks','screen','display')):continue
+            if len(callees)>=8:break
+            region=next(((base,length) for base,length in image['executable'] if base<=address<base+length),None)
+            if not region:continue
+            stop=min(address+768,region[0]+region[1],min((value for value,_ in symbols if value>address),default=address+768))
+            entry=self.disassemble(address,stop-address);entry['symbol']=name;callees.append(entry)
+        record['protocolCallees']=callees
+        return record
+
     def bootstrap_context(self,image):
         """Read-only disassembly around actual libxpc audit/pid predicates.
         It records candidates; it neither selects a patch nor approves a layout.
@@ -154,15 +197,8 @@ class CacheSymbols:
         if len(unique)>32:raise ValueError('Ambiguous bootstrap diagnostic scope exceeds 32 windows')
         result=[]
         for address,reason in sorted(unique.items()):
-            member,offset=self.locate(address,192)
-            code=member.data[offset:offset+192]
-            source='\n'.join(' '.join(f'0x{byte:02x}' for byte in code[i:i+4]) for i in range(0,len(code),4))
-            process=subprocess.run(['llvm-mc-18','--disassemble','--triple=aarch64','--print-imm-hex'],
-                input=source,text=True,capture_output=True,timeout=5,check=True)
             nearest=max(((value,name) for value,name in symbols if value<=address),default=None)
-            result.append({'address':hex(address),'reason':reason,'image':image['name'],
+            result.append({**self.disassemble(address,192),'reason':reason,'image':image['name'],
                 'nearestSymbol':nearest[1] if nearest else None,
-                'symbolDisplacement':address-nearest[0] if nearest else None,
-                'instructions':process.stdout,'decoderDiagnostics':process.stderr,
-                'note':'Branch immediates are relative to their instruction; observation only'})
+                'symbolDisplacement':address-nearest[0] if nearest else None})
         return result

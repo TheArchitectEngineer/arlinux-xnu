@@ -21,6 +21,7 @@ patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_EXIT_FRAME nr=\S+ pc=(0x[0-9a
           r'DARWIN_NATIVE_FAULT[^\n]*\nDARWIN_CALL nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)']
 frames=sorted({int(pc,16) for pattern in patterns for pc in re.findall(pattern,trace)})
+faults={int(pc,16) for pc in re.findall(r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
 fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(
     r'DARWIN_FAULT_REGISTER index=0x([0-9a-fA-F]+) pc=\S+ result=0x([0-9a-fA-F]+)',trace) if int(index,16)<31]
 records=[];matched=set()
@@ -53,6 +54,7 @@ with CacheSymbols(args.cache) as cache:
             nearest=max(((value,name) for value,name in symbols if value<=pc),default=None)
             record={'pc':hex(pc),'image':image['name'],'imageAddress':hex(image['address'])}
             if nearest:record.update(nearestSymbol=nearest[1],symbolAddress=hex(nearest[0]),displacement=pc-nearest[0])
+            if pc in faults:record['faultContext']=cache.fault_context(image,pc,symbols)
             records.append(record)
     for pc in frames:
         if pc not in matched:records.append({'pc':hex(pc),'status':'outside-cache','note':'Requires original app/interpreter or host symbols'})
