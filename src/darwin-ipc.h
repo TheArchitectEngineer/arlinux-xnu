@@ -445,6 +445,13 @@ int darwin_native_services_enabled(void)
     return darling_active && native_display_port;
 }
 uint32_t darwin_native_host_task(void) { return CURRENT_TASK_PORT; }
+int darwin_native_host_identity(uint32_t *pid,uint32_t *incarnation)
+{
+    struct darwin_audit_token token;
+    long error=native_current_audit_token(&token);
+    if (error) return D_KERN_FAILURE;
+    *pid=token.pid; *incarnation=token.idversion; return 0;
+}
 int darwin_native_host_join(uint32_t port,uint32_t set)
 {
 #ifdef ARLINUX_DARLING

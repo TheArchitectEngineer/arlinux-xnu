@@ -53,6 +53,15 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
         else error=darwin_native_system_lookup(name,type,flags,&port);
     }
     spc_dictionary_t *reply=spc_dictionary_create();
+    /* The genuine non-PID-1 bootstrap path authenticates its requester echo
+     * against the requester's current audit PID/incarnation. Host provider and
+     * guest share this task; use the same Linux-backed identity as XNU, not a
+     * made-up PID 1 or root token. See run 39385834761's interface-routine code. */
+    uint32_t requester=0,incarnation=0;
+    if (darwin_native_host_identity(&requester,&incarnation)) abort();
+    spc_dictionary_set_uint64(reply,"req_pid",requester);
+    spc_dictionary_set_uint64(reply,"rec_execcnt",incarnation);
+    fprintf(stderr,"BOOTSTRAP_XPC_IDENTITY pid=%u incarnation=%u\n",requester,incarnation);
     spc_dictionary_set_int64(reply,"error",error);
     if (!error) spc_dictionary_set_send_port(reply,"port",port);
     spc_message_t response={.remote_port={header->msgh_remote_port,D_MACH_TYPE_MOVE_SEND_ONCE},
