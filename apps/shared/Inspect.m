@@ -21,8 +21,15 @@ static void inspect(id object,unsigned depth) {
         NSMutableDictionary *entry=[@{@"text":text,@"interactive":@(interactive),@"rect":@[@(frame.origin.x),@(frame.origin.y),@(frame.size.width),@(frame.size.height)]} mutableCopy];
         if ([object isKindOfClass:UILabel.class]) {
             UILabel *label=object;
+            UIColor *resolved=[label.textColor resolvedColorWithTraitCollection:label.traitCollection];
+            CGFloat red=0,green=0,blue=0,alpha=0;
+            BOOL hasRGBA=[resolved getRed:&red green:&green blue:&blue alpha:&alpha];
             entry[@"drawing"]=@{@"viewClass":NSStringFromClass(label.class),
                 @"font":label.font.fontName ?: @"<absent>",@"textColor":label.textColor.description ?: @"<absent>",
+                @"resolvedColor":resolved.description ?: @"<absent>",
+                @"hasRGBA":@(hasRGBA),@"rgba":@[@(red),@(green),@(blue),@(alpha)],
+                @"interfaceStyle":@(label.traitCollection.userInterfaceStyle),@"displayGamut":@(label.traitCollection.displayGamut),
+                @"colorBundle":[NSBundle bundleForClass:UIColor.class].bundlePath ?: @"<absent>",
                 @"tintColor":label.tintColor.description ?: @"<absent>",
                 @"layerOpacity":@(label.layer.opacity),@"layerHidden":@(label.layer.hidden),
                 @"contentsClass":label.layer.contents ? NSStringFromClass([label.layer.contents class]) : @"<absent>"};

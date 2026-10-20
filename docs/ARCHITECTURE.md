@@ -48,14 +48,24 @@ compatibility.
 The software backend's ios-rendering.m selects the original CAContext local
 constructor when UIKit requests its window context. It preserves original
 context/layer behavior while avoiding a nonexistent Apple render server. Hosted
-run 39511482501 confirms construction, not presentation. ios-input.m owns actual
+run 39514010952 confirms original UIKit text in composed pixels. ios-input.m owns actual
 UIKit key-window focus locally instead of exporting the local scene token to
 Apple's remote keyboard arbiter. Host input and keyboard delivery remain to be
-implemented and verified. That run reaches real App launch and original UIKit
-label/button state, then aborts when CALayer backing-store preparation queries
-an absent IOSurface kernel service. The next graphics boundary is software
-backing-store allocation; empty composed pixels remain a failed journey.
-Remote context sharing is unsupported.
+implemented and verified. The backend replaces CALayer's default `_display`
+storage with a CPU bitmap/CGImage and keeps original public display delegation,
+layerWillDraw and drawInContext behavior. It supplies a balanced UIKit graphics
+context and the actual view's current-trait drawing environment; dynamic-color
+output is still being validated. CoreGraphics/CALayer still compose actual app
+content into the Wayland surface. No IOSurface driver is advertised. The latest
+verified frame shows the real Counter label, but its button remains invisible
+and no full GUI journey has passed. Remote context sharing is unsupported.
+
+Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
+eager file snapshots with zero-filled EOF/unavailable media, real descriptor
+validation and final memory protections. Shared mappings follow XNU's existing
+ignore-MEDIA rule; resilient executable mappings are explicitly unsupported.
+The real Helvetica/SFUI files now map successfully and original text renders
+instead of LastResort glyphs. This is common mmap behavior, not a font-name fix.
 
 ### Lifecycle boundary and next implementation
 

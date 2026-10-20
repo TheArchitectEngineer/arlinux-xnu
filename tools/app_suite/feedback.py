@@ -34,11 +34,14 @@ def witnesses(path,prefixes):
 def failure_summary(result,output):
     case=result['id'];directory=output/case
     failed=next((step for step in result.get('steps',[]) if step['status']=='failed'),{})
+    screenshots=[entry for entry in result.get('observations',[]) if 'screenshot' in entry]
+    sample=screenshots if len(screenshots)<=4 else screenshots[:2]+screenshots[-2:]
     summary={'id':case,'failedStep':{key:failed[key] for key in
         ('do','app','text','reason','seconds','diagnosticSeconds') if key in failed},
         'blockedSteps':sum(step['status']=='blocked' for step in result.get('steps',[])),
         'infrastructureFailure':result.get('infrastructureFailure',False),
-        'processes':[],'screenshots':[entry for entry in result.get('observations',[]) if 'screenshot' in entry],
+        'processes':[],'screenshots':sample,'screenshotsRecorded':len(screenshots),
+        'screenshotsOmittedFromSummary':len(screenshots)-len(sample),'fullJourney':case+'.json',
         'diagnostic':result.get('diagnostic')}
     for generation in result.get('processes',[]):
         prefix=f"{generation['app']}-{generation['generation']}"
