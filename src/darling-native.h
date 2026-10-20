@@ -30,16 +30,23 @@ static void darling_abort(const char *operation)
     RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0);
     __builtin_unreachable();
 }
+#include "darling-memory.h"
 static long darling_receive(int fd,struct msghdr *message)
 {
-    long result=RAW(SYS_recvmsg,fd,message,0,0,0,0);
-    if (result>=(long)sizeof(dserver_s2c_callhdr_t)) {
-        dserver_s2c_callhdr_t *header=message->msg_iov[0].iov_base;
-        /* S2C memory callbacks need guest-address/alignment adaptation. Do not
-         * mistake such a call for a reply or silently claim the mapping exists. */
-        if (header->call_number==0x52cca11) darling_abort("unsupported server-to-client memory request");
+    struct msghdr original=*message;
+    for (;;) {
+        *message=original;
+        long result=RAW(SYS_recvmsg,fd,message,0,0,0,0);
+        if (result>=(long)sizeof(dserver_s2c_callhdr_t)) {
+            dserver_s2c_call_t *call=message->msg_iov[0].iov_base;
+            if (call->mmap.header.call_number==dserver_callnum_s2c) {
+                if (message->msg_flags&(MSG_TRUNC|MSG_CTRUNC)) darling_abort("truncated S2C memory request");
+                darling_memory_reply(fd,call,result);
+                continue;
+            }
+        }
+        return result;
     }
-    return result;
 }
 static void darling_block(uint64_t *saved)
 {
