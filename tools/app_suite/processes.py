@@ -119,7 +119,7 @@ class Processes:
             if self.environment.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1':
                 arguments.extend(['--lookup-bytes','4096'])
                 arguments.extend(['--lookup-selector','/System/Library/PrivateFrameworks/CoreUI.framework/CoreUI',
-                    'colorWithTraits:error:'])
+                    'colorWithName:designSystem:palette:colorScheme:contrast:styling:displayGamut:error:'])
                 arguments.extend(['--lookup','/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore',
                     '-[UIDynamicCatalogSystemColor _resolvedColorWithTraitCollection:]'])
             if 'DARLING_UNHANDLED_SERVICE_INLINE' in runtime.read_text(errors='replace'):

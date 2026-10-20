@@ -104,7 +104,7 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
     if (protocol) describe_protocol(protocol,adapter,&evidence);
     fprintf(stderr,"IOS_LIFECYCLE_CONTRACT protocol=FBSSceneUpdater protocol_available=%d adapter_available=%d protocols=%u methods=%u missing=%u encoding_differences=%u truncated=%d app_acceptance=false\n",
         protocol!=NULL,adapter!=Nil,evidence.protocols,evidence.methods,evidence.missing,evidence.encoding_differences,evidence.truncated);
-    const char *classes[]={"CUIColor","FBSDisplayConfiguration","FBSMutableDisplayConfiguration","CADisplay",
+    const char *classes[]={"CUIDesignLibrary","FBSDisplayConfiguration","FBSMutableDisplayConfiguration","CADisplay",
         "UIDynamicCatalogColor","UIDynamicCatalogSystemColor","UIDynamicColor",
         "_UIRemoteKeyboards","FBSWorkspace","FBSScene","FBSBasicSceneAgent","FBSSceneParameters","FBSMutableSceneParameters",
         "FBSSceneIdentity","FBSSceneIdentityToken","FBSSceneDefinition","FBSMutableSceneDefinition",
