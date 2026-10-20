@@ -11,7 +11,12 @@ int darwin_native_host_port_refs(uint32_t port,int delta);
 int darwin_native_host_port_deallocate(uint32_t port);
 uint32_t darwin_native_host_task(void);
 int darwin_native_host_identity(uint32_t *pid,uint32_t *incarnation);
-uint32_t darwin_native_bootstrap_peer(uint64_t token_address);
+/* Private mapping adapter: the original getter's LR identifies its one audited
+ * predicate. Route returns two AAPCS64 registers; no caller action is injected. */
+struct darwin_bootstrap_route { uint64_t continuation; uint32_t pid,euid; };
+int darwin_native_bootstrap_policy(uint64_t entry,uint32_t token_offset,uint64_t accepted,uint64_t rejected);
+struct darwin_bootstrap_route darwin_native_bootstrap_route(uint64_t stack,uint64_t entry);
+void darwin_bootstrap_policy_enter(void);
 int arlinux_xpc_bootstrap(void *request,void *response,unsigned long capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *requester);
 enum darwin_session_service { D_SESSION_PROCESSINFO, D_SESSION_WORKSPACE,
     D_SESSION_SYSTEMAPP, D_SESSION_HIDFOCUS, D_SESSION_SERVICE_COUNT };

@@ -586,16 +586,34 @@ int darwin_native_host_send(void *message,uint32_t size)
 #endif
     (void)message; (void)size; return D_KERN_NOT_SUPPORTED;
 }
-uint32_t darwin_native_bootstrap_peer(uint64_t token_address)
+static struct { uint64_t entry,accepted,rejected; uint32_t token_offset; } native_bootstrap_policy;
+_Static_assert(sizeof(struct darwin_bootstrap_route)==16,"bootstrap route AAPCS64 ABI");
+int darwin_native_bootstrap_policy(uint64_t entry,uint32_t token_offset,uint64_t accepted,uint64_t rejected)
 {
-    struct darwin_audit_token peer,self;
-    if (!native_bootstrap_port || guest_copy(&peer,token_address,sizeof(peer),0) ||
-        native_current_audit_token(&self)) return D_KERN_FAILURE;
-    /* Authenticate the independent session provider chosen before guest entry.
-     * Keep actual audit credentials and its real Linux process incarnation.
-     * Original requester-echo checks follow. */
-    return peer.pid==native_provider_pid && peer.euid==self.euid && peer.idversion==native_provider_incarnation ?
-        D_KERN_SUCCESS : D_KERN_FAILURE;
+    if(native_bootstrap_policy.entry || !entry || !accepted || !rejected) return -1;
+    native_bootstrap_policy.entry=entry;native_bootstrap_policy.accepted=accepted;
+    native_bootstrap_policy.rejected=rejected;native_bootstrap_policy.token_offset=token_offset;
+    return 0;
+}
+__attribute__((visibility("hidden")))
+struct darwin_bootstrap_route darwin_native_bootstrap_route(uint64_t stack,uint64_t entry)
+{
+    if(!native_bootstrap_policy.entry || entry!=native_bootstrap_policy.entry ||
+       stack>UINT64_MAX-native_bootstrap_policy.token_offset) {
+        RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0);__builtin_unreachable();
+    }
+    struct darwin_audit_token peer={0},self;
+    int valid=native_bootstrap_port &&
+        !guest_copy(&peer,stack+native_bootstrap_policy.token_offset,sizeof(peer),0) &&
+        !native_current_audit_token(&self) && peer.pid==native_provider_pid &&
+        peer.euid==self.euid && peer.idversion==native_provider_incarnation;
+    /* Actual credentials remain intact. The successful continuation is the
+     * original requester's echo/no-echo branch, not unconditional acceptance. */
+    static unsigned int traces;
+    if(__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT)
+        trace_record("BOOTSTRAP_PROVIDER_CHECK pid=0x",peer.pid,entry,valid);
+    return (struct darwin_bootstrap_route){valid ? native_bootstrap_policy.accepted : native_bootstrap_policy.rejected,
+        peer.pid,peer.euid};
 }
 int darwin_native_host_join(uint32_t port,uint32_t set)
 {

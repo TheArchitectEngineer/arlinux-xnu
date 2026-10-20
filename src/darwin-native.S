@@ -29,6 +29,24 @@ darwin_native_enter:
     mov x0,xzr
     br x1
 .size darwin_native_enter,.-darwin_native_enter
+// Entered by a tail branch immediately after libxpc's real audit getter.
+// Its LR is the exact mapped predicate address. Preserve the original frame,
+// callee-saved echo flag/object registers and actual PID/euid scratch values.
+.global darwin_bootstrap_policy_enter
+.hidden darwin_bootstrap_policy_enter
+.type darwin_bootstrap_policy_enter,%function
+darwin_bootstrap_policy_enter:
+    stp x29,x30,[sp,#-16]!
+    mov x29,sp
+    add x0,sp,#16
+    mov x1,x30
+    bl darwin_native_bootstrap_route
+    mov x16,x0
+    mov w0,w1
+    lsr x8,x1,#32
+    ldp x29,x30,[sp],#16
+    br x16
+.size darwin_bootstrap_policy_enter,.-darwin_bootstrap_policy_enter
 // Linux clone with a separate runtime stack and clear-child-tid lifecycle.
 .global darwin_clone_thread
 .hidden darwin_clone_thread
