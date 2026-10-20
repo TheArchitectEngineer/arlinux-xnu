@@ -321,6 +321,27 @@ static unsigned long ipc_port_insert_right(const unsigned long long *r)
     __atomic_fetch_add(&port->send_refs,1,__ATOMIC_ACQ_REL);
     return D_KERN_SUCCESS;
 }
+static unsigned long ipc_port_mod_refs(const unsigned long long *r)
+{
+    if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
+    if (r[2]!=D_PORT_RIGHT_SEND) return D_KERN_NOT_SUPPORTED;
+    struct ipc_endpoint *endpoint=ipc_find(r[1]);
+    unsigned long *references=endpoint ? &endpoint->send_refs :
+        r[1]==CURRENT_HOST_PORT ? &host_send_refs :
+        r[1]==SYSTEM_CLOCK_PORT ? &clock_send_refs[0] :
+        r[1]==CALENDAR_CLOCK_PORT ? &clock_send_refs[1] : NULL;
+    if (!references) return D_KERN_INVALID_NAME;
+    int64_t delta=(int32_t)r[3];
+    unsigned long current=__atomic_load_n(references,__ATOMIC_ACQUIRE);
+    for (;;) {
+        if (!current) return D_KERN_INVALID_RIGHT;
+        if (delta<0 && (uint64_t)-delta>current) return D_KERN_INVALID_VALUE;
+        if (delta>0 && (uint64_t)delta>D_PORT_UREFS_MAX-current) return D_KERN_UREFS_OVERFLOW;
+        unsigned long next=current+delta;
+        if (__atomic_compare_exchange_n(references,&current,next,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))
+            return D_KERN_SUCCESS;
+    }
+}
 /* A registry for this standalone compatibility machine, not launchd/XPC.
  * The public lookup API is redirected here by name in the private cache map.
  * Only an actually created Linux display is registered. Other names fail. */
