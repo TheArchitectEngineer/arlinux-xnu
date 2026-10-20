@@ -86,6 +86,13 @@ def ipc_callback(frame, location, internal_dict):
         except (ValueError, SystemError) as error:
             item['readError'] = str(error)
         record['objects'].append(item)
+    if symbol == '__dispatch_mach_msg_async_reply_invoke$VARIANT$mp':
+        try:
+            payload = objects.u64(arguments[0]+48)
+            record['continuationMessage'] = {'address': hex(payload),
+                'words': [hex(value) for value in struct.unpack('<'+'Q'*32, objects.read(payload, 256))]}
+        except (ValueError, SystemError) as error:
+            record['continuationReadError'] = str(error)
     print('IPC_CALLBACK ' + json.dumps(record), flush=True)
     if symbol == '__exit':
         frame.GetThread().GetProcess().GetTarget().GetDebugger().HandleCommand('thread backtrace --count 12')
@@ -94,6 +101,32 @@ def ipc_callback(frame, location, internal_dict):
         print('IPC_CALLBACK_CODE', hex(address), symbol, flush=True)
         frame.GetThread().GetProcess().GetTarget().GetDebugger().HandleCommand(
             'disassemble --start-address ' + hex(address) + ' --count 160')
+        if symbol == '__dispatch_mach_msg_async_reply_invoke$VARIANT$mp':
+            # Follow the actual ADRP/ADD/LDR/LDR indirect hook call site. This
+            # uses the mapped instructions' offsets, not a guessed table ABI.
+            words = struct.unpack('<'+'I'*160, objects.read(address, 640))
+            for index in range(len(words)-3):
+                adrp, add, load, hook = words[index:index+4]
+                if adrp & 0x9f000000 != 0x90000000 or add & 0xffc00000 != 0x91000000:
+                    continue
+                register = adrp & 31
+                if add & 31 != register or (add >> 5) & 31 != register:
+                    continue
+                if load & 0xffc00000 != 0xf9400000 or (load >> 5) & 31 != register:
+                    continue
+                if hook & 0xffc00000 != 0xf9400000 or (hook >> 5) & 31 != load & 31:
+                    continue
+                immediate = ((adrp >> 29) & 3) | (((adrp >> 5) & 0x7ffff) << 2)
+                if immediate & (1 << 20): immediate -= 1 << 21
+                pointer = ((address+index*4)&~4095)+(immediate<<12)+((add>>10)&4095)
+                try:
+                    table = objects.u64(pointer+((load>>10)&4095)*8)
+                    target_address = objects.u64(table+((hook>>10)&4095)*8)
+                    print('IPC_INDIRECT_CALLBACK_CODE', hex(target_address), flush=True)
+                    frame.GetThread().GetProcess().GetTarget().GetDebugger().HandleCommand(
+                        'disassemble --start-address ' + hex(target_address) + ' --count 160')
+                except (ValueError, SystemError) as error:
+                    print('IPC_INDIRECT_CALLBACK_READ_ERROR', str(error), flush=True)
     if breakpoint.GetHitCount() >= 16:
         breakpoint.SetEnabled(False)
     return False
