@@ -75,19 +75,26 @@ def report(run_id, job_name):
                    'WAYLAND_BACKEND_READY ', 'NATIVE_SERVICE_ADAPTER ', 'DARWIN_DISPLAY_QUERY ',
                    'DARWIN_RENDER_DISPLAY_LIST ', 'OBJC_DISPLAY_DECODE_ERROR ',
                    'DARWIN_RENDER_PROPERTIES ', 'DISPLAY_MODE_RATE_FACTOR ',
+                   'DARWIN_TIMER_OPERATION ', 'DARWIN_TIMER_EXPIRED ', 'DARWIN_PORT_OPERATION ',
                    'NORMAL_RUNTIME_FAULT_PC ', 'DIAGNOSTIC_WAIT_INTERRUPTED ',
                    'DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DYNAMIC_MAIN ', 'DYNAMIC_THREAD ',
                    'DYNAMIC_CONSOLE ', 'EXPERIMENT_RECEIPT ', 'EXPERIMENT_EXECUTABLE ')
         item['observations'] = []
+        context_lengths = {'DARWIN_EVENT_DELIVERY ': 3, 'DARWIN_NATIVE_FAULT ': 3,
+                           'DARWIN_DISPLAY_QUERY ': 3, 'DARWIN_RENDER_DISPLAY_LIST ': 3,
+                           'DARWIN_RENDER_PROPERTIES ': 4, 'DARWIN_TIMER_OPERATION ': 6,
+                           'DARWIN_TIMER_EXPIRED ': 1, 'DARWIN_PORT_OPERATION ': 6}
         for index, line in enumerate(lines):
             if not line.startswith(markers):
                 continue
             item['observations'].append(line)
-            if line.startswith(('DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DARWIN_DISPLAY_QUERY ', 'DARWIN_RENDER_DISPLAY_LIST ', 'DARWIN_RENDER_PROPERTIES ')):
+            for prefix, count in context_lengths.items():
+                if not line.startswith(prefix):
+                    continue
                 # Preserve bounded context verbatim: separate worker writes may
                 # interleave, so do not infer a synthetic causal event from it.
-                count = 4 if line.startswith('DARWIN_RENDER_PROPERTIES ') else 3
                 item['observations'].extend('  context: ' + text for text in lines[index+1:index+1+count])
+                break
         for line in item['observations']:
             print('  ' + line)
         # An uncaught failure can have no application markers (e.g. compiler

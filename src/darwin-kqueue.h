@@ -179,7 +179,9 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
         case D_EVFILT_USER: case D_EVFILT_WORKLOOP:
             fd=RAW(SYS_eventfd2,0,EFD_CLOEXEC|EFD_NONBLOCK,0,0,0,0); break;
         case D_EVFILT_TIMER: case D_EVFILT_MEMORYSTATUS:
-            fd=RAW(SYS_timerfd_create,CLOCK_MONOTONIC,TFD_CLOEXEC|TFD_NONBLOCK,0,0,0,0); break;
+            fd=RAW(SYS_timerfd_create,event->filter==D_EVFILT_TIMER &&
+                (event->fflags&D_NOTE_MACH_CONTINUOUS_TIME) ? CLOCK_BOOTTIME : CLOCK_MONOTONIC,
+                TFD_CLOEXEC|TFD_NONBLOCK,0,0,0,0); break;
         case D_EVFILT_READ: case D_EVFILT_WRITE:
             if (event->fflags) return -ENOTSUP;
             fd=RAW(SYS_fcntl,event->ident,F_DUPFD_CLOEXEC,0,0,0,0); break;
@@ -228,17 +230,42 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
             if (result!=(long)sizeof(token)) error=result<0 ? result : -EIO;
         }
     } else if (event->filter==D_EVFILT_TIMER && (event->flags&D_EV_ADD)) {
-        if (event->data<=0 || (event->fflags&~(D_NOTE_SECONDS|D_NOTE_USECONDS|D_NOTE_NSECONDS|D_NOTE_ABSOLUTE))) error=-ENOTSUP;
+        if (event->fflags&~(D_NOTE_SECONDS|D_NOTE_USECONDS|D_NOTE_NSECONDS|D_NOTE_ABSOLUTE|
+                           D_NOTE_LEEWAY|D_NOTE_MACH_CONTINUOUS_TIME|D_NOTE_MACHTIME)) error=-ENOTSUP;
+        else if ((note->event.fflags^event->fflags)&D_NOTE_MACH_CONTINUOUS_TIME) error=-ENOTSUP;
         else {
-            unsigned int units=event->fflags&(D_NOTE_SECONDS|D_NOTE_USECONDS|D_NOTE_NSECONDS);
-            uint64_t scale=units==D_NOTE_SECONDS ? 1000000000 : units==D_NOTE_USECONDS ? 1000 : units==D_NOTE_NSECONDS ? 1 : 1000000;
-            if ((units && (units&(units-1))) || (uint64_t)event->data>INT64_MAX/scale) error=-EINVAL;
+            unsigned int units=event->fflags&(D_NOTE_SECONDS|D_NOTE_USECONDS|D_NOTE_NSECONDS|D_NOTE_MACHTIME);
+            uint64_t scale=units==D_NOTE_SECONDS ? 1000000000 : units==D_NOTE_USECONDS ? 1000 :
+                (units==D_NOTE_NSECONDS || units==D_NOTE_MACHTIME) ? 1 : 1000000;
+            if ((units && (units&(units-1))) ||
+                (event->data>0 && (uint64_t)event->data>INT64_MAX/scale) ||
+                ((event->fflags&D_NOTE_LEEWAY) && event->ext[1]>INT64_MAX/scale)) error=-EINVAL;
             else {
-                uint64_t nanoseconds=(uint64_t)event->data*scale;
+                uint64_t nanoseconds=event->data>0 ? (uint64_t)event->data*scale : 1;
+                /* Non-Mach absolute values name the calendar epoch. XNU
+                 * converts it once into the selected uptime/continuous clock;
+                 * later wall-clock changes must not retarget the timer. */
+                if ((event->fflags&D_NOTE_ABSOLUTE) && !(event->fflags&D_NOTE_MACHTIME)) {
+                    struct timespec calendar,clock;
+                    error=RAW(SYS_clock_gettime,CLOCK_REALTIME,&calendar,0,0,0,0);
+                    if (!error) error=RAW(SYS_clock_gettime,(event->fflags&D_NOTE_MACH_CONTINUOUS_TIME) ?
+                        CLOCK_BOOTTIME : CLOCK_MONOTONIC,&clock,0,0,0,0);
+                    if (!error) {
+                        uint64_t wall=(uint64_t)calendar.tv_sec*1000000000+calendar.tv_nsec;
+                        uint64_t now=(uint64_t)clock.tv_sec*1000000000+clock.tv_nsec;
+                        uint64_t remaining=nanoseconds>wall ? nanoseconds-wall : 0;
+                        if (remaining>INT64_MAX-now) error=-EINVAL;
+                        else nanoseconds=now+remaining;
+                    }
+                }
                 struct itimerspec timer={.it_value={nanoseconds/1000000000,nanoseconds%1000000000}};
-                if (!(event->flags&(D_EV_ONESHOT)) && !(event->fflags&D_NOTE_ABSOLUTE)) timer.it_interval=timer.it_value;
-                error=RAW(SYS_timerfd_settime,note->fd,(event->fflags&D_NOTE_ABSOLUTE) ? TFD_TIMER_ABSTIME : 0,&timer,0,0,0);
+                if (!(event->flags&D_EV_ONESHOT) && !(event->fflags&D_NOTE_ABSOLUTE) && event->data>0)
+                    timer.it_interval=timer.it_value;
+                /* Exact-deadline delivery is within the requested leeway.
+                 * This standalone scheduling policy adds no coalescing delay. */
+                if (!error) error=RAW(SYS_timerfd_settime,note->fd,(event->fflags&D_NOTE_ABSOLUTE) ? TFD_TIMER_ABSTIME : 0,&timer,0,0,0);
                 note->event.fflags=event->fflags;
+                for (unsigned int i=0;i<4;i++) note->event.ext[i]=event->ext[i];
             }
         }
     }
@@ -248,6 +275,7 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
     }
     if (event->flags&D_EV_ADD) {
         note->event.flags=event->flags;
+        if (event->filter==D_EVFILT_TIMER && (event->fflags&D_NOTE_ABSOLUTE)) note->event.flags|=D_EV_ONESHOT;
         if (event->filter==D_EVFILT_WORKLOOP) note->event.flags|=D_EV_CLEAR;
         note->event.udata=event->udata; note->event.qos=event->qos; note->event.data=event->data;
     }
