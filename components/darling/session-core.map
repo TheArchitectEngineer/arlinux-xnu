@@ -1,0 +1,6 @@
+/* The embedded core exports only its host entry point. Keeping unused XNU
+ * interfaces private lets section GC retain the actual runtime dependency graph. */
+{
+    global: arlinux_session_core_start;
+    local: *;
+};

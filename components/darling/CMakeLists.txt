@@ -41,3 +41,10 @@ add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/src/startup/rtsig.h"
 add_custom_target(rtsig_h DEPENDS "${CMAKE_BINARY_DIR}/src/startup/rtsig.h")
 
 add_subdirectory("${DARLING_SOURCE}/src/external/darlingserver" darlingserver)
+
+# A shared library otherwise exports every upstream XNU interface and retains
+# unreachable kernel paths that the standalone executable discarded by GC.
+target_link_options(arlinux_mach_core PRIVATE
+    "-Wl,--version-script=${CMAKE_CURRENT_LIST_DIR}/session-core.map")
+set_property(TARGET arlinux_mach_core APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/session-core.map")

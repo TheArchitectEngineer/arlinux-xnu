@@ -612,8 +612,17 @@ void *darwin_native_service_run(void *unused)
         }
         if (
             (header->bits&D_MACH_MSG_COMPLEX) || header->voucher ||
-            (header->bits&255)!=D_MACH_TYPE_MOVE_SEND_ONCE || header->id>INT32_MAX-D_MIG_REPLY_ID_OFFSET)
+            (header->bits&255)!=D_MACH_TYPE_MOVE_SEND_ONCE || header->id>INT32_MAX-D_MIG_REPLY_ID_OFFSET) {
+            const char marker[]="DARLING_UNSUPPORTED_SERVICE port/id/bytes/bits/voucher/descriptors follows\n";
+            RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+            trace_call(0,0,header->local); trace_call(1,0,header->id);
+            trace_call(2,0,header->size); trace_call(3,0,header->bits); trace_call(4,0,header->voucher);
+            uint32_t descriptors=0;
+            if ((header->bits&D_MACH_MSG_COMPLEX) && header->size>=sizeof(*header)+sizeof(descriptors))
+                __builtin_memcpy(&descriptors,request+sizeof(*header),sizeof(descriptors));
+            trace_call(5,0,descriptors);
             darling_abort("unsupported display request rights/body");
+        }
         for (volatile uint32_t *word=response;word<response+IPC_BYTES/4;word++) *word=0;
         out->bits=D_MACH_TYPE_MOVE_SEND_ONCE; out->remote=header->remote;
         out->size=36; out->id=header->id+D_MIG_REPLY_ID_OFFSET;
