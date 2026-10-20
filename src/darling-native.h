@@ -213,10 +213,17 @@ static long darling_mach_msg2(const unsigned long long *r)
     /* Like XNU, invalid receive-vector arguments do not cancel a valid send.
      * The real send/rights effect must happen before reporting receive error. */
     uint32_t effective_options=receive_error ? options&~D_MACH_RCV_MSG : options;
+    /* mach_msg2 carries the sync-send boosting port in packed remote_port.
+     * The imported legacy receive ABI reuses priority for that port when
+     * RCV_SYNC_WAIT is set without SEND_SYNC_OVERRIDE. Preserve the actual
+     * right so the core can validate/link its genuine special reply port. */
+    uint32_t legacy_priority=r[6]>>32;
+    if((effective_options&D_MACH_RCV_MSG) && (options&D_MACH_RCV_SYNC_WAIT) &&
+       !(options&D_MACH_SEND_SYNC_OVERRIDE)) legacy_priority=(uint32_t)r[3];
     long result=0;
     if(!receive_error || (options&D_MACH_SEND_MSG))
         result=dserver_rpc_mach_msg_overwrite((void *)message,effective_options,send_size,receive_size,
-            receive_name,(uint32_t)r[7],(uint32_t)(r[6]>>32),(void *)receive);
+            receive_name,(uint32_t)r[7],legacy_priority,(void *)receive);
     if(!result && receive_error)result=receive_error;
     if(auxiliary && !receive_error && (options&D_MACH_RCV_MSG)) {
         /* ipc_kmsg_put_vector_to_user: a scalar/no-aux message produces an
