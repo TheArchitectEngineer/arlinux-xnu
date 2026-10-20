@@ -8,7 +8,8 @@ preserved. Running an unchanged kernel is not a requirement.
 The native ARM64 path runs a real dyld/libSystem console through memory, TLS,
 threads, input, normal exit and restart. ARHello 1.0 now enters real UIKit on
 Linux and executes real background tasks. A native Wayland backend now supplies
-real screen geometry; UIKit rendering and input remain incomplete. The same iOS binary, converted
+real screen geometry, modes and refresh rate; UIKit rendering and input remain
+incomplete. The same iOS binary, converted
 with PlayCover on a macOS ARM64 runner, completes display, real mouse input,
 normal exit and relaunch under LLDB. Linux GUI and Android integration remain
 unverified.

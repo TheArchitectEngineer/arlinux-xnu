@@ -13,10 +13,11 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39353289697](https://github.com/taowen/arlinux-xnu/actions/runs/39353289697),
-source `c04d2c782c941c3fe95d0f24a51b9748a71c436e`, dyld job `118402414551`.
+[39356359356](https://github.com/taowen/arlinux-xnu/actions/runs/39356359356),
+source `83650c03fc6425dede313f6a97229ee9c6b5430e`, dyld job `118412076558`.
 The host child connects directly to headless Weston, configures a 1024x640
-xdg-shell surface and submits an actual wl_shm buffer. A real frame callback
+xdg-shell surface and submits an actual wl_shm buffer. Its entered output
+advertises 60000 mHz refresh. A real frame callback
 precedes endpoint registration. This buffer is still blank: no application
 content or input has been presented.
 
@@ -26,12 +27,20 @@ The server transfers a fresh 16 KiB guest mapping containing the actual single
 Wayland resource's name, device name and ID 1. The 56-byte complex reply passes
 the real client's descriptor/type/length checks; genuine CoreFoundation parses
 the 250-byte XML property list. A main-thread VM deallocation returns success,
-and QuartzCore proceeds to display ID 1's property request, routine 40232.
-This is not general OOL/descriptor ownership validation.
+and QuartzCore accepts display ID 1's property request, routine 40232: actual
+bounds/frame, current/preferred 1024x640@60Hz mode and refresh periods. This is
+not general OOL/descriptor ownership validation.
 
-The former `main display is nil` assertion is passed. The new exception is
-NSInternalInconsistencyException, `main display bounds are empty`. Display
-properties/modes are not implemented yet, so 40232 receives MIG_BAD_ID.
+The former `main display is nil` and `main display bounds are empty` assertions
+are passed. UIKit reaches _UIApplicationInitialize and creates the main
+CFRunLoop. Its port set is a real Linux epoll object; allocation and insertion
+of its genuine wakeup receive queue both return success in the actual trace.
+Port-set receive/extraction paths are implemented but not yet exercised by this
+app journey. The next missing dependency is mk_timer_create (trap 91). It still
+hits the generic unsupported trap path and returns 46, which the client treats
+as a port name; insertion fails with KERN_INVALID_NAME. CFRunLoopFindMode then
+traps at 0x180e52c70. Implement real timer creation/expiry/receive semantics;
+never treat a kern_return value as a successfully created resource.
 The ordinary app still aborts with status 133. LLDB_COMMAND_STATUS=0 describes
 evidence capture only. UIKit content has not appeared on the Wayland surface.
 
@@ -144,18 +153,11 @@ Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
 never reached the button; the accepted run uses the actual macOS HID queue.
 
 Latest app failure receipt:
-`aa28208d7d74f4eac68ea6694352a0590c938f17b03d7e5ba60095d2f6d0e785`.
-Native runtime SHA-256: `778d47565231f8b30c38e534d242f027a544c7682724b87bc88cdb6c7b13211f`.
-Local text: build/runs/39353289697/attempt-1/job-118402414551.log
-and job-118402241807.log. Both independent real-libSystem
-console launches still complete. The earlier first worker run 39340039442
-reached the voucher assertion; its receipt is
-`71a285b07a8e6423117eaff487e91342f323db11930de04b66d431d6077c12e2`.
-
-Intermediate port-options failure receipt (39342992718):
-`269a8ebe54039b15834af66f3e349cc7dc3b5ca573c5ad359cea2f4ebc110edb`.
-The preceding 39342902242 attempt failed compilation due to a duplicate C tag;
-it did not execute the app and is not runtime evidence.
+`af18b8d0cf85f787b7c98506cc7988142ec3a8ae9c0718dd6c4d30da93c77b2d`.
+Native runtime SHA-256: `9af26d76c42469efc6f4c4abf7b54759fae9e5488894385a2e60719f3c22f033`.
+Local text: build/runs/39356359356/attempt-1/job-118412076558.log
+and job-118411952735.log. Both independent real-libSystem console launches
+still complete. Earlier intermediate failures remain in Actions/Git history.
 
 ### Reproducible inputs and evidence
 

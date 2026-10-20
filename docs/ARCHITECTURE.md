@@ -79,7 +79,8 @@ When WAYLAND_DISPLAY or WAYLAND_SOCKET is supplied, a host child connects
 directly to the compositor using wl_compositor, xdg-shell and wl_shm. It runs
 before Darwin TLS setup and keeps its own host TLS and protocol event loop.
 After configure/ack, a real XRGB memfd buffer is attached and a frame callback
-confirms backend readiness. The guest process maps the same framebuffer.
+confirms backend readiness. wl_surface.enter identifies the output whose current
+wl_output mode supplies the actual refresh rate. The guest process maps the same framebuffer.
 The child is terminated when its parent dies. Initial geometry is retained;
 resize, UIKit rendering, input forwarding and application close are unfinished.
 An empty mapped surface never counts as displaying the application.
@@ -99,7 +100,13 @@ Wayland buffer transform. Backend liveness is checked before lookup and query.
 Render routine 40231 returns a property-list array describing that same virtual
 display, through a fresh 16 KiB mapping and a LP64 Mach OOL descriptor. The
 actual client checks descriptor type/size, copies it into CFData, parses it and
-builds its own CADisplay object. Modes, bounds and rendering are still missing.
+builds its own CADisplay object. Routine 40232 supplies that display's configured
+bounds/frame, one current/preferred mode and actual output refresh periods.
+The measured CADisplayMode encoding uses 16-bit width/height and Q16.16 refresh;
+MIG variable strings and the packed reply prefix/tail are declared in
+darwin-display.h. A NULL hardware memory entry describes the absent Apple
+hardware mapping; the actual client skips it. This provides geometry, not
+UIKit rendering or Apple display hardware.
 This narrow server-generated transfer does not implement arbitrary client OOL
 sends, cross-process ownership or discarded-message resource cleanup.
 Unimplemented display/render routines return MIG_BAD_ID. See the current handoff for
@@ -141,10 +148,20 @@ The observed semaphore-create request allocates an actual Linux eventfd counter.
 Signal/wait traps are implemented, but have not passed a complete
 multithreaded user journey. The host wait helper accepts deadlines; guest timed
 wait traps remain unsupported. Contended FIFO ordering and concurrent namespace
-mutation remain unverified. General descriptors, out-of-line memory, port sets,
+mutation remain unverified. General descriptors, client out-of-line memory,
 notifications, arbitrary rights transfer and cross-process namespace semantics
 are still outside the implemented transport. These limitations remain failures,
 not empty successful replies.
+
+Current-task receive-right allocation creates the same real socket queues.
+Port-set allocation creates a distinct Linux epoll object; insert/extract member
+operations register/unregister the actual receive socket, with duplicate/missing
+membership errors. Receiving on a set waits on that epoll object and consumes a
+ready member's message, retaining the member's name, sequence and context.
+Each receive queue can belong to multiple sets. Making a send right from the
+same local receive right increments its tracked reference. Port-set destruction,
+membership enumeration and other right-transfer operations remain unsupported;
+see the current handoff for which operations the real app has exercised.
 
 ## Event workers and process services
 
