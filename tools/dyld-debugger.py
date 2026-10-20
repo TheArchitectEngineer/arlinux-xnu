@@ -106,7 +106,7 @@ def capture_display_code(target):
                     disassemble('DISPLAY_QUERY_CALLEE_CODE', child, 180)
         elif symbol.get('symbol') == '_bootstrap_look_up3':
             disassemble('BOOTSTRAP_LOOKUP_CODE', int(symbol['address'], 16), 160)
-        elif symbol.get('symbol') == '_OBJC_CLASS_$_CADisplay':
+        elif symbol.get('symbol') in ('_OBJC_CLASS_$_CADisplay', '_OBJC_CLASS_$_CADisplayMode'):
             objects = GuestObjects(target.GetProcess())
             address = int(symbol['address'], 16)
             try:
@@ -123,8 +123,8 @@ def capture_display_code(target):
                         entry = methods+8+index*entry_size
                         name = objects.cstring(objects.u64(entry))
                         implementation = objects.u64(entry+16)
-                        print('OBJC_DISPLAY_METHOD ' + json.dumps({'kind': kind, 'selector': name, 'address': hex(implementation)}), flush=True)
-                        if name in ('mainDisplay', 'displays', 'bounds', 'currentMode', 'availableModes', 'preferredMode') or name.lstrip('_').startswith('initWith'):
+                        print('OBJC_DISPLAY_METHOD ' + json.dumps({'class': symbol['symbol'], 'kind': kind, 'selector': name, 'address': hex(implementation)}), flush=True)
+                        if name in ('mainDisplay', 'displays', 'bounds', 'currentMode', 'availableModes', 'preferredMode', 'width', 'height', 'refreshRate') or name.lstrip('_').startswith('initWith'):
                             disassemble('DISPLAY_METHOD_CODE', implementation, 96)
                             for child_index, child in enumerate(list(dict.fromkeys(calls(implementation, 48)))[:3]):
                                 if kind == 'class' and name in ('mainDisplay', 'displays'):
@@ -133,7 +133,7 @@ def capture_display_code(target):
                                         disassemble('DISPLAY_METHOD_CALLEE_CODE', grandchild, 180)
                                     references(child, 400)
                                 else:
-                                    count = 720 if name.lstrip('_').startswith('initWith') and child_index == 1 else 96
+                                    count = 1320 if symbol['symbol'] == '_OBJC_CLASS_$_CADisplay' and name.lstrip('_').startswith('initWith') and child_index == 1 else 96
                                     disassemble('DISPLAY_METHOD_CALLEE_CODE', child, count)
                                     if count > 96:
                                         references(child, count)

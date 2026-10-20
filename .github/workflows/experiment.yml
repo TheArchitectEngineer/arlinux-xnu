@@ -215,6 +215,7 @@ jobs:
             python3 tools/symbolicate-cache.py "$cache" "$ordinary" build/dyld/diagnostic-symbols.json \
               --lookup /usr/lib/libobjc.A.dylib _objc_exception_throw \
               --lookup /System/Library/Frameworks/QuartzCore.framework/QuartzCore '_OBJC_CLASS_$_CADisplay' \
+              --lookup /System/Library/Frameworks/QuartzCore.framework/QuartzCore '_OBJC_CLASS_$_CADisplayMode' \
               --lookup /System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices _BKSDisplayServicesStart \
               --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up \
               --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up2 \
