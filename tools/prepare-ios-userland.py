@@ -68,21 +68,33 @@ if (manifest.get('ProductVersion'),manifest.get('ProductBuildVersion'))!=(source
     raise SystemExit('Firmware BuildManifest version/build mismatch')
 if source['device'] not in manifest.get('SupportedProductTypes',[]):
     raise SystemExit('Requested device is not in this firmware BuildManifest')
-os_members={identity['Manifest']['OS']['Info']['Path'] for identity in manifest['BuildIdentities']}
-if len(os_members)!=1:
-    raise SystemExit('Firmware contains ambiguous OS images; select the requested board identity explicitly')
-member=os_members.pop()
-if Path(member).name != member or not member.endswith('.dmg'):
-    raise SystemExit('Unexpected OS image path in Apple BuildManifest')
-run(unzip, 'e', '-y', '-o' + str(output), archive, member)
-image = output / member
-# Release the validated archive before expanding the filesystem on the runner.
+components={}
+for identity in manifest['BuildIdentities']:
+    for role in ('OS','Cryptex1,SystemOS'):
+        if role in identity['Manifest']:
+            components.setdefault(role,set()).add(identity['Manifest'][role]['Info']['Path'])
+if any(len(paths)!=1 for paths in components.values()):
+    raise SystemExit('Ambiguous device-specific OS images; select the requested board explicitly')
+images={role:paths.pop() for role,paths in components.items()}
+(evidence/'firmware-layout.json').write_text(json.dumps({'product':source['device'],'components':images},indent=2)+'\n')
+if len({Path(member).name for member in images.values()})!=len(images):
+    raise SystemExit('OS image basename collision')
+for member in images.values():
+    relative=Path(member)
+    if relative.is_absolute() or '..' in relative.parts or not member.endswith('.dmg'):
+        raise SystemExit('Unsafe or unsupported OS image member: '+member)
+    run(unzip,'e','-y','-o'+str(output),archive,member)
 archive.unlink()
-filesystem = output / 'filesystem'
-filesystem.mkdir(exist_ok=True)
-# APFS compressed files keep their bytes in decmpfs/resource-fork attributes.
-# Read through the actual APFS decoder, not 7-Zip's zero-size data-fork view.
-run(reader_build / 'apfs-fuse', '-o', 'ro', image, filesystem)
+mounts=[]
+for role,member in images.items():
+    mount=output/('os-volume' if role=='OS' else 'system-volume');mount.mkdir(exist_ok=True)
+    run(reader_build/'apfs-fuse','-o','ro',output/Path(member).name,mount)
+    mounts.append(mount)
+filesystem=output/'filesystem';filesystem.mkdir(exist_ok=True)
+merged=filesystem/'root';merged.mkdir(exist_ok=True)
+# A real read-only union of the two actual firmware volumes, not copied stubs.
+branches=':'.join(str(mount/'root')+'=RO' for mount in reversed(mounts))
+run('unionfs','-o','ro',branches,merged)
 loader = output / 'dyld'
 try:
     # Record the real mounted layout before assuming an OS-volume path.
@@ -116,7 +128,8 @@ try:
     (evidence / 'cache-input.json').write_text(json.dumps(cache_record, indent=2)+'\n')
     print('APPLE_CACHE_INPUT '+json.dumps(cache_record), flush=True)
 except BaseException:
-    run('fusermount3', '-u', filesystem)
+    for mount in [merged,*reversed(mounts)]:
+        subprocess.run(['fusermount3','-u',str(mount)],check=False)
     raise
 # Keep the read-only firmware mounted for the real loader's subsequent reads.
 # The hosted runner owns its lifetime; no Apple binary is uploaded.
@@ -128,7 +141,7 @@ version_record = {key: system_version.get(key) for key in
 print('APPLE_SYSTEM_VERSION ' + json.dumps(version_record), flush=True)
 
 record = {'firmware': source, 'verifiedFirmwareSHA256': actual,
-          'osImage': member, 'osImageSHA256': sha(image),
+          'images':{role:{'member':member,'sha256':sha(output/Path(member).name)} for role,member in images.items()},
           'apfsReader': reader, 'dyldBytes': loader.stat().st_size, 'dyldSHA256': sha(loader)}
 (evidence / 'apple-input.json').write_text(json.dumps(record, indent=2) + '\n')
 print('APPLE_USERLAND_INPUT ' + json.dumps(record), flush=True)
