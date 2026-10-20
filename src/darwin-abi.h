@@ -196,7 +196,7 @@ struct darwin_dirent64 {
 enum darwin_vm_flags {
     D_VM_FLAGS_ANYWHERE = 1, D_VM_FLAGS_TAG_MASK = 0xff000000U,
     D_MAP_SHARED = 1, D_MAP_PRIVATE = 2, D_MAP_FIXED = 0x10, D_MAP_ANON = 0x1000,
-    D_MAP_UNIX03 = 0x40000
+    D_MAP_RESILIENT_MEDIA = 0x4000, D_MAP_UNIX03 = 0x40000
 };
 /* XNU 8796.141.3 mach/message.h: high-word mach_msg2 routing hints. */
 #define D_MACH64_MSG_VECTOR UINT64_C(0x100000000)

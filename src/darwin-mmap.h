@@ -98,14 +98,58 @@ static long native_file_code_ranges(int fd,uint64_t mapped_offset,uint64_t mappe
     }
     return 0;
 }
+static long native_resilient_mapping(unsigned long address,unsigned long length,int protection,int fd,unsigned long offset)
+{
+    /* A private eager snapshot preserves actual available file bytes and
+     * zero-fills unavailable media/EOF, without a later Linux SIGBUS. Private
+     * mappings do not promise visibility of subsequent backing-file changes.
+     * Executable resilient mappings still require a separate implementation. */
+    long status=RAW(SYS_fcntl,fd,F_GETFL,0,0,0,0);
+    if (status<0) return status;
+    if ((status&O_ACCMODE)==O_WRONLY) return -EACCES;
+    struct stat info;
+    status=RAW(SYS_fstat,fd,&info,0,0,0,0);
+    if (status<0) return status;
+    if ((info.st_mode&S_IFMT)!=S_IFREG) return -ENODEV;
+    status=RAW(SYS_mmap,address,length,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0);
+    if ((unsigned long)status>=(unsigned long)-4095) return status;
+    unsigned long copied=0,missing=0;
+    int eof=0;
+    for (unsigned long page=0;page<length && !eof;page+=PAGE16) {
+        unsigned long done=0;
+        while (done<PAGE16) {
+            long count=RAW(SYS_pread64,fd,address+page+done,PAGE16-done,offset+page+done,0,0);
+            if (count==-EINTR) continue;
+            if (!count) { copied+=done; eof=1; break; }
+            if (count<0) {
+                if (count!=-EIO && count!=-ENXIO && count!=-ENODEV && count!=-ESTALE &&
+                    count!=-ENETDOWN && count!=-ENETUNREACH && count!=-ETIMEDOUT && count!=-EREMOTEIO) {
+                    RAW(SYS_munmap,address,length,0,0,0,0); return count;
+                }
+                volatile unsigned char *bytes=(void *)(address+page);
+                for (unsigned long i=0;i<PAGE16;i++) bytes[i]=0;
+                missing++; break;
+            }
+            done+=count;
+            if (done==PAGE16) copied+=done;
+        }
+    }
+    status=RAW(SYS_mprotect,address,length,protection,0,0,0);
+    if (status) { RAW(SYS_munmap,address,length,0,0,0,0);return status; }
+    trace_record("DARWIN_RESILIENT_MMAP copied=0x",copied,length,missing);
+    return address;
+}
 static long native_file_mmap(const unsigned long long *r)
 {
     /* MAP_UNIX03 selects POSIX validation, not a Linux mapping flag. The
      * checks below and Linux mmap enforce our supported POSIX mapping subset. */
     unsigned long address=r[0],length=r[1],protection=r[2],flags=r[3]&~(unsigned long)D_MAP_UNIX03,offset=r[5];
+    /* XNU ignores MEDIA for shared mappings: zero replacement must never
+     * modify the real shared file. Preserve that existing shared behavior. */
+    if (flags&D_MAP_SHARED) flags&=~(unsigned long)D_MAP_RESILIENT_MEDIA;
     int fd=(int)r[4];
     if (!length || length>D_VM_MAX_ALLOCATION || (protection&~(PROT_READ|PROT_WRITE|PROT_EXEC)) ||
-        flags&~(unsigned long)(D_MAP_SHARED|D_MAP_PRIVATE|D_MAP_FIXED) ||
+        flags&~(unsigned long)(D_MAP_SHARED|D_MAP_PRIVATE|D_MAP_FIXED|D_MAP_RESILIENT_MEDIA) ||
         ((flags&(D_MAP_SHARED|D_MAP_PRIVATE))!=D_MAP_SHARED && (flags&(D_MAP_SHARED|D_MAP_PRIVATE))!=D_MAP_PRIVATE) ||
         (offset&(PAGE16-1)) || offset>INT64_MAX || length>INT64_MAX-offset) return -EINVAL;
     length=(length+PAGE16-1)&~(PAGE16-1);
@@ -113,6 +157,7 @@ static long native_file_mmap(const unsigned long long *r)
     if ((flags&D_MAP_FIXED) && ((address&(PAGE16-1)) || address<PAGE16 ||
         address>=D_GUEST_COMMPAGE || length>D_GUEST_COMMPAGE-address)) return -EINVAL;
     if ((protection&PROT_EXEC) && !(flags&D_MAP_PRIVATE)) return -ENOTSUP;
+    if ((flags&D_MAP_RESILIENT_MEDIA) && (protection&PROT_EXEC)) return -ENOTSUP;
     struct native_code_range ranges[N_MAX_CODE_RANGES]; unsigned int count=0;
     long status=0;
     if (protection&PROT_EXEC) {
@@ -124,6 +169,11 @@ static long native_file_mmap(const unsigned long long *r)
         status=anonymous_aligned(length,PROT_NONE,PAGE16-1);
         if ((unsigned long)status>=(unsigned long)-4095) return status;
         address=status;
+    }
+    if (flags&D_MAP_RESILIENT_MEDIA) {
+        status=native_resilient_mapping(address,length,protection,fd,offset);
+        if ((unsigned long)status>=(unsigned long)-4095 && reserved) RAW(SYS_munmap,address,length,0,0,0,0);
+        return status;
     }
     int linux_flags=(flags&D_MAP_SHARED ? MAP_SHARED : MAP_PRIVATE)|MAP_FIXED;
     int initial_protection=protection&PROT_EXEC ? PROT_READ|PROT_WRITE : protection;
