@@ -258,6 +258,20 @@ static void dispatch(int signal, siginfo_t *info, void *context)
          * implemented process-local capabilities are returned; unsupported
          * operations return KERN_NOT_SUPPORTED. */
         unsigned long number=-(int64_t)trap;
+        if (number==D_TRAP_SPECIAL_REPLY_PORT) {
+            struct native_thread *thread=native_current_thread();
+            uint32_t name=thread ? ipc_reply_port() : 0;
+            if (name) {
+                struct ipc_endpoint *previous=ipc_find(thread->special_reply_port);
+                if (previous) previous->special_tid=0;
+                struct ipc_endpoint *endpoint=ipc_find(name);
+                endpoint->send_refs=1; endpoint->special_tid=thread->tid;
+                thread->special_reply_port=name;
+            }
+            r[0]=name;
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
         if (number==D_TRAP_GENERATE_ACTIVITY_ID) {
             r[0]=native_generate_activity_id(r);
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
@@ -316,8 +330,11 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             if (r[0]!=CURRENT_TASK_PORT) r[0]=D_KERN_INVALID_TASK;
             else if (refs && *refs) { --*refs; r[0]=0; }
             else {
+                struct ipc_endpoint *endpoint=ipc_find(r[1]);
                 struct native_thread *thread=native_thread_port(r[1]);
-                if (thread && __atomic_load_n(&thread->refs,__ATOMIC_ACQUIRE)) {
+                if (endpoint && ipc_drop_send(endpoint)) {
+                    r[0]=0;
+                } else if (thread && __atomic_load_n(&thread->refs,__ATOMIC_ACQUIRE)) {
                     __atomic_fetch_sub(&thread->refs,1,__ATOMIC_ACQ_REL); r[0]=0;
                 } else r[0]=D_KERN_INVALID_NAME;
                 native_reap_threads();

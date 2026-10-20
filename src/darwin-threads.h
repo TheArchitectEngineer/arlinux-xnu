@@ -12,7 +12,7 @@ struct native_thread {
     uint64_t workqueue,stack_low;
     uint32_t priority;
     int launch_state;
-    int event_queue; uint64_t workloop_id;
+    int event_queue; uint64_t workloop_id; uint32_t special_reply_port;
 };
 _Static_assert(offsetof(struct native_thread,tid)==56,"native clone ABI");
 static struct native_thread native_threads[NATIVE_THREADS];
@@ -135,6 +135,7 @@ static long native_thread_create_impl(const unsigned long long *r,const sigset_t
         thread->workqueue=workqueue; thread->stack_low=stack_low;
         thread->event_queue=workqueue>=2 ? (int)r[0] : -1;
         thread->workloop_id=workqueue>=2 ? r[1] : 0;
+        thread->special_reply_port=0;
         thread->priority=workqueue ? ((1U<<((flags&0xff)-1+8))|255) : (flags&D_PTHREAD_PRIORITY_MASK);
         __builtin_memcpy(&thread->initial_signal_mask,original_mask,8);
         if (registered_tsd) thread->flags|=workqueue ? D_WQ_TSD_SET : D_PTHREAD_START_TSD_SET;

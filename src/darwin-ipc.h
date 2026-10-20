@@ -14,11 +14,12 @@ static unsigned long host_send_refs,clock_send_refs[2];
 struct ipc_endpoint {
     uint32_t name,generation; int used,kind,read_fd,write_fd;
     unsigned long send_refs; uint64_t context; uint32_t options;
-    int queue_mutex; uint32_t queue_limit,queued,sequence,space_sequence;
+    int queue_mutex,special_tid; uint32_t queue_limit,queued,sequence,space_sequence;
 };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
 struct ipc_packet { struct darwin_audit_token sender; unsigned char message[IPC_BYTES]; };
+static void native_reply_wait(uint32_t);
 static void ipc_queue_lock(struct ipc_endpoint *endpoint)
 {
     while (__atomic_exchange_n(&endpoint->queue_mutex,1,__ATOMIC_ACQUIRE))
@@ -131,6 +132,14 @@ static struct ipc_endpoint *ipc_find(uint32_t name)
         if (__atomic_load_n(&ipc_endpoints[i].used,__ATOMIC_ACQUIRE)==2 && ipc_endpoints[i].name==name) return ipc_endpoints+i;
     return NULL;
 }
+static int ipc_drop_send(struct ipc_endpoint *endpoint)
+{
+    unsigned long refs=__atomic_load_n(&endpoint->send_refs,__ATOMIC_ACQUIRE);
+    while (refs) {
+        if (__atomic_compare_exchange_n(&endpoint->send_refs,&refs,refs-1,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) return 1;
+    }
+    return 0;
+}
 static uint32_t ipc_reply_port(void)
 {
     for (unsigned int i=0;i<IPC_ENDPOINTS;i++) {
@@ -147,6 +156,7 @@ static uint32_t ipc_reply_port(void)
         endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0;
         endpoint->send_refs=0; endpoint->context=0; endpoint->options=0;
         endpoint->queue_mutex=0; endpoint->queued=0; endpoint->sequence=0;
+        endpoint->special_tid=0;
         endpoint->space_sequence=0; endpoint->queue_limit=D_PORT_QLIMIT_DEFAULT;
         __atomic_store_n(&endpoint->used,2,__ATOMIC_RELEASE);
         return endpoint->name;
@@ -245,14 +255,20 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         int task=header->remote==CURRENT_TASK_PORT;
         if (header->remote!=CURRENT_HOST_PORT && clock<0 && !task) {
             struct ipc_endpoint *destination=ipc_find(header->remote);
-            if (!destination || destination->kind || !destination->send_refs) return D_MACH_SEND_INVALID_DEST;
+            if (!destination || destination->kind || !__atomic_load_n(&destination->send_refs,__ATOMIC_ACQUIRE)) return D_MACH_SEND_INVALID_DEST;
             /* First inline process-local transport. No port descriptors,
              * voucher or reply-right transfer is silently discarded. */
-            if (header->bits!=D_MACH_TYPE_COPY_SEND || header->local || header->voucher)
+            if ((header->bits!=D_MACH_TYPE_COPY_SEND && header->bits!=D_MACH_TYPE_MOVE_SEND) ||
+                header->local || header->voucher)
                 return D_MACH_SEND_INVALID_HEADER;
+            int move=header->bits==D_MACH_TYPE_MOVE_SEND;
+            if (move && !ipc_drop_send(destination)) return D_MACH_SEND_INVALID_DEST;
             header->size=r[2]; header->local=header->remote; header->remote=0;
             header->bits=D_MACH_TYPE_MOVE_SEND<<D_MACH_MSG_LOCAL_BITS_SHIFT;
-            if (ipc_enqueue_wait(destination,request,r[2],options,r[5])!=(long)r[2]) return D_MACH_SEND_TIMED_OUT;
+            if (ipc_enqueue_wait(destination,request,r[2],options,r[5])!=(long)r[2]) {
+                if (move) __atomic_fetch_add(&destination->send_refs,1,__ATOMIC_RELEASE);
+                return D_MACH_SEND_TIMED_OUT;
+            }
             goto receive_message;
         }
         if ((!task && clock<0 && !host_send_refs) || (clock>=0 && !clock_send_refs[clock])) return D_MACH_SEND_INVALID_DEST;
@@ -346,30 +362,37 @@ receive_message:
     if (options&D_MACH_RCV_MSG) {
         struct ipc_endpoint *endpoint=ipc_find(r[4]);
         if (!endpoint || endpoint->kind) return D_MACH_RCV_INVALID_NAME;
+        struct timespec now; uint64_t deadline=0;
         if (options&D_MACH_RCV_TIMEOUT) {
+            if (RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0)) return D_MACH_RCV_INTERRUPTED;
+            deadline=(uint64_t)now.tv_sec*1000000000+now.tv_nsec+(uint64_t)(uint32_t)r[5]*1000000;
+        }
+        for (;;) {
+            ipc_queue_lock(endpoint);
+            unsigned long message_size=0,total_size=0;
+            unsigned long status=ipc_receive_locked(endpoint,r[0],r[3],
+                options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT),&message_size,&total_size);
+            if (status==D_MACH_RCV_TOO_LARGE && (options&D_MACH_RCV_LARGE)) {
+                uint32_t size=message_size,identity=endpoint->name;
+                if (guest_copy(&size,r[0]+4,4,1) ||
+                    ((options&D_MACH_RCV_LARGE_IDENTITY) && guest_copy(&identity,r[0]+12,4,1))) status=D_MACH_RCV_INVALID_DATA;
+            }
+            ipc_queue_unlock(endpoint);
+            if (status!=D_MACH_RCV_TIMED_OUT) return status;
+            struct timespec remaining,*timeout=NULL;
+            if (options&D_MACH_RCV_TIMEOUT) {
+                if (RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0)) return D_MACH_RCV_INTERRUPTED;
+                uint64_t time=(uint64_t)now.tv_sec*1000000000+now.tv_nsec;
+                if (time>=deadline) return D_MACH_RCV_TIMED_OUT;
+                uint64_t duration=deadline-time;
+                remaining=(struct timespec){duration/1000000000,duration%1000000000}; timeout=&remaining;
+            }
+            native_reply_wait(endpoint->name);
             struct pollfd descriptor={.fd=endpoint->read_fd,.events=POLLIN};
-            struct timespec timeout={r[5]/1000,(r[5]%1000)*1000000};
-            long ready=RAW(SYS_ppoll,&descriptor,1,&timeout,0,0,0);
+            long ready=RAW(SYS_ppoll,&descriptor,1,timeout,0,0,0);
             if (!ready) return D_MACH_RCV_TIMED_OUT;
-            if (ready<0) return D_MACH_RCV_INTERRUPTED; /* MACH_RCV_INTERRUPTED */
+            if (ready<0) return D_MACH_RCV_INTERRUPTED;
         }
-        struct ipc_packet packet;
-        long length=RAW(SYS_recvfrom,endpoint->read_fd,&packet,sizeof(packet),MSG_PEEK,0,0);
-        if (length<0) return D_MACH_RCV_INTERRUPTED;
-        /* Another receiver may consume the packet after the blocking peek.
-         * Recheck under the same lock used for enqueue/count updates. Never
-         * block a sender while holding this lock. */
-        ipc_queue_lock(endpoint);
-        unsigned long message_size=0,total_size=0;
-        unsigned long status=ipc_receive_locked(endpoint,r[0],r[3],
-            options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT),&message_size,&total_size);
-        if (status==D_MACH_RCV_TOO_LARGE && (options&D_MACH_RCV_LARGE)) {
-            uint32_t size=message_size,identity=endpoint->name;
-            if (guest_copy(&size,r[0]+4,4,1) ||
-                ((options&D_MACH_RCV_LARGE_IDENTITY) && guest_copy(&identity,r[0]+12,4,1))) status=D_MACH_RCV_INVALID_DATA;
-        }
-        ipc_queue_unlock(endpoint);
-        return status;
     }
     return 0;
 }

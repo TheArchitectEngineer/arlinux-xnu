@@ -14,8 +14,10 @@ import struct
 import sys
 
 cache_path, log_path, output_path = map(Path, sys.argv[1:])
+trace = log_path.read_text()
 frames = sorted({int(item, 16) for item in
-                 re.findall(r'frame #\d+: (0x[0-9a-fA-F]+)', log_path.read_text())})
+                 re.findall(r'frame #\d+: (0x[0-9a-fA-F]+)', trace) +
+                 re.findall(r'NORMAL_RUNTIME_FAULT_PC (0x[0-9a-fA-F]+)', trace)})
 
 with cache_path.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:
     def bounded(offset, size):

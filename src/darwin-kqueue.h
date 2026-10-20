@@ -46,6 +46,15 @@ static void native_event_owner_exit(uint64_t port)
             native_kqueue_owner(native_kqueues+i,0);
     native_kqueue_unlock();
 }
+/* A synchronous special-reply wait yields this thread's workloop ownership
+ * while it really blocks. It does not fabricate a wake or receive completion. */
+static void native_reply_wait(uint32_t name)
+{
+    struct ipc_endpoint *endpoint=ipc_find(name);
+    struct native_thread *thread=native_current_thread();
+    if (endpoint && thread && endpoint->special_tid==thread->tid)
+        native_event_owner_exit(thread->port);
+}
 static struct native_kqueue *native_kqueue_find(int fd)
 {
     for (unsigned int i=0;i<D_KQUEUE_COUNT;i++)
