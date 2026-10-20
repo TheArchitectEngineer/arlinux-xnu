@@ -230,7 +230,7 @@ static spc_dictionary_t *session_launch_transition(void)
     spc_dictionary_t *settings=session_encoded_object("BSMutableSettings");
     spc_array_t *objects=spc_array_create(),*entry=spc_array_create();
     spc_array_set_value(entry,0,(spc_value_t){.type=SPC_TYPE_UINT64,.value.u64=UI_CONTEXT_LIFECYCLE_ACTION});
-    spc_array_set_value(entry,1,(spc_value_t){.type=SPC_TYPE_UINT64,.value.u64=UI_LIFECYCLE_ACTIVATE});
+    spc_array_set_value(entry,1,(spc_value_t){.type=SPC_TYPE_INT64,.value.i64=UI_LIFECYCLE_ACTIVATE});
     spc_array_set_value(entry,2,(spc_value_t){.type=SPC_TYPE_BOOL,.value.u64=1});
     spc_array_set_value(objects,0,(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=entry});
     spc_dictionary_set_value(settings,"objects",(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=objects});

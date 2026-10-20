@@ -74,7 +74,7 @@ _lifecycle_returns = {}
 def settings_callback(frame, location, internal_dict):
     breakpoint=location.GetBreakpoint()
     name=_settings_entries[breakpoint.GetID()]
-    if name.endswith(' _setObject:forSetting:') and frame.FindRegister('x3').GetValueAsUnsigned() not in (1,2):
+    if name.endswith(' _setObject:forSetting:') and frame.FindRegister('x3').GetValueAsUnsigned() not in (1,2,7):
         return False
     objects=GuestObjects(frame.GetThread().GetProcess())
     record={'method':name,'tid':frame.GetThread().GetThreadID(),
@@ -138,6 +138,12 @@ def install_launch_breakpoints(target):
     objects = GuestObjects(target.GetProcess())
     for symbol in diagnostic_symbols():
         name = symbol.get('symbol', '')
+        if name=='__CFXPCCreateCFObjectFromXPCObject':
+            address=int(symbol['address'],16)
+            print('APP_FOUNDATION_XPC_CODE',hex(address),flush=True)
+            target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 256')
+            capture_code_references(target,address,256,'APP_FOUNDATION_XPC_REFERENCE')
+            continue
         if name in ('_xpc_dictionary_set_uint64', '_xpc_dictionary_set_int64'):
             entries = [(name, int(symbol['address'], 16))]
         elif name in ('_OBJC_CLASS_$_UIApplication', '_OBJC_CLASS_$_BKSProcess',
