@@ -59,8 +59,12 @@ was receipt verified. The trusted-input runtime does not enforce Apple Library
 Validation or claim to register/authenticate signatures; descriptor/argument and
 actual file/mapping errors remain real.
 
-Exact pending run: [39412764242](https://github.com/taowen/arlinux-xnu/actions/runs/39412764242),
-source `52ef647fe61d838b00165c52f2b0328665babb93`, implements real low-address
+Run 39412764242/source 52ef647 did not reach execution: runtime compilation
+failed because S_ISREG was unavailable in this freestanding include context.
+The equivalent S_IFMT/S_IFREG mode check fixes that compile error.
+
+Exact pending run: [39413135394](https://github.com/taowen/arlinux-xnu/actions/runs/39413135394),
+source `501f69845895de37c8f0d3c5f82bf790336c68d0`, implements real low-address
 16 KiB file mappings, shared/private data and fixed placement. Private executable
 mappings are parsed as bounded non-arm64e ARM64 Mach-O (thin or FAT32); only
 explicit instruction-section intersections are adapted before cache flush and
