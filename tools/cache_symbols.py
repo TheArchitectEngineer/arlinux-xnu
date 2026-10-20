@@ -47,7 +47,7 @@ class CacheSymbols:
                 if member.data[88:104]!=uuid:raise ValueError('Cache member UUID mismatch')
                 if member.unpack('<Q',member.unpack('<I',16)[0])[0]!=self.base+vm:raise ValueError('Cache VM mismatch')
                 self.files.append(member)
-            self.mappings=[]
+            self.mappings=[];self.slides=[]
             for member in self.files:
                 if member.data[:16]!=b'dyld_v1   arm64\0':raise ValueError('Unsupported cache architecture')
                 offset,count=member.unpack('<II',16)
@@ -58,6 +58,19 @@ class CacheSymbols:
                     member.bounded(file_offset,size)
                     if any(address<old+length and old<address+size for old,length,_,_ in self.mappings):raise ValueError('Overlapping mappings')
                     self.mappings.append((address,size,member,file_offset))
+                slide_offset,slide_count=member.unpack('<II',312)
+                if slide_count!=count:raise ValueError('Slide mapping count mismatch')
+                member.bounded(slide_offset,slide_count*56)
+                for i in range(slide_count):
+                    base,length,file_offset,info,info_size,_,_,_=member.unpack('<QQQQQQII',slide_offset+i*56)
+                    if not any(base==old and length==size and member is file and file_offset==offset
+                               for old,size,file,offset in self.mappings):raise ValueError('Slide mapping identity mismatch')
+                    if not info_size:continue
+                    member.bounded(info,info_size)
+                    if info_size<40 or member.unpack('<I',info)[0]!=2:raise ValueError('Unsupported diagnostic pointer format')
+                    mask,add=member.unpack('<QQ',info+24)
+                    if not mask:raise ValueError('Invalid slide pointer mask')
+                    self.slides.append((base,length,mask,add))
             self.locals={}
             uuid=p.data[400:416]
             if any(uuid):
@@ -89,7 +102,7 @@ class CacheSymbols:
             if magic!=0xfeedfacf or cpu!=0x100000c or subtype&0xffffff or kind not in (6,7) or count>256:raise ValueError('Unsupported image: '+name)
             self.locate(address,32+size)
             cursor,end=start+32,start+32+size
-            executable=[];cstring=[];linkedit=None;tables=[]
+            executable=[];cstring=[];cfstring=[];linkedit=None;tables=[]
             for _ in range(count):
                 cmd,size=member.unpack('<II',cursor)
                 if size<8 or size%8 or cursor+size>end:raise ValueError('Invalid command: '+name)
@@ -104,12 +117,39 @@ class CacheSymbols:
                         section=cursor+72+n*80
                         if member.unpack('<I',section+64)[0]&255==2: # S_CSTRING_LITERALS
                             cstring.append(member.unpack('<QQ',section+32))
+                        if member.data[section:section+16].rstrip(b'\0')==b'__cfstring':
+                            cfstring.append(member.unpack('<QQ',section+32))
                 elif cmd==2:
                     if size!=24:raise ValueError('Invalid symbol command')
                     tables.append(member.unpack('<IIII',cursor+8))
                 cursor+=size
             if cursor!=end:raise ValueError('Invalid command extent')
-            yield {'name':name,'address':address,'executable':executable,'cstring':cstring,'linkedit':linkedit,'tables':tables}
+            yield {'name':name,'address':address,'executable':executable,'cstring':cstring,'cfstring':cfstring,'linkedit':linkedit,'tables':tables}
+
+    def typed_pointer(self,address):
+        """Read a declared pointer field with its mapping's actual slide-v2 data."""
+        member,offset=self.locate(address,8)
+        value=member.unpack('<Q',offset)[0]
+        for base,size,mask,add in self.slides:
+            if base<=address<base+size:
+                value&=~mask
+                return value+add if value else 0
+        return value
+
+    def constant_string(self,image,address):
+        """Only a declared 32-byte constant CFString backed by its C-string section."""
+        if not any(base<=address and address+32<=base+size and (address-base)%32==0
+                   for base,size in image['cfstring']):return None
+        member,offset=self.locate(address,32)
+        length=member.unpack('<Q',offset+24)[0]
+        if length>512:return None
+        pointer=self.typed_pointer(address+16)
+        if not any(base<=pointer and pointer+length+1<=base+size for base,size in image['cstring']):return None
+        member,offset=self.locate(pointer,length+1)
+        data=member.data[offset:offset+length+1]
+        if data[-1] or b'\0' in data[:-1]:return None
+        return {'object':hex(address),'address':hex(pointer),'literal':data[:-1].decode('utf-8',errors='replace'),
+                'note':'Declared constant CFString; pointer decoded with actual mapping slide metadata'}
     def symbols(self,image):
         tables=[]
         for offset,count,strings,size in image['tables']:
@@ -166,6 +206,8 @@ class CacheSymbols:
             immediate=((word>>5)&0x7ffff)<<2 | ((word>>29)&3)
             if immediate&0x100000:immediate-=0x200000
             address=((start+i)&~4095)+(immediate<<12)+((after>>10)&4095)
+            constant=self.constant_string(image,address)
+            if constant:literals.append({'instruction':hex(start+i),**constant})
             for cbase,csize in image['cstring']:
                 if not cbase<=address<cbase+csize:continue
                 maximum=min(512,cbase+csize-address)
