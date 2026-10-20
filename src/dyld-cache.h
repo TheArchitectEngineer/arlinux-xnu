@@ -87,8 +87,12 @@ static uint64_t load_native_cache(const char *root)
         need(cache_contains(image.address,sizeof(struct header),1),"cached Mach-O header bounds");
         const unsigned char *bytes=(void *)image.address;
         struct header mh; memcpy(&mh,bytes,sizeof(mh));
+        /* Modern caches also index their own dynamic linker. Its identity is
+         * the primary header's dyldInCacheMH, not a guessed path or OS version. */
+        int supported_kind=mh.type==MH_DYLIB ||
+            (mh.type==MH_DYLINKER && image.address==primary->header.dyld_header);
         int supported=mh.magic==0xfeedfacf && mh.cpu==0x0100000c && (mh.subtype&0xffffff)==0 &&
-             mh.type==6 && mh.ncmds<=256 && cache_contains(image.address,sizeof(mh)+mh.sizeofcmds,1);
+             supported_kind && mh.ncmds<=256 && cache_contains(image.address,sizeof(mh)+mh.sizeofcmds,1);
         if (!supported) fprintf(stderr,"NATIVE_CACHE_IMAGE_REJECT path=%s address=%#" PRIx64
             " magic=%#x cpu=%#x subtype=%#x type=%u commands=%u command_bytes=%u mapped=%d\n",
             (const char *)file+image.path_offset,image.address,mh.magic,mh.cpu,mh.subtype,

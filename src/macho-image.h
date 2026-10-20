@@ -6,6 +6,8 @@
 #define LC_UNIXTHREAD 5
 #define LC_UUID 0x1b
 #define LC_CODE_SIGNATURE 0x1d
+#define MH_DYLIB 0x6
+#define MH_DYLINKER 0x7
 #define NT_ARM_SYSTEM_CALL 0x404
 #define CARRY (1UL<<29)
 #define MAX_SEGMENTS 32
