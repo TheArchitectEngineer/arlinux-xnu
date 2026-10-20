@@ -13,6 +13,7 @@
 @interface NSObject (ARLinuxSceneABI)
 + (id)specification;
 + (id)queueWithMainRunLoopModes:(id)modes;
+- (void)performAsync:(void (^)(void))block;
 + (id)identityForIdentifier:(id)identifier workspaceIdentifier:(id)workspace;
 - (id)initWithIdentifier:(id)identifier workspace:(id)workspace endpoint:(id)endpoint;
 - (id)_initWithUpdater:(id)updater identityToken:(id)token identity:(id)identity
@@ -36,6 +37,11 @@ static NSString *owned_identifier;
 static int launch_phase;
 static const char *scene_stage="waiting";
 id arlinux_ios_scene_token(NSString *identifier,NSString *workspace);
+static void log_scene_exception(NSException *exception)
+{
+    fprintf(stderr,"IOS_SCENE_EXCEPTION stage=%s name=%.256s reason=%.1024s\n",
+        scene_stage,exception.name.UTF8String,exception.reason.UTF8String);
+}
 static id (*original_scenes)(id,SEL);
 static id (*original_scene)(id,SEL,id);
 
@@ -104,6 +110,7 @@ static void create_scene(UIApplication *app,const struct arlinux_ios_window_stat
     require_method(sceneClass,"_initWithUpdater:identityToken:identity:specification:settings:initialClientSettings:","@64@0:8@16@24@32@40@48@56",NO);
     require_method(identityClass,"identityForIdentifier:workspaceIdentifier:","@32@0:8@16@24",YES);
     require_method(queueClass,"queueWithMainRunLoopModes:","@24@0:8@16",YES);
+    require_method(queueClass,"performAsync:","v24@0:8@?16",NO);
     require_method(specificationClass,"specification","@16@0:8",YES);
     require_method(monitorClass,"mainConfiguration","@16@0:8",NO);
     require_method([app class],"_workspace","@16@0:8",NO);
@@ -133,26 +140,35 @@ static void create_scene(UIApplication *app,const struct arlinux_ios_window_stat
     [settings setDisplayConfiguration:display];
     [settings setFrame:CGRectMake(0,0,window->width,window->height)];
     [settings setForeground:!!(window->flags&ARLINUX_IOS_WINDOW_ACTIVE)];
+    /* FBSScene requires the specification's exact immutable class, not its
+     * mutable configuration counterpart (original fault 0x19b93237c). */
+    settings=[[settings copy] autorelease];
     id client=[[[[specification clientSettingsClass] alloc] init] autorelease];
     updater=[[ARLinuxSceneUpdater alloc] init];
     updater.definition=[[[definitionClass alloc] init] autorelease];
     [updater.definition setIdentity:identity]; [updater.definition setSpecification:specification];
     updater.callOutQueue=[queueClass queueWithMainRunLoopModes:@[(id)kCFRunLoopCommonModes]];
-    scene_stage="scene initialization";
-    fprintf(stderr,"IOS_SCENE_CONSTRUCT_BEGIN pid=%u incarnation=%u width=%u height=%u\n",
-        window->pid,window->incarnation,window->width,window->height);
-    owned_scene=[[sceneClass alloc] _initWithUpdater:updater identityToken:token identity:identity
-        specification:specification settings:settings initialClientSettings:client];
-    if (!owned_scene) unsupported("scene initializer");
-    install_registry();
-    id context=[[[[specification transitionContextClass] alloc] init] autorelease];
-    if (!context) unsupported("transition context");
-    scene_stage="UIKit scene delivery";
-    fprintf(stderr,"IOS_SCENE_DELIVER_BEGIN identifier=%s\n",owned_identifier.UTF8String);
-    [app workspace:owned_workspace didCreateScene:owned_scene withTransitionContext:context completion:^{
-        fprintf(stderr,"IOS_SCENE_DELIVERY_COMPLETION\n");
+    struct arlinux_ios_window_state initial=*window;
+    scene_stage="queued scene initialization";
+    [updater.callOutQueue performAsync:^{
+        @try {
+            scene_stage="scene initialization";
+            fprintf(stderr,"IOS_SCENE_CONSTRUCT_BEGIN pid=%u incarnation=%u width=%u height=%u settings=%s\n",
+                initial.pid,initial.incarnation,initial.width,initial.height,class_getName([settings class]));
+            owned_scene=[[sceneClass alloc] _initWithUpdater:updater identityToken:token identity:identity
+                specification:specification settings:settings initialClientSettings:client];
+            if (!owned_scene) unsupported("scene initializer");
+            install_registry();
+            id context=[[[[specification transitionContextClass] alloc] init] autorelease];
+            if (!context) unsupported("transition context");
+            scene_stage="UIKit scene delivery";
+            fprintf(stderr,"IOS_SCENE_DELIVER_BEGIN identifier=%s\n",owned_identifier.UTF8String);
+            [app workspace:owned_workspace didCreateScene:owned_scene withTransitionContext:context completion:^{
+                fprintf(stderr,"IOS_SCENE_DELIVERY_COMPLETION\n");
+            }];
+            fprintf(stderr,"IOS_SCENE_DELIVER_RETURNED app_acceptance=false\n");
+        } @catch (NSException *exception) { log_scene_exception(exception); @throw; }
     }];
-    fprintf(stderr,"IOS_SCENE_DELIVER_RETURNED app_acceptance=false\n");
 }
 static void lifecycle_tick(CFRunLoopTimerRef timer,void *info)
 {
@@ -167,8 +183,7 @@ static void lifecycle_tick(CFRunLoopTimerRef timer,void *info)
         launch_phase=1;
         @try { create_scene(app,&window); }
         @catch (NSException *exception) {
-            fprintf(stderr,"IOS_SCENE_EXCEPTION stage=%s name=%.256s reason=%.1024s\n",
-                scene_stage,exception.name.UTF8String,exception.reason.UTF8String);
+            log_scene_exception(exception);
             @throw;
         }
         /* Activation updates and normal close are not implemented yet. No

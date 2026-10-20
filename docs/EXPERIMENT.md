@@ -2,158 +2,80 @@
 
 ## Goal and fixed input
 
-Run a basic UIKit app on Linux ARM64 with visible content, external input,
-changed state and pixels, normal close and a fresh interactive relaunch.
-Console, Foundation and Swift/UIKit are independent regression layers. No OCR,
-AI recognition or fabricated success is used. Selective framework adaptation
-and replacement are allowed under the [architecture](ARCHITECTURE.md).
+Run basic real iOS apps on Linux ARM64 using selected Apple framework semantics
+and Linux-backed platform services. Counter must show real UIKit content,
+respond to external input with changed state/pixels, close normally and relaunch
+interactively. Console/Foundation and Swift/UIKit are independent regressions;
+the existing app collection and multi-process scenarios remain required.
 No complete Linux GUI, third-party IPA or Android acceptance has passed.
 
-sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16, build 20H392,
+sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16 build 20H392,
 6,035,280,776 bytes, SHA-256
 601cb23e740dacf8b61271fe02ffd5b3c146b518abb5a6e6b286e5f0475fe43b.
-Real OS and Cryptex1,SystemOS volumes form the read-only filesystem. Apple
+Actual OS and Cryptex1,SystemOS volumes form the read-only filesystem. Apple
 executable data stays runner-local. Compilation/execution use hosted runners
 through build.sh. The collection has 11 source-owned apps, 13 short journeys
-and two cross-app scenarios; a selected subset cannot certify the whole suite.
+and two cross-app scenarios; selected runs never certify the whole collection.
 
-## Latest verified Linux result
+## Current failed GUI effect
 
-Run [39501339522](https://github.com/taowen/arlinux-xnu/actions/runs/39501339522),
-source **0172b0c377eff295613fd62ec7c56649470eb95b**, selected Console, Counter,
-Foundation and SwiftCards. Receipt SHA-256
-**6df270f5f13eb0fc620bf5f74ff47745e38f8ef29363e65b945d0ba2937f5b28**
-and all 43 retained file hashes were verified. This is partial coverage and the
-run fails GUI acceptance.
+Run [39507197204](https://github.com/taowen/arlinux-xnu/actions/runs/39507197204),
+source **b5251c60f56101b0dbf0646ac19d0c41a5b1c2c8**, selected Counter. Receipt
+**8deff26a85336b0d29272f8646152278950ee33592fe73fdd876a9e005d891f4**
+and all 20 files were verified by the single build --wait --evidence command.
+The run fails; no Counter launch delegate, useful content or input is accepted.
 
-- Console passes allocation, a computing pthread, external input, normal exit
-  and fresh relaunch. Foundation passes Unicode JSON, exception unwind,
-  NSTimer computation and normal exit.
-- Counter and Swift/UIKit stay alive but have no accepted UI state or composed
-  pixels. Counter has no didFinishLaunching marker. The original main thread
-  waits in GSEventRunModal / CFRunLoopRun. An installed main-loop observer and
-  live process do not establish launch.
-- Actual Mach/bootstrap traffic reaches com.apple.frontboard.systemappservices.
-  The measured BSXPC channels request com.apple.uis.applicationSupportService
-  with initializeClientWithParameters:completion: and
-  com.apple.frontboard.workspace-service with handshakeWithRemnants:.
-  Those service operations remain unsupported; channel IDs are dynamic.
-- Earlier Atlas/dyld, trampoline loading and libdispatch synchronous-wake faults
-  no longer stop this path. fsgetpath resolves real mapped file identities;
-  CodeDirectory inspection supplies actual coverage without signature trust;
-  repeated synchronous kevent wake preserves real owner updates and wakeups.
-  Actual receipt/rights ownership remains in Darling/XNU, not a mock IPC path.
+- The guest reads actual host window state: 1024 x 600, 60000 mHz, configured,
+  active, backend-alive, audited PID/incarnation. Kernel child status also masks
+  stale alive/active flags; abrupt backend termination itself remains untested.
+- The platform adapter now enters the real FBSScene initializer with original
+  identity/specification/settings/client-settings objects and an actual
+  FBSSerialQueue/updater definition. This is not successful scene creation.
+- The original trap PC is 0x19b93237c, within that initializer's explicit
+  "settings class differs from specification" failure path. A mutable settings
+  object was passed where the exact immutable specification class is required.
+- The current change copies configured settings back to their immutable form
+  and schedules scene initialization/delivery on the genuine callout queue.
+  Those changes await hosted validation. Session scene registration, complete
+  enumeration, focus updates, input, host-process/remote endpoint support and
+  normal close remain unfinished.
 
-The version-2 platform API is compiled and exercised by the real injected
-library. Counter reads the actual host window as 1024 x 600, 60000 mHz, configured,
-active and backend-alive (flags 11), with its audited PID/incarnation. Explicit
-host close propagation is implemented in the snapshot but has not been exercised
-by a passing close journey. No UIKit transition is inferred from these facts.
+The prior run
+[39506273079](https://github.com/taowen/arlinux-xnu/actions/runs/39506273079),
+source 9617a69fbe2c921626b1ebce2267fa245f1edbb2, failed before scene creation.
+Its verified receipt is
+ed63db08eb4b4a21d5c08f47b536a7a1adff7dd8af3e71bb1ea4d3934fcd39b6 (20 files).
+Same-cache token-constructor code rejects nil endpoints and validates the remote
+service identity. The replacement local token is an immutable subclass with
+real local identity/copy/equality/hash, no remote endpoint and explicitly
+unsupported remote encoding. It passed those early constructor checks in the
+current run. No remote Apple capability or service success is fabricated.
+Local exception logging retains the original name/reason and rethrows.
 
-Loaded metadata disproves the historical FBSUIApplicationWorkspace,
-FBSWorkspaceClient and FBSSceneImpl interfaces: those classes are absent.
-FBSScene instead declares
-_initWithUpdater:identityToken:identity:specification:settings:initialClientSettings:.
-UIApplication declares workspace:didCreateScene:withTransitionContext:completion:.
-Focused run [39502256463](https://github.com/taowen/arlinux-xnu/actions/runs/39502256463),
-source b7314f882a94a5cf996c4afdf5b66715d64888df, verified all 20 files and receipt
-be629a20f35668b79fb1aae06a685ef995ce83f2d6ee5f4fc2e4b0f940e398fb.
-Counter still fails GUI acceptance. The actual initializer calls updater's
-callOutQueue and definition; it validates FBSSerialQueue, FBSSceneIdentityToken,
-FBSSceneIdentity, FBSSceneSpecification and matching settings/client-settings
-classes. The UIKit callback also validates the transition-context class.
-FBSSceneSpecification exposes settingsClass, clientSettingsClass and
-transitionContextClass. These contracts define the next host-backed scene
-implementation. The current integration attempts scene construction with a real
-FBSScene, updater queue/definition and specification-owned settings, then calls
-UIKit's workspace scene callback. It also exposes the owned scene through
-workspace lookup/collection getters. Run [39506273079](https://github.com/taowen/arlinux-xnu/actions/runs/39506273079),
-source 9617a69fbe2c921626b1ebce2267fa245f1edbb2, compiled the adapter and failed
-with an original NSException before scene delivery. Receipt
-ed63db08eb4b4a21d5c08f47b536a7a1adff7dd8af3e71bb1ea4d3934fcd39b6 and all
-20 files were verified. The actual token constructor unconditionally rejects a
-nil endpoint and validates its service; it is a remote capability contract.
-The current change replaces that transport-specific token with an immutable
-local-token subclass (real identity, copying, equality/hash, no endpoint, no
-remote encoding). A local catch logs the original exception name/reason and
-rethrows, never suppresses the failure. This change is awaiting runner validation;
+## Verified regression and reference limits
 
-complete session registration, enumeration, focus, input and normal close remain
-required. No launch readiness or app success is assigned by this adapter.
-
-The subsequent window-state correction consults real Linux child status when
-reading backend liveness, so an ungraceful backend exit cannot leave a stale
-alive/active snapshot. Run [39503145757](https://github.com/taowen/arlinux-xnu/actions/runs/39503145757),
-source 6b3bda4b0b612edeecab08b494c80d7b78c67fef, compiled and exercised the
-initial snapshot; its receipt
-96791ee1da826d551d92b184711c979df58f56ec322f93c564325f68ae67ed48 and all 20
-files were verified. Abrupt backend termination itself remains untested.
-
-The optimized pipeline was exercised by Counter run
-[39504112474](https://github.com/taowen/arlinux-xnu/actions/runs/39504112474),
-source 53ad33eebc6e17c7749de0be74bda80bb7c96a08. Parallel SDK/Linux preparation,
-single-app compilation and same-run receipt handoff completed. The single
-build --wait --evidence invocation followed the exact run, reported the failed
-GUI step, verified receipt
-e7633b43e6f24130a74afe3f29a7a2043c58c158633d81bb25ebf8f0692203e8 and all
-20 files, and exited nonzero. Follow-up run
-[39504697195](https://github.com/taowen/arlinux-xnu/actions/runs/39504697195),
+Run [39504697195](https://github.com/taowen/arlinux-xnu/actions/runs/39504697195),
 source 2326e771feaa4ba5bc9b67f9ec63965858259bfb, passed Console and Foundation
-with fullSuite=false. The command verified receipt
+(fullSuite=false). Receipt
 fbed9e7d32538114fb9a03ccdff762720b37d22bf166fd6396ce7b6e8a876e45 and all
-23 files and exited zero. This validates both feedback outcome paths; UIKit
-compatibility is unchanged.
+23 files were verified. Console covers real allocation, computing pthread,
+external stdin, normal exit and a fresh relaunch. Foundation covers Unicode JSON,
+exception unwind, NSTimer computation and normal exit. They have not been rerun
+against the newly introduced scene adapter. Swift/UIKit has no passing Linux
+journey and must be included after Counter startup progresses.
 
-## Direction and next implementation
+Earlier loader/Mach/runtime repairs retain actual file identities, mapped
+trampoline code, message rights and synchronous wake behavior. They do not prove
+GUI effects. The removed legacy FrontBoard wire serializer is not restored.
+[Architecture](ARCHITECTURE.md) owns selective replacement boundaries;
+[diagnostics](DIAGNOSTICS.md) owns the shortened feedback procedure and measurements.
+Historical source/run/receipt details remain in Git and Actions, not this handoff.
 
-Preserve original Apple application semantics where useful; replace platform
-services with Linux-backed behavior. This changes the default next step from
-reconstructing every FrontBoard wire operation to choosing a lifecycle boundary
-in the existing injected platform adapter. No replacement is implemented or
-validated merely by changing this plan.
-
-1. Locate the framework-facing startup/scene entry points and their required
-   state using the original app stacks and bounded same-cache diagnostics.
-   Choose a shared lifecycle contract, rather than adding one app's bypass.
-2. Implement real scene creation/configuration, activation and normal close
-   against session-owned process/scene identity and host window state. Keep
-   original UIKit controls/layout; allow replacing dependency-heavy internals.
-3. Route actual Wayland input through the guest event path. Render genuine app
-   content, then prove Counter click/state/pixel change and close/relaunch.
-4. Regress Foundation and Swift/UIKit, then independent app and multi-process
-   journeys. Remove superseded service paths only after the replacement works.
-
-Wayland supplies surfaces and host input, not UIKit or a GPU implementation.
-The current software renderer has not completed a UIKit journey on this input.
-Do not call delegate/control actions from the harness, force readiness, or
-report successful service operations without implementing their effects.
-
-## Cleanup verified by this run
-
-The legacy FrontBoard launch/scene serializer, workspace registration and
-launch/scene reply state have been deleted, together with their build inputs.
-Automatic BSXPC symbol enumeration and fixed protocol-disassembly requests were
-removed from every failed-app diagnosis. General same-cache symbolication and
-original-process stack collection remain available, including explicit targeted
-lookups when a diagnosis needs them. The runtime no longer emits the old codec
-class-export diagnostics. This cleanup does not implement host-backed lifecycle.
-
-The runner compiled the modified runtime and executed the four selected
-journeys after this cleanup. Console/Foundation retain their passing baseline;
-Counter/Swift retain the unsupported lifecycle negotiation failure. This does
-not validate GUI functionality or the unselected app collection.
-
-## Evidence and reference limits
-
-Apple reference run
+Apple-host reference run
 [39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593),
 source 31cdc44086cf2acb681b396ec1ba6b06830d84dd, passed Console, Counter,
-Foundation and SwiftCards (partial collection). Counter's genuine UIKit text
-and composed label-region hash changed after external input; close/relaunch
-restored the initial hash. The relied-upon receipt and file hashes were verified.
-This is an Apple-host behavior reference, not Linux or Android acceptance.
-
-Original-process stacks, bounded metadata/instruction diagnostics and actual
-Mach traffic explain failures; they do not constitute working app effects.
-Historical protocol investigations and receipts remain in Git/Actions instead
-of an accumulating diary.
+Foundation and SwiftCards (partial collection). External Counter input changed
+actual UIKit text and composed pixels; close/relaunch restored the initial hash.
+Its relied-upon receipts/files were verified. This remains a behavior reference,
+not Linux or Android acceptance. No OCR, AI recognition or injected app/control
+actions establish acceptance.
