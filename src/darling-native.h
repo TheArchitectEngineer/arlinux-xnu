@@ -27,6 +27,11 @@ static void darling_error(const char *operation)
 static void darling_abort(const char *operation)
 {
     darling_error(operation);
+    /* Keep the original client threads for the existing opt-in fault collector
+     * when a service rejects a request. Otherwise exit_group loses the caller
+     * that was awaiting this reply. This remains a fatal journey failure. */
+    if (native_stop_on_fault)
+        RAW(SYS_tgkill,RAW(SYS_getpid,0,0,0,0,0,0),RAW(SYS_gettid,0,0,0,0,0,0),SIGABRT,0,0,0);
     RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0);
     __builtin_unreachable();
 }

@@ -36,6 +36,14 @@
           "text": "Count: ?0"
         },
         {
+          "do": "click",
+          "text": "^Increment$"
+        },
+        {
+          "do": "see",
+          "text": "Count: ?1"
+        },
+        {
           "do": "close"
         },
         {

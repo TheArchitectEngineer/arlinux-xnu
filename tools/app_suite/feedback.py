@@ -48,7 +48,7 @@ def failure_summary(result,output):
             'runtimeLog':str(runtime.relative_to(output)),
             'stderr':str(stderr.relative_to(output)),
             'faultContexts':fault_contexts(runtime),
-            'observed':witnesses(runtime,('DARWIN_FAULT signal=','DARWIN_NATIVE_FAULT',
+            'observed':witnesses(runtime,('DARWIN_FAULT signal=','DARWIN_NATIVE_FAULT','DARLING_RPC_ERROR ',
                 'UI_PLATFORM_IMPORTS_UNAVAILABLE','UI_RUNLOOP_OBSERVER_INSTALLED','UI_LAYER_FRAME sequence='))+
                 witnesses(stderr,('IOS_HOST_WINDOW ','WAYLAND_BACKEND_READY ','WAYLAND_TOPLEVEL_FOCUS ',
                     'IOS_LIFECYCLE_BINDING_FAILED ','IOS_LIFECYCLE_UNSUPPORTED ','IOS_LIFECYCLE_CONTRACT ',

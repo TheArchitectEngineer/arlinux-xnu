@@ -66,9 +66,13 @@ liveness and audited app PID/incarnation. A bounded sequence-checked read
 avoids torn host updates; kernel child status overrides stale liveness after
 an abrupt backend exit. The guest ios-lifecycle.m now attempts real scene construction on its main
 loop using the specification's actual settings/client/transition classes and
-host-derived process/geometry identity. It supplies a local updater and delivers
-the scene through UIKit's workspace callback, never the app delegate directly.
-This first integration is unvalidated: session scene registration, complete
+host-derived process/geometry identity. It supplies a local updater and enters
+FBSScene's genuine agent creation notification. That path binds the agent to
+its scene before its original event handler dispatches into UIKit. The removed
+direct UIApplication workspace callback skipped that required binding. Hosted
+run 39510013762 passes the prior agent invariant and reaches real client-settings
+updates, then rejects an unsupported render-service request (40203). No useful
+app content or full GUI journey has passed. Session scene registration, complete
 workspace enumeration, focus updates, host-process/remote endpoint support,
 input and normal close remain unfinished. Unsupported operations fail visibly.
 
