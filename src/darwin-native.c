@@ -57,6 +57,7 @@ static int darwin_error(long result)
     case EEXIST: return D_EEXIST;
     case EXDEV: return D_EXDEV;
     case ESTALE: return D_ESTALE;
+    case EOWNERDEAD: return D_EOWNERDEAD;
     case ENODEV: return D_ENODEV;
     case ENOTDIR: return D_ENOTDIR;
     case EISDIR: return D_EISDIR;
@@ -257,6 +258,11 @@ static void dispatch(int signal, siginfo_t *info, void *context)
          * implemented process-local capabilities are returned; unsupported
          * operations return KERN_NOT_SUPPORTED. */
         unsigned long number=-(int64_t)trap;
+        if (number==D_TRAP_GENERATE_ACTIVITY_ID) {
+            r[0]=native_generate_activity_id(r);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
         if (number==D_TRAP_PORT_CONSTRUCT) {
             r[0]=ipc_port_construct(r,uc->uc_mcontext.pc);
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
@@ -647,7 +653,13 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     for (int cpu=0;cpu<CPU_SETSIZE;cpu++) if (CPU_ISSET(cpu,&available)) { CPU_SET(cpu,&one); break; }
     if (sched_setaffinity(0,sizeof(one),&one)) { perror("single guest CPU"); exit(1); }
     native_threads[0].tid=RAW(SYS_gettid,0,0,0,0,0,0);
-    native_threads[0].state=2; native_threads[0].port=(D_THREAD_PORT_INDEX_BASE<<D_PORT_NAME_INDEX_SHIFT)|1; native_threads[0].refs=1;
+    native_threads[0].state=2; native_threads[0].port=(D_THREAD_PORT_INDEX_BASE<<D_PORT_NAME_INDEX_SHIFT)|D_PORT_GENERATION_TAG; native_threads[0].refs=1;
+    /* The activity namespace belongs to this standalone compatibility machine.
+     * MAP_SHARED preserves a single allocator across real fork/COW children. */
+    native_activity_ids=mmap(NULL,D_GUEST_PAGE_SIZE,PROT_READ|PROT_WRITE,
+                             MAP_SHARED|MAP_ANONYMOUS,-1,0);
+    if (native_activity_ids==MAP_FAILED) { perror("activity ID namespace"); exit(1); }
+    *native_activity_ids=1;
     current_cache_base=cache_base;
     memcpy(guest_executable_uuid,uuid,sizeof(guest_executable_uuid));
     char *absolute=realpath(program,NULL);

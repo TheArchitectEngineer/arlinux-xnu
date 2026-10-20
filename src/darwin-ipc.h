@@ -141,8 +141,8 @@ static uint32_t ipc_reply_port(void)
         if (RAW(SYS_socketpair,AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC,0,pair,0,0)) {
             __atomic_store_n(&endpoint->used,0,__ATOMIC_RELEASE); return 0;
         }
-        endpoint->generation=(endpoint->generation+1)&D_PORT_GENERATION_MASK;
-        if (!endpoint->generation) endpoint->generation=1;
+        endpoint->generation=endpoint->generation ?
+            (endpoint->generation+D_PORT_GENERATION_STEP)&D_PORT_GENERATION_MASK : D_PORT_GENERATION_TAG;
         endpoint->name=((i+D_REPLY_PORT_INDEX_BASE)<<D_PORT_NAME_INDEX_SHIFT)|endpoint->generation;
         endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0;
         endpoint->send_refs=0; endpoint->context=0; endpoint->options=0;
@@ -177,9 +177,9 @@ static unsigned long ipc_port_construct(const unsigned long long *r,unsigned lon
     /* IMPORTANCE_RECEIVER records eligibility under the standalone ordinary
      * Linux scheduling policy. There is no App Nap or cross-task importance
      * propagation here. Message delivery/queue limits remain real effects. */
-    /* The name owns a genuine Linux message queue and receive right. Generic
-     * sends are still rejected until their ownership rules are implemented;
-     * construction does not impersonate a remote XPC service. */
+    /* The name owns a genuine Linux message queue and receive right. Inline
+     * sends without transferred rights can use it; construction never
+     * impersonates a remote XPC service. */
     if (guest_copy(&name,r[3],sizeof(name),1)) {
         RAW(SYS_close,endpoint->read_fd,0,0,0,0,0);
         RAW(SYS_close,endpoint->write_fd,0,0,0,0,0);
@@ -196,8 +196,8 @@ static uint32_t ipc_semaphore(unsigned int initial)
         if (!__atomic_compare_exchange_n(&endpoint->used,&unused,1,0,__ATOMIC_ACQ_REL,__ATOMIC_RELAXED)) continue;
         long fd=RAW(SYS_eventfd2,initial,EFD_SEMAPHORE|EFD_NONBLOCK|EFD_CLOEXEC,0,0,0,0);
         if (fd<0) { __atomic_store_n(&endpoint->used,0,__ATOMIC_RELEASE); return 0; }
-        endpoint->generation=(endpoint->generation+1)&D_PORT_GENERATION_MASK;
-        if (!endpoint->generation) endpoint->generation=1;
+        endpoint->generation=endpoint->generation ?
+            (endpoint->generation+D_PORT_GENERATION_STEP)&D_PORT_GENERATION_MASK : D_PORT_GENERATION_TAG;
         endpoint->name=((i+D_REPLY_PORT_INDEX_BASE)<<D_PORT_NAME_INDEX_SHIFT)|endpoint->generation;
         endpoint->read_fd=endpoint->write_fd=fd;
         endpoint->kind=1; endpoint->send_refs=1; __atomic_store_n(&endpoint->used,2,__ATOMIC_RELEASE);

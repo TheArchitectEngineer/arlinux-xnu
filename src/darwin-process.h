@@ -2,6 +2,18 @@
  * ticks; executable UUID is the original Mach-O LC_UUID, not a placeholder.
  * Query other processes/flavors only when their behavior is implemented. */
 #pragma once
+static uint64_t *native_activity_ids;
+static unsigned long native_generate_activity_id(const unsigned long long *r)
+{
+    if (!r[1] || r[1]>D_ACTIVITY_ID_COUNT_MAX) return D_KERN_INVALID_ARGUMENT;
+    uint64_t current=__atomic_load_n(native_activity_ids,__ATOMIC_ACQUIRE);
+    for (;;) {
+        if (current>UINT64_MAX-r[1]) return D_KERN_RESOURCE_SHORTAGE;
+        uint64_t next=current+r[1];
+        if (__atomic_compare_exchange_n(native_activity_ids,&current,next,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))
+            return guest_copy(&current,r[2],sizeof(current),1) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
+    }
+}
 static unsigned char guest_executable_uuid[16];
 static long native_proc_start(uint32_t pid,uint64_t *ticks,uint32_t *parent)
 {

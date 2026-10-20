@@ -1,6 +1,6 @@
 /* Native Linux threads entering the registered, real Darwin pthread callback.
  * Custom stacks and ordinary workqueue callbacks use real Linux threads.
- * QoS is best-effort Linux niceness; realtime/workloop is not advertised.
+ * QoS is best-effort Linux niceness; event workloops have bound Linux workers.
  * No host libc/TLS operation occurs after guest entry. */
 #pragma once
 #include <linux/futex.h>
@@ -20,6 +20,7 @@ static uint64_t thread_start_callback,workqueue_start_callback;
 static int workqueue_opened,workqueue_registered,workqueue_has_kevents;
 static __attribute__((noreturn)) void native_event_worker_start(struct native_thread *);
 static long native_event_worker_return(const unsigned long long *);
+static void native_event_owner_exit(uint64_t);
 static uint32_t registered_pthread_size,registered_tsd,registered_thread_slot;
 extern long darwin_clone_thread(struct native_thread *);
 extern char darwin_clone_return[];
@@ -137,8 +138,8 @@ static long native_thread_create_impl(const unsigned long long *r,const sigset_t
         thread->priority=workqueue ? ((1U<<((flags&0xff)-1+8))|255) : (flags&D_PTHREAD_PRIORITY_MASK);
         __builtin_memcpy(&thread->initial_signal_mask,original_mask,8);
         if (registered_tsd) thread->flags|=workqueue ? D_WQ_TSD_SET : D_PTHREAD_START_TSD_SET;
-        thread->generation=(thread->generation+1)&D_PORT_GENERATION_MASK;
-        if (!thread->generation) thread->generation=1;
+        thread->generation=thread->generation ?
+            (thread->generation+D_PORT_GENERATION_STEP)&D_PORT_GENERATION_MASK : D_PORT_GENERATION_TAG;
         thread->port=((D_THREAD_PORT_INDEX_BASE+i)<<D_PORT_NAME_INDEX_SHIFT)|thread->generation; thread->refs=1; thread->tid=-1;
         if (registered_tsd && guest_copy(&thread->port,r[3]+registered_tsd+registered_thread_slot,8,1)) {
             RAW(SYS_munmap,memory,D_THREAD_RUNTIME_STACK_SIZE,0,0,0,0); RAW(SYS_munmap,alternate,D_SIGNAL_STACK_SIZE,0,0,0,0);
@@ -180,6 +181,7 @@ static long native_thread_terminate(const unsigned long long *r)
     if (!thread || thread==native_threads || (r[0]&(D_GUEST_PAGE_SIZE-1)) || (r[1]&(D_GUEST_PAGE_SIZE-1)) || r[1]>D_VM_MAX_ALLOCATION) return -EINVAL;
     if (r[3]) return -ENOTSUP; /* custom-stack join semaphore requires separate path */
     if (r[1] && RAW(SYS_munmap,r[0],r[1],0,0,0,0)) return -EINVAL;
+    native_event_owner_exit(thread->port);
     if (thread->workqueue) __atomic_store_n(&thread->refs,0,__ATOMIC_RELEASE);
     __atomic_store_n(&thread->state,3,__ATOMIC_RELEASE);
     RAW(SYS_exit,0,0,0,0,0,0); /* thread exit; never exit_group */

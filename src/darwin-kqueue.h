@@ -13,7 +13,7 @@ struct native_knote {
 };
 struct native_kqueue {
     int used,fd,worker,owner_tid;
-    uint64_t dynamic_id; uint32_t priority;
+    uint64_t dynamic_id; uint32_t priority,client_owner,ownership_epoch;
     struct native_knote watches[D_KQUEUE_WATCHES];
 };
 static struct native_kqueue native_kqueues[D_KQUEUE_COUNT];
@@ -28,6 +28,23 @@ static void native_kqueue_unlock(void)
 {
     __atomic_store_n(&native_kqueue_mutex,0,__ATOMIC_RELEASE);
     RAW(SYS_futex,&native_kqueue_mutex,FUTEX_WAKE_PRIVATE,1,0,0,0);
+}
+/* Called with the queue namespace locked. Pending readiness remains queued
+ * while a genuine user thread owns the drain session. */
+static void native_kqueue_owner(struct native_kqueue *queue,uint32_t port)
+{
+    if (queue->client_owner==port) return;
+    __atomic_store_n(&queue->client_owner,port,__ATOMIC_RELEASE);
+    __atomic_fetch_add(&queue->ownership_epoch,1,__ATOMIC_RELEASE);
+    RAW(SYS_futex,&queue->ownership_epoch,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
+}
+static void native_event_owner_exit(uint64_t port)
+{
+    native_kqueue_lock();
+    for (unsigned int i=0;i<D_KQUEUE_COUNT;i++)
+        if (native_kqueues[i].used && native_kqueues[i].client_owner==port)
+            native_kqueue_owner(native_kqueues+i,0);
+    native_kqueue_unlock();
 }
 static struct native_kqueue *native_kqueue_find(int fd)
 {
@@ -45,6 +62,7 @@ static long native_kqueue_create_locked(void)
             native_kqueues[i].fd=fd;
             native_kqueues[i].dynamic_id=0; native_kqueues[i].owner_tid=0;
             native_kqueues[i].priority=0;
+            native_kqueues[i].client_owner=0; native_kqueues[i].ownership_epoch=0;
             __atomic_store_n(&native_kqueues[i].used,1,__ATOMIC_RELEASE);
         }
         return fd;
@@ -77,19 +95,36 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
     if (event->filter==D_EVFILT_WORKLOOP) {
         if (!queue->dynamic_id || event->ident!=queue->dynamic_id ||
             !(event->fflags&D_NOTE_WL_THREAD_REQUEST) ||
-            (event->fflags&~(D_NOTE_WL_THREAD_REQUEST|D_NOTE_WL_UPDATE_QOS|D_NOTE_WL_IGNORE_ESTALE))) return -ENOTSUP;
+            (event->fflags&~(D_NOTE_WL_THREAD_REQUEST|D_NOTE_WL_UPDATE_QOS|D_NOTE_WL_IGNORE_ESTALE|
+                            D_NOTE_WL_DISCOVER_OWNER|D_NOTE_WL_END_OWNERSHIP))) return -ENOTSUP;
         /* Match XNU's debounce snapshot. A stale ignored request must not
          * attach, modify or wake a source. Preserve the actual state in an
          * error receipt when the caller asks to see ESTALE. */
+        int stale=0;
+        uint32_t owner=queue->client_owner;
         if (event->ext[D_WL_ADDR]) {
             uint64_t state;
             if ((event->ext[D_WL_ADDR]&7) ||
                 guest_copy(&state,event->ext[D_WL_ADDR],sizeof(state),0)) return -EFAULT;
             uint64_t expected=event->ext[D_WL_VALUE];
             event->ext[D_WL_VALUE]=state;
-            if ((state&event->ext[D_WL_MASK])!=(expected&event->ext[D_WL_MASK]))
-                return (event->fflags&D_NOTE_WL_IGNORE_ESTALE) ? 0 : -ESTALE;
+            stale=(state&event->ext[D_WL_MASK])!=(expected&event->ext[D_WL_MASK]);
+            if (!stale && (event->fflags&D_NOTE_WL_DISCOVER_OWNER)) {
+                uint32_t name=(uint32_t)state&~(uint32_t)D_PORT_GENERATION_TAG;
+                owner=0;
+                if (name) {
+                    name|=D_PORT_GENERATION_TAG;
+                    struct native_thread *thread=native_thread_port(name);
+                    if (!thread || __atomic_load_n(&thread->state,__ATOMIC_ACQUIRE)!=2 || thread->tid<=0)
+                        return -EOWNERDEAD;
+                    owner=name;
+                }
+            }
         }
+        struct native_thread *caller=native_current_thread();
+        if ((event->fflags&D_NOTE_WL_END_OWNERSHIP) && caller && owner==caller->port) owner=0;
+        native_kqueue_owner(queue,owner);
+        if (stale) return (event->fflags&D_NOTE_WL_IGNORE_ESTALE) ? 0 : -ESTALE;
         if ((event->flags&D_EV_ADD) && !(event->flags&D_EV_DELETE)) {
             uint32_t priority=(uint32_t)event->qos&D_PTHREAD_PRIORITY_MASK;
             unsigned int bits=(priority>>D_PTHREAD_QOS_SHIFT)&D_PTHREAD_QOS_MASK;
@@ -255,6 +290,18 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
         if (count<=0) return count;
         unsigned int emitted=0;
         native_kqueue_lock();
+        if (queue->client_owner) {
+            struct native_thread *owner=native_thread_port(queue->client_owner);
+            struct native_thread *caller=native_current_thread();
+            if (!owner || owner->state!=2 || owner->tid<=0) native_kqueue_owner(queue,0);
+            else if (!caller || caller->port!=queue->client_owner) {
+                uint32_t epoch=__atomic_load_n(&queue->ownership_epoch,__ATOMIC_ACQUIRE);
+                native_kqueue_unlock();
+                long result=RAW(SYS_futex,&queue->ownership_epoch,FUTEX_WAIT_PRIVATE,epoch,0,0,0);
+                if (result && result!=-EAGAIN) return result;
+                continue;
+            }
+        }
         for (int i=0;i<count;i++) {
             unsigned int index=(uint32_t)events[i].data.u64;
             if (index>=D_KQUEUE_WATCHES) continue;
@@ -469,7 +516,10 @@ static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
     native_kqueue_unlock();
     /* Polling a bound workloop belongs to its actual servicer. Registration
      * with ERROR_EVENTS is allowed from the client that owns its sources. */
-    if (!(flags&D_KEVENT_ERROR_EVENTS) && queue->owner_tid!=RAW(SYS_gettid,0,0,0,0,0,0)) return -EXDEV;
+    if (!(flags&D_KEVENT_ERROR_EVENTS) && queue->owner_tid!=RAW(SYS_gettid,0,0,0,0,0,0)) {
+        struct native_thread *caller=native_current_thread();
+        if (!caller || __atomic_load_n(&queue->client_owner,__ATOMIC_ACQUIRE)!=caller->port) return -EXDEV;
+    }
     long result=native_kqueue_changes(queue,r[1],r[2],r[3],r[4]);
     if (result) return result;
     if (r[2]) {

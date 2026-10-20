@@ -1,6 +1,6 @@
 /* Ordinary libdispatch work items, executed by real registered pthread workers.
- * Basic kevent delivery is provided by darwin-kqueue.h; workloops and realtime
- * scheduling remain unsupported. Ordinary workers exit
+ * Kevent and basic workloop delivery are provided by darwin-kqueue.h;
+ * realtime scheduling remains unsupported. Ordinary workers exit
  * after returning a batch; libpthread runs its actual cleanup/termination path.
  * This favors simple lifetime rules over XNU's idle-thread reuse policy. */
 #pragma once

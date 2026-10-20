@@ -74,6 +74,7 @@ enum darwin_mach_trap {
     D_TRAP_MSG_OVERWRITE = 32,
     D_TRAP_SEMAPHORE_SIGNAL = 33,
     D_TRAP_SEMAPHORE_WAIT = 36,
+    D_TRAP_GENERATE_ACTIVITY_ID = 43,
     D_TRAP_TIMEBASE_INFO = 89,
     D_TRAP_HOST_CREATE_VOUCHER = 70,
 };
@@ -115,6 +116,7 @@ enum darwin_errno {
     D_ESTALE = 70,
     D_ENOSYS = 78,
     D_EOVERFLOW = 84,
+    D_EOWNERDEAD = 105,
 };
 enum darwin_kern_return {
     D_KERN_SUCCESS = 0, D_KERN_INVALID_ADDRESS = 1,
@@ -205,7 +207,7 @@ _Static_assert(sizeof(struct darwin_stat64)==144,"Darwin ARM64 stat64 wire layou
 _Static_assert(sizeof(struct darwin_pthread_registration)==48,"Darwin pthread registration wire layout");
 
 /* libpthread-330 kern/kern_internal.h and XNU bsd/pthread/workqueue_syscalls.h.
- * Basic KEVENT callbacks use Linux readiness; WORKLOOP remains omitted. */
+ * Basic KEVENT/WORKLOOP callbacks use real Linux readiness and bound workers. */
 enum darwin_workqueue_abi {
     D_PTHREAD_FEATURE_DISPATCH = 0x01, D_PTHREAD_FEATURE_FINEPRIO = 0x02,
     D_PTHREAD_FEATURE_CTL = 0x04, D_PTHREAD_FEATURE_SETSELF = 0x08,
@@ -251,9 +253,12 @@ enum darwin_memory_event {
 };
 enum darwin_workloop_event {
     D_NOTE_WL_THREAD_REQUEST=1, D_NOTE_WL_UPDATE_QOS=0x10,
-    D_NOTE_WL_IGNORE_ESTALE=0x100,
+    D_NOTE_WL_END_OWNERSHIP=0x20, D_NOTE_WL_DISCOVER_OWNER=0x80, D_NOTE_WL_IGNORE_ESTALE=0x100,
     D_WL_ADDR=1, D_WL_MASK=2, D_WL_VALUE=3
 };
+/* XNU ipc_entry.h keeps the low two generation bits set for dispatch tagging. */
+enum darwin_port_generation { D_PORT_GENERATION_STEP=4, D_PORT_GENERATION_TAG=3 };
+enum darwin_activity_abi { D_ACTIVITY_ID_COUNT_MAX=16 };
 
 /* libpthread-330 internal.h mutex options and XNU bank/bank_types.h. */
 enum darwin_mutex_voucher_abi {
