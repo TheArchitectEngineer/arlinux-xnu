@@ -34,17 +34,20 @@ static void darling_abort(const char *operation)
 static long darling_receive(int fd,struct msghdr *message)
 {
     struct msghdr original=*message;
+    struct darling_memory_updates updates={0};
     for (;;) {
         *message=original;
         long result=RAW(SYS_recvmsg,fd,message,0,0,0,0);
+        if (result==-EINTR) continue;
         if (result>=(long)sizeof(dserver_s2c_callhdr_t)) {
             dserver_s2c_call_t *call=message->msg_iov[0].iov_base;
             if (call->mmap.header.call_number==dserver_callnum_s2c) {
                 if (message->msg_flags&(MSG_TRUNC|MSG_CTRUNC)) darling_abort("truncated S2C memory request");
-                darling_memory_reply(fd,call,result);
+                darling_memory_reply(fd,call,result,&updates);
                 continue;
             }
         }
+        darling_memory_complete(&updates);
         return result;
     }
 }

@@ -111,8 +111,8 @@ static void trace_call(unsigned long number,unsigned long pc,unsigned long resul
 static unsigned long guest_next=D_GUEST_HEAP_START;
 static long anonymous_aligned(unsigned long size,int protection,unsigned long mask)
 {
-    /* Until executable mapping rewrite is implemented, never grant unadapted
-     * new executable pages. Unknown/file/fixed map modes fail at the caller. */
+    /* Ordinary guest anonymous allocations do not provide adapted code.
+     * File mappings and trusted server copy operations have separate callers. */
     if (!size || size > D_VM_MAX_ALLOCATION || (protection & ~(PROT_READ|PROT_WRITE)) ||
         mask>=D_VM_MAX_ALLOCATION || (mask&(mask+1))) return -EINVAL;
     unsigned long alignment=mask+1;

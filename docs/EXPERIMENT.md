@@ -49,33 +49,35 @@ not a zero-result stub. Write-lock routing is implemented but not independently
 observed in that trace. Server Darwin errors and Linux transport errors retain
 separate ABI handling. The local backend remains unsupported for these calls.
 
-[Run 39411849622](https://github.com/taowen/arlinux-xnu/actions/runs/39411849622),
-source `9d7a01962dbc7c3db3856dae227677a70abd8759`, passes the F_CHECK_LV
-composition policy and reaches the next explicit dyld error:
-`mmap() errno=45 validating first page of /usr/lib/libobjc-trampolines.dylib`.
-This confirms the file-mapping gap after Library Validation, not successful
-loading. Runtime log SHA-256 `643737f7621cff45b77b91340b5c7ad859f5e02dccf34db85759f86607e66c65`
-was receipt verified. The trusted-input runtime does not enforce Apple Library
-Validation or claim to register/authenticate signatures; descriptor/argument and
-actual file/mapping errors remain real.
+[Run 39413135394](https://github.com/taowen/arlinux-xnu/actions/runs/39413135394),
+source `501f69845895de37c8f0d3c5f82bf790336c68d0`, passes Library Validation
+composition policy and real file mapping. The traced app maps
+libobjc-trampolines.dylib's 48 KiB executable TEXT at 0x304d3c000. Its one
+instruction section contains zero TLS instructions requiring adaptation; this
+run does not establish rewriting a dynamic library containing such instructions.
+The next actual abort is `vm_remap trampolines failed (6)`: Darling requests a
+fixed anonymous 48 KiB RWX target at 0x304d54000; the native S2C callback rejects
+it with Linux ENOTSUP (-95). The server translates allocation failure to
+KERN_RESOURCE_SHORTAGE. This does not establish physical memory exhaustion.
 
-Run 39412764242/source 52ef647 did not reach execution: runtime compilation
-failed because S_ISREG was unavailable in this freestanding include context.
-The equivalent S_IFMT/S_IFREG mode check fixes that compile error.
+The next change supports actual low-address, 16 KiB-aligned S2C anonymous
+allocations, fixed overwrite/non-overwrite flags and requested R/W/X permissions.
+Darling retains source-memory read and target copy semantics. After its final
+RPC reply, the client flushes copied executable ranges before resuming guest
+code. Those process bytes were already adapted by their loader and are not
+rewritten twice. Pending cache ranges track overwrite/unmap/protection changes;
+capacity and actual Linux mapping errors remain failures. The trusted server's
+existing RWX allocation/returned-protection limitations are not corrected by
+this change. Ordinary BSD anonymous executable allocation and general JIT
+adaptation remain unsupported. Dispatch and inspect the exact new runner result;
+no ARHELLO_READY, UIKit frame, real input or complete GUI lifecycle passes yet.
 
-Exact pending run: [39413135394](https://github.com/taowen/arlinux-xnu/actions/runs/39413135394),
-source `501f69845895de37c8f0d3c5f82bf790336c68d0`, implements real low-address
-16 KiB file mappings, shared/private data and fixed placement. Private executable
-mappings are parsed as bounded non-arm64e ARM64 Mach-O (thin or FAT32); only
-explicit instruction-section intersections are adapted before cache flush and
-requested protection. The same instruction adapter is shared with the initial
-loader. Source files and data sections are not rewritten. Shared executable
-maps, anonymous executable/JIT allocation and general executable mprotect remain
-unsupported. Check actual DARWIN_FILE_MMAP arguments/results and
-NATIVE_DYNAMIC_TLS_REWRITE, dyld's next error and real app progress. Bounds or
-mapping failures stay visible; no address is returned without actual storage.
-Continue this exact run; observation timeouts do not justify restarting it.
-No ARHELLO_READY, UIKit frame, real input or complete GUI lifecycle passes yet.
+References: Apple's [objc4 trampoline allocation](https://github.com/apple-oss-distributions/objc4/blob/objc4-750/runtime/objc-block-trampolines.mm#L287-L334)
+uses a fixed overwrite with copy=TRUE. The pinned Darling server's
+[mach_vm_remap_external](https://github.com/taowen/darlingserver/blob/5d0ce49cde1fc7cf7a8953283120b00f27b6b493/duct-tape/src/memory.c#L1010-L1072)
+already copies real bytes, but unconditionally requests RWX and returns RW
+current protection. libffi's shared-copy=FALSE variant is not equivalent to
+objc4's private copy and must not replace it.
 
 The prior diagnostic run 39410444685 stopped earlier in libdispatch at
 0x1808c4878 and did not reproduce the pthread abort; preserve that distinct
@@ -97,15 +99,15 @@ explains abort-reason/abort routing; compare it with the actual cache code.
 
 ## Exact evidence and inputs
 
-Latest failure evidence is run 39411131655; downloaded LLDB/runtime/session
+Latest failure evidence is run 39413135394; downloaded LLDB/runtime/session
 logs match its receipt. Receipt SHA-256:
-`c7a904a0113438a28c2713814244c837f86cedbc735386653777627d19a5cc09`.
+`c9e07eb6a899f7340eeb476bd9f1c7553794d6bcee18cd13d2a6c949bff376fb`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| debugger.runtime.log | `7263964427d6da2fd4eb555d2ad4749fac64ba4f0bfaeaf1206bf66d7880891b` |
-| lldb.log | `20c041305c54b28fca3dd9d5e45badcde0332f22c8ae0502e40b439d525e856c` |
-| session.log | `693d5bc20971762199264032acc9eb10edb26d6b022e593b6fdcf68895509e52` |
+| debugger.runtime.log | `1976f43fe35ed3715b5b576824b440712140cd8ec25da70f649a1099c3448a8c` |
+| lldb.log | `4899d7f413f58a3a348dfdbc90d155e7a241de78f20191660561155ce0ca82ff` |
+| session.log | `dcbafb328f2c1720ef8c71e61ce94d98895b438daeeca4d64cde21f2ecb8bc71` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain
