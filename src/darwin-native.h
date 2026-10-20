@@ -4,13 +4,14 @@
 long darwin_native_memory(unsigned long size,int protection);
 void darwin_native_connect(void);
 int darwin_native_services_enabled(void);
+int darwin_native_session_start(void);
 void *darwin_native_service_run(void *);
 int darwin_native_host_port_refs(uint32_t port,int delta);
 int darwin_native_host_port_deallocate(uint32_t port);
 uint32_t darwin_native_host_task(void);
 int darwin_native_host_identity(uint32_t *pid,uint32_t *incarnation);
 uint32_t darwin_native_bootstrap_peer(uint64_t token_address);
-int arlinux_xpc_bootstrap(void *request,void *response,unsigned long capacity,uint32_t bootstrap,uint32_t *held_port);
+int arlinux_xpc_bootstrap(void *request,void *response,unsigned long capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *requester);
 int arlinux_xpc_processinfo(void *request,unsigned long length,void *response,unsigned long capacity,uint32_t listener,uint32_t set);
 int darwin_native_host_join(uint32_t port,uint32_t set);
 int darwin_native_system_lookup(const char *name,uint64_t type,uint64_t flags,uint32_t *port);

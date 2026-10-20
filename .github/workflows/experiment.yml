@@ -285,6 +285,22 @@ jobs:
                   raise SystemExit('Weston did not open its Wayland socket; inspect weston.log')
               time.sleep(0.05)
           PY
+      - name: Start independent iOS session service
+        if: inputs.mode == 'app' && inputs.ipc == 'darling'
+        shell: bash
+        run: |
+          set -euo pipefail
+          build/native/macho-native --session > build/dyld/session.stdout 2> build/dyld/session.log &
+          session=$!
+          echo "$session" > build/dyld/session.pid
+          echo "ARLINUX_SESSION_PID=$session" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 100); do
+            if grep -q '^SESSION_READY ' build/dyld/session.log; then exit 0; fi
+            if ! kill -0 "$session" 2>/dev/null; then cat build/dyld/session.log; exit 1; fi
+            sleep 0.05
+          done
+          cat build/dyld/session.log
+          exit 1
       - name: Start ARHello 1.0 with real UIKit
         if: inputs.mode == 'app'
         shell: bash
@@ -294,7 +310,19 @@ jobs:
           echo build/native/ARHello.app/ARHello > build/dyld/debugger.program
           python3 -c "import hashlib,json,pathlib; p=pathlib.Path('build/native/ARHello.app/ARHello'); print('APP_INPUT '+json.dumps({'name':'ARHello','version':'1.0','bundleId':'io.arlinux.ARHello','sha256':hashlib.sha256(p.read_bytes()).hexdigest()}))" | tee build/dyld/app-input.json
           status=0
+          peer=0
+          if [[ '${{ inputs.ipc }}' == darling ]]; then
+            timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/peer.stdout 2> build/dyld/peer.runtime.log &
+            peer=$!
+          fi
           timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log || status=$?
+          if [[ "$peer" != 0 ]]; then
+            peer_status=0
+            wait "$peer" || peer_status=$?
+            cat build/dyld/peer.stdout build/dyld/peer.runtime.log
+            echo "PEER_PROCESS_STATUS=$peer_status"
+            if [[ "$peer_status" != 0 || ! -s build/dyld/peer.stdout ]] || ! grep -q '^ARHELLO_READY ' build/dyld/peer.stdout; then status=1; fi
+          fi
           cat build/dyld/app.stdout build/dyld/app.runtime.log
           echo "APP_PROCESS_STATUS=$status"
           if [[ "$status" == 0 ]] && ! grep -q '^ARHELLO_READY ' build/dyld/app.stdout; then
@@ -309,6 +337,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/dyld
+          if [[ -f build/dyld/session.pid ]] && ! kill -0 "$(cat build/dyld/session.pid)" 2>/dev/null; then
+            echo 'SESSION_SERVICE_UNAVAILABLE inspect session.log; no live provider for LLDB retry'
+            cat build/dyld/session.log
+            exit 0
+          fi
           if [[ '${{ inputs.ipc }}' == darling ]] && ! kill -0 "$ARLINUX_DARLING_PID" 2>/dev/null; then
             echo 'DARLING_SERVER_UNAVAILABLE original service exited; preserve darling.log; no live IPC server for the LLDB retry'
             exit 0
@@ -363,6 +396,10 @@ jobs:
         if: always() && inputs.ipc == 'darling'
         shell: bash
         run: |
+          if [[ -f build/dyld/session.pid ]]; then
+            kill -- "$(cat build/dyld/session.pid)" 2>/dev/null || true
+            cat build/dyld/session.log build/dyld/session.stdout
+          fi
           if [[ -f build/dyld/darling.pid ]]; then
             kill -- "$(cat build/dyld/darling.pid)" 2>/dev/null || true
           fi

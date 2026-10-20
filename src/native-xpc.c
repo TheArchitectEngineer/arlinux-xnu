@@ -17,7 +17,7 @@ int mach_port_addref(mach_port_t port,mach_port_right_t right)
 int fileport_makeport(int fd,mach_port_t *port)
 { (void)fd; (void)port; return D_ENOTSUP; }
 
-int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port)
+int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
 {
     mach_msg_header_t *header=request;
     if (header->msgh_id!=0x10000000) return 0;
@@ -54,11 +54,12 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     }
     spc_dictionary_t *reply=spc_dictionary_create();
     /* The genuine non-PID-1 bootstrap path authenticates its requester echo
-     * against the requester's current audit PID/incarnation. Host provider and
-     * guest share this task; use the same Linux-backed identity as XNU, not a
-     * made-up PID 1 or root token. See run 39385834761's interface-routine code. */
+     * against the requester's current audit PID/incarnation. The kernel audit
+     * trailer identifies the requesting task across processes; never echo this
+     * service's PID instead. See run 39385834761's interface-routine code. */
     uint32_t requester=0,incarnation=0;
-    if (darwin_native_host_identity(&requester,&incarnation)) abort();
+    if (!audit) abort();
+    requester=audit[5]; incarnation=audit[7];
     spc_dictionary_set_uint64(reply,"req_pid",requester);
     spc_dictionary_set_uint64(reply,"rec_execcnt",incarnation);
     fprintf(stderr,"BOOTSTRAP_XPC_IDENTITY pid=%u incarnation=%u\n",requester,incarnation);

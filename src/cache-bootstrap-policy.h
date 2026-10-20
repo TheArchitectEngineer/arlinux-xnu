@@ -1,4 +1,4 @@
-/* Adapt the genuine client's launchd-only trust predicate to our in-task
+/* Adapt the genuine client's launchd-only trust predicate to our session
  * bootstrap provider. Evidence: run 39387154773, real audit getter followed
  * by PID/euid checks. No firmware address or release version is assumed. */
 #pragma once
@@ -38,6 +38,6 @@ static void cache_bootstrap_policy(uint64_t base,uint64_t bytes)
         uint64_t helper=(uintptr_t)darwin_native_bootstrap_peer;
         memcpy(p,code,sizeof(code)); memcpy(p+6,&helper,sizeof(helper));
         cache_bootstrap_policy_hooks++;
-        fprintf(stderr,"NATIVE_BOOTSTRAP_POLICY address=%#" PRIx64 " peer=same-task-pid-uid-incarnation\n",pc);
+        fprintf(stderr,"NATIVE_BOOTSTRAP_POLICY address=%#" PRIx64 " peer=session-provider-pid-uid-incarnation\n",pc);
     }
 }

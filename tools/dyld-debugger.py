@@ -683,6 +683,12 @@ def capture_normal_fault(target):
                 addresses.add(int(match[1], 16))
     for address in sorted(addresses):
         print('NORMAL_RUNTIME_FAULT_PC', hex(address), flush=True)
+        if address >= 0x1000000000:
+            # Native host addresses are ASLR-specific. The guest loader keeps
+            # addresses below its 36-bit limit; a host abort PC from another
+            # attempt cannot be read or disassembled in this process.
+            print('NORMAL_HOST_FAULT_CODE_UNAVAILABLE separate-attempt-ASLR', hex(address), flush=True)
+            continue
         capture_code_references(target, max(0, address-128), 40, 'FAULT_REFERENCE')
         target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(max(0, address-128)) + ' --count 64')
         # A callee can tail-branch into a shared assertion body, leaving LR at

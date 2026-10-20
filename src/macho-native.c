@@ -87,6 +87,12 @@ static void rewrite_tls(struct image *im)
 
 int main(int argc,char **argv)
 {
+    if (argc==2 && !strcmp(argv[1],"--session")) {
+        darwin_native_connect();
+        need(!darwin_native_session_start(),"initialize independent session service");
+        darwin_native_service_run(NULL);
+        return 1;
+    }
     int dynamic=(argc==4 || argc==6) && !strcmp(argv[1],"--dyld");
     const char *root=argc==6 && !strcmp(argv[3],"--root") ? argv[4] : NULL;
     need(argc!=6 || root,"expected --root directory");

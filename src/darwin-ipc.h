@@ -27,6 +27,27 @@ struct ipc_endpoint {
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 static uint32_t native_bootstrap_port,native_display_port,native_render_port;
 static uint32_t native_processinfo_port;
+static int native_session_manager;
+static uint32_t native_provider_pid,native_provider_incarnation;
+
+static int native_inherit_bootstrap(void)
+{
+#ifdef ARLINUX_DARLING
+    uint32_t reply=0; uint32_t message[32]={0};
+    if (dserver_rpc_mach_reply_port(&reply)) return -1;
+    struct ipc_header_bootstrap { uint32_t bits,size,remote,local,voucher; int32_t id; };
+    struct ipc_header_bootstrap *header=(void *)message;
+    header->bits=D_MACH_TYPE_COPY_SEND|(D_MACH_TYPE_MAKE_SEND_ONCE<<8);
+    header->size=36; header->remote=CURRENT_TASK_PORT; header->local=reply;
+    header->id=D_MIG_TASK_GET_SPECIAL_PORT; message[7]=1; message[8]=D_TASK_BOOTSTRAP_PORT;
+    int error=dserver_rpc_mach_msg_overwrite(message,D_MACH_SEND_MSG|D_MACH_RCV_MSG,36,sizeof(message),reply,0,0,NULL);
+    dserver_rpc_mach_port_mod_refs(CURRENT_TASK_PORT,reply,D_PORT_RIGHT_RECEIVE,-1);
+    if (error || !(header->bits&D_MACH_MSG_COMPLEX) || header->size!=40 || message[6]!=1 || !message[7]) return -1;
+    native_bootstrap_port=message[7]; return 0;
+#else
+    return -1;
+#endif
+}
 static uint32_t native_display_width,native_display_height;
 static uint32_t native_display_refresh;
 static uint64_t native_display_period_bits;
@@ -409,12 +430,16 @@ int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refre
     if (!width || !height || width>8192 || height>8192 || backend_pid<=0 || native_bootstrap_port) return -1;
     #ifdef ARLINUX_DARLING
     if (darling_active) {
-        uint32_t *names[]={&native_bootstrap_port,&native_display_port,&native_render_port,&native_processinfo_port};
-        for (unsigned int i=0;i<4;i++) {
+        const char *provider=getenv("ARLINUX_SESSION_PID"); char *end=NULL;
+        long pid=provider ? strtol(provider,&end,10) : 0; uint64_t ticks=0; uint32_t parent=0;
+        if (!provider || !*provider || *end || pid<=0 || pid>INT32_MAX ||
+            native_proc_start(pid,&ticks,&parent) || native_inherit_bootstrap()) return -1;
+        native_provider_pid=pid; native_provider_incarnation=(uint32_t)ticks;
+        uint32_t *names[]={&native_display_port,&native_render_port};
+        for (unsigned int i=0;i<2;i++) {
             if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,names[i]) ||
                 dserver_rpc_mach_port_insert_right(CURRENT_TASK_PORT,*names[i],*names[i],D_MACH_TYPE_MAKE_SEND)) return -1;
         }
-        if (dserver_rpc_task_set_special_port(D_TASK_BOOTSTRAP_PORT,native_bootstrap_port)) return -1;
     } else
     #endif
     { native_bootstrap_port=ipc_reply_port(); native_display_port=ipc_reply_port(); native_render_port=ipc_reply_port(); }
@@ -442,7 +467,21 @@ static uint32_t ipc_display_float(uint32_t value)
 
 int darwin_native_services_enabled(void)
 {
-    return darling_active && native_display_port;
+    return darling_active && (native_display_port || native_session_manager);
+}
+int darwin_native_session_start(void)
+{
+#ifdef ARLINUX_DARLING
+    if (!darling_active || native_bootstrap_port) return -1;
+    uint32_t *names[]={&native_bootstrap_port,&native_processinfo_port};
+    for (unsigned int i=0;i<2;i++)
+        if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,names[i]) ||
+            dserver_rpc_mach_port_insert_right(CURRENT_TASK_PORT,*names[i],*names[i],D_MACH_TYPE_MAKE_SEND)) return -1;
+    if (dserver_rpc_task_set_special_port(D_TASK_BOOTSTRAP_PORT,native_bootstrap_port)) return -1;
+    native_session_manager=1; return 0;
+#else
+    return -1;
+#endif
 }
 uint32_t darwin_native_host_task(void) { return CURRENT_TASK_PORT; }
 int darwin_native_host_identity(uint32_t *pid,uint32_t *incarnation)
@@ -457,10 +496,10 @@ uint32_t darwin_native_bootstrap_peer(uint64_t token_address)
     struct darwin_audit_token peer,self;
     if (!native_bootstrap_port || guest_copy(&peer,token_address,sizeof(peer),0) ||
         native_current_audit_token(&self)) return D_KERN_FAILURE;
-    /* Our bootstrap provider is this task's controlled host thread, not a
-     * machine launchd. Keep actual audit credentials; accept only that task
-     * and its real process incarnation. Original requester-echo checks follow. */
-    return peer.pid==self.pid && peer.euid==self.euid && peer.idversion==self.idversion ?
+    /* Authenticate the independent session provider chosen before guest entry.
+     * Keep actual audit credentials and its real Linux process incarnation.
+     * Original requester-echo checks follow. */
+    return peer.pid==native_provider_pid && peer.euid==self.euid && peer.idversion==native_provider_incarnation ?
         D_KERN_SUCCESS : D_KERN_FAILURE;
 }
 int darwin_native_host_join(uint32_t port,uint32_t set)
@@ -491,15 +530,19 @@ void *darwin_native_service_run(void *unused)
     if (!darwin_native_services_enabled()) return NULL;
     uint32_t set=0;
     if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_PORT_SET,&set) ||
-        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_display_port,set) ||
-        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_render_port,set) ||
-        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_processinfo_port,set) ||
-        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_bootstrap_port,set))
+        (native_display_port && dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_display_port,set)) ||
+        (native_render_port && dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_render_port,set)) ||
+        (native_session_manager && (dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_processinfo_port,set) ||
+        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_bootstrap_port,set))))
         darling_abort("create display service port set");
+    if (native_session_manager) {
+        const char ready[]="SESSION_READY shared-bootstrap-process\n";
+        RAW(SYS_write,2,ready,sizeof(ready)-1,0,0,0);
+    }
     unsigned int traces=0;
     for (;;) {
         unsigned char request[IPC_BYTES+256]; uint32_t response[IPC_BYTES/4];
-        int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_RCV_MSG,0,sizeof(request),set,0,0,NULL);
+        int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_RCV_MSG|(3U<<24),0,sizeof(request),set,0,0,NULL);
         if (status) { trace_call(0,0,status); darling_abort("receive display service request"); }
         struct ipc_header *header=(void *)request,*out=(void *)response;
         if (header->size<sizeof(*header) || header->size>IPC_BYTES)
@@ -520,8 +563,13 @@ void *darwin_native_service_run(void *unused)
         out->size=36; out->id=header->id+D_MIG_REPLY_ID_OFFSET;
         response[7]=1; response[8]=(uint32_t)D_MIG_BAD_ID;
         unsigned long ool=0; uint32_t held_port=0;
+        unsigned long trailer_offset=(header->size+3UL)&~3UL;
+        struct darwin_context_trailer *trailer=(void *)(request+trailer_offset);
+        if (trailer->type || trailer->size<52 || trailer_offset+trailer->size>sizeof(request))
+            darling_abort("missing service requester audit trailer");
+        uint32_t requester[8]; __builtin_memcpy(requester,&trailer->audit,sizeof(requester));
         if (header->local!=native_bootstrap_port ||
-            !arlinux_xpc_bootstrap(request,response,sizeof(response),native_bootstrap_port,&held_port))
+            !arlinux_xpc_bootstrap(request,response,sizeof(response),native_bootstrap_port,&held_port,requester))
             ool=ipc_display_response(header->local==native_render_port,
                 header->local==native_display_port,request,header->size,response,0,0);
         if (traces++<D_DIAGNOSTIC_REQUEST_LIMIT) {
@@ -663,7 +711,7 @@ uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t 
 {
     (void)instance; /* Default lookup has no instance-selection flag. */
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
-    if (!ipc_display_live()) return D_KERN_FAILURE;
+    if (!native_session_manager && !ipc_display_live()) return D_KERN_FAILURE;
     if (flags || (target && target!=RAW(SYS_getpid,0,0,0,0,0,0))) return D_KERN_NOT_SUPPORTED;
     char service[D_BOOTSTRAP_NAME_MAX]; uint32_t error=native_service_name(name,service);
     if (error) return error;
