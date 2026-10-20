@@ -150,24 +150,34 @@ class CacheSymbols:
         end=min(end,following)
         record=self.disassemble(start,end-start)
         record.update(symbol=nearest[1],faultPC=hex(pc))
-        names=dict(symbols);calls={}
-        member,offset=self.locate(start,end-start)
-        for i in range(0,end-start,4):
-            word=member.unpack('<I',offset+i)[0]
-            if word&0xfc000000!=0x94000000:continue
-            immediate=word&0x3ffffff
-            if immediate&0x2000000:immediate-=0x4000000
-            target=start+i+immediate*4
-            if target in names:calls[target]=names[target]
+        names=dict(symbols)
+        def direct_calls(begin,size):
+            calls={};member,offset=self.locate(begin,size)
+            for i in range(0,size,4):
+                word=member.unpack('<I',offset+i)[0]
+                if word&0xfc000000!=0x94000000:continue
+                immediate=word&0x3ffffff
+                if immediate&0x2000000:immediate-=0x4000000
+                target=begin+i+immediate*4
+                if target in names:calls[target]=names[target]
+            return calls
+        calls=direct_calls(start,end-start)
         record['directCalls']=[{'address':hex(address),'symbol':name} for address,name in sorted(calls.items())]
-        callees=[]
-        for address,name in sorted(calls.items()):
+        callees=[];pending=[(address,name,1) for address,name in sorted(calls.items())];seen={start}
+        while pending:
+            address,name,depth=pending.pop(0)
+            if address in seen:continue
+            seen.add(address)
             if not any(part in name.lower() for part in ('bks','screen','display')):continue
             if len(callees)>=8:break
             region=next(((base,length) for base,length in image['executable'] if base<=address<base+length),None)
             if not region:continue
             stop=min(address+768,region[0]+region[1],min((value for value,_ in symbols if value>address),default=address+768))
-            entry=self.disassemble(address,stop-address);entry['symbol']=name;callees.append(entry)
+            entry=self.disassemble(address,stop-address);entry['symbol']=name
+            children=direct_calls(address,stop-address)
+            entry['directCalls']=[{'address':hex(value),'symbol':label} for value,label in sorted(children.items())]
+            callees.append(entry)
+            if depth<3:pending.extend((value,label,depth+1) for value,label in sorted(children.items()))
         record['protocolCallees']=callees
         return record
 
