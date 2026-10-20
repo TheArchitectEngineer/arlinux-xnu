@@ -31,74 +31,71 @@ hashes were verified. This is a behavior reference, not Linux acceptance.
 
 ## Latest verified Linux result
 
-Run [39477341682](https://github.com/taowen/arlinux-xnu/actions/runs/39477341682),
-source **e88cc6e8ac8c6ce0f96185d298b816095eb59588**, selected Console, Counter,
-Foundation and SwiftCards. The result receipt SHA-256 is
-**7befc8cd7598efc7a51f94081f72e1ac8d3c504ada84502e28f4ca3c9327441c**;
-the receipt and retained text artifact hashes were verified locally.
-No UIKit GUI journey has passed. This is a partial collection, not device acceptance.
+Run [39480445811](https://github.com/taowen/arlinux-xnu/actions/runs/39480445811),
+source **351fff6c0c55123e89a51a6bb7aae94a06441f53**, selected Console, Counter,
+Foundation and SwiftCards. Result receipt SHA-256
+**c9215eead1262826b74ba1427995c62a3106f6816f52f23714c4f7f2f6c77908** and
+retained text hashes were verified. This is partial Linux coverage, not device
+or UIKit GUI acceptance.
 
-- Console's complete interactive/relaunch journey passes, as it has since source
-  d75e519. Both generations perform genuine malloc and pthread computation,
-  accept input, print Counter: 1 / Goodbye and exit normally with status 0.
-- Foundation's complete objects/exception/timer journey passes, first established
-  in run 39473090148 at source db152bc. Actual NSJSONSerialization preserves
-  Unicode/collections, real exception unwind succeeds, and NSTimer runs its
-  callback. The computed result is 10; q produces normal exit status 0.
-- The loader uses the actual 43-member cache, 2,705 images, slide-v2 relocation,
-  TLS adaptation, immutable commpage, cache-file identity, dyld image-info,
-  main-stack metadata and kernel entropy. Real descriptor paths and read-only
-  Darwin openat now reach actual files; absent files retain genuine errors.
-- Modern dispatch uses actual workers/event callbacks. Workqueue returns replace
-  saved guest contexts through Linux signal return; ordinary completed workers
-  enter real libpthread cleanup. Fallback QoS and optional adaptive-spin flags
-  no longer reject otherwise-valid actual worker/futex operations.
-- Real task_info/host_info and vector messages use Darling Mach/MIG queues.
-  Sync-receive translation now carries the actual remote send right in the
-  legacy priority slot. Run 39476150717 verified option 0x40700420e returns 0,
-  replacing MACH_RCV_INVALID_NOTIFY; it did not certify the whole XPC service.
-- BackBoard request 6001009 is a measured 24-byte request / 60-byte reply,
-  not the 68-byte receive allocation. Actual Wayland dimensions are 1024x600;
-  the client passes its original BackBoard initialization assertion.
-- __CASGetDisplays request 40231 is 36 bytes, including NDR and a zero selector.
-  Its real decoder validates the 56-byte complex reply and single OOL descriptor.
-  Serving the actual display list now delivers 250 bytes through real Mach
-  copyout/rights. Counter's original frame chain reaches query_displays +928
-  and CA::Display::Display::update +128. This is actual parsing/display-object
-  progress, not visible pixels or successful controls.
-- A concurrent earlier run also observed cfprefsd.m:171 client_context_finalizer
-  asserting !context->_valid. Its relation to main-thread startup failure remains
-  unproven; the assertion has not been disabled.
+- Console's full interactive/relaunch journey continues to pass. Both actual
+  generations allocate memory, create/join a computing pthread, accept input
+  and exit normally with status 0.
+- Foundation's Unicode JSON, exception unwind and NSTimer journey continues to
+  pass. It computes 10, accepts q and exits normally with status 0.
+- Counter and Swift no longer abort at the previous service-port check. Their
+  real processes remain alive until the journey fails for missing structured
+  UI state / actual composed pixels. Counter has entered UIApplicationMain,
+  but its didFinishLaunching ready marker, visible content and interaction
+  remain unestablished. Forced cleanup is not successful normal exit.
+- The concrete repair is Mach trap 76 (port_type), delegated to the existing
+  Darling core together with trap 77 (port notifications). The actual service
+  port returns status 0 and its real right-type mask, rather than unsupported
+  status 46. This enables the next real client request instead of hiding checks.
+- Counter now sends display-info message 40232, length 40, to our actual display
+  service. Observed inline arguments are NDR 0/1, display ID 1, final value 0.
+  The old 36-byte/two-descriptor handler rejects this request with MIG_BAD_ID;
+  no unimplemented properties are reported as successful.
+- BackBoard's measured 60-byte screen reply and the 56-byte __CASGetDisplays
+  OOL reply use actual Wayland geometry and display storage. Real client parsing
+  and display-object construction have run; no useful UIKit frame has passed.
 
-## Current runner handoff
+## Corrected diagnosis and source handoff
 
-The latest frame chain exposes mixed ownership: bootstrap lookup started a real
-QuartzCore RenderServer inside the application, while the declared display
-service is our Linux/Wayland producer. CA::Display::update then enters the
-framework's local-server path instead of consistently querying that producer.
-Source **e3d5b7d94318273610a6da1ebd71030aa80749b1** removes that lookup side
-effect and its mixed in-app forwarding path/API binding. Real UIKit/QuartzCore
-client code and CoreGraphics rendering remain in use; unknown service methods
-still fail. No replacement views, controls or draw results are supplied.
-Run [39478502832](https://github.com/taowen/arlinux-xnu/actions/runs/39478502832)
-is its exact four-app regression; runtime effects remain unverified.
+Source e3d5b7d removed bootstrap lookup's in-app QuartzCore server-start side
+effect and mixed forwarding path. Run 39478502832 (receipt
+**de7652ee47d600d60b738c53b563245fcd9c1b2fea431195747e44529a90a6dc**) and
+run 39478733527 (receipt
+**5aefa3f07ada978c6c173bf36852329faa3861601d2544276a6269c9239573bd**) still
+failed at the earlier location. Those verified failures contradict treating that
+cleanup as the proven cause/fix of the abort. The cleanup remains an ownership
+simplification; the subsequent port-type repair has actual runtime evidence.
+Nearest cache symbols, especially beside stripped functions, are context only.
 
-Source **a9db7db00b93f6534224f0bae87864d22ec87f2d** additionally retains up to
-2,048 decoded bytes around measured display callers, because Display::update
-inlines its variable MIG decoder. Original fault frame records now symbolize
-saved return addresses at the actual ARM64 call instruction, avoiding false
-names at the following function boundary. The first three original callers,
-bounded referenced literals and the explicitly measured query_displays client
-remain available even if another thread aborts first. This is read-only evidence.
-Run [39478733527](https://github.com/taowen/arlinux-xnu/actions/runs/39478733527)
-is the current exact four-app regression. Poll the existing runs; do not restart
-because observation timed out.
+The same-cache reader now decodes declared constant CFStrings through their
+actual mapping's slide-v2 pointer metadata, and retains original ARM64 call
+instructions and bounded branch-stub observations. Run 39479884455, source
+cd353f28d86be001883296670050f4a9a70c69ef, receipt
+**700c39d33d3738c8c98e93afa75cd325ac68df059c869f78206760175d809c63**, verified
+that the display client uses kCADisplayName, kCADisplayDeviceName, kCADisplayId
+and compares names with LCD / TVOut / External. No Apple binaries are exported;
+only bounded decoded text is retained. All relied-upon receipt/text hashes were
+verified. The previously observed cfprefsd.m:171 context-validity assertion has
+not been disabled; its relation to concurrent startup failure remains unproven.
 
-Next verify display-owner routing and implement the actual current display
-properties request/reply. The observed Display::update client builds a 40-byte
-request 40232 and validates four descriptors; the existing producer handles the
-legacy 36-byte/two-descriptor layout. Its detailed decoder is the next evidence
-source, not a reason to return unmeasured success. Resolve original lifecycle
-failures, then require visible Counter pixels, external click/state/pixel change,
-normal close and fresh relaunch. No compilation, console, registration or IPC
-result certifies that goal. History stays in Git and Actions.
+Source **90dd7d6b4d200b61fcea91e555e331473bb5b469** maps the actual Wayland
+surface to the LCD main-display protocol role; its backend is still explicitly
+Wayland. It also collects the measured Display::update decoder and consumer in
+a bounded 4,096-byte diagnostic window even when the app remains alive.
+Run [39481604703](https://github.com/taowen/arlinux-xnu/actions/runs/39481604703)
+is its exact four-app regression; runtime effects remain unverified. Poll this
+handle rather than restarting after an observation delay.
+
+Next implement the observed current display-info reply: four descriptors
+(three OOL and one port), three variable strings, fixed scalar tail, real screen
+geometry/mode/timing and genuine absent optional resources. Use the actual client
+validation and field consumption to define layout and meaning. Then follow the
+original remaining startup/service/input failures. Completion still requires
+visible Counter pixels, external click/state/pixel change, normal close and a
+fresh interactive relaunch. No compiler, registration, live process or IPC result
+certifies that goal. History remains in Git and Actions.
