@@ -281,6 +281,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 
 #include "darling-native.h"
 #include "darwin-filesystem.h"
+#include "darwin-signature.h"
 #include "darwin-process.h"
 #include "darwin-mmap.h"
 #include "darwin-ipc.h"

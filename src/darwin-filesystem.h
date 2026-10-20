@@ -3,6 +3,18 @@
  * Use real descriptors, mount metadata and seek cookies; no synthetic bundle
  * entries. All operations remain TLS-independent under guest libSystem. */
 #pragma once
+static long native_file_read(int fd,void *output,size_t size,uint64_t offset)
+{
+    size_t done=0;
+    while (done<size) {
+        long result=RAW(SYS_pread64,fd,(char *)output+done,size-done,offset+done,0,0);
+        if (result==-EINTR) continue;
+        if (result<0) return result;
+        if (!result) return -ENOEXEC;
+        done+=result;
+    }
+    return 0;
+}
 static long native_fd_path(int fd,char path[1024])
 {
     char link[64]="/proc/self/fd/",digits[12];

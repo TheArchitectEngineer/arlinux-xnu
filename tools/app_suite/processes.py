@@ -43,7 +43,7 @@ class Processes:
             raise RuntimeError('Shared compatibility session identity changed')
         for name, item in self.processes.items():
             if item.get('faultObserved'):
-                raise RuntimeError(f'{name} faulted; original process retained for debugger diagnosis')
+                raise RuntimeError(f'{name} faulted; collecting original-process diagnosis')
             if not self.reference:
                 trace=Path(item['runtime'])
                 if trace.exists():
@@ -53,7 +53,7 @@ class Processes:
                     item['faultScanTail']=observed[-64:]
                     if b'DARWIN_FAULT signal=' in observed:
                         item['faultObserved']=True
-                        raise RuntimeError(f'{name} faulted; original process retained for debugger diagnosis')
+                        raise RuntimeError(f'{name} faulted; collecting original-process diagnosis')
             if item['process'].poll() is not None and not item.get('expectedExit'):
                 raise RuntimeError(f'{name} exited unexpectedly: {item["process"].returncode}')
 
@@ -131,6 +131,12 @@ class Processes:
                 arguments.extend(['--list-symbols',f'/System/Library/PrivateFrameworks/{framework}.framework/{framework}','BSXPC'])
             arguments.extend(['--list-symbols','/usr/lib/system/libxpc.dylib','service_port'])
             arguments.extend(['--lookup','/usr/lib/system/libxpc.dylib','_xpc_set_event_stream_handler'])
+            for symbol in [
+                '-[BSXPCServiceConnection _lock_activateNowOrWhenReady:]',
+                '-[BSXPCServiceConnection _connection_consumeLock_didActivateWithPeer:]',
+                '-[BSXPCServiceConnection _connection_handleMessage:fromPeer:withHandoff:]',
+                '___71-[BSXPCServiceConnection _connection_handleActivationMessage:fromPeer:]_block_invoke']:
+                arguments.extend(['--lookup','/System/Library/PrivateFrameworks/BoardServices.framework/BoardServices',symbol])
             result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
             runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
             if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))

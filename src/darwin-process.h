@@ -242,6 +242,8 @@ static long native_fcntl(const unsigned long long *r)
             unsigned int length=0;while(guest[length])length++;
             status=guest_copy(guest,r[2],length+1,1);
         }
+    } else if (r[1]==D_F_ADDFILESIGS_RETURN) {
+        status=native_file_signature_coverage(r[0],r[2]);
     } else if (r[1]==D_F_CHECK_LV) {
         struct darwin_fchecklv request;
         if (guest_copy(&request,r[2],sizeof(request),0)) return -EFAULT;

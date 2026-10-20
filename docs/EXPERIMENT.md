@@ -92,17 +92,29 @@ misclassifies that complex bootstrap message as an unsupported display request,
 then exits the provider. The app also records a worker BRK at _start_wqthread
 after __pthread_wqthread returns; do not assume causality from coincidence.
 
-The current fix routes CPX5 bootstrap port descriptors to the actual XPC decoder,
-sharing the existing port-only descriptor validation and retaining unsupported
-routine failures. Received dictionary rights are released normally. It does not
-invent service-port registration or BSXPC connect success. Bounded symbol-name
-collection from actual BaseBoard/BoardServices and libxpc will locate the real
-connect decoder/registration caller without repeated guessed selector lookups.
-The harness reports a dead provider explicitly rather than an opaque /proc/exe
-error. Run [39493707546](https://github.com/taowen/arlinux-xnu/actions/runs/39493707546),
-source **ad25af35ddf22b0727f89566eaff7cc678414dfc**, is the pending exact four-app
-regression. Poll it and continue from original process evidence. This subsequent
-document-only correction does not change that run's source identity.
+Source ad25af3 routes CPX5 bootstrap port descriptors through the real XPC
+decoder and shared port-only descriptor validation. Received dictionary rights
+are released normally; unsupported registration still fails. Run
+[39493707546](https://github.com/taowen/arlinux-xnu/actions/runs/39493707546),
+source ad25af35ddf22b0727f89566eaff7cc678414dfc, verified receipt
+**e2933607a5c6f6487a6dca6181da9de47e54e0c8eb38b68e32269af29119f8af**
+and all 39 retained files. The provider survives that registration request;
+Counter/Swift instead fault with a genuine abort reason: dyld cannot load
+/usr/lib/libobjc-trampolines.dylib because F_ADDFILESIGS_RETURN is unsupported.
+Console and Foundation continue to pass. No GUI or launch success is claimed.
+
+The current change reads the real embedded CodeDirectory and returns its
+bounded, page-rounded code coverage for F_ADDFILESIGS_RETURN, as specified by
+XNU's fsignatures_t output and consumed by dyld Loader.cpp. Actual descriptor,
+file/blob/hash-table bounds and contiguous coverage remain checked. This trusted
+runtime does not authenticate Apple signatures or mark code CS_VALID/platform;
+it already permits library composition. Unknown formats/scatter remain errors.
+Runtime confirmation requires the actual trampoline dylib to load and the real
+app to advance, not just successful compilation.
+
+BSXPC's actual symbols are now known from the firmware. Targeted activation and
+message decoder contexts will establish the connection reply contract; method
+names alone do not establish behavior. No handshake success is fabricated.
 
 ## Evidence limits
 

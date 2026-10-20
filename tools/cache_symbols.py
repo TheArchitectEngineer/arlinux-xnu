@@ -214,7 +214,7 @@ class CacheSymbols:
         start=max(nearest[0],pc-512,base)
         # Display::update inlines its MIG decoder. Keep its full bounded
         # descriptor/string validation rather than cutting it after a header.
-        maximum=4096 if nearest[1] and ('display' in nearest[1].lower() or 'ProcessSnapshot10Serializer' in nearest[1] or 'xpc_pipe_' in nearest[1]) else 768
+        maximum=4096 if nearest[1] and ('display' in nearest[1].lower() or 'ProcessSnapshot10Serializer' in nearest[1] or 'xpc_pipe_' in nearest[1] or 'bsxpc' in nearest[1].lower()) else 768
         end=min(start+maximum,base+length)
         following=min((value for value,name in symbols if value>pc),default=end)
         end=min(end,following)
@@ -270,11 +270,11 @@ class CacheSymbols:
             address,name,depth=pending.pop(0)
             if address in seen:continue
             seen.add(address)
-            if not any(part in name.lower() for part in ('bks','screen','display','xpc_pipe')):continue
+            if not any(part in name.lower() for part in ('bks','screen','display','xpc_pipe','bsxpc')):continue
             if len(callees)>=8:break
             region=next(((base,length) for base,length in image['executable'] if base<=address<base+length),None)
             if not region:continue
-            limit=4096 if 'xpc_pipe' in name.lower() else 768
+            limit=4096 if any(part in name.lower() for part in ('xpc_pipe','bsxpc')) else 768
             stop=min(address+limit,region[0]+region[1],min((value for value,_ in symbols if value>address),default=address+limit))
             entry=self.disassemble(address,stop-address);entry['symbol']=name
             children=direct_calls(address,stop-address)

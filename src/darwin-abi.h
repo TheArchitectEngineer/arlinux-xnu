@@ -402,7 +402,11 @@ struct darwin_port_options { uint32_t flags,queue_limit; uint64_t reserved[2]; }
 _Static_assert(sizeof(struct darwin_port_options)==24,"Darwin port options wire layout");
 
 /* XNU bsd/sys/fcntl.h, fchecklv_t LP64 wire layout. */
-enum darwin_fcntl { D_F_GETPATH=50, D_F_CHECK_LV=98 };
+enum darwin_fcntl { D_F_GETPATH=50, D_F_ADDFILESIGS_RETURN=97, D_F_CHECK_LV=98 };
+/* F_ADDFILESIGS_RETURN uses the original three-field LP64 fsignatures_t.
+ * blob_start is a file offset relative to file_start, not a guest pointer. */
+struct darwin_fsignatures { int64_t file_start;uint64_t blob_start,blob_size; };
+_Static_assert(sizeof(struct darwin_fsignatures)==24,"fsignatures_t LP64 ABI");
 /* XNU bsd/pthread/workqueue_syscalls.h, configuration metadata v1/v2. */
 struct darwin_workq_dispatch_config { uint32_t version,flags; uint64_t serial_offset,label_offset; };
 _Static_assert(sizeof(struct darwin_workq_dispatch_config)==24,"workq_dispatch_config ABI");

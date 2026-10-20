@@ -22,18 +22,6 @@ struct native_mach_section {
 struct native_code_range { uint64_t offset,size; };
 _Static_assert(sizeof(struct native_mach_segment)==72,"Mach-O LP64 segment ABI");
 _Static_assert(sizeof(struct native_mach_section)==80,"Mach-O LP64 section ABI");
-static long native_file_read(int fd,void *output,size_t size,uint64_t offset)
-{
-    size_t done=0;
-    while (done<size) {
-        long result=RAW(SYS_pread64,fd,(char *)output+done,size-done,offset+done,0,0);
-        if (result==-EINTR) continue;
-        if (result<0) return result;
-        if (!result) return -ENOEXEC;
-        done+=result;
-    }
-    return 0;
-}
 static int native_mach_range(uint64_t start,uint64_t size,uint64_t limit)
 { return start<=limit && size<=limit-start; }
 static long native_file_code_ranges(int fd,uint64_t mapped_offset,uint64_t mapped_size,
