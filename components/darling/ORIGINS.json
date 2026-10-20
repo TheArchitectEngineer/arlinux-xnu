@@ -10,9 +10,10 @@
         "CONTRIBUTORS.md",
         "basic-headers",
         "cmake/mig.cmake",
-        "src/include/darling-config.h.in",
         "src/libsimple",
-        "src/startup/rtsig.c"
+        "src/startup/rtsig.c",
+        "src/include",
+        "Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"
       ]
     },
     {

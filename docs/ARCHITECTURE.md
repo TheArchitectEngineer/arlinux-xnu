@@ -294,6 +294,16 @@ server, with upstream dtape scheduling, timers and process_vm memory hooks.
 The integrated server includes an explicit `--rpc-only` lifecycle and guest configuration,
 without setting up a second full Darling userland or launchd.
 
+The source import alone does not simplify the process architecture. Currently
+Darling's Mach core and our bootstrap/FrontBoard session run in separate host
+processes. The intended consolidation is one persistent session host owning
+both, with the Mach core built as an internal component. Each guest app keeps
+its own Linux address space and lifecycle. Same-task VM operations should use
+direct native memory operations; cross-task capabilities, rights transfer and
+session services still require shared ownership. Do not replace that ownership
+with independent per-app Mach namespaces or put all apps in one address space.
+This consolidation is not implemented or validated yet.
+
 The generated RPC client uses per-thread Linux sockets, actual thread checkin
 and checkout, raw syscall hooks and no host TLS. Client memory access is
 authorized to the exact server PID. Self ports and port/message traps use the
