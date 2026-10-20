@@ -462,17 +462,29 @@ static unsigned long ipc_special_reply_destruct(const unsigned long long *r)
 }
 /* A registry for this standalone compatibility machine, not launchd/XPC.
  * Public APIs are redirected by symbol in the private cache map. */
+/* Host-TLS preparation, independent of display ownership. */
+int darwin_native_session_join(void)
+{
+#ifdef ARLINUX_DARLING
+    if (!darling_active || native_session_manager) return -1;
+    if (native_bootstrap_port) return 0;
+    const char *provider=getenv("ARLINUX_SESSION_PID"); char *end=NULL;
+    long pid=provider ? strtol(provider,&end,10) : 0; uint64_t ticks=0; uint32_t parent=0;
+    if (!provider || !*provider || *end || pid<=0 || pid>INT32_MAX ||
+        native_proc_start(pid,&ticks,&parent) || native_inherit_bootstrap()) return -1;
+    native_provider_pid=pid; native_provider_incarnation=(uint32_t)ticks;
+    return 0;
+#else
+    return -1;
+#endif
+}
 int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refresh_millihz,
                                    uint64_t period_bits,int32_t backend_pid)
 {
-    if (!width || !height || width>8192 || height>8192 || backend_pid<=0 || native_bootstrap_port) return -1;
+    if (!width || !height || width>8192 || height>8192 || backend_pid<=0 || native_display_port || native_render_port) return -1;
     #ifdef ARLINUX_DARLING
     if (darling_active) {
-        const char *provider=getenv("ARLINUX_SESSION_PID"); char *end=NULL;
-        long pid=provider ? strtol(provider,&end,10) : 0; uint64_t ticks=0; uint32_t parent=0;
-        if (!provider || !*provider || *end || pid<=0 || pid>INT32_MAX ||
-            native_proc_start(pid,&ticks,&parent) || native_inherit_bootstrap()) return -1;
-        native_provider_pid=pid; native_provider_incarnation=(uint32_t)ticks;
+        if (darwin_native_session_join()) return -1;
         uint32_t *names[]={&native_display_port,&native_render_port};
         for (unsigned int i=0;i<2;i++) {
             if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,names[i]) ||
@@ -883,7 +895,16 @@ uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t 
     native_ui_install_observer();
     (void)instance; /* Default lookup has no instance-selection flag. */
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
-    if (!native_session_manager && !ipc_display_live()) return D_KERN_FAILURE;
+    if (!native_session_manager) {
+#ifdef ARLINUX_DARLING
+        if (darling_active) {
+            uint64_t ticks=0; uint32_t parent=0;
+            if (!native_provider_pid || native_proc_start(native_provider_pid,&ticks,&parent) ||
+                (uint32_t)ticks!=native_provider_incarnation) return D_KERN_FAILURE;
+        } else
+#endif
+        if (!ipc_display_live()) return D_KERN_FAILURE;
+    }
     if (flags || (target && target!=RAW(SYS_getpid,0,0,0,0,0,0))) return D_KERN_NOT_SUPPORTED;
     char service[D_BOOTSTRAP_NAME_MAX]; uint32_t error=native_service_name(name,service);
     if (error) return error;

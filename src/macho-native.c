@@ -73,6 +73,7 @@ static void rewrite_tls(struct image *im)
 }
 
 #include "dyld-cache.h"
+#include "native-launch.h"
 
 int main(int argc,char **argv)
 {
@@ -98,24 +99,31 @@ int main(int argc,char **argv)
         darwin_native_service_run(NULL);
         return 1;
     }
-    int dynamic=(argc==4 || argc==6) && !strcmp(argv[1],"--dyld");
-    const char *root=argc==6 && !strcmp(argv[3],"--root") ? argv[4] : NULL;
-    need(argc!=6 || root,"expected --root directory");
-    if (argc!=2 && !dynamic) { fprintf(stderr,"usage: macho-native [--dyld DYLD [--root DIRECTORY]] ARM64_MACHO\n"); return 2; }
+    struct native_launch_options options=native_launch_parse(argc,argv);
+    int dynamic=options.dyld!=NULL;
+    const char *root=options.root;
     long host=sysconf(_SC_PAGESIZE);
     need(host>0 && (unsigned long)host<=PAGE16 && PAGE16%(unsigned long)host==0,"host page geometry");
-    const char *program=argv[argc-1];
+    const char *program=options.program;
     struct image im={0},dyld={0};
     load_image(program,&im,dynamic); map_guest(&im); rewrite_tls(&im);
     if (dynamic) {
-        load_image(argv[2],&dyld,1);
+        load_image(options.dyld,&dyld,1);
         need(dyld.filetype==7,"interpreter must be MH_DYLINKER");
         map_guest(&dyld); rewrite_tls(&dyld);
         fprintf(stderr,"NATIVE_DYLD_ENTRY entry=%#" PRIx64 " header=%#" PRIx64 " slide=%#" PRIx64 "\n",
                 dyld.entry,dyld.header_address,dyld.slide);
     }
     darwin_native_connect();
-    if (root) native_display_open();
+    native_framework_services_enabled=options.role!=NATIVE_CONSOLE;
+    if (native_framework_services_enabled)
+        need(!darwin_native_session_join(),"join authenticated compatibility session");
+    if (options.role==NATIVE_APPLICATION) {
+        native_display_open();
+        need(native_display_enabled,"application requires a configured Wayland display");
+    }
+    fprintf(stderr,"NATIVE_PROCESS_ROLE role=%s pid=%ld\n",
+        options.role==NATIVE_APPLICATION ? "application" : options.role==NATIVE_SERVICE ? "service" : "console",(long)getpid());
     if (darwin_native_services_enabled()) {
         pthread_t service;
         need(!pthread_create(&service,NULL,darwin_native_service_run,NULL),"native Mach service thread");

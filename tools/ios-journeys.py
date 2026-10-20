@@ -55,7 +55,10 @@ class Journey:
             if not proc.name.isdecimal():
                 continue
             try:
-                if binary.encode() not in (proc / 'cmdline').read_bytes().split(b'\0'):
+                arguments = (proc / 'cmdline').read_bytes().split(b'\0')
+                if binary.encode() not in arguments:
+                    continue
+                if b'--role' not in arguments or arguments[arguments.index(b'--role')+1] != b'service':
                     continue
                 environment = (proc / 'environ').read_bytes().split(b'\0')
                 expected = ('ARLINUX_DARLING_PID=' + str(self.session['pid'])).encode()
@@ -124,7 +127,7 @@ class Journey:
         capture.mkdir()
         env['ARLINUX_CAPTURE_DIR'] = str(capture)
         binary = ROOT / self.apps[name]['binary']
-        process = subprocess.Popen([str(ROOT / 'build/native/macho-native'), '--dyld',
+        process = subprocess.Popen([str(ROOT / 'build/native/macho-native'), '--role', 'application', '--dyld',
             str(ROOT / 'build/ios-input/dyld'), '--root', str(ROOT / 'build/ios-input/filesystem/root'),
             str(binary)], cwd=state, env=env, stdout=stdout, stderr=stderr, start_new_session=True)
         record = {'app': name, 'generation': number,
@@ -132,13 +135,21 @@ class Journey:
                   'input': self.apps[name], 'binarySHA256': sha(binary)}
         # Own the process before reading /proc: an early crash must still be
         # reaped and retained as a launch failure, not orphaned by diagnosis.
-        self.processes[name] = {**record, 'process': process}
+        self.processes[name] = {**record, 'process': process, 'runtime': str(prefix.with_suffix('.runtime.log'))}
         record['identity'] = identity(process.pid)
         if previous and record['identity'] == previous['identity']:
             raise RuntimeError('Relaunch reused the original process identity')
         self.generations.append(record)
-        self.processes[name] = {**record, 'process': process}
+        self.processes[name] = {**record, 'process': process, 'runtime': str(prefix.with_suffix('.runtime.log'))}
         self.current = name
+
+    def click_word(self, target):
+        x = int(target['left']) + int(target['width'])//2
+        y = int(target['top']) + int(target['height'])//2
+        command('xdotool', 'mousemove', '--sync', x, y)
+        command('xdotool', 'mousedown', '1')
+        time.sleep(.08)
+        command('xdotool', 'mouseup', '1')
 
     def step(self, step):
         action, name = step['do'], step.get('app', self.current)
@@ -148,15 +159,26 @@ class Journey:
             self.observe(step['text'])
         elif action == 'click':
             target = self.observe(step['text'], word=True)
-            x = int(target['left']) + int(target['width'])//2
-            y = int(target['top']) + int(target['height'])//2
-            command('xdotool', 'mousemove', '--sync', x, y)
-            command('xdotool', 'mousedown', '1')
-            time.sleep(.08)
-            command('xdotool', 'mouseup', '1')
+            self.click_word(target)
+        elif action == 'focus':
+            pattern = re.compile('^' + re.escape(self.apps[name]['name']) + '$', re.I)
+            deadline = time.monotonic() + 8
+            while True:
+                self.guard()
+                words, _ = self.snapshot('focus')
+                matches = [item for item in words if pattern.search(item['text'])]
+                if len(matches) == 1:
+                    self.click_word(matches[0])
+                    self.current = name
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('Cannot locate/focus the actual app surface: ' + name)
+                command('xdotool', 'key', '--clearmodifiers', 'alt+Tab')
+                time.sleep(.3)
         elif action == 'type':
             command('xdotool', 'type', '--clearmodifiers', '--delay', '40', step['text'])
         elif action == 'close':
+            self.processes[name]['expectedExit'] = True
             command('xdotool', 'key', '--clearmodifiers', 'alt+F4')
         elif action == 'exit':
             item = self.processes[name]
@@ -196,10 +218,15 @@ class Journey:
 
     def diagnose(self):
         # Read the failed original process, not a replay that changes scheduling.
-        live = next((item for item in self.processes.values() if item['process'].poll() is None), None)
+        cache = ROOT / 'build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64'
+        for item in self.processes.values():
+            runtime = Path(item['runtime'])
+            command(sys.executable, ROOT / 'tools/symbolicate-cache.py', cache, runtime,
+                    runtime.with_suffix('.symbols.json'), capture_output=True)
+        candidates = sorted(self.processes.values(), key=lambda item: item['app'] != self.current)
+        live = next((item for item in candidates if item['process'].poll() is None), None)
         if not live:
             return
-        self.current = live['app']
         pid = live['process'].pid
         commands = ['settings set auto-confirm true', 'thread backtrace all --count 24',
             'script import importlib.util,sys; spec=importlib.util.spec_from_file_location("dyld_debugger",'
@@ -212,7 +239,8 @@ class Journey:
             for item in commands:
                 args += ['-o', item]
             result = subprocess.run(args, stdout=log, stderr=subprocess.STDOUT, timeout=15)
-        self.diagnostic = {'identity': live['identity'], 'status': result.returncode}
+        self.diagnostic = {'identity': live['identity'], 'status': result.returncode,
+                           'target': 'current app' if live['app'] == self.current else 'surviving peer'}
 
     def run(self):
         error = None

@@ -5,6 +5,7 @@ long darwin_native_memory(unsigned long size,int protection);
 void darwin_native_connect(void);
 int darwin_native_services_enabled(void);
 int darwin_native_session_start(void);
+int darwin_native_session_join(void);
 void *darwin_native_service_run(void *);
 int darwin_native_host_port_refs(uint32_t port,int delta);
 int darwin_native_host_port_deallocate(uint32_t port);

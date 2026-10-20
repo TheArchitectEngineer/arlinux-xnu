@@ -17,6 +17,7 @@ struct cache_slide2 {
 };
 static struct cache_map cache_maps[3];
 static unsigned int cache_service_hooks;
+static int native_framework_services_enabled;
 static int cache_contains(uint64_t address,uint64_t length,uint32_t protection)
 {
     for (unsigned int i=0;i<3;i++) {
@@ -132,7 +133,7 @@ static uint64_t load_native_cache(const char *root)
         if (j<images) continue;
         seen[images++]=image.address;
         need(image.path_offset<size && memchr(file+image.path_offset,0,size-image.path_offset),"cache image path bounds");
-        int bootstrap_policy=native_display_enabled &&
+        int bootstrap_policy=native_framework_services_enabled &&
             !strcmp((const char *)file+image.path_offset,"/usr/lib/system/libxpc.dylib");
         need(cache_contains(image.address,sizeof(struct header),1),"cached Mach-O header bounds");
         const unsigned char *bytes=(void *)image.address;
@@ -161,7 +162,7 @@ static uint64_t load_native_cache(const char *root)
                     if (bootstrap_policy) cache_bootstrap_policy(section.address,section.size);
                 }
             }
-            if (native_display_enabled && command.cmd==2) { /* LC_SYMTAB */
+            if (native_framework_services_enabled && command.cmd==2) { /* LC_SYMTAB */
                 need(command.size==24 && image.path_offset<size &&
                      memchr(file+image.path_offset,0,size-image.path_offset),"cache symbol/image path bounds");
                 int xpc_image=!strcmp((const char *)file+image.path_offset,"/usr/lib/system/libxpc.dylib");
@@ -218,8 +219,8 @@ static uint64_t load_native_cache(const char *root)
         darwin_native_render_api(render_start,render_get_port);
         fprintf(stderr,"NATIVE_RENDER_FRAMEWORK_API start=%#" PRIx64 " get_port=%#" PRIx64 "\n",render_start,render_get_port);
     }
-    need(!native_display_enabled || cache_service_hooks==3,"exact service registry adapter symbols unavailable");
-    need(!native_display_enabled || cache_bootstrap_policy_hooks==1,"unsupported bootstrap trust predicate layout");
+    need(!native_framework_services_enabled || cache_service_hooks==3,"exact service registry adapter symbols unavailable");
+    need(!native_framework_services_enabled || cache_bootstrap_policy_hooks==1,"unsupported bootstrap trust predicate layout");
     for (unsigned int i=0;i<3;i++) {
         struct cache_map *m=cache_maps+i;
         if (m->prot&4) __builtin___clear_cache((void *)m->address,(void *)(m->address+m->size));
