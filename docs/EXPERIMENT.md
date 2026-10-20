@@ -67,7 +67,17 @@ transitionContextClass. These contracts define the next host-backed scene
 implementation. The current integration attempts scene construction with a real
 FBSScene, updater queue/definition and specification-owned settings, then calls
 UIKit's workspace scene callback. It also exposes the owned scene through
-workspace lookup/collection getters. This code is not yet runner-validated;
+workspace lookup/collection getters. Run [39506273079](https://github.com/taowen/arlinux-xnu/actions/runs/39506273079),
+source 9617a69fbe2c921626b1ebce2267fa245f1edbb2, compiled the adapter and failed
+with an original NSException before scene delivery. Receipt
+ed63db08eb4b4a21d5c08f47b536a7a1adff7dd8af3e71bb1ea4d3934fcd39b6 and all
+20 files were verified. The actual token constructor unconditionally rejects a
+nil endpoint and validates its service; it is a remote capability contract.
+The current change replaces that transport-specific token with an immutable
+local-token subclass (real identity, copying, equality/hash, no endpoint, no
+remote encoding). A local catch logs the original exception name/reason and
+rethrows, never suppresses the failure. This change is awaiting runner validation;
+
 complete session registration, enumeration, focus, input and normal close remain
 required. No launch readiness or app success is assigned by this adapter.
 

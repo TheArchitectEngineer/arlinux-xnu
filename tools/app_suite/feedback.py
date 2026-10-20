@@ -29,7 +29,8 @@ def failure_summary(result,output):
             'stderr':str(stderr.relative_to(output)),
             'observed':witnesses(runtime,('DARWIN_FAULT signal=','DARWIN_NATIVE_FAULT',
                 'UI_PLATFORM_IMPORTS_UNAVAILABLE','UI_RUNLOOP_OBSERVER_INSTALLED','UI_LAYER_FRAME sequence='))+
-                witnesses(stderr,('IOS_HOST_WINDOW ','WAYLAND_BACKEND_READY ','WAYLAND_TOPLEVEL_FOCUS '))})
+                witnesses(stderr,('IOS_HOST_WINDOW ','WAYLAND_BACKEND_READY ','WAYLAND_TOPLEVEL_FOCUS ',
+                    'IOS_LIFECYCLE_BINDING_FAILED ','IOS_LIFECYCLE_UNSUPPORTED ','IOS_SCENE_'))})
     summary['sessionObserved']=witnesses(output/(case+'--session')/'session.log',
         ('SESSION_XPC_REQUEST_UNSUPPORTED ','HIDFOCUS_REQUEST_UNIMPLEMENTED '))
     return summary
