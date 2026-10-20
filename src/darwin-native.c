@@ -211,7 +211,7 @@ static int path_directory(char **path)
     }
     return AT_FDCWD;
 }
-static long guest_open(unsigned long address,unsigned long flags)
+static long guest_openat(int dirfd,unsigned long address,unsigned long flags)
 {
     /* The firmware is read-only. Unsupported flag semantics are explicit. */
     char buffer[4096],*path=buffer;
@@ -228,7 +228,11 @@ static long guest_open(unsigned long address,unsigned long flags)
         trace_call(0,0,flags);
         return -ENOTSUP;
     }
-    int directory=path_directory(&path);
+    /* Absolute guest paths ignore dirfd and use the declared firmware/bundle
+     * mapping. Relative paths retain an actual guest-opened directory fd;
+     * Darwin AT_FDCWD follows the existing guest-root current-directory policy. */
+    int directory=(buffer[0]=='/' || dirfd==D_AT_FDCWD) ? path_directory(&path) : dirfd;
+    trace_record("DARWIN_OPEN_DIRECTORY fd=0x",(unsigned long)(long)directory,0,flags);
     int options=O_RDONLY;
     if (flags&D_O_NONBLOCK) options|=O_NONBLOCK;
     if (flags&D_O_NOFOLLOW) options|=O_NOFOLLOW;
@@ -664,7 +668,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case D_SYS_SYSCTL: result=native_sysctl(r); break;
     case D_SYS_CSOPS: case D_SYS_CSOPS_AUDITTOKEN: result=native_csops(r); break;
     case D_SYS_PROC_INFO: result=native_proc_info(r); break;
-    case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_open(r[0],r[1]); break;
+    case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_openat(D_AT_FDCWD,r[0],r[1]); break;
+    case D_SYS_OPENAT: case D_SYS_OPENAT_NOCANCEL: result=guest_openat((int)r[0],r[1],r[2]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
         result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor ||
                 (native_trace_fd>2 && (int)r[0]==native_trace_fd)) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
