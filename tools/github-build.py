@@ -116,7 +116,7 @@ def report(run_id, job_name):
                    'DYNAMIC_CONSOLE ', 'EXPERIMENT_RECEIPT ', 'EXPERIMENT_EXECUTABLE ',
                    'BOOTSTRAP_XPC_REQUEST ', 'BOOTSTRAP_XPC_REPLY ', 'BOOTSTRAP_XPC_IDENTITY ',
                    'PROCESSINFO_', 'SESSION_XPC_', 'SESSION_WORKSPACE_', 'SESSION_LAUNCH_', 'SESSION_SCENE_', 'SESSION_EVENT_', 'SESSION_READY ', 'PEER_PROCESS_STATUS=',
-                   'APP_LAUNCH_CALL ', 'APP_LAUNCH_METADATA_ERROR ')
+                   'APP_LAUNCH_CALL ', 'APP_LAUNCH_METADATA_ERROR ', 'APP_SETTINGS_CALL ')
         item['observations'] = []
         context_lengths = {'DARLING_NATIVE_CONNECTED ': 2,
                            'DARLING_KQCHAN_OPEN ': 3, 'DARLING_KQCHAN_EVENT ': 5,

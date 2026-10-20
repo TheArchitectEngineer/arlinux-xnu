@@ -67,6 +67,32 @@ def graphics_failure(frame, location, internal_dict):
 _security_entries = {}
 _ipc_callback_entries = {}
 _launch_entries = {}
+_settings_entries = {}
+
+
+def settings_callback(frame, location, internal_dict):
+    breakpoint=location.GetBreakpoint()
+    name=_settings_entries[breakpoint.GetID()]
+    if name.endswith(' _setObject:forSetting:') and frame.FindRegister('x3').GetValueAsUnsigned()!=1:
+        return False
+    objects=GuestObjects(frame.GetThread().GetProcess())
+    record={'method':name,'tid':frame.GetThread().GetThreadID(),
+            'caller':hex(frame.FindRegister('lr').GetValueAsUnsigned()),'arguments':[]}
+    for index in (0,2,3,4):
+        value=frame.FindRegister('x'+str(index)).GetValueAsUnsigned()
+        item={'register':'x'+str(index),'value':hex(value)}
+        if value>=4096:
+            try:
+                item['class']=objects.class_name(value)
+                if item['class'] in ('__NSCFString','__NSCFConstantString','NSCFString'):
+                    item['text']=objects.cfstring(value)
+            except (ValueError,UnicodeError,SystemError) as error:
+                item['readError']=str(error)
+        record['arguments'].append(item)
+    print('APP_SETTINGS_CALL '+json.dumps(record),flush=True)
+    if breakpoint.GetHitCount()>=12:
+        breakpoint.SetEnabled(False)
+    return False
 
 
 def launch_callback(frame, location, internal_dict):
@@ -125,6 +151,14 @@ def install_launch_breakpoints(target):
                 for index in range(count):
                     entry = methods+8+index*size
                     selector = objects.cstring(objects.u64(entry))
+                    if name in ('_OBJC_CLASS_$_FBSSettingsDiff','_OBJC_CLASS_$_FBSSceneSettingsDiff',
+                                '_OBJC_CLASS_$_FBSSceneClientSettingsDiff','_OBJC_CLASS_$_BSSettings') and selector in (
+                            'initWithXPCDictionary:','_initWithChanges:otherSettingsDiff:settingsClass:',
+                            'settingsByApplyingToMutableCopyOfSettings:','_setObject:forSetting:'):
+                        breakpoint=target.BreakpointCreateByAddress(objects.u64(entry+16))
+                        _settings_entries[breakpoint.GetID()]=name+' '+selector
+                        breakpoint.SetScriptCallbackFunction('dyld_debugger.settings_callback')
+                        breakpoint.SetAutoContinue(True)
                     if (name.startswith('_OBJC_CLASS_$_FBS') or name=='_OBJC_CLASS_$_BSSettings') and selector in (
                             'queue_handleMessage:',
                             'settingsByApplyingToMutableCopyOfSettings:',
@@ -140,6 +174,9 @@ def install_launch_breakpoints(target):
                         capture_code_references(target,address,256,'APP_LAUNCH_PROTOCOL_REFERENCE')
                         if name=='_OBJC_CLASS_$_BSSettings':
                             capture_protocol_blocks(target,address,256)
+                        if selector=='initWithXPCDictionary:' and name in (
+                                '_OBJC_CLASS_$_FBSSettingsDiff','_OBJC_CLASS_$_FBSWorkspaceSceneUpdateEvent'):
+                            capture_protocol_callees(target,address,96)
                     if name=='_OBJC_CLASS_$_FBSSceneSettings' and selector in ('init','frame','displayConfiguration','isBackgrounded'):
                         address=objects.u64(entry+16)
                         print('APP_SCENE_SETTINGS_CODE '+json.dumps({'method':selector,'address':hex(address)}),flush=True)
@@ -384,6 +421,25 @@ def install_service_breakpoints(target):
             breakpoint.SetScriptCallbackFunction('dyld_debugger.security_query')
             breakpoint.SetAutoContinue(True)
             print('SECURITY_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
+
+
+def capture_protocol_callees(target,address,count):
+    objects=GuestObjects(target.GetProcess())
+    seen=set()
+    for index,word in enumerate(struct.unpack('<'+'I'*count,objects.read(address,count*4))):
+        if word&0xfc000000!=0x94000000:
+            continue
+        displacement=word&0x03ffffff
+        if displacement&(1<<25): displacement-=1<<26
+        callee=address+index*4+displacement*4
+        if callee in seen or abs(callee-address)>0x400000:
+            continue
+        seen.add(callee)
+        print('APP_SETTINGS_WRAPPER_CODE '+json.dumps({'caller':hex(address),'callee':hex(callee)}),flush=True)
+        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(callee)+' --count 128')
+        capture_code_references(target,callee,128,'APP_SETTINGS_WRAPPER_REFERENCE')
+        if len(seen)>=4:
+            break
 
 
 def capture_protocol_blocks(target, address, count):
