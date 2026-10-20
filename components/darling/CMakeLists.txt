@@ -5,6 +5,8 @@ project(arlinux_darling_ipc LANGUAGES C CXX ASM)
 # Source lists, XNU definitions, MIG interfaces and RPC generation live here.
 get_filename_component(DARLING_SOURCE "${CMAKE_CURRENT_LIST_DIR}/source" ABSOLUTE)
 include(GNUInstallDirs)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(ARLINUX_SESSION_CORE_SOURCE "${CMAKE_CURRENT_LIST_DIR}/session-core.cpp")
 set(TARGET_ARM64 ON)
 set(TARGET_X86_64 OFF)
 set(TARGET_I386 OFF)

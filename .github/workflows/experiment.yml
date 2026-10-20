@@ -41,20 +41,20 @@ jobs:
           clang-18 --version >> build/darling-evidence/environment.txt
           cmake --version >> build/darling-evidence/environment.txt
           cmake -S components/darling -B build/darling-compilation -G Ninja -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=RelWithDebInfo 2>&1 | tee build/darling-evidence/configure.log
-          cmake --build build/darling-compilation --target darlingserver --parallel 4 2>&1 | tee build/darling-evidence/build.log
-          cp build/darling-compilation/darlingserver/darlingserver build/darling-evidence/
+          cmake --build build/darling-compilation --target arlinux_mach_core --parallel 4 2>&1 | tee build/darling-evidence/build.log
+          cp build/darling-compilation/darlingserver/libarlinux_mach_core.so build/darling-evidence/
           mkdir -p build/darling-evidence/include/darlingserver build/darling-evidence/src
           cp build/darling-compilation/darlingserver/include/darlingserver/rpc.h build/darling-evidence/include/darlingserver/
           cp components/darling/source/src/external/darlingserver/include/darlingserver/rpc-supplement.h build/darling-evidence/include/darlingserver/
           cp build/darling-compilation/darlingserver/src/rpc.c build/darling-evidence/src/
-          file build/darling-evidence/darlingserver | tee build/darling-evidence/file.txt
+          file build/darling-evidence/libarlinux_mach_core.so | tee build/darling-evidence/file.txt
       - name: Record experiment receipt
         if: always()
         run: python3 tools/experiment-receipt.py --directory build/darling-evidence --outcome '${{ job.status }}'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: linux-arm64-darling-ipc
+          name: linux-arm64-mach-core
           path: build/darling-evidence/
           retention-days: 30
   host-substrate:
@@ -131,7 +131,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: inputs.ipc == 'darling'
         with:
-          name: linux-arm64-darling-ipc
+          name: linux-arm64-mach-core
           path: build/darling-ipc/
       - name: Install ARM64 Mach-O compiler
         run: |
@@ -161,6 +161,7 @@ jobs:
           ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/ARHello.o -needed_library guests/libSystem.tbd -needed_library guests/ARHello/UIKit.tbd -needed_library guests/ARHello/Foundation.tbd -needed_library guests/ARHello/libobjc.tbd -o build/native/ARHello.app/ARHello
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
           rpc_flags=()
+          core_flags=()
           git submodule update --init third_party/libspc
           spc_flags=(-Isrc -Icomponents/libspc/include -Ithird_party/libspc/libspc -include string.h -fcommon)
           spc_objects=()
@@ -173,12 +174,14 @@ jobs:
           if [[ '${{ inputs.ipc }}' == darling ]]; then
             rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include)
             cp build/darling-ipc/receipt.json build/native/darling-input-receipt.json
+            cp build/darling-ipc/libarlinux_mach_core.so build/native/
+            core_flags=(-DARLINUX_DARLING=1 -Lbuild/native -larlinux_mach_core '-Wl,-rpath,$ORIGIN')
           fi
           cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics "${rpc_flags[@]}" -c src/darwin-native.c -o build/native/runtime.o
           cc -c src/darwin-native.S -o build/native/entry.o
           wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-client-protocol.h
           wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
-          cc -Wall -Wextra -Werror -O2 -g -Ibuild/native src/macho-native.c build/native/xdg-shell-protocol.c build/native/runtime.o build/native/entry.o build/native/native-xpc.o "${spc_objects[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
+          cc -Wall -Wextra -Werror -O2 -g -Ibuild/native src/macho-native.c build/native/xdg-shell-protocol.c build/native/runtime.o build/native/entry.o build/native/native-xpc.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
           # Two complete independent launches of the interactive program, not
           # a source assertion or isolated TLS probe. Runtime exit status is
           # the guest's real Linux-backed normal process exit status.
@@ -189,6 +192,9 @@ jobs:
             if [[ $status != 0 ]]; then exit "$status"; fi
           done
           (cd build/native && sha256sum macho-native console.macho console-dynamic.macho ARHello.app/ARHello ARHello.app/Info.plist > SHA256SUMS)
+          if [[ '${{ inputs.ipc }}' == darling ]]; then
+            (cd build/native && sha256sum libarlinux_mach_core.so >> SHA256SUMS)
+          fi
       - name: Record experiment receipt
         if: always()
         run: python3 tools/experiment-receipt.py --directory build/native --outcome '${{ job.status }}'
@@ -205,43 +211,39 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: linux-arm64-native-darwin
-          path: build/native/
-      - uses: actions/download-artifact@v4
-        if: inputs.ipc == 'darling'
-        with:
-          name: linux-arm64-darling-ipc
-          path: build/darling-ipc/
-      - name: Start embedded Darling IPC service
+      - name: Install Apple filesystem reader
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y 7zip llvm-18 lldb-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev weston libwayland-client0
+      - name: Start unified iOS session
         if: inputs.ipc == 'darling'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/dyld
-          prefix=$(mktemp -d /tmp/arlinux-darling.XXXXXX)
-          chmod +x build/darling-ipc/darlingserver
-          build/darling-ipc/darlingserver --rpc-only "$prefix" > build/dyld/darling.log 2>&1 &
-          server_pid=$!
-          echo "$server_pid" > build/dyld/darling.pid
-          echo "ARLINUX_DARLING_PID=$server_pid" >> "$GITHUB_ENV"
+          prefix=$(mktemp -d /tmp/arlinux-session.XXXXXX)
+          chmod +x build/native/macho-native
+          build/native/macho-native --session "$prefix" > build/dyld/session.stdout 2> build/dyld/session.log &
+          session=$!
+          echo "$session" > build/dyld/session.pid
+          echo "ARLINUX_SESSION_PID=$session" >> "$GITHUB_ENV"
+          echo "ARLINUX_DARLING_PID=$session" >> "$GITHUB_ENV"
           echo "ARLINUX_DARLING_PREFIX=$prefix" >> "$GITHUB_ENV"
-          python3 - "$server_pid" "$prefix" <<'PY'
+          python3 - "$session" <<'PY'
           import os, pathlib, sys, time
           pid = int(sys.argv[1])
-          socket = pathlib.Path(sys.argv[2]) / '.darlingserver.sock'
+          log = pathlib.Path('build/dyld/session.log')
           deadline = time.monotonic() + 10
-          while not socket.is_socket():
+          while True:
               os.kill(pid, 0)
+              text = log.read_text() if log.exists() else ''
+              if any(line.startswith('SESSION_READY ') for line in text.splitlines()):
+                  print('UNIFIED_SESSION_PID ' + str(pid))
+                  break
               if time.monotonic() >= deadline:
-                  raise SystemExit('Darling RPC socket not created; inspect darling.log')
+                  raise SystemExit('Unified session did not become ready; inspect session.log')
               time.sleep(.05)
           PY
-      - name: Install Apple filesystem reader
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y 7zip llvm-18 lldb-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev weston libwayland-client0
       - name: Prepare pinned Apple userland and execute its actual dyld
         shell: bash
         run: |
@@ -284,22 +286,6 @@ jobs:
                   raise SystemExit('Weston did not open its Wayland socket; inspect weston.log')
               time.sleep(0.05)
           PY
-      - name: Start independent iOS session service
-        if: inputs.mode == 'app' && inputs.ipc == 'darling'
-        shell: bash
-        run: |
-          set -euo pipefail
-          build/native/macho-native --session > build/dyld/session.stdout 2> build/dyld/session.log &
-          session=$!
-          echo "$session" > build/dyld/session.pid
-          echo "ARLINUX_SESSION_PID=$session" >> "$GITHUB_ENV"
-          for attempt in $(seq 1 100); do
-            if grep -q '^SESSION_READY ' build/dyld/session.log; then exit 0; fi
-            if ! kill -0 "$session" 2>/dev/null; then cat build/dyld/session.log; exit 1; fi
-            sleep 0.05
-          done
-          cat build/dyld/session.log
-          exit 1
       - name: Start ARHello 1.0 with real UIKit
         if: inputs.mode == 'app'
         shell: bash
@@ -343,7 +329,7 @@ jobs:
             exit 0
           fi
           if [[ '${{ inputs.ipc }}' == darling ]] && ! kill -0 "$ARLINUX_DARLING_PID" 2>/dev/null; then
-            echo 'DARLING_SERVER_UNAVAILABLE original service exited; preserve darling.log; no live IPC server for the LLDB retry'
+            echo 'DARLING_SERVER_UNAVAILABLE original service exited; preserve session.log; no live IPC server for the LLDB retry'
             exit 0
           fi
           printf '+q' > build/dyld/debugger.stdin
@@ -426,7 +412,7 @@ jobs:
           if [[ -f build/dyld/weston.pid ]]; then
             kill -- "$(cat build/dyld/weston.pid)" || true
           fi
-      - name: Stop embedded Darling service
+      - name: Stop unified iOS session
         if: always() && inputs.ipc == 'darling'
         shell: bash
         run: |
@@ -434,10 +420,6 @@ jobs:
             kill -- "$(cat build/dyld/session.pid)" 2>/dev/null || true
             cat build/dyld/session.log build/dyld/session.stdout
           fi
-          if [[ -f build/dyld/darling.pid ]]; then
-            kill -- "$(cat build/dyld/darling.pid)" 2>/dev/null || true
-          fi
-          if [[ -f build/dyld/darling.log ]]; then cat build/dyld/darling.log; fi
       - name: Record experiment receipt
         if: always()
         run: python3 tools/experiment-receipt.py --directory build/dyld --outcome '${{ job.status }}'

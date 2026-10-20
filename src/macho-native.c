@@ -11,6 +11,9 @@
 #include <unistd.h>
 #include <pthread.h>
 #include "darwin-native.h"
+#ifdef ARLINUX_DARLING
+#include "../components/darling/session-core.h"
+#endif
 
 static void die(const char *message)
 {
@@ -73,7 +76,23 @@ static void rewrite_tls(struct image *im)
 
 int main(int argc,char **argv)
 {
-    if (argc==2 && !strcmp(argv[1],"--session")) {
+    if (argc==3 && !strcmp(argv[1],"--session")) {
+#ifdef ARLINUX_DARLING
+        /* Set CPU affinity before constructing any Mach worker threads. The
+         * first connect has no external service configured and only sets CPU. */
+        if (getenv("ARLINUX_DARLING_PREFIX") || getenv("ARLINUX_DARLING_PID")) {
+            fprintf(stderr,"session owns its Mach core; external service environment is invalid\n");
+            return 2;
+        }
+        darwin_native_connect();
+        int status=arlinux_session_core_start(argv[2]);
+        if (status) { errno=-status; die("start session Mach core"); }
+        char pid[32]; snprintf(pid,sizeof(pid),"%ld",(long)getpid());
+        if (setenv("ARLINUX_DARLING_PREFIX",argv[2],1) || setenv("ARLINUX_DARLING_PID",pid,1))
+            die("configure session Mach core");
+#else
+        need(0,"session requires integrated Mach core");
+#endif
         darwin_native_connect();
         need(!darwin_native_session_start(),"initialize independent session service");
         darwin_native_service_run(NULL);

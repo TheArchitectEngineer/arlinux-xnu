@@ -294,15 +294,17 @@ server, with upstream dtape scheduling, timers and process_vm memory hooks.
 The integrated server includes an explicit `--rpc-only` lifecycle and guest configuration,
 without setting up a second full Darling userland or launchd.
 
-The source import alone does not simplify the process architecture. Currently
-Darling's Mach core and our bootstrap/FrontBoard session run in separate host
-processes. The intended consolidation is one persistent session host owning
-both, with the Mach core built as an internal component. Each guest app keeps
-its own Linux address space and lifecycle. Same-task VM operations should use
-direct native memory operations; cross-task capabilities, rights transfer and
-session services still require shared ownership. Do not replace that ownership
-with independent per-app Mach namespaces or put all apps in one address space.
-This consolidation is not implemented or validated yet.
+The native session program now links libarlinux_mach_core.so and starts its
+Mach event loop as a host thread. Bootstrap/FrontBoard and Mach ownership share
+one persistent Linux PID; no standalone Darling executable or second service
+process is built/launched. App processes retain independent address spaces and
+lifetimes. Host session callbacks currently still use the same socket RPC ABI
+inside that process; this first consolidation does not claim direct-call
+dispatch or removal of all callback overhead. Same-task guest VM operations
+should move to direct native memory operations as their semantics are supported;
+cross-task rights, transfers and service names retain session-wide ownership.
+Real-run identity and app progress must validate the consolidation before it is
+considered working. Do not replace shared ownership with per-app namespaces.
 
 The generated RPC client uses per-thread Linux sockets, actual thread checkin
 and checkout, raw syscall hooks and no host TLS. Client memory access is

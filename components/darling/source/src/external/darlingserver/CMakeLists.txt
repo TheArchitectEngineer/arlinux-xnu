@@ -82,9 +82,6 @@ endif()
 
 add_subdirectory(duct-tape)
 
-set(DARLINGSERVER_INIT_PROCESS "/sbin/launchd" CACHE STRING "The init process darlingserver should execute (default is \"/sbin/launchd\")")
-set(DARLINGSERVER_XDG_USER_DIR_CMD "xdg-user-dir" CACHE STRING "The xdg-user-dir binary darlingserver should execute (default is \"xdg-user-dir\")")
-
 include_directories(
 	include
 	internal-include
@@ -117,8 +114,8 @@ add_custom_target(generate_dserver_rpc_wrappers
 		${CMAKE_CURRENT_BINARY_DIR}/src/rpc.c
 )
 
-add_executable(darlingserver
-	src/darlingserver.cpp
+add_library(arlinux_mach_core SHARED
+	"${ARLINUX_SESSION_CORE_SOURCE}"
 	src/server.cpp
 	src/message.cpp
 	src/call.cpp
@@ -132,83 +129,67 @@ add_executable(darlingserver
 	src/stack-pool.cpp
 )
 
-add_dependencies(darlingserver
+add_dependencies(arlinux_mach_core
 	generate_dserver_rpc_wrappers
 	rtsig_h
 )
 
-target_link_libraries(darlingserver PRIVATE
+target_link_libraries(arlinux_mach_core PRIVATE
 	darlingserver_duct_tape
 )
 
 find_library(LIBUCONTEXT ucontext)
 if (LIBUCONTEXT)
-	target_link_libraries(darlingserver PRIVATE ${LIBUCONTEXT})
+	target_link_libraries(arlinux_mach_core PRIVATE ${LIBUCONTEXT})
 	find_path(LIBUCONTEXT_INCLUDE_DIR NAMES libucontext/libucontext.h PATHS "${CMAKE_FIND_ROOT_PATH}/include" "${CMAKE_INSTALL_PREFIX}/include")
 	if (LIBUCONTEXT_INCLUDE_DIR)
-		target_include_directories(darlingserver PRIVATE ${LIBUCONTEXT_INCLUDE_DIR})
+		target_include_directories(arlinux_mach_core PRIVATE ${LIBUCONTEXT_INCLUDE_DIR})
 	elseif (DEFINED CMAKE_FIND_ROOT_PATH)
-		target_include_directories(darlingserver PRIVATE ${CMAKE_FIND_ROOT_PATH}/include)
+		target_include_directories(arlinux_mach_core PRIVATE ${CMAKE_FIND_ROOT_PATH}/include)
 	endif()
 endif()
 
 find_library(LIBSEMAPHORE android-posix-semaphore)
 if (LIBSEMAPHORE)
-	target_link_libraries(darlingserver PRIVATE ${LIBSEMAPHORE})
+	target_link_libraries(arlinux_mach_core PRIVATE ${LIBSEMAPHORE})
 endif()
 
-target_compile_options(darlingserver PRIVATE
+target_compile_options(arlinux_mach_core PRIVATE
 	-pthread
 	-std=c++17
 )
-target_link_options(darlingserver PRIVATE
+target_link_options(arlinux_mach_core PRIVATE
 	-pthread
 	-Wl,--gc-sections
+	-Wl,--no-undefined
 )
 
 if (DSERVER_ASAN OR DSERVER_UBSAN)
-	target_compile_options(darlingserver PRIVATE
+	target_compile_options(arlinux_mach_core PRIVATE
 		-fsanitize=${dserver_sanitizers}
 		-fsanitize-recover=all
 		-fno-omit-frame-pointer
 		-g
 		-Og
 	)
-	target_link_options(darlingserver PRIVATE
+	target_link_options(arlinux_mach_core PRIVATE
 		-fsanitize=${dserver_sanitizers}
 		-fsanitize-recover=all
 	)
 endif()
 
 if (DSERVER_EXTENDED_DEBUG)
-	target_compile_options(darlingserver PRIVATE
+	target_compile_options(arlinux_mach_core PRIVATE
 		-fno-omit-frame-pointer
 	)
 endif()
 
-install(TARGETS darlingserver DESTINATION bin)
+install(TARGETS arlinux_mach_core LIBRARY DESTINATION lib)
 
 if (ANDROID)
-	set_target_properties(darlingserver PROPERTIES
+	set_target_properties(arlinux_mach_core PROPERTIES
 		INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib"
 		BUILD_WITH_INSTALL_RPATH TRUE
 	)
 endif()
 
-#file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/${DARLING_SDK_RELATIVE_PATH}/usr/include/darlingserver")
-#create_symlink(
-#	"${DARLING_ROOT_RELATIVE_TO_SDK}/../../../src/darlingserver/include/darlingserver/rpc.h"
-#	"${CMAKE_BINARY_DIR}/${DARLING_SDK_RELATIVE_PATH}/usr/include/darlingserver/rpc.h"
-#)
-
-if (NOT "${DARLINGSERVER_INIT_PROCESS}" STREQUAL "")
-	target_compile_definitions(darlingserver PRIVATE
-		DARLINGSERVER_INIT_PROCESS="${DARLINGSERVER_INIT_PROCESS}"
-	)
-endif()
-
-if (NOT "${DARLINGSERVER_XDG_USER_DIR_CMD}" STREQUAL "")
-	target_compile_definitions(darlingserver PRIVATE
-		DARLINGSERVER_XDG_USER_DIR_CMD="${DARLINGSERVER_XDG_USER_DIR_CMD}"
-	)
-endif()

@@ -49,35 +49,45 @@ not a zero-result stub. Write-lock routing is implemented but not independently
 observed in that trace. Server Darwin errors and Linux transport errors retain
 separate ABI handling. The local backend remains unsupported for these calls.
 
-[Run 39413135394](https://github.com/taowen/arlinux-xnu/actions/runs/39413135394),
-source `501f69845895de37c8f0d3c5f82bf790336c68d0`, passes Library Validation
-composition policy and real file mapping. The traced app maps
-libobjc-trampolines.dylib's 48 KiB executable TEXT at 0x304d3c000. Its one
-instruction section contains zero TLS instructions requiring adaptation; this
-run does not establish rewriting a dynamic library containing such instructions.
-The next actual abort is `vm_remap trampolines failed (6)`: Darling requests a
-fixed anonymous 48 KiB RWX target at 0x304d54000; the native S2C callback rejects
-it with Linux ENOTSUP (-95). The server translates allocation failure to
-KERN_RESOURCE_SHORTAGE. This does not establish physical memory exhaustion.
+[Run 39417304660](https://github.com/taowen/arlinux-xnu/actions/runs/39417304660),
+source `4582c23e7ecfe285c3ebcc1cbb0c242e66845b57`, builds the in-tree hard
+fork and runs real ARHello. The original vm_remap trampoline allocation no
+longer fails: the ordinary runtime records DARLING_CODE_COPY_COMPLETE after
+Darling copies the real code and native cache maintenance completes. The app
+continues to a new actual fatal error, `unsupported display request rights/body`,
+and exits 125. This establishes progress beyond trampoline remap, not a UIKit
+frame or an interactive app. Keep the ordinary and debugger attempts separate.
+No ARHELLO_READY, real input or complete GUI lifecycle passes yet.
 
-The next change supports actual low-address, 16 KiB-aligned S2C anonymous
-allocations, fixed overwrite/non-overwrite flags and requested R/W/X permissions.
-Darling retains source-memory read and target copy semantics. After its final
-RPC reply, the client flushes copied executable ranges before resuming guest
-code. Those process bytes were already adapted by their loader and are not
-rewritten twice. Pending cache ranges track overwrite/unmap/protection changes;
-capacity and actual Linux mapping errors remain failures. The trusted server's
-existing RWX allocation/returned-protection limitations are not corrected by
-this change. Ordinary BSD anonymous executable allocation and general JIT
-adaptation remain unsupported. Dispatch and inspect the exact new runner result;
-no ARHELLO_READY, UIKit frame, real input or complete GUI lifecycle passes yet.
+The runtime source now lives in components/darling, with native client and
+server-side support identified by the same enclosing Git commit. ORIGINS.json
+retains import history/licenses; no Darling submodule is fetched. The first
+import run 39415413747 failed building MIG due to missing original header
+forwarding paths. Those source symlinks are included at 4582c23; that run builds
+both server and client and reaches the real app failure above.
+
+The next architecture change removes the standalone Darling desktop main and
+executable. A linked Mach-core library starts its event loop in the persistent
+native session process, which also owns bootstrap/FrontBoard. App address
+spaces stay independent. A ready marker must follow actual Mach check-in and
+port setup; compare SESSION_MACH_CORE_STARTED, UNIFIED_SESSION_PID, client audit
+identity and actual app progress in the exact new runner result. Internal host
+RPC dispatch and same-task guest VM routing are not yet simplified by this
+first consolidation. It must not be reported as validated before that run.
+
+The S2C memory implementation maps real low-address, 16 KiB anonymous storage
+with actual fixed overwrite/non-overwrite and requested R/W/X permissions.
+Darling owns source reads and copying; after its final RPC reply the client
+flushes copied executable ranges. Already-adapted process code is not rewritten
+twice. General guest JIT remains unsupported. The core's upstream RWX/current
+protection limitations remain. The dynamically loaded trampoline library's one
+instruction section required zero TLS instruction changes, so its loading does
+not establish dynamic-library TLS rewriting on a library that needs it.
 
 References: Apple's [objc4 trampoline allocation](https://github.com/apple-oss-distributions/objc4/blob/objc4-750/runtime/objc-block-trampolines.mm#L287-L334)
-uses a fixed overwrite with copy=TRUE. The pinned Darling server's
-[mach_vm_remap_external](https://github.com/taowen/darlingserver/blob/5d0ce49cde1fc7cf7a8953283120b00f27b6b493/duct-tape/src/memory.c#L1010-L1072)
-already copies real bytes, but unconditionally requests RWX and returns RW
-current protection. libffi's shared-copy=FALSE variant is not equivalent to
-objc4's private copy and must not replace it.
+uses fixed overwrite with copy=TRUE. The imported memory.c implementation
+already performs a real copy. libffi's copy=FALSE sharing variant cannot replace
+that private-copy operation.
 
 The prior diagnostic run 39410444685 stopped earlier in libdispatch at
 0x1808c4878 and did not reproduce the pthread abort; preserve that distinct
@@ -99,15 +109,15 @@ explains abort-reason/abort routing; compare it with the actual cache code.
 
 ## Exact evidence and inputs
 
-Latest failure evidence is run 39413135394; downloaded LLDB/runtime/session
-logs match its receipt. Receipt SHA-256:
-`c9e07eb6a899f7340eeb476bd9f1c7553794d6bcee18cd13d2a6c949bff376fb`.
+Latest failure evidence is run 39417304660; downloaded ordinary runtime,
+debugger runtime and session logs match its receipt. Receipt SHA-256:
+`ca4bd912cda09b3cabdfddd0efa8a59cd26708c75bacaf3f81de317777be9f52`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| debugger.runtime.log | `1976f43fe35ed3715b5b576824b440712140cd8ec25da70f649a1099c3448a8c` |
-| lldb.log | `4899d7f413f58a3a348dfdbc90d155e7a241de78f20191660561155ce0ca82ff` |
-| session.log | `dcbafb328f2c1720ef8c71e61ce94d98895b438daeeca4d64cde21f2ecb8bc71` |
+| app.runtime.log | `a338ca8c1f9148ef3dda0451ca7fee3e04a3b2f6c5e62b5822ea8f8a49c0e2d6` |
+| debugger.runtime.log | `01280a602c3a30195e155bc64bba4df8dfd97319a7903c0b98a7ba9c407821db` |
+| session.log | `5c7775e1d0c1541c2587917bac813a8447ae1b02dd3047bc9e3fb155e6a1156a` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain

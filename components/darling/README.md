@@ -3,7 +3,11 @@
 This directory is an in-tree hard fork of the Darling runtime used by the
 native iOS experiment. Edit server, XNU support, MIG and RPC changes in this
 repository; there is no external Darling gitlink, download or patch stage.
-The native TLS-free client lives in ../../src/darling-*.h; its RPC definitions
+The Mach core builds as libarlinux_mach_core.so and is linked into the native
+session program. There is no standalone darlingserver executable. The persistent
+session starts the core's host event loop in a thread, then owns bootstrap,
+FrontBoard and app process state in that same Linux process. Apps remain separate
+processes. The native TLS-free client lives in ../../src/darling-*.h; its RPC definitions
 and generator live in source/src/external/darlingserver. They are built from
 the same enclosing repository commit. Source subdirectories retain their
 historical layout to preserve upstream relative includes and symlinks.

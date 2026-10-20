@@ -19,8 +19,10 @@ Receipt markers expose provenance; downloading a report
 does not independently verify every artifact listed in a receipt. Raw logs
 remain the source for details outside the concise report.
 
-With `--ipc darling`, dyld evidence also contains darling.log and the exact
-server PID/prefix used by the native client. DARLING_NATIVE_CONNECTED records
+With `--ipc darling`, dyld evidence contains session.log and the exact session
+PID/prefix used by the native client. The linked Mach core and bootstrap service
+now belong to that same PID; its log includes SESSION_MACH_CORE_STARTED and
+SESSION_READY. Older runs retain a separate darling.log/server PID. DARLING_NATIVE_CONNECTED records
 actual self-port RPC results. DARLING_RPC_WAIT reads the generated call's saved
 header/body from a stopped native frame, or reports unavailable fields as null.
 Use `build.sh download --run-id RUN_ID --artifact linux-arm64-apple-dyld-evidence`
