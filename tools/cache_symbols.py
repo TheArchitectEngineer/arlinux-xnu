@@ -131,7 +131,7 @@ class CacheSymbols:
         candidates=[]
         for base,size in image['executable']:
             member,offset=self.locate(base,size)
-            for i in range(12,size-96,4):
+            for i in range(16,size-192,4):
                 word=member.unpack('<I',offset+i)[0]
                 if word&0xfc000000==0x94000000:
                     immediate=word&0x3ffffff
@@ -148,8 +148,8 @@ class CacheSymbols:
         if len(unique)>32:raise ValueError('Ambiguous bootstrap diagnostic scope exceeds 32 windows')
         result=[]
         for address,reason in sorted(unique.items()):
-            member,offset=self.locate(address,96)
-            code=member.data[offset:offset+96]
+            member,offset=self.locate(address,192)
+            code=member.data[offset:offset+192]
             source='\n'.join(' '.join(f'0x{byte:02x}' for byte in code[i:i+4]) for i in range(0,len(code),4))
             process=subprocess.run(['llvm-mc-18','--disassemble','--triple=aarch64','--print-imm-hex'],
                 input=source,text=True,capture_output=True,timeout=5,check=True)
