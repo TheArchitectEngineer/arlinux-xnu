@@ -5,7 +5,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import struct
 import subprocess
 from datetime import datetime
 
@@ -114,120 +113,11 @@ def report(run_id, job_name, verbose=False):
         if log_format == 'gh-run-view':
             lines = [re.sub(r'^[^\t]+\t[^\t]+\t', '', line) for line in lines]
         lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
-        markers = ('APP_INPUT ', 'APP_OUTCOME ', 'IOS_SUITE ', 'IOS_JOURNEY ', 'COMPILER_CACHE_STATS ', 'LLDB_RETRY_SKIPPED ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
-                   'DARLING_NATIVE_CONNECTED ', 'DARLING_RPC_ERROR ', 'DARLING_RPC_WAIT ',
-                   'DARLING_RENDER_RECEIVED ', 'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_SERVICE_PORTS ',
-                   'HIDFOCUS_REQUEST_UNIMPLEMENTED ', 'SESSION_SERVICE_FAILED ',
-                   'WAYLAND_TOPLEVEL_FOCUS ',
-                   'UI_RUNLOOP_OBSERVER_', 'UI_LAYER_FRAME ', 'UI_BITMAP_CONTEXT_UNAVAILABLE ',
-                   'UI_FRAME_CAPTURE', 'WAYLAND_APP_FRAME_', 'APP_FRAME_CAPTURE ',
-                   'UI_WINDOW_BOUNDS ', 'UI_LAYER_BOUNDS ', 'UI_BOUNDS_SIZE ', 'UI_LAYER_CHILDREN ',
-                   'DARLINGSERVER_RPC_ONLY ',
-                   'DARLING_KQCHAN_OPEN ', 'DARLING_KQCHAN_EVENT ',
-                   'DARLING_SERVICE_REPLY ',
-                   'DARLING_SERVER_UNAVAILABLE ', 'darlingserver duct-tape panic: ',
-                   'DARLING_S2C_MEMORY ', 'DARLING_PSYNCH ', 'NATIVE_THREAD_IDENTITIES ', 'NATIVE_ULOCK_WAIT ', 'NATIVE_ULOCK_QUEUES ', 'DARLING_CODE_COPY_COMPLETE ',
-                   'SESSION_MACH_CORE_STARTED ', 'SESSION_MACH_CORE_FAILED ', 'UNIFIED_SESSION_PID ',
-                   'DARWIN_WORKLOOP_SOFT_DELETE ', 'DARWIN_WORKLOOP_ERROR_STATE ',
-                   'DARWIN_WORKLOOP_SYNC_', 'NATIVE_WORKLOOP_WAIT ',
-                   'DARWIN_CODESIGN_QUERY ', 'SECURITY_QUERY ', 'SECURITY_RETURN ',
-                   'EXCEPTION_CALLER_CODE ', 'EXCEPTION_CALLER_REFERENCE ',
-                   'DICTIONARY_NIL_INPUT ', 'DICTIONARY_INPUT_READ_ERROR ', 'HID_CLIENT_REFERENCE ',
-                   'HID_CLIENT_CALLEE_REFERENCE ',
-                   'IPC_CALLBACK ',
-                   'DARLING_PORT_CONSTRUCT ', 'DARLING_UNSUPPORTED_SERVICE ', 'DARLING_SERVICE_DESCRIPTOR ',
-                   'DARLING_SERVICE_INLINE ', 'NATIVE_SERVICE_FAILURE ', 'NATIVE_RENDER_FRAMEWORK_', 'NATIVE_RENDER_FORWARD ', 'ORIGINAL_WAIT_PID=', 'ORIGINAL_WAIT_START_TICKS ', 'ORIGINAL_WAIT_TRACE_STATUS=',
-                   'DARLING_PORT_GUARD ',
-                   'APP_STARTUP_INCOMPLETE ', 'DARWIN_EXIT_FRAME ',
-                   'GUEST_EXIT_STATUS ', 'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
-                   'SERVICE_LOOKUP ', 'SERVICE_LOOKUP_LIMIT ',
-                   'WAYLAND_BACKEND_READY ', 'NATIVE_SERVICE_ADAPTER ', 'DARWIN_DISPLAY_QUERY ',
-                   'DARWIN_RENDER_DISPLAY_LIST ', 'OBJC_DISPLAY_DECODE_ERROR ',
-                   'DARWIN_RENDER_PROPERTIES ', 'DISPLAY_MODE_RATE_FACTOR ',
-                   'DARWIN_TIMER_OPERATION ', 'DARWIN_TIMER_EXPIRED ', 'DARWIN_PORT_OPERATION ',
-                   'DARWIN_PORT_TYPE ', 'SERVICE_REGISTER ', 'GRAPHICS_FAILURE ', 'DARWIN_SERVICE_REGISTER ',
-                   'DARWIN_KEVENT_BUFFER_DELIVERY ',
-                   'DARWIN_MACH_OPTIONS_REJECTED ',
-                   'DARWIN_REPLY_PORT_DESTROYED ',
-                   'DARWIN_REPLY_RECEIVE_DIED ',
-                   'DARWIN_MACH_SEND_DATA_REJECTED ', 'FAULT_REFERENCE ',
-                   'IPC_WAIT ', 'IPC_WAIT_DECODE_ERROR ', 'IPC_QUEUE_SNAPSHOT ', 'DARWIN_KEVENT_ERROR ',
-                   'NORMAL_RUNTIME_FAULT_PC ', 'DIAGNOSTIC_WAIT_INTERRUPTED ',
-                   'DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DYNAMIC_MAIN ', 'DYNAMIC_THREAD ',
-                   'DYNAMIC_CONSOLE ', 'EXPERIMENT_RECEIPT ', 'EXPERIMENT_EXECUTABLE ',
-                   'BOOTSTRAP_XPC_REQUEST ', 'BOOTSTRAP_XPC_REPLY ', 'BOOTSTRAP_XPC_IDENTITY ',
-                   'PROCESSINFO_', 'SESSION_XPC_', 'SESSION_WORKSPACE_', 'SESSION_LAUNCH_', 'SESSION_SCENE_', 'SESSION_EVENT_', 'SESSION_READY ', 'PEER_PROCESS_STATUS=',
-                   'APP_LAUNCH_CALL ', 'APP_LAUNCH_METADATA_ERROR ', 'APP_SETTINGS_CALL ')
-        item['observations'] = []
-        context_lengths = {'DARLING_NATIVE_CONNECTED ': 2,
-                           'DARLING_KQCHAN_OPEN ': 3, 'DARLING_KQCHAN_EVENT ': 5,
-                           'DARLING_SERVICE_REPLY ': 4,
-                           'DARLING_PORT_CONSTRUCT ': 5,
-                           'DARLING_PORT_GUARD ': 5,
-                           'DARLING_S2C_MEMORY ': 6, 'DARLING_PSYNCH ': 10, 'DARLING_UNSUPPORTED_SERVICE ': 6, 'DARLING_SERVICE_DESCRIPTOR ': 5,
-                           'DARWIN_WORKLOOP_SOFT_DELETE ': 2,
-                           'DARWIN_WORKLOOP_ERROR_STATE ': 9,
-                           'DARWIN_CODESIGN_QUERY ': 6,
-                           'DARWIN_EVENT_DELIVERY ': 3, 'DARWIN_NATIVE_FAULT ': 3,
-                           'DARWIN_DISPLAY_QUERY ': 3, 'DARWIN_RENDER_DISPLAY_LIST ': 3,
-                           'DARWIN_RENDER_PROPERTIES ': 4, 'DARWIN_TIMER_OPERATION ': 6,
-                           'DARWIN_TIMER_EXPIRED ': 1, 'DARWIN_PORT_OPERATION ': 6,
-                           'DARWIN_KEVENT_ERROR ': 6, 'DARWIN_PORT_TYPE ': 3,
-                           'DARWIN_KEVENT_BUFFER_DELIVERY ': 4,
-                           'DARWIN_MACH_OPTIONS_REJECTED ': 7, 'DARWIN_SERVICE_REGISTER ': 3,
-                           'DARWIN_REPLY_PORT_DESTROYED ': 2, 'DARWIN_REPLY_RECEIVE_DIED ': 1,
-                           'DARWIN_MACH_SEND_DATA_REJECTED ': 7}
-        for index, line in enumerate(lines):
-            if not line.startswith(markers):
-                continue
-            item['observations'].append(line)
-            for prefix, count in context_lengths.items():
-                if not line.startswith(prefix):
-                    continue
-                # Preserve bounded context verbatim: separate worker writes may
-                # interleave, so do not infer a synthetic causal event from it.
-                item['observations'].extend('  context: ' + text for text in lines[index+1:index+1+count])
-                break
-        # Keep full observations in the JSON and raw log. Default output must
-        # expose outcomes before the many historical instrumentation markers.
-        if verbose:
-            for line in item['observations']:
-                print('  ' + line)
-        else:
-            concise = ('APP_OUTCOME ', 'IOS_SUITE ', 'IOS_JOURNEY ', 'COMPILER_CACHE_STATS ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
-                       'LLDB_RETRY_SKIPPED ', 'APP_STARTUP_INCOMPLETE ',
-                       'ORIGINAL_WAIT_PID=', 'ORIGINAL_WAIT_START_TICKS ', 'ORIGINAL_WAIT_TRACE_STATUS=',
-                       'NATIVE_SERVICE_PORTS ', 'NATIVE_ULOCK_QUEUES ', 'NATIVE_ULOCK_WAIT ',
-                       'NORMAL_RUNTIME_FAULT_PC ', 'DARWIN_NATIVE_FAULT ', 'DARWIN_KEVENT_ERROR ',
-                       'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
-                       'NATIVE_SERVICE_FAILURE ', 'DARLING_RENDER_RECEIVED ',
-                       'HIDFOCUS_REQUEST_UNIMPLEMENTED ', 'SESSION_SERVICE_FAILED ',
-                       'WAYLAND_TOPLEVEL_FOCUS ',
-                       'UI_RUNLOOP_OBSERVER_', 'UI_LAYER_FRAME ', 'UI_BITMAP_CONTEXT_UNAVAILABLE ',
-                       'UI_FRAME_CAPTURE', 'WAYLAND_APP_FRAME_', 'APP_FRAME_CAPTURE ',
-                       'UI_WINDOW_BOUNDS ', 'UI_LAYER_BOUNDS ', 'UI_BOUNDS_SIZE ', 'UI_LAYER_CHILDREN ',
-                       'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_RENDER_FORWARD ',
-                       'DARWIN_WORKLOOP_ERROR_STATE ', 'DARWIN_WORKLOOP_SYNC_', 'NATIVE_WORKLOOP_WAIT ',
-                       'EXPERIMENT_RECEIPT ')
-            shown = set()
-            ordered = sorted(enumerate(item['observations']),
-                             key=lambda entry: 0 if entry[1].startswith('APP_OUTCOME ') else
-                             2 if entry[1].startswith('EXPERIMENT_RECEIPT ') else 1)
-            for index, line in ordered:
-                if line.startswith(concise) and line not in shown:
-                    print('  ' + line)
-                    shown.add(line)
-                    geometry = re.match(r'UI_BOUNDS_SIZE width=0x([0-9a-f]{16}) pc=0x([0-9a-f]{16}) ', line)
-                    if geometry:
-                        width, height = (struct.unpack('<d', int(value, 16).to_bytes(8, 'little'))[0]
-                                         for value in geometry.groups())
-                        print(f'    measured bounds: width={width:g} height={height:g}')
-                    if line.startswith(('DARWIN_WORKLOOP_ERROR_STATE ', 'DARWIN_NATIVE_FAULT ', 'DARWIN_KEVENT_ERROR ')):
-                        for context in item['observations'][index+1:index+10]:
-                            if not context.startswith('  context: '):
-                                break
-                            print('  ' + context)
-            print(f"  Full observations: {len(item['observations'])}; use --verbose or the saved JSON/raw log")
+        markers=('APP_BUILD ','APP_CASE ','APP_SUITE ','APP_INPUT_VERIFIED ',
+                 'COMPILER_CACHE_STATS ','EXPERIMENT_RECEIPT ')
+        item['observations']=[line for line in lines if line.startswith(markers)]
+        for line in (lines if verbose else item['observations']):
+            print('  '+line)
         # An uncaught failure can have no application markers (e.g. compiler
         # error). Preserve actionable Actions errors instead of a blank report.
         item['errors'] = [line for line in lines if line.startswith('##[error]') or
@@ -243,8 +133,8 @@ def report(run_id, job_name, verbose=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['build', 'status', 'report', 'download'])
-    parser.add_argument('--mode', choices=['both', 'host', 'baseline', 'native', 'dyld', 'app', 'playcover', 'darling'], default='native')
-    parser.add_argument('--ipc', choices=['local', 'darling'], default=None, help='IPC backend for the native dyld/app journey')
+    parser.add_argument('--app',default='all',help='all or comma-separated source-owned app IDs; subset runs are explicitly partial')
+    parser.add_argument('--reference',action='store_true',help='Also run the same app journeys on the Apple-host reference')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--job', help='Exact job name for report; default: all jobs')
@@ -260,10 +150,6 @@ def main():
     if args.command == 'report':
         report(args.run_id, args.job, args.verbose)
         return
-    if args.ipc is None:
-        args.ipc = 'darling' if args.mode == 'app' else 'local'
-    if args.command == 'build' and args.mode == 'app' and args.ipc != 'darling':
-        parser.error('Application journeys require the shared Darling session')
     repo = REPO
     if args.command == 'build':
         # A failed push must not silently dispatch stale remote sources. Resolve
@@ -279,7 +165,7 @@ def main():
             raise SystemExit('Selected local ref is not pushed: ' + args.ref +
                              ' local=' + expected + ' remote=' + remote)
         print('Dispatching exact pushed source ' + expected, flush=True)
-        command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'mode=' + args.mode, '-f', 'ipc=' + args.ipc]
+        command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'app=' + args.app, '-f', 'reference=' + str(args.reference).lower()]
     elif args.command == 'status':
         command = (['run', 'view', args.run_id] if args.run_id else
                    ['run', 'list', '--workflow', 'experiment.yml', '--limit', '5'])

@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""Run independent source-owned app journeys. Public entry: build.sh."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import sys
+from app_suite.case import Case
+from app_suite.context import ROOT
+from app_suite.session import Session,AppleSession
+
+def main():
+    parser=argparse.ArgumentParser();parser.add_argument('--app',default='all');parser.add_argument('--reference',action='store_true');args=parser.parse_args()
+    expected='darwin' if args.reference else 'linux'
+    if sys.platform!=expected or platform.machine() not in ('aarch64','arm64') or os.environ.get('GITHUB_ACTIONS')!='true':
+        raise SystemExit('App execution requires its ARM64 GitHub runner through build.sh')
+    products=json.loads((ROOT/'build/apps/products.json').read_text())
+    if products['source']!=os.environ['GITHUB_SHA'] or products['runId']!=os.environ['GITHUB_RUN_ID']:
+        raise SystemExit('App products do not belong to this exact source/run')
+    apps={app['id']:app for app in products['apps']}
+    selected=set(apps) if args.app=='all' else set(args.app.split(','))
+    if not selected or not selected<=set(apps):parser.error('Unknown app selection')
+    output=ROOT/'build/results/apps';output.mkdir(parents=True,exist_ok=False)
+    cases=[];inputs=[]
+    for app in sorted(selected):
+        path=ROOT/'apps'/app/'journeys.json';inputs.append(path)
+        for case in json.loads(path.read_text())['cases']:cases.append({**case,'id':app+'--'+case['id'],'owner':app})
+    if args.app=='all':
+        for path in sorted((ROOT/'apps/scenarios').glob('*.json')):
+            inputs.append(path);case=json.loads(path.read_text());cases.append({**case,'id':'session--'+case['id'],'owner':'session'})
+    results=[]
+    for case in cases:
+        try:
+            with (AppleSession if args.reference else Session)(output/(case['id']+'--session')) as session:
+                result=Case(case,apps,session.identity,session.environment,output,args.reference).run()
+        except (OSError,RuntimeError) as error:
+            result={'id':case['id'],'status':'failed','error':str(error),'steps':[], 'infrastructureFailure':True}
+        results.append(result)
+        (output/(case['id']+'.json')).write_text(json.dumps(result,indent=2)+'\n')
+        print('APP_CASE '+json.dumps({'id':case['id'],'status':result['status'],'error':result.get('error')}),flush=True)
+    result={'source':products['source'],'runId':products['runId'],'attempt':os.environ['GITHUB_RUN_ATTEMPT'],
+        'backend':'apple-host' if args.reference else 'linux-darling-wayland','selection':args.app,'fullSuite':args.app=='all','deviceAcceptance':False,
+        'inputs':{str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs},
+        'passed':bool(results) and all(case['status']=='passed' for case in results),'cases':results}
+    (output/'result.json').write_text(json.dumps(result,indent=2)+'\n')
+    print('APP_SUITE '+json.dumps({k:result[k] for k in ('passed','fullSuite','selection')}),flush=True)
+    return 0 if result['passed'] else 1
+if __name__=='__main__':raise SystemExit(main())

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "objects-exception-timer",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "foundation"
+        },
+        {
+          "do": "stdout",
+          "text": "Foundation JSON unicode exception timer: 10"
+        },
+        {
+          "do": "stdin",
+          "text": "q"
+        },
+        {
+          "do": "exit",
+          "app": "foundation"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "dom-input",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "web"
+        },
+        {
+          "do": "see",
+          "text": "WebCount: ?0"
+        },
+        {
+          "do": "click",
+          "text": "^Advance$"
+        },
+        {
+          "do": "see",
+          "text": "WebCount: ?1"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "web"
+        }
+      ]
+    }
+  ]
+}

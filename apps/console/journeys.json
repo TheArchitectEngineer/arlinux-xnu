@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "interactive-relaunch",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "console"
+        },
+        {
+          "do": "stdout",
+          "text": "Console ready"
+        },
+        {
+          "do": "stdin",
+          "text": "+"
+        },
+        {
+          "do": "stdout",
+          "text": "Counter: 1"
+        },
+        {
+          "do": "stdin",
+          "text": "q"
+        },
+        {
+          "do": "exit",
+          "app": "console"
+        },
+        {
+          "do": "launch",
+          "app": "console"
+        },
+        {
+          "do": "stdout",
+          "text": "Console ready"
+        },
+        {
+          "do": "stdin",
+          "text": "+q"
+        },
+        {
+          "do": "exit",
+          "app": "console"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "payload-retire-restart",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "services"
+        },
+        {
+          "do": "click",
+          "text": "^Send$"
+        },
+        {
+          "do": "see",
+          "text": "Echo: ?payload-42"
+        },
+        {
+          "do": "helper",
+          "app": "services"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "services"
+        },
+        {
+          "do": "helper-exit",
+          "app": "services"
+        },
+        {
+          "do": "launch",
+          "app": "services"
+        },
+        {
+          "do": "click",
+          "text": "^Send$"
+        },
+        {
+          "do": "see",
+          "text": "Echo: ?payload-42"
+        },
+        {
+          "do": "helper",
+          "app": "services"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "services"
+        },
+        {
+          "do": "helper-exit",
+          "app": "services"
+        }
+      ]
+    }
+  ]
+}

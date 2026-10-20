@@ -1,0 +1,11 @@
+{
+  "id": "foundation",
+  "name": "Foundation",
+  "version": "1.0",
+  "kind": "console",
+  "language": "objc",
+  "source": "main.m",
+  "frameworks": [
+    "Foundation"
+  ]
+}

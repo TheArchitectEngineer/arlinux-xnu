@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "thread",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "workers"
+        },
+        {
+          "do": "click",
+          "text": "^Thread$"
+        },
+        {
+          "do": "see",
+          "text": "Thread: ?42"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "workers"
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "workers"
+        },
+        {
+          "do": "click",
+          "text": "^Memory$"
+        },
+        {
+          "do": "see",
+          "text": "Memory: ?16384"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "workers"
+        }
+      ]
+    },
+    {
+      "id": "queue",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "workers"
+        },
+        {
+          "do": "click",
+          "text": "^Queue$"
+        },
+        {
+          "do": "see",
+          "text": "Queue: ?3"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "workers"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "id": "concurrent-relaunch",
+  "steps": [
+    {
+      "do": "launch",
+      "app": "counter"
+    },
+    {
+      "do": "see",
+      "text": "Counter.*Count: ?0"
+    },
+    {
+      "do": "launch",
+      "app": "workers"
+    },
+    {
+      "do": "see",
+      "text": "Workers"
+    },
+    {
+      "do": "alive",
+      "app": "counter"
+    },
+    {
+      "do": "click",
+      "text": "^Thread$"
+    },
+    {
+      "do": "see",
+      "text": "Thread: ?42"
+    },
+    {
+      "do": "focus",
+      "app": "counter"
+    },
+    {
+      "do": "click",
+      "text": "^Increment$"
+    },
+    {
+      "do": "see",
+      "text": "Count: ?1"
+    },
+    {
+      "do": "focus",
+      "app": "workers"
+    },
+    {
+      "do": "close"
+    },
+    {
+      "do": "exit",
+      "app": "workers"
+    },
+    {
+      "do": "focus",
+      "app": "counter"
+    },
+    {
+      "do": "click",
+      "text": "^Increment$"
+    },
+    {
+      "do": "see",
+      "text": "Count: ?2"
+    },
+    {
+      "do": "launch",
+      "app": "workers"
+    },
+    {
+      "do": "see",
+      "text": "Workers"
+    },
+    {
+      "do": "click",
+      "text": "^Memory$"
+    },
+    {
+      "do": "see",
+      "text": "Memory: ?16384"
+    },
+    {
+      "do": "focus",
+      "app": "counter"
+    },
+    {
+      "do": "click",
+      "text": "^Increment$"
+    },
+    {
+      "do": "see",
+      "text": "Count: ?3"
+    },
+    {
+      "do": "focus",
+      "app": "workers"
+    },
+    {
+      "do": "close"
+    },
+    {
+      "do": "exit",
+      "app": "workers"
+    },
+    {
+      "do": "focus",
+      "app": "counter"
+    },
+    {
+      "do": "close"
+    },
+    {
+      "do": "exit",
+      "app": "counter"
+    }
+  ]
+}

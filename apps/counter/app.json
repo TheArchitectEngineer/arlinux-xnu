@@ -1,0 +1,11 @@
+{
+  "id": "counter",
+  "name": "Counter",
+  "version": "1.0",
+  "kind": "application",
+  "language": "objc",
+  "source": "main.m",
+  "frameworks": [
+    "UIKit"
+  ]
+}

@@ -5,89 +5,45 @@ Linux/Android. **No complete iOS app journey has passed on Linux/Android yet.** 
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.
 
-The native ARM64 path executes real dyld/libSystem with memory, TLS, threads,
-console input, exit and restart. Two original UIKit apps render real text into Wayland;
-system controls and complete GUI interaction remain broken. The required app
-suite now checks composed pixels, real input, normal exit/relaunch, concurrent
-apps, crash isolation and an application-requested XPC helper. Failed or blocked
-steps fail the suite. See [journeys](docs/JOURNEYS.md), [architecture](docs/ARCHITECTURE.md)
-and the concise [current handoff](docs/EXPERIMENT.md).
+The source-owned [app collection](docs/APPS.md) drives development. Each small app
+owns its sources, build declaration and short journeys. There is no all-purpose
+workbench, freestanding syscall probe, alternate IPC backend selector or separate
+kernel-boot experiment in the build. Required failures remain red.
 
-The same ARHello binary has an independent PlayCover/macOS reference journey.
-It supplies behavior comparison, not Linux or Android acceptance. Apple firmware
-and frameworks are never redistributed here.
+## Build and observe
 
-A [full-system XNU reference](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725)
-provides a behavior comparison. Compilation is not application compatibility.
-
-Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
-software framebuffer. No 32-bit apps or Metal support. Proprietary Apple
-frameworks and firmware are not included.
-
-## Required session model
-
-The target includes **multiple independent iOS application processes running
-concurrently in one session**, with separate address spaces and lifecycles.
-A shared session service must provide bootstrap, service registration and
-process-state management, reusing Darling/XNU cross-process Mach rights and
-messages. The independent session now connects two concurrent app processes,
-delivers real FrontBoard launch events and receives each framework response;
-process exit has a retained-right cleanup path, whose full behavior remains
-unverified. Real UIKit scene creation and a framework reply are observed; interactive apps
-and the complete multi-process journey remain unverified.
-This includes auxiliary/XPC processes requested by a single app, not only
-separate foreground apps; their launch and lifetime belong to the session.
-
-Acceptance requires at least two named/versioned application processes with
-real display and input: close and relaunch one while the other remains
-interactive, plus an app-requested helper/service launch, IPC and cleanup; then
-verify the same journey through ARLinux on Linux/Android.
-A virtual PID 1 is an implementation option, not an acceptance criterion. If
-PID virtualization is needed, process queries, parentage, audit identity,
-signals and wait/exit behavior must use one consistent mapping.
-
-## Run an experiment
-
-The sole workstation entry is `./build.sh`, requiring Bash, Python 3 and an
-authenticated GitHub CLI. All compilation and execution use GitHub-hosted runners.
+The sole workstation entry is `./build.sh`; Bash, Python 3 and authenticated
+GitHub CLI are required. Compilation and execution happen only on hosted runners.
 
 ```bash
-./build.sh build --mode host       # explicit historical host/shim diagnostics
-./build.sh build                   # default: native Darwin console journey
-./build.sh build --mode dyld       # real dyld/libSystem console journey
-./build.sh build --mode app        # required real-app suite, shared Darling session
-./build.sh build --mode darling    # build pinned community ARM64 IPC server; no app run
-./build.sh build --mode playcover  # same iOS binary, PlayCover conversion on macOS
-./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
+./build.sh build                         # entire app collection plus two-app scenarios
+./build.sh build --app counter           # explicitly partial feedback
+./build.sh build --app counter --reference # same input and journey on Linux and Apple host
 ./build.sh status --run-id RUN_ID
-./build.sh report --run-id RUN_ID --job native-userland # outcomes, timings and saved raw logs
-./build.sh download --run-id RUN_ID
+./build.sh report --run-id RUN_ID
+./build.sh download --run-id RUN_ID --artifact ios-app-results-linux
 ```
 
-The Linux app experiment builds the Mach core and native launcher, then runs
-the real dyld/console/app journeys in one ARM64 job (`native-userland`). One
-toolchain installation serves the whole iteration. Artifacts and SHA-256
-receipts remain separate for each product; Apple inputs stay transient on the
-runner. Reports default to outcomes and key evidence; `report --verbose` prints
-all observations. Older runs retain their original job names.
+One macOS ARM64 job uses Xcode 16.4's real iPhoneOS SDK to build C, Objective-C
+and Swift apps. Linux ARM64 builds the production runtime with ccache, verifies
+the exact same-run app products and prepares the pinned iOS 12.5.7 userland.
+Each independent journey gets a fresh shared Mach session and fresh app state;
+relaunch keeps only that journey's state. Concurrency scenarios alone share
+multiple app processes within one journey. Failures do not block unrelated apps.
+Selected subsets are reported as partial; they cannot certify the whole suite.
 
-The same content-checked ccache serves the Mach core, launcher, guest app and
-open-source APFS reader. Each run links and executes its own products, records
-cache hits/misses, then saves successful compilations even if the app journey
-fails. Firmware, extracted Apple frameworks and installed app state are never
-cached. Cache absence rebuilds normally.
+The optional Apple-host reference reuses the same input binaries and journey
+manifests with pinned PlayCover conversion and real host desktop input. It is a
+behavior comparison, not Linux or Android acceptance. No firmware, Apple SDK,
+framework or extracted Apple executable is uploaded. Retained app binaries and
+platform adapters are built from this repository's source. Downloaded products
+are checked against their same-source/run/attempt receipt and file hashes.
 
-[Execution design and unresolved ABI constraints](docs/ARCHITECTURE.md) defines
-the host/kernel/guest boundary.
-
-[Experiment contract and current blocker](docs/EXPERIMENT.md) explains what each
-result proves, how to resume work and how evidence is retained. Dependencies are
-pinned in [sources.lock.json](sources.lock.json); run logs and artifacts live in
-[GitHub Actions](https://github.com/taowen/arlinux-xnu/actions/workflows/experiment.yml).
-
-[Diagnostic tool selection](docs/DIAGNOSTICS.md) explains how to investigate
-exceptions, waits and native execution without confusing a debugger retry with
-the ordinary application attempt.
+Scope: ARM64, 16 KiB guest pages, one actual scheduled/advertised CPU, non-arm64e,
+selected iOS 12.5.7 frameworks, software framebuffer. Multiple independent apps,
+real service lifetimes, input, persistence and Android acceptance remain required.
+See [architecture](docs/ARCHITECTURE.md), [diagnostics](docs/DIAGNOSTICS.md) and
+[current evidence](docs/EXPERIMENT.md). Unsupported behavior fails explicitly.
 
 ## IPA sources for compatibility research
 
@@ -141,12 +97,12 @@ ARM64 code does not imply a Metal dependency.
   reusing XNU Mach IPC in a Linux userspace server and integrating Mach-port
   kqueue events with epoll.
   [VibeDarling's community fork](https://github.com/VibeDarling/darlingserver)
-  supplies the ARM64 build/clock path used by the opt-in Darling backend.
+  supplies the ARM64 build/clock path used by the integrated Darling backend.
   The runtime is now an [in-tree hard fork](components/darling/README.md): server,
   required XNU support, MIG and headers are maintained here together with our
   native client. Import revisions live in components/darling/ORIGINS.json;
   builds do not fetch a separate Darling fork. Embedding and guest geometry
-  changes are included. Copyright notices and GPL/source licenses are retained. A console journey passes on this backend;
+  changes are included. Copyright notices and GPL/source licenses are retained. Historical console evidence exists on this backend;
   iOS UI and Android compatibility remain unverified.
 * [Apple Open Source](https://github.com/apple-oss-distributions): XNU and the
   matching libdispatch kernel firehose implementation; licenses remain upstream.

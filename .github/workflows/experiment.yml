@@ -1,84 +1,39 @@
-name: Darwin iOS compatibility experiment
-on:
+name: iOS app collection
+'on':
   workflow_dispatch:
     inputs:
-      mode:
-        type: choice
-        default: native
-        options: [both, host, baseline, native, dyld, app, playcover, darling]
-      ipc:
-        type: choice
-        default: darling
-        options: [local, darling]
+      app:
+        description: all, or comma-separated app IDs (partial run)
+        default: all
+        type: string
+      reference:
+        description: Also run the same app inputs on the Apple-host reference
+        default: false
+        type: boolean
 permissions:
   contents: read
 jobs:
-  host-substrate:
-    if: inputs.mode == 'both' || inputs.mode == 'host'
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build and run ARM64 host diagnostic
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/host
-          cp sources.lock.json build/host/
-          uname -a | tee build/host/environment.txt
-          getconf PAGE_SIZE | tee -a build/host/environment.txt
-          cc --version | tee -a build/host/environment.txt
-          cc -Wall -Wextra -Werror -O2 -g tools/host-substrate.c -o build/host/host-substrate
-          file build/host/host-substrate | tee build/host/file.txt
-          timeout 30 build/host/host-substrate | tee build/host/run.log
-          (cd build/host && sha256sum host-substrate > SHA256SUMS)
-      - name: Record experiment receipt
-        if: always()
-        run: python3 tools/experiment-receipt.py --directory build/host --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: linux-arm64-host-substrate
-          path: build/host/
-          retention-days: 30
-  macho-userland:
-    if: inputs.mode == 'both' || inputs.mode == 'host'
-    runs-on: ubuntu-24.04-arm
+  apps:
+    runs-on: macos-15
     timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Linux Mach-O toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-18 lld-18 llvm-18
-      - name: Build and execute the freestanding Darwin program
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/macho
-          cp sources.lock.json build/macho/
-          uname -a > build/macho/environment.txt
-          clang-18 --version >> build/macho/environment.txt
-          ld64.lld-18 --version >> build/macho/environment.txt
-          clang-18 --target=arm64-apple-ios13.0 -c guests/hello.S -o build/macho/hello.o
-          ld64.lld-18 -arch arm64 -platform_version ios 13.0 13.0 -no_adhoc_codesign -e _start build/macho/hello.o -o build/macho/hello.macho
-          llvm-objdump-18 --macho --private-headers build/macho/hello.macho > build/macho/load-commands.txt
-          cc -Wall -Wextra -Werror -O2 -g src/macho-host.c -o build/macho/macho-host
-          file build/macho/macho-host build/macho/hello.macho | tee build/macho/file.txt
-          timeout 30 build/macho/macho-host build/macho/hello.macho > build/macho/guest.stdout 2> build/macho/host.log
-          cat build/macho/guest.stdout build/macho/host.log
-          (cd build/macho && sha256sum macho-host hello.macho > SHA256SUMS)
-      - name: Record experiment receipt
-        if: always()
-        run: python3 tools/experiment-receipt.py --directory build/macho --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: linux-arm64-macho-userland
-          path: build/macho/
-          retention-days: 30
+    - uses: actions/checkout@v4
+    - name: Build all source-owned iOS apps with the Apple SDK
+      run: python3 tools/build-apps.py
+    - name: Record app products
+      if: always()
+      run: python3 tools/experiment-receipt.py --directory build/apps --outcome '${{ job.status }}'
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: ios-app-inputs
+        path: build/apps/
+        retention-days: 30
   native-userland:
-    if: inputs.mode == 'both' || inputs.mode == 'native' || inputs.mode == 'dyld' || inputs.mode == 'app' || inputs.mode == 'playcover' || inputs.mode == 'darling'
+    needs: apps
+    if: always() && needs.apps.result != 'cancelled'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
     env:
@@ -87,455 +42,237 @@ jobs:
       CCACHE_COMPILERCHECK: content
       CCACHE_MAXSIZE: 256M
     steps:
-      - uses: actions/checkout@v4
-      - name: Install experiment toolchain once
-        id: toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ '${{ inputs.mode }}' == app && '${{ inputs.ipc }}' != darling ]]; then
-            echo 'Application journeys require the integrated shared Darling session' >&2
-            exit 2
-          fi
-          packages=(clang-18 cmake ccache)
-          if [[ '${{ inputs.mode }}' == darling || '${{ inputs.ipc }}' == darling ]]; then
-            packages+=(ninja-build bison flex libbsd-dev)
-          fi
-          if [[ '${{ inputs.mode }}' != darling ]]; then
-            packages+=(lld-18 llvm-18 libwayland-dev wayland-protocols)
-          fi
-          if [[ '${{ inputs.mode }}' == app || '${{ inputs.mode }}' == dyld ]]; then
-            packages+=(7zip lldb-18 fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev weston)
-          fi
-          if [[ '${{ inputs.mode }}' == app ]]; then
-            packages+=(xvfb xdotool scrot tesseract-ocr)
-          fi
-          sudo apt-get update
-          sudo apt-get install -y "${packages[@]}"
-          python3 - <<'PY'
-          import hashlib, os, pathlib
-          digest = hashlib.sha256()
-          for name in ('cc', 'clang-18', 'clang++-18', 'ccache'):
-              digest.update(name.encode())
-              digest.update(pathlib.Path('/usr/bin', name).read_bytes())
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
-              stream.write('fingerprint=' + digest.hexdigest() + '\n')
-          PY
-      - name: Restore compiler cache
-        id: compiler_cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ inputs.mode }}-${{ inputs.ipc }}-${{ github.sha }}
-          restore-keys: |
-            compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-
-            compiler-v1-${{ runner.os }}-${{ runner.arch }}-
-      - name: Initialize compiler cache accounting
-        id: cache_accounting
-        run: ccache --zero-stats
-      - name: Record integrated runtime sources
-        if: inputs.mode == 'darling' || inputs.ipc == 'darling'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/darling-ipc
-          cp sources.lock.json build/darling-ipc/
-          git rev-parse HEAD > build/darling-ipc/sources.txt
-          git rev-parse HEAD:components/darling >> build/darling-ipc/sources.txt
-          cp components/darling/ORIGINS.json build/darling-ipc/
-          uname -a > build/darling-ipc/environment.txt
-          getconf PAGE_SIZE >> build/darling-ipc/environment.txt
-      - name: Build integrated Darling IPC server
-        id: core_build
-        if: inputs.mode == 'darling' || inputs.ipc == 'darling'
-        shell: bash
-        run: |
-          set -euo pipefail
-          clang-18 --version >> build/darling-ipc/environment.txt
-          cmake --version >> build/darling-ipc/environment.txt
-          cmake -S components/darling -B build/darling-compilation -G Ninja -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_BUILD_TYPE=RelWithDebInfo 2>&1 | tee build/darling-ipc/configure.log
-          cmake --build build/darling-compilation --target arlinux_mach_core --parallel 4 2>&1 | tee build/darling-ipc/build.log
-          cp build/darling-compilation/darlingserver/libarlinux_mach_core.so build/darling-ipc/
-          mkdir -p build/darling-ipc/include/darlingserver build/darling-ipc/src
-          cp build/darling-compilation/darlingserver/include/darlingserver/rpc.h build/darling-ipc/include/darlingserver/
-          cp components/darling/source/src/external/darlingserver/include/darlingserver/rpc-supplement.h build/darling-ipc/include/darlingserver/
-          cp build/darling-compilation/darlingserver/src/rpc.c build/darling-ipc/src/
-          file build/darling-ipc/libarlinux_mach_core.so | tee build/darling-ipc/file.txt
-      - name: Build and run native Darwin console journey
-        id: native_build
-        if: inputs.mode != 'darling'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/native
-          uname -a > build/native/environment.txt
-          getconf PAGE_SIZE >> build/native/environment.txt
-          cc --version >> build/native/environment.txt
-          clang-18 --version >> build/native/environment.txt
-          ld64.lld-18 --version >> build/native/environment.txt
-          ccache clang-18 --target=arm64-apple-ios12.0 -c guests/console.S -o build/native/console.o
-          ld64.lld-18 -arch arm64 -platform_version ios 13.0 13.0 -no_adhoc_codesign -e _start build/native/console.o -o build/native/console.macho
-          # A standard link-time interface records a real runtime dependency.
-          # It supplies no replacement implementation or fabricated exports.
-          ccache clang-18 --target=arm64-apple-ios12.0 -ffreestanding -fno-stack-protector -O1 -g -c guests/dynamic-console.c -o build/native/console-dynamic.o
-          ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/console-dynamic.o -needed_library guests/libSystem.tbd -o build/native/console-dynamic.macho
-          ccache clang-18 --target=arm64-apple-ios12.0 -ffreestanding -fno-stack-protector -O1 -g -c guests/platform/ios-platform.c -o build/native/ios-platform.o
-          ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -dylib -install_name @loader_path/libarlinux-ios.dylib -no_adhoc_codesign build/native/ios-platform.o -needed_library guests/libSystem.tbd -needed_library guests/sdk/UIKit.tbd -needed_library guests/sdk/CoreFoundation.tbd -needed_library guests/sdk/CoreGraphics.tbd -o build/native/libarlinux-ios.dylib
-          # ARHello is a UIKit app, not a replacement framework. These TBDs only
-          # describe link interfaces; all implementations come from real iOS.
-          for app in ARHello ARWorkbench; do
-            mkdir -p "build/native/$app.app"
-            cp "guests/$app/Info.plist" "build/native/$app.app/"
-            cp build/native/libarlinux-ios.dylib "build/native/$app.app/"
-            ccache clang-18 --target=arm64-apple-ios12.0 -fblocks -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c "guests/$app/main.m" -o "build/native/$app.o"
-            ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main "build/native/$app.o" -needed_library guests/libSystem.tbd -needed_library guests/sdk/UIKit.tbd -needed_library guests/sdk/Foundation.tbd -needed_library guests/sdk/libobjc.tbd -o "build/native/$app.app/$app"
-          done
-          helper=build/native/ARWorkbench.app/XPCServices/ARJourneyWorker.xpc
-          mkdir -p "$helper"
-          cp guests/ARJourneyWorker/Info.plist "$helper/"
-          ccache clang-18 --target=arm64-apple-ios12.0 -fblocks -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c guests/ARJourneyWorker/main.m -o build/native/ARJourneyWorker.o
-          ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/ARJourneyWorker.o -needed_library guests/libSystem.tbd -needed_library guests/sdk/Foundation.tbd -needed_library guests/sdk/libobjc.tbd -o "$helper/ARJourneyWorker"
-          llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
-          rpc_flags=()
-          core_flags=()
-          git submodule update --init third_party/libspc
-          spc_flags=(-Isrc -Icomponents/libspc/include -Ithird_party/libspc/libspc -include string.h -fcommon)
-          spc_objects=()
-          for source in serialization datatypes dictionary array accept; do
-            ccache cc -O2 -g "${spc_flags[@]}" -c "third_party/libspc/libspc/$source.c" -o "build/native/spc-$source.o"
-            spc_objects+=("build/native/spc-$source.o")
-          done
-          ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/native-xpc.c -o build/native/native-xpc.o
-          ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/ios-scene-codec.c -o build/native/ios-scene-codec.o
-          cp third_party/libspc/LICENSE build/native/libspc-LICENSE
-          if [[ '${{ inputs.ipc }}' == darling ]]; then
-            rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include)
-            cp build/darling-ipc/libarlinux_mach_core.so build/native/
-            core_flags=(-Lbuild/native -larlinux_mach_core '-Wl,-rpath,$ORIGIN')
-          fi
-          ccache cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics "${rpc_flags[@]}" -c src/darwin-native.c -o build/native/runtime.o
-          ccache cc -c src/darwin-native.S -o build/native/entry.o
-          wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-client-protocol.h
-          wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
-          ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native "${rpc_flags[@]}" -c src/macho-native.c -o build/native/macho-native.o
-          ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native -c build/native/xdg-shell-protocol.c -o build/native/xdg-shell-protocol.o
-          cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o build/native/ios-scene-codec.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
-          # Two complete independent launches of the interactive program, not
-          # a source assertion or isolated TLS probe. Runtime exit status is
-          # the guest's real Linux-backed normal process exit status.
-          for attempt in 1 2; do
-            status=0
-            printf '+q' | timeout 30 build/native/macho-native build/native/console.macho > build/native/console-$attempt.stdout 2> build/native/console-$attempt.log || status=$?
-            cat build/native/console-$attempt.stdout build/native/console-$attempt.log
-            if [[ $status != 0 ]]; then exit "$status"; fi
-          done
-          (cd build/native && sha256sum macho-native console.macho console-dynamic.macho ARHello.app/ARHello ARHello.app/Info.plist > SHA256SUMS)
-          if [[ '${{ inputs.ipc }}' == darling ]]; then
-            (cd build/native && sha256sum libarlinux_mach_core.so >> SHA256SUMS)
-          fi
-      - name: Verify native runtime input
-        if: inputs.mode == 'dyld' || inputs.mode == 'app'
-        shell: bash
-        run: (cd build/native && sha256sum -c SHA256SUMS)
-      - name: Start unified iOS session
-        if: (inputs.ipc == 'darling') && (inputs.mode == 'dyld' || inputs.mode == 'app')
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/dyld
-          prefix=$(mktemp -d /tmp/arlinux-session.XXXXXX)
-          chmod +x build/native/macho-native
-          build/native/macho-native --session "$prefix" > build/dyld/session.stdout 2> build/dyld/session.log &
-          session=$!
-          echo "$session" > build/dyld/session.pid
-          echo "ARLINUX_SESSION_PID=$session" >> "$GITHUB_ENV"
-          echo "ARLINUX_DARLING_PID=$session" >> "$GITHUB_ENV"
-          echo "ARLINUX_DARLING_PREFIX=$prefix" >> "$GITHUB_ENV"
-          python3 - "$session" <<'PY'
-          import os, pathlib, sys, time
-          pid = int(sys.argv[1])
-          log = pathlib.Path('build/dyld/session.log')
-          deadline = time.monotonic() + 10
-          while True:
-              os.kill(pid, 0)
-              text = log.read_text() if log.exists() else ''
-              if any(line.startswith('SESSION_READY ') for line in text.splitlines()):
-                  print('UNIFIED_SESSION_PID ' + str(pid))
-                  break
-              if time.monotonic() >= deadline:
-                  raise SystemExit('Unified session did not become ready; inspect session.log')
-              time.sleep(.05)
-          PY
-      - name: Prepare pinned Apple userland and execute its actual dyld
-        id: dyld_console
-        if: inputs.mode == 'dyld' || inputs.mode == 'app'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/dyld
-          uname -a > build/dyld/environment.txt
-          chmod +x build/native/macho-native
-          python3 tools/prepare-ios-userland.py 2>&1 | tee build/dyld/input.log
-          llvm-objdump-18 --macho --private-headers build/ios-input/dyld > build/dyld/loader-commands.txt
-          llvm-nm-18 --numeric-sort --demangle build/ios-input/dyld > build/dyld/loader-symbols.txt
-          # Inspect the exact wrapper used by this pinned Apple binary. Do not
-          # guess a private policy argument structure from a different version.
-          llvm-objdump-18 -d --disassemble-symbols=_amfi_check_dyld_policy_self build/ios-input/dyld > build/dyld/amfi-wrapper.txt
-          cat build/dyld/amfi-wrapper.txt
-          for attempt in 1 2; do
-            status=0
-            printf '+q' | timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/console-dynamic.macho > "build/dyld/console-${attempt}.stdout" 2> "build/dyld/runtime-${attempt}.log" || status=$?
-            cat "build/dyld/console-${attempt}.stdout" "build/dyld/runtime-${attempt}.log"
-            if [ "$status" -ne 0 ]; then exit "$status"; fi
-          done
-      - name: Start real compositor and input seat
-        if: inputs.mode == 'app'
-        shell: bash
-        run: |
-          set -euo pipefail
-          export DISPLAY=:99
-          export XDG_RUNTIME_DIR="$PWD/build/dyld/wayland-runtime"
-          export WAYLAND_DISPLAY=arlinux-ios
-          mkdir -p "$XDG_RUNTIME_DIR"
-          chmod 700 "$XDG_RUNTIME_DIR"
-          Xvfb "$DISPLAY" -screen 0 1280x800x24 -nolisten tcp > build/dyld/xvfb.log 2>&1 &
-          for ((i=0; i<100; i++)); do
-            if xdotool getdisplaygeometry > /dev/null 2>&1; then break; fi
-            sleep .05
-          done
-          xdotool getdisplaygeometry
-          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
-          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
-          echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" >> "$GITHUB_ENV"
-          weston --backend=x11-backend.so --renderer=pixman --shell=desktop-shell.so --no-config --idle-time=0 --socket="$WAYLAND_DISPLAY" --log="$PWD/build/dyld/weston.log" &
-          echo $! > build/dyld/weston.pid
-          python3 - <<'PY'
-          import os, pathlib, time
-          socket = pathlib.Path(os.environ['XDG_RUNTIME_DIR']) / os.environ['WAYLAND_DISPLAY']
-          deadline = time.monotonic() + 5
-          while not socket.is_socket():
-              if time.monotonic() >= deadline:
-                  raise SystemExit('Weston did not open its Wayland socket; inspect weston.log')
-              time.sleep(.05)
-          PY
-          # Real X11 focus feeds Weston's Wayland seat. No app action RPC exists.
-          timeout 5 xdotool search --sync --onlyvisible --class '[Ww]eston' windowfocus
-      - name: Execute real iOS application journeys
-        id: ios_app
-        if: inputs.mode == 'app'
-        run: python3 tools/ios-journeys.py
-      - name: Encode actual CoreGraphics frame captures
-        if: always() && inputs.mode == 'app'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import pathlib, struct, zlib
-          def chunk(kind, payload):
-              return struct.pack('>I', len(payload)) + kind + payload + struct.pack('>I', zlib.crc32(kind + payload))
-          for path in pathlib.Path('build/dyld').rglob('frame-*.bgra'):
-              data = path.read_bytes()
-              width, height, stride = struct.unpack('<III', data[:12])
-              if not (0 < width <= 8192 and 0 < height <= 8192 and stride == width*4 and len(data) == 12+stride*height):
-                  raise SystemExit('Incomplete actual frame capture: ' + str(path))
-              pixels = data[12:]
-              rows = bytearray()
-              for y in range(height):
-                  row = pixels[y*stride:(y+1)*stride]
-                  rgb = bytearray(width*3)
-                  rgb[0::3], rgb[1::3], rgb[2::3] = row[2::4], row[1::4], row[0::4]
-                  rows += b'\0' + rgb
-              png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
-              png += chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b'')
-              path.with_suffix('.png').write_bytes(png)
-              path.unlink()
-              print('APP_FRAME_CAPTURE ' + str(path.with_suffix('.png')))
-          PY
-      - name: Dynamically trace the actual failed dyld journey
-        if: failure() && steps.dyld_console.outcome == 'failure'
-        shell: bash
-        run: |
-          mkdir -p build/dyld
-          if [[ -f build/dyld/session.pid ]] && ! kill -0 "$(cat build/dyld/session.pid)" 2>/dev/null; then
-            echo 'SESSION_SERVICE_UNAVAILABLE inspect session.log; no live provider for LLDB retry'
-            cat build/dyld/session.log
-            exit 0
-          fi
-          if [[ '${{ inputs.ipc }}' == darling ]] && ! kill -0 "$ARLINUX_DARLING_PID" 2>/dev/null; then
-            echo 'DARLING_SERVER_UNAVAILABLE original service exited; preserve session.log; no live IPC server for the LLDB retry'
-            exit 0
-          fi
-          printf '+q' > build/dyld/debugger.stdin
-          cache=build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64
-          ordinary=build/dyld/app.runtime.log
-          if [[ ! -f "$ordinary" ]]; then ordinary=build/dyld/runtime-1.log; fi
-          if [[ -f "$cache" && -f "$ordinary" ]]; then
-            python3 tools/symbolicate-cache.py "$cache" "$ordinary" build/dyld/diagnostic-symbols.json \
-              --lookup /usr/lib/libobjc.A.dylib _objc_exception_throw
-          fi
-          status=0
-          timeout 45 lldb-18 --batch -o 'command source -e true -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?
-          cat build/dyld/lldb.log
-          echo "LLDB_COMMAND_STATUS=$status"
-          if [[ -f build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64 ]]; then
-            python3 tools/symbolicate-cache.py build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64 build/dyld/lldb.log build/dyld/cache-frames.json
-          fi
-          exit "$status"
-      - name: Stop runner Wayland compositor
-        if: (always() && inputs.mode == 'app') && (inputs.mode == 'dyld' || inputs.mode == 'app')
-        shell: bash
-        run: |
-          if [[ -f build/dyld/weston.pid ]]; then
-            kill -- "$(cat build/dyld/weston.pid)" || true
-          fi
-      - name: Stop unified iOS session
-        if: (always() && inputs.ipc == 'darling') && (inputs.mode == 'dyld' || inputs.mode == 'app')
-        shell: bash
-        run: |
-          if [[ -f build/dyld/session.pid ]]; then
-            kill -- "$(cat build/dyld/session.pid)" 2>/dev/null || true
-            cat build/dyld/session.log build/dyld/session.stdout
-          fi
-      - name: Record compiler cache results
-        if: always() && steps.cache_accounting.outcome == 'success'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import json, pathlib, subprocess
-          counters = dict((key, int(value)) for key, value in
-                          (line.split() for line in subprocess.check_output(['ccache', '--print-stats'], text=True).splitlines()))
-          summary = {'directHits': counters.get('direct_cache_hit', 0),
-                     'preprocessedHits': counters.get('preprocessed_cache_hit', 0),
-                     'misses': counters.get('cache_miss', 0),
-                     'counters': counters}
-          for name in ('build/darling-ipc', 'build/native', 'build/dyld'):
-              directory = pathlib.Path(name)
-              if directory.exists():
-                  (directory / 'compiler-cache.json').write_text(json.dumps(summary, indent=2) + '\n')
-          print('COMPILER_CACHE_STATS ' + json.dumps({key: value for key, value in summary.items() if key != 'counters'}))
-          PY
-          ccache --show-stats
-      - name: Save successful compilation cache
-        if: always() && steps.compiler_cache.outputs.cache-hit != 'true' && (steps.native_build.outcome == 'success' || (inputs.mode == 'darling' && steps.core_build.outcome == 'success'))
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ${{ steps.compiler_cache.outputs.cache-primary-key }}
-      - name: Record experiment receipt
-        if: (always()) && (inputs.mode == 'darling' || inputs.ipc == 'darling')
-        run: python3 tools/experiment-receipt.py --directory build/darling-ipc --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: (always()) && (inputs.mode == 'darling' || inputs.ipc == 'darling')
-        with:
-          name: linux-arm64-mach-core
-          path: build/darling-ipc/
-          retention-days: 30
-      - name: Record experiment receipt
-        if: (always()) && (inputs.mode != 'darling')
-        run: python3 tools/experiment-receipt.py --directory build/native --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: (always()) && (inputs.mode != 'darling')
-        with:
-          name: linux-arm64-native-darwin
-          path: build/native/
-          retention-days: 30
-      - name: Record experiment receipt
-        if: (always()) && (inputs.mode == 'dyld' || inputs.mode == 'app')
-        run: python3 tools/experiment-receipt.py --directory build/dyld --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: (always()) && (inputs.mode == 'dyld' || inputs.mode == 'app')
-        with:
-          name: linux-arm64-apple-dyld-evidence
-          path: |
-            build/dyld/
-            !build/dyld/wayland-runtime/**
-            !build/dyld/**/*.bgra
-          retention-days: 30
-  playcover-reference:
-    if: always() && needs.native-userland.result == 'success' && inputs.mode == 'playcover'
-    needs: native-userland
-    runs-on: macos-14
-    timeout-minutes: 15
+    - uses: actions/checkout@v4
+    - name: Install experiment toolchain once
+      id: toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y clang-18 cmake ccache ninja-build bison flex libbsd-dev lld-18 llvm-18 libwayland-dev wayland-protocols 7zip lldb-18 fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev weston xvfb xdotool scrot tesseract-ocr python3-pil
+        python3 - <<'PY'
+        import hashlib, os, pathlib
+        digest = hashlib.sha256()
+        for name in ('cc', 'clang-18', 'clang++-18', 'ccache'):
+            digest.update(name.encode())
+            digest.update(pathlib.Path('/usr/bin', name).read_bytes())
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            stream.write('fingerprint=' + digest.hexdigest() + '\n')
+        PY
+    - name: Restore compiler cache
+      id: compiler_cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ github.sha }}
+        restore-keys: |
+          compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-
+    - name: Initialize compiler cache accounting
+      id: cache_accounting
+      run: ccache --zero-stats
+    - name: Record integrated runtime sources
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p build/darling-ipc
+        cp sources.lock.json build/darling-ipc/
+        git rev-parse HEAD > build/darling-ipc/sources.txt
+        git rev-parse HEAD:components/darling >> build/darling-ipc/sources.txt
+        cp components/darling/ORIGINS.json build/darling-ipc/
+        uname -a > build/darling-ipc/environment.txt
+        getconf PAGE_SIZE >> build/darling-ipc/environment.txt
+    - name: Build integrated Darling IPC server
+      id: core_build
+      shell: bash
+      run: |
+        set -euo pipefail
+        clang-18 --version >> build/darling-ipc/environment.txt
+        cmake --version >> build/darling-ipc/environment.txt
+        cmake -S components/darling -B build/darling-compilation -G Ninja -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_BUILD_TYPE=RelWithDebInfo 2>&1 | tee build/darling-ipc/configure.log
+        cmake --build build/darling-compilation --target arlinux_mach_core --parallel 4 2>&1 | tee build/darling-ipc/build.log
+        cp build/darling-compilation/darlingserver/libarlinux_mach_core.so build/darling-ipc/
+        mkdir -p build/darling-ipc/include/darlingserver build/darling-ipc/src
+        cp build/darling-compilation/darlingserver/include/darlingserver/rpc.h build/darling-ipc/include/darlingserver/
+        cp components/darling/source/src/external/darlingserver/include/darlingserver/rpc-supplement.h build/darling-ipc/include/darlingserver/
+        cp build/darling-compilation/darlingserver/src/rpc.c build/darling-ipc/src/
+        file build/darling-ipc/libarlinux_mach_core.so | tee build/darling-ipc/file.txt
+    - name: Build the production native runtime
+      id: native_build
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p build/native
+        uname -a > build/native/environment.txt
+        getconf PAGE_SIZE >> build/native/environment.txt
+        cc --version >> build/native/environment.txt
+        clang-18 --version >> build/native/environment.txt
+        ld64.lld-18 --version >> build/native/environment.txt
+        rpc_flags=()
+        core_flags=()
+        git submodule update --init third_party/libspc
+        spc_flags=(-Isrc -Icomponents/libspc/include -Ithird_party/libspc/libspc -include string.h -fcommon)
+        spc_objects=()
+        for source in serialization datatypes dictionary array accept; do
+          ccache cc -O2 -g "${spc_flags[@]}" -c "third_party/libspc/libspc/$source.c" -o "build/native/spc-$source.o"
+          spc_objects+=("build/native/spc-$source.o")
+        done
+        ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/native-xpc.c -o build/native/native-xpc.o
+        ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/ios-scene-codec.c -o build/native/ios-scene-codec.o
+        cp third_party/libspc/LICENSE build/native/libspc-LICENSE
+        rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include)
+        cp build/darling-ipc/libarlinux_mach_core.so build/native/
+        core_flags=(-Lbuild/native -larlinux_mach_core '-Wl,-rpath,$ORIGIN')
+        ccache cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics "${rpc_flags[@]}" -c src/darwin-native.c -o build/native/runtime.o
+        ccache cc -c src/darwin-native.S -o build/native/entry.o
+        wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-client-protocol.h
+        wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
+        ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native "${rpc_flags[@]}" -c src/macho-native.c -o build/native/macho-native.o
+        ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native -c build/native/xdg-shell-protocol.c -o build/native/xdg-shell-protocol.o
+        cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o build/native/ios-scene-codec.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
+    - uses: actions/download-artifact@v4
+      with:
+        name: ios-app-inputs
+        path: build/apps/
+    - name: Verify exact app input products
+      run: python3 tools/verify-app-inputs.py
+    - name: Prepare real pinned iOS userland
+      run: |-
+        mkdir -p build/results
+        python3 tools/prepare-ios-userland.py 2>&1 | tee build/results/input.log
+      shell: bash
+    - name: Start real compositor and input seat
+      shell: bash
+      run: |
+        set -euo pipefail
+        export DISPLAY=:99
+        export XDG_RUNTIME_DIR="$RUNNER_TEMP/arlinux-wayland"
+        export WAYLAND_DISPLAY=arlinux-ios
+        mkdir -p "$XDG_RUNTIME_DIR"
+        chmod 700 "$XDG_RUNTIME_DIR"
+        Xvfb "$DISPLAY" -screen 0 1280x800x24 -nolisten tcp > build/results/xvfb.log 2>&1 &
+        for ((i=0; i<100; i++)); do
+          if xdotool getdisplaygeometry > /dev/null 2>&1; then break; fi
+          sleep .05
+        done
+        xdotool getdisplaygeometry
+        echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+        echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+        echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" >> "$GITHUB_ENV"
+        weston --backend=x11-backend.so --renderer=pixman --shell=desktop-shell.so --no-config --idle-time=0 --socket="$WAYLAND_DISPLAY" --log="$PWD/build/results/weston.log" &
+        echo $! > build/results/weston.pid
+        python3 - <<'PY'
+        import os, pathlib, time
+        socket = pathlib.Path(os.environ['XDG_RUNTIME_DIR']) / os.environ['WAYLAND_DISPLAY']
+        deadline = time.monotonic() + 5
+        while not socket.is_socket():
+            if time.monotonic() >= deadline:
+                raise SystemExit('Weston did not open its Wayland socket; inspect weston.log')
+            time.sleep(.05)
+        PY
+        # Real X11 focus feeds Weston's Wayland seat. No app action RPC exists.
+        timeout 5 xdotool search --sync --onlyvisible --class '[Ww]eston' windowfocus
+    - name: Run independent app-owned user journeys
+      env:
+        APP_SELECTION: ${{ inputs.app }}
+      run: python3 tools/run-apps.py --app "$APP_SELECTION"
+    - name: Encode actual CoreGraphics frame captures
+      if: always()
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import pathlib, struct, zlib
+        def chunk(kind, payload):
+            return struct.pack('>I', len(payload)) + kind + payload + struct.pack('>I', zlib.crc32(kind + payload))
+        for path in pathlib.Path('build/results').rglob('frame-*.bgra'):
+            data = path.read_bytes()
+            width, height, stride = struct.unpack('<III', data[:12])
+            if not (0 < width <= 8192 and 0 < height <= 8192 and stride == width*4 and len(data) == 12+stride*height):
+                raise SystemExit('Incomplete actual frame capture: ' + str(path))
+            pixels = data[12:]
+            rows = bytearray()
+            for y in range(height):
+                row = pixels[y*stride:(y+1)*stride]
+                rgb = bytearray(width*3)
+                rgb[0::3], rgb[1::3], rgb[2::3] = row[2::4], row[1::4], row[0::4]
+                rows += b'\0' + rgb
+            png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+            png += chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b'')
+            path.with_suffix('.png').write_bytes(png)
+            path.unlink()
+            print('APP_FRAME_CAPTURE ' + str(path.with_suffix('.png')))
+        PY
+    - name: Stop compositor
+      if: always()
+      shell: bash
+      run: if [[ -f build/results/weston.pid ]]; then kill -- "$(cat build/results/weston.pid)" || true; fi
+    - name: Record compiler cache results
+      if: always() && steps.cache_accounting.outcome == 'success'
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import json, pathlib, subprocess
+        counters = dict((key, int(value)) for key, value in
+                        (line.split() for line in subprocess.check_output(['ccache', '--print-stats'], text=True).splitlines()))
+        summary = {'directHits': counters.get('direct_cache_hit', 0),
+                   'preprocessedHits': counters.get('preprocessed_cache_hit', 0),
+                   'misses': counters.get('cache_miss', 0),
+                   'counters': counters}
+        for name in ('build/darling-ipc', 'build/native', 'build/results'):
+            directory = pathlib.Path(name)
+            if directory.exists():
+                (directory / 'compiler-cache.json').write_text(json.dumps(summary, indent=2) + '\n')
+        print('COMPILER_CACHE_STATS ' + json.dumps({key: value for key, value in summary.items() if key != 'counters'}))
+        PY
+        ccache --show-stats
+    - name: Save successful compilation cache
+      if: always() && steps.compiler_cache.outputs.cache-hit != 'true' && steps.native_build.outcome == 'success'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.compiler_cache.outputs.cache-primary-key }}
+    - name: Record runtime products
+      if: always()
+      run: python3 tools/experiment-receipt.py --directory build/native --outcome '${{ job.status }}'
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: native-runtime
+        path: build/native/
+        retention-days: 30
+    - name: Record app execution evidence
+      if: always()
+      run: python3 tools/experiment-receipt.py --directory build/results --outcome '${{ job.status }}'
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: ios-app-results-linux
+        path: build/results/
+        retention-days: 30
+  apple-reference:
+    needs: apps
+    if: always() && inputs.reference && needs.apps.result != 'cancelled'
+    runs-on: macos-15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: linux-arm64-native-darwin
-          path: build/native/
-      - name: Observe the same iOS app through PlayCover conversion on macOS
-        shell: bash
-        run: |
-          set -euo pipefail
-          (cd build/native && shasum -a 256 -c SHA256SUMS)
-          mkdir -p build/playcover
-          uname -a > build/playcover/environment.txt
-          sw_vers >> build/playcover/environment.txt
-          xcodebuild -version >> build/playcover/environment.txt
-          python3 tools/run-playcover-reference.py
-      - name: Record reference receipt
-        if: always()
-        run: python3 tools/experiment-receipt.py --directory build/playcover --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: macos-arm64-playcover-reference
-          path: build/playcover/
-          retention-days: 30
-  xnu-baseline:
-    if: inputs.mode == 'both' || inputs.mode == 'baseline'
-    runs-on: macos-14
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build pinned ios-sweet XNU baseline (not usermode)
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash tools/build-baseline.sh 2>&1 | tee baseline.log
-      - name: Retain provenance and logs
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p out-baseline
-          cp sources.lock.json out-baseline/
-          cp baseline.log out-baseline/ || true
-          sw_vers > out-baseline/environment.txt
-          xcodebuild -version >> out-baseline/environment.txt
-      - name: Record experiment receipt
-        if: always()
-        run: python3 tools/experiment-receipt.py --directory out-baseline --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: xnu-arm64-baremetal-baseline
-          path: out-baseline/
-          retention-days: 30
-  xnu-reference-boot:
-    if: inputs.mode == 'both' || inputs.mode == 'baseline'
-    needs: xnu-baseline
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: xnu-arm64-baremetal-baseline
-          path: out-baseline/
-      - name: Install full-system ARM64 execution and symbol tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-system-arm llvm
-      - name: Execute original XNU process journey (reference only)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/reference
-          bash tools/run-baseline.sh 2>&1 | tee build/reference/run.log
-      - name: Record reference receipt
-        if: always()
-        run: python3 tools/experiment-receipt.py --directory build/reference --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: xnu-arm64-full-system-reference
-          path: build/reference/
-          retention-days: 30
+    - uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with:
+        name: ios-app-inputs
+        path: build/apps/
+    - name: Verify exact app input products
+      run: python3 tools/verify-app-inputs.py
+    - name: Prepare community conversion and real desktop input
+      run: python3 tools/prepare-reference.py
+    - name: Run the same app-owned journeys on the Apple host
+      env:
+        APP_SELECTION: ${{ inputs.app }}
+      run: python3 tools/run-apps.py --app "$APP_SELECTION" --reference
+    - name: Record reference evidence
+      if: always()
+      run: python3 tools/experiment-receipt.py --directory build/results --outcome '${{ job.status }}'
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: ios-app-results-apple
+        path: build/results/
+        retention-days: 30

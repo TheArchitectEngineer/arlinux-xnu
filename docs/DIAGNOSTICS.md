@@ -2,19 +2,18 @@
 
 Read the exact run before changing behavior. Use the sole build.sh entry:
 status and report inspect an existing run; download selects its retained evidence.
-See README for commands and JOURNEYS.md for acceptance. App mode runs the complete
-real-user manifest, not a timeout/readiness check. Compilation and guest execution
+See README for commands and APPS.md for acceptance. The default build runs the independent app collection, not a timeout/readiness check. Compilation and guest execution
 remain on hosted runners, never WSL or the workstation.
 
 ## Start with the effect that failed
 
 | Question | Authoritative evidence | Limit |
 | --- | --- | --- |
-| Which user step failed? | journeys/result.json and IOS_JOURNEY / IOS_SUITE | Blocked steps have not run; submitted input is not observed delivery |
+| Which user step failed? | apps/result.json and APP_CASE / APP_SUITE | Blocked steps have not run; submitted input is not observed delivery |
 | Was content actually displayed? | Full composed screenshot + SHA-256 + OCR TSV/text | Raw CG buffers, readiness and frame callbacks are insufficient |
 | Did the original app crash? | Its generation's runtime log, fault PC and same-cache symbols | A debugger replay can have different scheduling |
 | Which process was inspected? | Recorded PID/start ticks/executable; original-process.lldb.log | LLDB status 0 means collection succeeded, never app acceptance |
-| Which threads/queues wait? | capture_ipc_waits: saved Mach arguments, native threads, real workloop/ulock state | Empty queues identify a wait, not the missing sender |
+| Which threads/queues wait? | Original-process bounded stacks/registers plus actual runtime wait/queue traces | Empty queues identify a wait, not the missing sender |
 | Did a message arrive? | Real send/receive rights, header, OOL descriptors and receiver continuation | Producer/reply logs alone do not prove consumption |
 | Did a service really work? | App-visible response plus helper process/session identity and lifetime | A name lookup or an empty receive endpoint is discovery only |
 | Did close/relaunch work? | Actual exit status, fresh generation identity, still-interactive peer | Forced cleanup and readiness are not normal close |

@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "edit-save-reopen",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "notes"
+        },
+        {
+          "do": "see",
+          "text": "Empty"
+        },
+        {
+          "do": "click",
+          "text": "^Edit$"
+        },
+        {
+          "do": "type",
+          "text": "app-note-42"
+        },
+        {
+          "do": "click",
+          "text": "^Save$"
+        },
+        {
+          "do": "see",
+          "text": "Saved: ?app-note-42"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "notes"
+        },
+        {
+          "do": "launch",
+          "app": "notes"
+        },
+        {
+          "do": "see",
+          "text": "Saved: ?app-note-42"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "notes"
+        }
+      ]
+    }
+  ]
+}

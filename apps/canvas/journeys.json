@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "draw-repaint",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "canvas"
+        },
+        {
+          "do": "see",
+          "text": "Red"
+        },
+        {
+          "do": "pixels",
+          "color": "red",
+          "minimum": 12000
+        },
+        {
+          "do": "click",
+          "text": "^Paint$"
+        },
+        {
+          "do": "see",
+          "text": "Green"
+        },
+        {
+          "do": "pixels",
+          "color": "green",
+          "minimum": 12000
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "canvas"
+        }
+      ]
+    }
+  ]
+}

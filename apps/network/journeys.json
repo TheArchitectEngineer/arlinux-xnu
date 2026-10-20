@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "request-response",
+      "steps": [
+        {
+          "do": "http-start"
+        },
+        {
+          "do": "launch",
+          "app": "network"
+        },
+        {
+          "do": "click",
+          "text": "^Fetch$"
+        },
+        {
+          "do": "see",
+          "text": "Network: ?42"
+        },
+        {
+          "do": "http-request"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "network"
+        }
+      ]
+    }
+  ]
+}

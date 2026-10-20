@@ -1,0 +1,11 @@
+{
+  "id": "workers",
+  "name": "Workers",
+  "version": "1.0",
+  "kind": "application",
+  "language": "objc",
+  "source": "main.m",
+  "frameworks": [
+    "UIKit"
+  ]
+}

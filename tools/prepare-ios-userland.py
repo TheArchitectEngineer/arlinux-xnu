@@ -15,7 +15,7 @@ import struct
 root = Path(__file__).resolve().parents[1]
 source = json.loads((root / 'sources.lock.json').read_text())['iosUserland']
 output = root / 'build/ios-input'
-evidence = root / 'build/dyld'
+evidence = root / 'build/results'
 output.mkdir(parents=True, exist_ok=True)
 evidence.mkdir(parents=True, exist_ok=True)
 

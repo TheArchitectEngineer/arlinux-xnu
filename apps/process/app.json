@@ -1,0 +1,9 @@
+{
+  "id": "process",
+  "name": "Process",
+  "version": "1.0",
+  "kind": "console",
+  "language": "c",
+  "source": "main.c",
+  "frameworks": []
+}

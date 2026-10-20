@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "generics-objc-action",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "swift"
+        },
+        {
+          "do": "see",
+          "text": "SwiftCards: ?0"
+        },
+        {
+          "do": "click",
+          "text": "^Deal$"
+        },
+        {
+          "do": "see",
+          "text": "SwiftCards: ?6"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "swift"
+        },
+        {
+          "do": "launch",
+          "app": "swift"
+        },
+        {
+          "do": "see",
+          "text": "SwiftCards: ?0"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "swift"
+        }
+      ]
+    }
+  ]
+}

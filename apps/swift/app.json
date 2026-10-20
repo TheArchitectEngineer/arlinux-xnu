@@ -1,0 +1,11 @@
+{
+  "id": "swift",
+  "name": "SwiftCards",
+  "version": "1.0",
+  "kind": "application",
+  "language": "swift",
+  "source": "main.swift",
+  "frameworks": [
+    "UIKit"
+  ]
+}

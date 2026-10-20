@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "click-close-relaunch",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "counter"
+        },
+        {
+          "do": "see",
+          "text": "Counter.*Count: ?0"
+        },
+        {
+          "do": "click",
+          "text": "^Increment$"
+        },
+        {
+          "do": "see",
+          "text": "Count: ?1"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "counter"
+        },
+        {
+          "do": "launch",
+          "app": "counter"
+        },
+        {
+          "do": "see",
+          "text": "Count: ?0"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "counter"
+        }
+      ]
+    }
+  ]
+}

@@ -1,18 +1,4 @@
 {
-  "iosSweet": {
-    "repository": "taowen/ios-sweet",
-    "commit": "fdad0de8dc0e75c5ea84762adc03f7232dc91f19",
-    "upstreamRepository": "dipa-studio/ios-sweet"
-  },
-  "linuxUmlReference": {
-    "repository": "taowen/linux-um-arm64",
-    "commit": "32e5e10b81d8882bdaf77b71e4106a941840c750",
-    "upstreamRepository": "zalexdev/linux-um-arm64"
-  },
-  "darwinXnuBuild": {
-    "repository": "blacktop/darwin-xnu-build",
-    "commit": "663906528d1cd5ea8fde7de6f16de73db9511549"
-  },
   "guestPageSize": 16384,
   "xpcCodec": {
     "repository": "taowen/arlinux-libspc",
@@ -31,26 +17,6 @@
   },
   "guestArchitecture": "arm64",
   "virtualCpus": 1,
-  "xnuKernel": {
-    "repository": "taowen/xnu",
-    "commit": "5dbac44578c588e5b3f4cc17a05a3aee88a169e0",
-    "tag": "xnu-8796.141.3",
-    "path": "third_party/xnu",
-    "upstreamCommit": "1b191cb58250d0705d8a51287127505aa4bc0789",
-    "configuration": "USERMODE"
-  },
-  "migCompiler": {
-    "repository": "darlinghq/darling-bootstrap_cmds",
-    "commit": "0f300a7a04bb1174a3b7db58b57d738aadc14e13",
-    "path": "third_party/bootstrap_cmds"
-  },
-  "kernelFirehose": {
-    "repository": "apple-oss-distributions/libdispatch",
-    "commit": "cdb61e93e803d0093635f356753a9a30c09836db",
-    "path": "third_party/libdispatch",
-    "tag": "libdispatch-1415.140.2",
-    "distribution": "macos-135"
-  },
   "iosUserland": {
     "device": "iPhone7,2",
     "version": "12.5.7",

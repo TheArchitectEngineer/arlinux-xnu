@@ -30,11 +30,11 @@ remain an observable failure, and each replacement must run real app journeys.
 | components/darling | Shared Mach core and genuine cross-task ports/messages/VM operations | A second competing port-ownership implementation |
 | native-xpc.c | Audited peer identity/incarnation, registered displays, service state and delivery | UIKit calls or encoding-dependent display defaults |
 | ios-scene-codec.c | Selected framework's wire serialization from supplied geometry | Registry lookup, process state, port ownership or IPC |
-| guests/platform / ios-platform-abi.h | Real dyld library constructor and versioned private platform attachment | Bootstrap lookup side effects or calling frameworks from syscall signals |
+| ios-platform.c / ios-platform-abi.h | Real dyld library constructor and versioned private platform attachment | Bootstrap lookup side effects or calling frameworks from syscall signals |
 | darwin-ui.h | Per-process UIKit/CG state; real main-loop layer rendering | Replacing app views or synthesizing control callbacks |
 | native-display.h | Host-TLS Wayland child; surface, shared buffers and release events | Guest UIKit/libc calls |
 | src/diagnostics | Optional bounded evidence | Supplying runtime semantics or declaring acceptance |
-| tools/ios-journeys.py | External user actions and observed effects | Guest method injection, fake backends, runtime workarounds |
+| tools/app_suite | External user actions and observed effects | Guest method injection, fake backends, runtime workarounds |
 
 Application and service processes join the shared session before any optional
 display registration. Headless services must not create a window or depend on
@@ -96,7 +96,7 @@ supported private ABI; no claim of arbitrary iOS version support is made.
 
 ## Verification and provenance
 
-[App journeys](JOURNEYS.md) define the executable effect-based suite. Failure and
+[App collection](APPS.md) define the executable effect-based suite. Failure and
 blocked steps fail the case. [Diagnostics](DIAGNOSTICS.md) define evidence collection;
 [EXPERIMENT.md](EXPERIMENT.md) retains the current handoff, not the design history.
 Each run records source, environment, input identities and retained-file SHA-256.
