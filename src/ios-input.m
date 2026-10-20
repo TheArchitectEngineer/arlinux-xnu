@@ -19,9 +19,9 @@ static void update_key_window(void)
     fprintf(stderr,"IOS_INPUT_KEY_WINDOW present=%d class=%s input_delivery=false\n",
         current!=nil,current ? class_getName(object_getClass(current)) : "<absent>");
 }
-static void local_focus_update(id receiver,SEL selector,id window,id context)
+static void local_focus_update(id receiver,SEL selector,id notification)
 {
-    (void)receiver; (void)selector; (void)window; (void)context;
+    (void)receiver; (void)selector; (void)notification;
     update_key_window();
 }
 static void local_keyboard_start(id receiver,SEL selector)
@@ -34,7 +34,7 @@ void arlinux_ios_input_start(void)
 {
     Class cls=objc_getClass("_UIRemoteKeyboards");
     const struct { const char *selector,*types; IMP implementation; } bindings[]={
-        {"_performRequiredSceneUpdateIfPermittedForWindow:withContext:","v32@0:8@16@24",(IMP)local_focus_update},
+        {"applicationKeyWindowDidChange:","v24@0:8@16",(IMP)local_focus_update},
         {"startConnection","v16@0:8",(IMP)local_keyboard_start}
     };
     for (unsigned int i=0;i<sizeof(bindings)/sizeof(*bindings);i++) {

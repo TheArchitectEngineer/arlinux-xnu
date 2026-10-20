@@ -17,6 +17,8 @@ static SEL local_selector;
 static void software_layer_display(CALayer *layer,SEL selector)
 {
     (void)selector;
+    id<CALayerDelegate> delegate=layer.delegate;
+    if ([delegate respondsToSelector:@selector(layerWillDraw:)]) [delegate layerWillDraw:layer];
     CGRect bounds=layer.bounds;
     CGFloat scale=layer.contentsScale;
     if (CGRectIsEmpty(bounds)) { layer.contents=nil; return; }
