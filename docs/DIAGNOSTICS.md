@@ -44,6 +44,9 @@ Verified evidence is isolated under build/runs/RUN_ID/attempt-N/ARTIFACT.
 
 APP_DIAGNOSIS records the first failed step, blocked steps, original process
 identity, screenshot paths/hashes and bounded runtime/window/session witnesses.
+The summary retains the first two and final two screenshots when there are more
+than four. screenshotsRecorded and fullJourney identify the full retained case;
+this bounds reporting only, never capture, acceptance or evidence retention.
 The step's effect wait and diagnostic collection time are recorded separately.
 These are observed facts, not an automatic root-cause verdict. Full logs and
 original-process stacks remain available. Compare dispatch-to-completion and
@@ -132,6 +135,11 @@ into tiny interleaved fragments. Host loader/Wayland diagnostics may still share
 .stderr; neither stream alone is an acceptance oracle. Source-owned apps export read-only
 UIKit/DOM state; GUI acceptance additionally requires actual composed pixels.
 No OCR or AI recognizer is used.
+Raw frame captures publish by atomic rename only after complete write/close.
+An interrupted temporary frame is explicitly unpublished and removed before
+encoding; the previous completed frame remains intact. Final published-frame
+size checks still fail on corruption. Run 39515854314 validates the encoding path
+after the interrupted-writer failure in 39515278534.
 
 ## Runtime boundaries
 

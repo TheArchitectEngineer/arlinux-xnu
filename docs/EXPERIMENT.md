@@ -19,11 +19,13 @@ and two cross-app scenarios; selected runs never certify the whole collection.
 
 ## Current failed GUI effect
 
-Run [39511482501](https://github.com/taowen/arlinux-xnu/actions/runs/39511482501),
-source **e92132e2a30265a9037b47dcbb333752e3857935**, selected Counter. Receipt
-**aa844eff64c391ce48a831b4719280adf56e46dd11d4b76641a925e6e7d5271f**
-and all 21 files were verified by the single build --wait --evidence command.
-The run fails; useful composed app content and input are not accepted.
+Run [39515854314](https://github.com/taowen/arlinux-xnu/actions/runs/39515854314),
+source **4a7dbf7de41c17d87e24899b2d7ffcdda8e81031**, selected Counter. Receipt
+**276cfe1865e8b82407d73dc60dacb5978ff70eaf514620cf7488f821443ac6be**
+and all 52 files were verified by build --wait --evidence. The process renders
+the original Counter label in actual composed pixels, but its button is still
+invisible. The click step fails its pixel requirement before submitting input;
+nine later steps are blocked. No complete GUI journey is accepted.
 
 - The guest reads actual host window state: 1024 x 600, 60000 mHz, configured,
   active, backend-alive, audited PID/incarnation. Kernel child status also masks
@@ -32,25 +34,32 @@ The run fails; useful composed app content and input are not accepted.
   objects and an actual FBSSerialQueue. Creation now goes through FBSScene's
   agent notification, which binds the agent before entering UIKit. The old
   direct workspace callback and its `_scene == scene` failure are removed.
-- Original App delegate execution reaches UIWindow makeKeyAndVisible. Run
-  39510457131's original stacks identified CAContext remote connection request
-  40203; no render-server reply was fabricated. The current software backend
-  selects Apple's actual localContextWithOptions: constructor instead. The
-  original CAContext is successfully created; this is not displayed pixels.
-- The input adapter now owns actual UIKit key-window focus locally. The prior
-  remote keyboard NSXPC token-encoding failure is gone; the local token still
-  rejects remote capability export. External input/keyboard are unimplemented.
-- Genuine App delegate execution returns: COUNTER_READY, original label/button
-  view tree, Count: 0 and 1024 x 600 viewport are observed. The scene creation
-  notification returns. These establish startup, not GUI acceptance: the
-  composed screenshot is still black and no app frame has been presented.
-- The current fatal boundary is Apple's CALayer backing-store update:
-  CABackingStorePrepareUpdates_ -> init_max_renderable_iosurface ->
-  IOSurfaceClientGetPropertyMaximum -> _iosConnectInitalize assertion
-  "unable to locate IOSurface kernel service". Adapt the software backing-store
-  path or supply a real host-backed resource; do not suppress the assertion or
-  advertise an imaginary IOSurface driver. Inspect the original rendering path
-  before choosing an alternative; preserve layer/text rendering semantics.
+- The genuine local CAContext succeeds. CPU CGImage backing replaces the default
+  CALayer _display storage, retaining original public display/delegate dispatch,
+  layerWillDraw, drawInContext and CoreGraphics composition. The prior IOSurface
+  kernel-service assertion is gone; no driver or remote-render reply is faked.
+- Resilient private file mappings now load real Helvetica/SFUI bytes. The prior
+  EINVAL -> LastResort missing-glyph boxes are gone. Composed text reads
+  "Counter 1.0 — Count: 0" at the expected real UIKit label rectangle.
+- The input adapter owns local key-window focus and gates Apple remote keyboard
+  focus/connection IPC. The token still rejects remote capability export.
+  External input and keyboard delivery are unimplemented.
+- The current button boundary is UIColor resolution: systemBlueColor resolves
+  to RGBA [0,0,0,0] with the actual label traits (light style 1, displayGamut 0).
+  Its layer is visible with opacity 1; the 138 x 36 CPU backing has zero alpha
+  pixels. Static black resolves to alpha 1 and draws 2832 alpha pixels in the
+  560 x 120 main label backing. Supplying a balanced UIKit graphics context and
+  actual current traits did not fix this color lookup. Do not hardcode blue.
+- The loaded resolver is UIDynamicCatalogSystemColor
+  _resolvedColorWithTraitCollection: at 0x1896d6b44, with base catalog resolver
+  at 0x188de3c6c. FBSDisplayConfiguration exposes colorGamut/supported-color
+  getters; there is no observed mutable configuration class. Next inspect the
+  actual catalog resolver and display/trait input path, using the recorded
+  current-cache symbols/metadata rather than guessing a private selector.
+- Frame evidence now writes a temporary file and atomically publishes complete
+  frames. This run's encoder passes; incomplete temporary files never replace
+  the last completed frame. The failure summary samples four screenshots while
+  preserving all 32 observations and their files in the full journey evidence.
 - Counter's journey now also clicks after relaunch and requires Count: 1.
   Original-process fatal-service diagnosis preserves waiting caller stacks;
   default non-diagnostic fatal exits remain unchanged.
@@ -61,11 +70,11 @@ unfinished. No app/control callback is invoked by the harness or adapter.
 
 ## Verified regression and reference limits
 
-Run [39510457131](https://github.com/taowen/arlinux-xnu/actions/runs/39510457131),
-source d0ecaf5031e08d01e165e469987ecf2755f65227, passed Console and Foundation
+Run [39514010952](https://github.com/taowen/arlinux-xnu/actions/runs/39514010952),
+source 6f7fade465a035f261b08a8af8233af00257e49c, passed Console and Foundation
 (fullSuite=false). Receipt
-772a735292885abe6304ff820004fe7ad667967a012e388f9d3e071fa228055c and all
-33 files were verified. Counter failed separately. Console covers real allocation, computing pthread,
+1fbe7255461ff6fc8c7c79928e0375334375d6701c3fc12488e33df0a431734c and all
+65 files were verified. Counter failed separately. Console covers real allocation, computing pthread,
 external stdin, normal exit and a fresh relaunch. Foundation covers Unicode JSON,
 exception unwind, NSTimer computation and normal exit. Swift/UIKit has no passing Linux
 journey and must be included after Counter startup progresses.
