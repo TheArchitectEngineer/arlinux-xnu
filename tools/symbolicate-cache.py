@@ -16,7 +16,7 @@ parser.add_argument('--lookup',action='append',nargs=2,default=[],metavar=('IMAG
 parser.add_argument('--bootstrap-context',action='store_true')
 args=parser.parse_args()
 trace=args.trace.read_text(errors='replace')
-patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_EXIT_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
+patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT)_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'NORMAL_RUNTIME_FAULT_PC (0x[0-9a-fA-F]+)',
           r'DARWIN_NATIVE_FAULT[^\n]*\nDARWIN_CALL nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)']

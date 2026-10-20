@@ -283,6 +283,21 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 #include "darwin-workqueue.h"
 #include "darwin-ui.h"
 
+/* Read only the original ARM64 frame records. A corrupt/inaccessible chain
+ * stops collection; addresses are evidence, never a synthetic unwind. */
+static void trace_guest_frames(const char *tag,const unsigned long long *r)
+{
+    unsigned long frame=r[29];
+    trace_record(tag,0,r[30],frame);
+    for (unsigned int i=1;i<16 && frame && !(frame&15);i++) {
+        unsigned long pair[2];
+        if (guest_copy(pair,frame,sizeof(pair),0) || !pair[1]) break;
+        trace_record(tag,i,pair[1],pair[0]);
+        if (pair[0]<=frame) break;
+        frame=pair[0];
+    }
+}
+
 static void dispatch(int signal, siginfo_t *info, void *context)
 {
     /* No errno, malloc, pthread, stdio or other host libc operation here.
@@ -629,17 +644,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]&255);
         /* A framework can terminate the process with status zero before the
          * app's ready callback. Preserve the actual caller chain, not a pass. */
-        {
-            unsigned long frame=r[29];
-            trace_record("DARWIN_EXIT_FRAME nr=0x",0,r[30],frame);
-            for(unsigned int i=1;i<16 && frame && !(frame&15);i++) {
-                unsigned long pair[2];
-                if(guest_copy(pair,frame,sizeof(pair),0) || !pair[1]) break;
-                trace_record("DARWIN_EXIT_FRAME nr=0x",i,pair[1],pair[0]);
-                if(pair[0]<=frame) break;
-                frame=pair[0];
-            }
-        }
+        trace_guest_frames("DARWIN_EXIT_FRAME nr=0x",r);
         RAW(SYS_exit_group,r[0]&255,0,0,0,0,0);
         __builtin_unreachable();
     case D_SYS_READ: case D_SYS_READ_NOCANCEL: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
@@ -767,6 +772,7 @@ static void fault(int signal,siginfo_t *info,void *context)
     RAW(SYS_write,native_trace_fd,registers,sizeof(registers)-1,0,0,0);
     for (unsigned int i=0;i<31;i++)
         trace_record("DARWIN_FAULT_REGISTER index=0x",i,uc->uc_mcontext.pc,uc->uc_mcontext.regs[i]);
+    trace_guest_frames("DARWIN_FAULT_FRAME nr=0x",uc->uc_mcontext.regs);
     RAW(SYS_exit_group,128+signal,0,0,0,0,0);
     __builtin_unreachable();
 }
