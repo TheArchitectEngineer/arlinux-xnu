@@ -84,8 +84,8 @@ ARM64 code does not imply a Metal dependency.
   User-Mode Linux, a reference for syscall interception, host memory and Android
   integration. Its Linux kernel port is not an XNU backend.
 * [dipa-studio/ios-sweet](https://github.com/dipa-studio/ios-sweet): XNU and iOS
-  userland bring-up on Redmi Note 10 Pro. Our bare-metal baseline uses its pinned
-  patches and upstream build recipe; credit belongs to its authors/contributors.
+  userland bring-up on Redmi Note 10 Pro. Its bring-up and upstream build recipe informed our historical full-system
+  baseline, now retired from the build. Credit belongs to its authors/contributors.
 
 * [wmww/tawc](https://github.com/wmww/tawc): the tawcroot in-process syscall
   interception and host-libc-independent runtime model informed the native path.

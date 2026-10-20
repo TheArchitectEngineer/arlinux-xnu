@@ -6,6 +6,7 @@
   "language": "objc",
   "source": "main.m",
   "frameworks": [
-    "UIKit"
+    "UIKit",
+    "CoreGraphics"
   ]
 }

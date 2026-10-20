@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import subprocess
 import sys
 from app_suite.case import Case
 from app_suite.context import ROOT
@@ -35,7 +36,7 @@ def main():
         try:
             with (AppleSession if args.reference else Session)(output/(case['id']+'--session')) as session:
                 result=Case(case,apps,session.identity,session.environment,output,args.reference).run()
-        except (OSError,RuntimeError) as error:
+        except (OSError,RuntimeError,subprocess.SubprocessError) as error:
             result={'id':case['id'],'status':'failed','error':str(error),'steps':[], 'infrastructureFailure':True}
         results.append(result)
         (output/(case['id']+'.json')).write_text(json.dumps(result,indent=2)+'\n')

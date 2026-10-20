@@ -89,7 +89,7 @@ supported private ABI; no claim of arbitrary iOS version support is made.
   missing. Keep genuine app content; do not patch fixture colors/actions to pass.
 - Implement application-requested service launch and lifecycle, then independently
   verify rights/identity cleanup after normal exit and crashes. The suite includes
-  a real NSXPCConnection client and bundled share extension for this purpose.
+  a real UIActivityViewController client and bundled share extension for this purpose.
 - Decompose the remaining header-assembled syscall runtime behind explicit owned
   interfaces using the real journeys as the behavioral guard, then validate the
   same path on ARLinux/Android. Linux runner results never imply device acceptance.
@@ -106,4 +106,4 @@ and licenses live in component ORIGINS.json and README acknowledgements.
 Primary execution references: [tawcroot](https://github.com/taowen/tawc), imported
 Darling/XNU code, [Apple TSD](https://github.com/apple-oss-distributions/xnu/blob/1b191cb58250d0705d8a51287127505aa4bc0789/libsyscall/os/tsd.h),
 [Wayland](https://wayland.freedesktop.org/docs/html/apa.html), and
-[Foundation XPC services](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingXPCServices.html).
+[iOS app extensions](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/ExtensionScenarios.html).

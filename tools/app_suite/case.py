@@ -130,11 +130,12 @@ class Case(Processes,Desktop):
                 except (RuntimeError, OSError, subprocess.SubprocessError) as failure:
                     error = str(failure)
                     self.steps[-1].update(status='failed', reason=error)
-                    try:
-                        self.snapshot('failure')
-                        self.diagnose()
-                    except (RuntimeError, OSError, subprocess.SubprocessError) as diagnostic_error:
-                        self.diagnostic = {'error': str(diagnostic_error)}
+                    failures=[]
+                    for collect in (lambda:self.snapshot('failure'),self.diagnose):
+                        try: collect()
+                        except (RuntimeError,OSError,subprocess.SubprocessError) as diagnostic_error:
+                            failures.append(str(diagnostic_error))
+                    if failures:self.diagnostic={'collectionErrors':failures,'originalProcess':self.diagnostic}
                 self.steps[-1]['seconds'] = round(time.monotonic() - started, 3)
         finally:
             if self.http: self.http.stop()
