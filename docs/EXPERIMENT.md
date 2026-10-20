@@ -79,15 +79,24 @@ activation. The decoded action's actual return value is not yet observed.
 LLDB log SHA-256 `a7d6df168c54df764a94505c63f9dd39e65cf5cf24228b5734f296ee5393fa4a`
 was verified against its receipt.
 
-Exact pending run: [39408950013](https://github.com/taowen/arlinux-xnu/actions/runs/39408950013),
-source `ac9c62eb4c1d2fce898bd285085b645507a1d165`, resolves concrete monitor
-subclasses from actual factory class globals, captures their activation methods
-and reads _lifecycleActionType/_isMainSceneCanvas at real return instructions.
-It also records actual canvas/context argument classes. All breakpoints are
-installed before running; no callback installs another Python callback or
-executes guest methods. Verify actual action value and chosen monitor before
-changing activation or scene identity. Continue this exact run; local
-observation timeouts do not justify restarting it. No GUI acceptance passes.
+[Run 39408950013](https://github.com/taowen/arlinux-xnu/actions/runs/39408950013),
+source `ac9c62eb4c1d2fce898bd285085b645507a1d165`, observes the actual
+_lifecycleActionType returning 0 at both its diff-action caller and the canvas
+activation dispatcher. This is not successful action-1 decoding. The real
+factory class globals identify __UICanvasLifecycleMonitor_Compatability and
+__UICanvasLifecycleMonitor_I; concrete activation methods are traced. No
+activation handler or ARHELLO_READY is observed in this journey.
+LLDB log SHA-256 `bcf30e05dae70a3757f0bac5668bc7213a2f5c838dbb9819d3a49cf03cfb6dc8` was receipt verified.
+
+Exact pending run: [39409669685](https://github.com/taowen/arlinux-xnu/actions/runs/39409669685),
+source `57c4705f38e9a83889f6419eeaaa1acc79eddad8`, changes the NSNumber
+payload from XPC uint64 to int64 (the BSSettings key remains uint64), traces
+setting 7 writes and reads the actual Foundation XPC conversion code.
+Hypothesis: the selected Foundation bridge does not convert the unsigned value.
+Verify the actual decoded object and _lifecycleActionType return value 1, then
+normal activation and _runWithMainScene. If it remains 0, inspect decoded
+otherSettings before altering UIKit control flow. Continue this exact run;
+local observation timeouts do not justify restarting it. No GUI acceptance passes.
 
 Header-only MACH_NOTIFY_SEND_ONCE cancellation is accepted only on outstanding
 reply ports with the exact kernel notification and zero audit identity; it is
