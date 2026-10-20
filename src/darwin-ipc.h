@@ -626,6 +626,27 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 clock_send_refs[clock_id]++;
             }
         }
+        if (task && header->id==D_MIG_PORT_TYPE && r[2]==36) {
+            uint32_t name,type=0; __builtin_memcpy(&name,request+32,4);
+            struct ipc_endpoint *endpoint=ipc_find(name);
+            response[8]=D_KERN_INVALID_NAME;
+            if (endpoint) {
+                if (endpoint->kind==2) type=D_PORT_TYPE_PORT_SET;
+                else {
+                    if (!endpoint->kind) type=D_PORT_TYPE_RECEIVE;
+                    if (__atomic_load_n(&endpoint->send_refs,__ATOMIC_ACQUIRE)) type|=D_PORT_TYPE_SEND;
+                }
+            } else if (name==CURRENT_TASK_PORT ||
+                       (name==CURRENT_HOST_PORT && host_send_refs) ||
+                       (name==SYSTEM_CLOCK_PORT && clock_send_refs[0]) ||
+                       (name==CALENDAR_CLOCK_PORT && clock_send_refs[1])) type=D_PORT_TYPE_SEND;
+            else if ((name>>D_PORT_NAME_INDEX_SHIFT)>=D_THREAD_PORT_INDEX_BASE)
+                response[8]=D_KERN_NOT_SUPPORTED; /* thread rights use another namespace */
+            if (type) { response[8]=D_KERN_SUCCESS; response[9]=type; out->size=40; }
+            const char label[]="DARWIN_PORT_TYPE name/type/status follows\n";
+            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            trace_call(0,pc,name); trace_call(1,pc,type); trace_call(2,pc,response[8]);
+        }
         if (task && header->id==D_MIG_TASK_INFO && r[2]==40) {
             uint32_t flavor,count;
             __builtin_memcpy(&flavor,request+32,4); __builtin_memcpy(&count,request+36,4);

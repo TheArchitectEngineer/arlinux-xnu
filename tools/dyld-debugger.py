@@ -32,6 +32,23 @@ def service_lookup(frame, location, internal_dict):
     return False
 
 
+def service_register(frame, location, internal_dict):
+    process = frame.GetThread().GetProcess()
+    error = lldb.SBError()
+    name = process.ReadCStringFromMemory(frame.FindRegister('x1').GetValueAsUnsigned(), 256, error)
+    print('SERVICE_REGISTER ' + json.dumps({
+        'tid': frame.GetThread().GetThreadID(), 'pc': hex(frame.GetPC()),
+        'caller': hex(frame.FindRegister('lr').GetValueAsUnsigned()),
+        'bootstrapPort': frame.FindRegister('x0').GetValueAsUnsigned(),
+        'name': name if error.Success() else None,
+        'nameReadError': None if error.Success() else str(error),
+        'servicePort': frame.FindRegister('x2').GetValueAsUnsigned(),
+    }), flush=True)
+    if location.GetBreakpoint().GetHitCount() >= 32:
+        location.GetBreakpoint().SetEnabled(False)
+    return False
+
+
 def install_service_breakpoints(target):
     for symbol in diagnostic_symbols():
         if symbol.get('symbol') in ('_bootstrap_look_up', '_bootstrap_look_up2', '_bootstrap_look_up3'):
@@ -39,6 +56,11 @@ def install_service_breakpoints(target):
             breakpoint.SetScriptCallbackFunction('dyld_debugger.service_lookup')
             breakpoint.SetAutoContinue(True)
             print('SERVICE_LOOKUP_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
+        elif symbol.get('symbol') in ('_bootstrap_register', '_bootstrap_register2'):
+            breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
+            breakpoint.SetScriptCallbackFunction('dyld_debugger.service_register')
+            breakpoint.SetAutoContinue(True)
+            print('SERVICE_REGISTER_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
 
 
 def capture_display_code(target):
