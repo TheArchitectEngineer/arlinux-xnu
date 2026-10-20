@@ -10,8 +10,14 @@
 #define D_SIGNAL_STACK_SIZE (128UL * 1024)
 #define D_THREAD_RUNTIME_STACK_SIZE (64UL * 1024)
 #define D_COMM_COMPAT_VERSION 3
+#ifdef ARLINUX_DARLING
+static uint32_t darling_task_port=0x103U,darling_host_port=0x203U;
+#define CURRENT_TASK_PORT darling_task_port
+#define CURRENT_HOST_PORT darling_host_port
+#else
 #define CURRENT_TASK_PORT 0x103U
 #define CURRENT_HOST_PORT 0x203U
+#endif
 #define SYSTEM_CLOCK_PORT 0x10003U
 #define CALENDAR_CLOCK_PORT 0x10103U
 #define D_THREAD_PORT_INDEX_BASE 0x200U

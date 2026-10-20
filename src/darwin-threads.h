@@ -76,6 +76,13 @@ void darwin_thread_boot(struct native_thread *thread)
     if (thread->launch_state<0) {
         RAW(SYS_exit,0,0,0,0,0,0); __builtin_unreachable();
     }
+#ifdef ARLINUX_DARLING
+    if (darling_active) {
+        thread->port=darling_thread_self();
+        if (registered_tsd && guest_copy(&thread->port,thread->pthread+registered_tsd+registered_thread_slot,8,1))
+            darling_abort("publish actual thread port");
+    }
+#endif
     if (thread->workqueue>=2) native_event_worker_start(thread);
     if (thread->workqueue) {
         darwin_thread_enter(thread->guest_sp,workqueue_start_callback,thread->pthread,thread->port,
@@ -185,6 +192,9 @@ static long native_thread_terminate(const unsigned long long *r)
     native_event_owner_exit(thread->port);
     if (thread->workqueue) __atomic_store_n(&thread->refs,0,__ATOMIC_RELEASE);
     __atomic_store_n(&thread->state,3,__ATOMIC_RELEASE);
+#ifdef ARLINUX_DARLING
+    if (darling_active) { darling_thread_close(); thread->refs=0; }
+#endif
     RAW(SYS_exit,0,0,0,0,0,0); /* thread exit; never exit_group */
     __builtin_unreachable();
 }

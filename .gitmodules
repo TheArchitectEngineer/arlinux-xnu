@@ -9,4 +9,4 @@
 	url = https://github.com/apple-oss-distributions/libdispatch.git
 [submodule "third_party/darling"]
 	path = third_party/darling
-	url = https://github.com/VibeDarling/darling.git
+	url = https://github.com/taowen/darling.git

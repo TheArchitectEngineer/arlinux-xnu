@@ -457,6 +457,7 @@ static uint32_t native_service_static(const char *name)
 }
 uint32_t darwin_native_service_check_in(uint32_t bootstrap,uint64_t name,uint64_t output,uint64_t flags)
 {
+    if (darling_active) return D_KERN_NOT_SUPPORTED;
     (void)output;
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
     if (flags&~(uint64_t)D_BOOTSTRAP_PER_PID_SERVICE) return D_KERN_NOT_SUPPORTED;
@@ -476,6 +477,7 @@ uint32_t darwin_native_service_check_in(uint32_t bootstrap,uint64_t name,uint64_
 }
 uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_t port,uint64_t flags)
 {
+    if (darling_active) return D_KERN_NOT_SUPPORTED;
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
     if (flags&~(uint64_t)D_BOOTSTRAP_PER_PID_SERVICE) return D_KERN_NOT_SUPPORTED;
     char service[D_BOOTSTRAP_NAME_MAX]; uint32_t error=native_service_name(name,service);
@@ -513,6 +515,7 @@ uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_
 uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t output,
                                     int32_t target,uint64_t instance,uint64_t flags)
 {
+    if (darling_active) return D_KERN_NOT_SUPPORTED;
     (void)instance; /* Default lookup has no instance-selection flag. */
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
     if (!ipc_display_live()) return D_KERN_FAILURE;

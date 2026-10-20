@@ -235,6 +235,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
     return guest_copy(&out,destination,sizeof(out),1);
 }
 
+#include "darling-native.h"
 #include "darwin-process.h"
 #include "darwin-ipc.h"
 #include "darwin-threads.h"
@@ -258,6 +259,15 @@ static void dispatch(int signal, siginfo_t *info, void *context)
          * implemented process-local capabilities are returned; unsupported
          * operations return KERN_NOT_SUPPORTED. */
         unsigned long number=-(int64_t)trap;
+#ifdef ARLINUX_DARLING
+        if (darling_active && number!=D_TRAP_VM_ALLOCATE && number!=D_TRAP_VM_DEALLOCATE &&
+            number!=D_TRAP_VM_MAP && number!=D_TRAP_VM_PROTECT && number!=D_TRAP_ABSOLUTE_TIME &&
+            number!=D_TRAP_CONTINUOUS_TIME && number!=D_TRAP_TIMEBASE_INFO && number!=D_TRAP_GENERATE_ACTIVITY_ID) {
+            r[0]=darling_mach(number,r);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
+            return;
+        }
+#endif
         if (number==D_TRAP_SPECIAL_REPLY_PORT) {
             struct native_thread *thread=native_current_thread();
             uint32_t name=thread ? ipc_reply_port() : 0;
@@ -695,8 +705,12 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     CPU_ZERO(&one);
     for (int cpu=0;cpu<CPU_SETSIZE;cpu++) if (CPU_ISSET(cpu,&available)) { CPU_SET(cpu,&one); break; }
     if (sched_setaffinity(0,sizeof(one),&one)) { perror("single guest CPU"); exit(1); }
+    darling_prepare();
     native_threads[0].tid=RAW(SYS_gettid,0,0,0,0,0,0);
     native_threads[0].state=2; native_threads[0].port=(D_THREAD_PORT_INDEX_BASE<<D_PORT_NAME_INDEX_SHIFT)|D_PORT_GENERATION_TAG; native_threads[0].refs=1;
+#ifdef ARLINUX_DARLING
+    if (darling_active) native_threads[0].port=darling_thread_self();
+#endif
     /* The activity namespace belongs to this standalone compatibility machine.
      * MAP_SHARED preserves a single allocator across real fork/COW children. */
     native_activity_ids=mmap(NULL,D_GUEST_PAGE_SIZE,PROT_READ|PROT_WRITE,

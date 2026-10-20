@@ -32,6 +32,7 @@ authenticated GitHub CLI. All compilation and execution use GitHub-hosted runner
 ./build.sh build --mode dyld       # real dyld/libSystem console journey
 ./build.sh build --mode app        # ARHello 1.0 real UIKit on Linux
 ./build.sh build --mode darling    # build pinned community ARM64 IPC server; no app run
+./build.sh build --mode app --ipc darling # opt-in community IPC integration journey
 ./build.sh build --mode playcover  # same iOS binary, PlayCover conversion on macOS
 ./build.sh build --mode baseline   # build and boot ios-sweet full-system reference
 ./build.sh status --run-id RUN_ID

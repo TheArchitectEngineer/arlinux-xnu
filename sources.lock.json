@@ -15,10 +15,12 @@
   },
   "guestPageSize": 16384,
   "darlingIpc": {
-    "repository": "VibeDarling/darling",
-    "commit": "47cd6dc7aa0e16596777ad189dddc6e75c3de4ba",
+    "repository": "taowen/darling",
+    "commit": "7731e42a15a31db25715011e3d27455d32fb7492",
+    "upstreamRepository": "VibeDarling/darling",
+    "upstreamCommit": "47cd6dc7aa0e16596777ad189dddc6e75c3de4ba",
     "path": "third_party/darling",
-    "role": "Community ARM64 darlingserver build candidate; not yet connected to the app runtime"
+    "role": "Community ARM64 darlingserver with embedding launcher, 16 KiB VM and single CPU; opt-in native RPC integration"
   },
   "guestArchitecture": "arm64",
   "virtualCpus": 1,

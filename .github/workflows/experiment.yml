@@ -6,11 +6,15 @@ on:
         type: choice
         default: native
         options: [both, host, baseline, native, dyld, app, playcover, darling]
+      ipc:
+        type: choice
+        default: local
+        options: [local, darling]
 permissions:
   contents: read
 jobs:
   darling-ipc:
-    if: inputs.mode == 'darling'
+    if: inputs.mode == 'darling' || inputs.ipc == 'darling'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
@@ -40,6 +44,10 @@ jobs:
           cmake -S components/darling -B build/darling-compilation -G Ninja -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=RelWithDebInfo 2>&1 | tee build/darling-evidence/configure.log
           cmake --build build/darling-compilation --target darlingserver --parallel 4 2>&1 | tee build/darling-evidence/build.log
           cp build/darling-compilation/darlingserver/darlingserver build/darling-evidence/
+          mkdir -p build/darling-evidence/include/darlingserver build/darling-evidence/src
+          cp build/darling-compilation/darlingserver/include/darlingserver/rpc.h build/darling-evidence/include/darlingserver/
+          cp third_party/darling/src/external/darlingserver/include/darlingserver/rpc-supplement.h build/darling-evidence/include/darlingserver/
+          cp build/darling-compilation/darlingserver/src/rpc.c build/darling-evidence/src/
           file build/darling-evidence/darlingserver | tee build/darling-evidence/file.txt
       - name: Record experiment receipt
         if: always()
@@ -115,11 +123,17 @@ jobs:
           path: build/macho/
           retention-days: 30
   native-userland:
-    if: inputs.mode == 'both' || inputs.mode == 'native' || inputs.mode == 'dyld' || inputs.mode == 'app' || inputs.mode == 'playcover'
+    needs: darling-ipc
+    if: always() && (needs.darling-ipc.result == 'success' || needs.darling-ipc.result == 'skipped') && (inputs.mode == 'both' || inputs.mode == 'native' || inputs.mode == 'dyld' || inputs.mode == 'app' || inputs.mode == 'playcover')
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        if: inputs.ipc == 'darling'
+        with:
+          name: linux-arm64-darling-ipc
+          path: build/darling-ipc/
       - name: Install ARM64 Mach-O compiler
         run: |
           sudo apt-get update
@@ -147,7 +161,12 @@ jobs:
           clang-18 --target=arm64-apple-ios12.0 -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c guests/ARHello/main.m -o build/native/ARHello.o
           ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/ARHello.o -needed_library guests/libSystem.tbd -needed_library guests/ARHello/UIKit.tbd -needed_library guests/ARHello/Foundation.tbd -needed_library guests/ARHello/libobjc.tbd -o build/native/ARHello.app/ARHello
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
-          cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics -c src/darwin-native.c -o build/native/runtime.o
+          rpc_flags=()
+          if [[ '${{ inputs.ipc }}' == darling ]]; then
+            rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include)
+            cp build/darling-ipc/receipt.json build/native/darling-input-receipt.json
+          fi
+          cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics "${rpc_flags[@]}" -c src/darwin-native.c -o build/native/runtime.o
           cc -c src/darwin-native.S -o build/native/entry.o
           wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-client-protocol.h
           wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
@@ -182,6 +201,35 @@ jobs:
         with:
           name: linux-arm64-native-darwin
           path: build/native/
+      - uses: actions/download-artifact@v4
+        if: inputs.ipc == 'darling'
+        with:
+          name: linux-arm64-darling-ipc
+          path: build/darling-ipc/
+      - name: Start embedded Darling IPC service
+        if: inputs.ipc == 'darling'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/dyld
+          prefix=$(mktemp -d /tmp/arlinux-darling.XXXXXX)
+          chmod +x build/darling-ipc/darlingserver
+          build/darling-ipc/darlingserver --rpc-only "$prefix" > build/dyld/darling.log 2>&1 &
+          server_pid=$!
+          echo "$server_pid" > build/dyld/darling.pid
+          echo "ARLINUX_DARLING_PID=$server_pid" >> "$GITHUB_ENV"
+          echo "ARLINUX_DARLING_PREFIX=$prefix" >> "$GITHUB_ENV"
+          python3 - "$server_pid" "$prefix" <<'PY'
+          import os, pathlib, sys, time
+          pid = int(sys.argv[1])
+          socket = pathlib.Path(sys.argv[2]) / '.darlingserver.sock'
+          deadline = time.monotonic() + 10
+          while not socket.is_socket():
+              os.kill(pid, 0)
+              if time.monotonic() >= deadline:
+                  raise SystemExit('Darling RPC socket not created; inspect darling.log')
+              time.sleep(.05)
+          PY
       - name: Install Apple filesystem reader
         run: |
           sudo apt-get update
@@ -281,6 +329,14 @@ jobs:
           if [[ -f build/dyld/weston.pid ]]; then
             kill -- "$(cat build/dyld/weston.pid)" || true
           fi
+      - name: Stop embedded Darling service
+        if: always() && inputs.ipc == 'darling'
+        shell: bash
+        run: |
+          if [[ -f build/dyld/darling.pid ]]; then
+            kill -- "$(cat build/dyld/darling.pid)" || true
+          fi
+          if [[ -f build/dyld/darling.log ]]; then cat build/dyld/darling.log; fi
       - name: Record experiment receipt
         if: always()
         run: python3 tools/experiment-receipt.py --directory build/dyld --outcome '${{ job.status }}'

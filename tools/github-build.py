@@ -139,6 +139,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['build', 'status', 'report', 'download'])
     parser.add_argument('--mode', choices=['both', 'host', 'baseline', 'native', 'dyld', 'app', 'playcover', 'darling'], default='native')
+    parser.add_argument('--ipc', choices=['local', 'darling'], default='local', help='IPC backend for the native dyld/app journey')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--job', help='Exact job name for report; default: all jobs')
@@ -165,7 +166,7 @@ def main():
             raise SystemExit('Selected local ref is not pushed: ' + args.ref +
                              ' local=' + expected + ' remote=' + remote)
         print('Dispatching exact pushed source ' + expected, flush=True)
-        command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'mode=' + args.mode]
+        command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'mode=' + args.mode, '-f', 'ipc=' + args.ipc]
     elif args.command == 'status':
         command = (['run', 'view', args.run_id] if args.run_id else
                    ['run', 'list', '--workflow', 'experiment.yml', '--limit', '5'])
