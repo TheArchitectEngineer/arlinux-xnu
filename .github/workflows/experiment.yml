@@ -311,10 +311,10 @@ jobs:
           # Inspect the original hanging process before timeout destroys it.
           # The separate LLDB replay may take a different thread interleaving.
           for ((probe=0; probe<60; probe++)); do
-            if ! kill -0 "$ordinary" 2>/dev/null || grep -q '^ARHELLO_READY ' build/dyld/app.stdout; then break; fi
+            if ! kill -0 "$ordinary" 2>/dev/null; then break; fi
             sleep 0.2
           done
-          if kill -0 "$ordinary" 2>/dev/null && ! grep -q '^ARHELLO_READY ' build/dyld/app.stdout; then
+          if kill -0 "$ordinary" 2>/dev/null; then
             actual=$(pgrep -P "$ordinary" -x macho-native || true)
             if [[ "$actual" =~ ^[0-9]+$ ]] && [[ "$(readlink -f "/proc/$actual/exe")" == "$PWD/build/native/macho-native" ]]; then
               echo "ORIGINAL_WAIT_PID=$actual TIMEOUT_PID=$ordinary" > build/dyld/ordinary-wait.log

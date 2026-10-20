@@ -175,6 +175,8 @@ static uint64_t load_native_cache(const char *root)
                         const char *text=(const char *)file+table[2]+name;
                         need(memchr(text,0,table[3]-name)!=NULL,"cache symbol name termination");
                         if (render_image) {
+                            if (!strncmp(text,"_CARender",9) && cache_contains(address,4,4))
+                                fprintf(stderr,"NATIVE_RENDER_EXPORT symbol=%s address=%#" PRIx64 "\n",text,address);
                             if (!strcmp(text,"_CARenderServerStart")) render_start=address;
                             if (!strcmp(text,"_CARenderServerGetPort")) render_get_port=address;
                             continue;

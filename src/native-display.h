@@ -20,7 +20,7 @@ struct native_wayland {
     struct native_wl_output outputs[8],*current_output;
     unsigned int output_count;
     uint32_t width,height;
-    int ready_fd,pixels_fd,running,configured,ready,xrgb;
+    int ready_fd,pixels_fd,running,configured,ready,xrgb,focused;
 };
 static void native_wm_ping(void *data,struct xdg_wm_base *shell,uint32_t serial)
 { (void)data; xdg_wm_base_pong(shell,serial); }
@@ -116,7 +116,15 @@ static const struct xdg_surface_listener native_surface_listener={.configure=nat
 static void native_toplevel_configure(void *data,struct xdg_toplevel *top,int32_t width,
                                       int32_t height,struct wl_array *states)
 {
-    struct native_wayland *w=data; (void)top; (void)states;
+    struct native_wayland *w=data; (void)top;
+    int focused=0; uint32_t *state;
+    wl_array_for_each(state,states)
+        if (*state==XDG_TOPLEVEL_STATE_ACTIVATED) focused=1;
+    if (w->focused!=focused) {
+        w->focused=focused;
+        fprintf(stderr,"WAYLAND_TOPLEVEL_FOCUS backend=%ld app=%ld activated=%d\n",
+                (long)getpid(),(long)getppid(),focused);
+    }
     if (!w->configured) {
         if (width>0) w->width=width;
         if (height>0) w->height=height;
@@ -130,7 +138,7 @@ static const struct xdg_toplevel_listener native_toplevel_listener={
 static void native_wayland_run(int ready_fd,int pixels_fd,pid_t parent)
 {
     need(!prctl(PR_SET_PDEATHSIG,SIGTERM) && getppid()==parent,"Wayland backend parent lifetime");
-    struct native_wayland w={.ready_fd=ready_fd,.pixels_fd=pixels_fd,.running=1,.width=320,.height=480};
+    struct native_wayland w={.ready_fd=ready_fd,.pixels_fd=pixels_fd,.running=1,.width=320,.height=480,.focused=-1};
     w.display=wl_display_connect(NULL);
     need(w.display!=NULL,"connect native Wayland compositor");
     struct wl_registry *registry=wl_display_get_registry(w.display);
