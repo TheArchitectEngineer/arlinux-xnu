@@ -118,6 +118,7 @@ static uint64_t load_native_cache(const char *root)
     }
     /* Cache images may alias the same Mach-O. Adapt each image only once so a
      * rewritten TSD read cannot be mistaken for an original CPU metadata read. */
+    uint64_t render_start=0,render_get_port=0;
     uint64_t *seen=calloc(header.images_count,sizeof(uint64_t));
     need(seen!=NULL,"cache image bookkeeping");
     size_t images=0,rewritten=0;
@@ -160,7 +161,9 @@ static uint64_t load_native_cache(const char *root)
             if (native_display_enabled && command.cmd==2) { /* LC_SYMTAB */
                 need(command.size==24 && image.path_offset<size &&
                      memchr(file+image.path_offset,0,size-image.path_offset),"cache symbol/image path bounds");
-                if (!strcmp((const char *)file+image.path_offset,"/usr/lib/system/libxpc.dylib")) {
+                int xpc_image=!strcmp((const char *)file+image.path_offset,"/usr/lib/system/libxpc.dylib");
+                int render_image=!strcmp((const char *)file+image.path_offset,"/System/Library/Frameworks/QuartzCore.framework/QuartzCore");
+                if (xpc_image || render_image) {
                     uint32_t table[4]; memcpy(table,bytes+pos+8,sizeof(table));
                     need(range(table[0],(uint64_t)table[1]*16,size) && range(table[2],table[3],size),
                          "cache service symbol bounds");
@@ -171,6 +174,11 @@ static uint64_t load_native_cache(const char *root)
                         if (name>=table[3] || symbol[4]&0xe0 || (symbol[4]&0xe)!=0xe || !symbol[5]) continue;
                         const char *text=(const char *)file+table[2]+name;
                         need(memchr(text,0,table[3]-name)!=NULL,"cache symbol name termination");
+                        if (render_image) {
+                            if (!strcmp(text,"_CARenderServerStart")) render_start=address;
+                            if (!strcmp(text,"_CARenderServerGetPort")) render_get_port=address;
+                            continue;
+                        }
                         uint64_t target=!strcmp(text,"_bootstrap_look_up3") ? (uintptr_t)darwin_native_service_lookup :
                             !strcmp(text,"_bootstrap_register2") ? (uintptr_t)darwin_native_service_register :
                             !strcmp(text,"_bootstrap_check_in2") ? (uintptr_t)darwin_native_service_check_in : 0;
@@ -192,6 +200,11 @@ static uint64_t load_native_cache(const char *root)
 
     }
     free(seen);
+    if (render_start && render_get_port) {
+        need(cache_contains(render_start,4,4) && cache_contains(render_get_port,4,4),"QuartzCore entry point bounds");
+        darwin_native_render_api(render_start,render_get_port);
+        fprintf(stderr,"NATIVE_RENDER_FRAMEWORK_API start=%#" PRIx64 " get_port=%#" PRIx64 "\n",render_start,render_get_port);
+    }
     need(!native_display_enabled || cache_service_hooks==3,"exact service registry adapter symbols unavailable");
     need(!native_display_enabled || cache_bootstrap_policy_hooks==1,"unsupported bootstrap trust predicate layout");
     for (unsigned int i=0;i<3;i++) {

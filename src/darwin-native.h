@@ -34,6 +34,8 @@ int darwin_native_host_join(uint32_t port,uint32_t set);
 int darwin_native_system_lookup(const char *name,uint64_t type,uint64_t flags,uint32_t *port);
 int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refresh_millihz,
                                    uint64_t period_bits,int32_t backend_pid);
+/* Real QuartzCore entry points, resolved from the currently loaded cache. */
+void darwin_native_render_api(uint64_t start,uint64_t get_port);
 uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t output,
                                     int32_t target,uint64_t instance,uint64_t flags);
 uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_t port,uint64_t flags);

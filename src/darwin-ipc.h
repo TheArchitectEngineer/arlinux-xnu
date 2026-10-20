@@ -32,6 +32,44 @@ static const char *const native_session_names[D_SESSION_SERVICE_COUNT]={
 static int native_session_manager;
 static uint32_t native_provider_pid,native_provider_incarnation;
 
+static uint64_t native_render_start_address,native_render_get_port_address;
+void darwin_native_render_api(uint64_t start,uint64_t get_port)
+{
+    native_render_start_address=start; native_render_get_port_address=get_port;
+}
+#ifdef ARLINUX_DARLING
+static uint32_t native_framework_render_port;
+static int native_framework_render_state,native_framework_render_owner;
+static uint32_t native_framework_render_start(void)
+{
+    int state=__atomic_load_n(&native_framework_render_state,__ATOMIC_ACQUIRE);
+    if (state==2) return D_KERN_SUCCESS;
+    if (state==3 || !native_render_start_address || !native_render_get_port_address)
+        return D_KERN_NOT_SUPPORTED;
+    int tid=RAW(SYS_gettid,0,0,0,0,0,0),expected=0;
+    if (!__atomic_compare_exchange_n(&native_framework_render_state,&expected,1,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) {
+        if (__atomic_load_n(&native_framework_render_owner,__ATOMIC_ACQUIRE)==tid) return D_KERN_FAILURE;
+        while (__atomic_load_n(&native_framework_render_state,__ATOMIC_ACQUIRE)==1)
+            RAW(SYS_futex,&native_framework_render_state,FUTEX_WAIT_PRIVATE,1,0,0,0);
+        return __atomic_load_n(&native_framework_render_state,__ATOMIC_ACQUIRE)==2 ? D_KERN_SUCCESS : D_KERN_FAILURE;
+    }
+    __atomic_store_n(&native_framework_render_owner,tid,__ATOMIC_RELEASE);
+    /* Called on the original guest lookup thread, with genuine guest TSD.
+     * These are real framework calls, not calls from our host-TLS service thread.
+     * WebKit QuartzCoreSPI.h declares the bool start and Mach-port getter ABI. */
+    const char marker[]="NATIVE_RENDER_FRAMEWORK_START real QuartzCore entry\n";
+    RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+    _Bool started=((_Bool (*)(void))(uintptr_t)native_render_start_address)();
+    uint32_t port=started ? ((uint32_t (*)(void))(uintptr_t)native_render_get_port_address)() : 0;
+    uint32_t status=port ? dserver_rpc_mach_port_mod_refs(CURRENT_TASK_PORT,port,D_PORT_RIGHT_SEND,1) : D_KERN_FAILURE;
+    if (!status) __atomic_store_n(&native_framework_render_port,port,__ATOMIC_RELEASE);
+    trace_record("NATIVE_RENDER_FRAMEWORK_RESULT started=0x",started,port,status);
+    __atomic_store_n(&native_framework_render_state,status ? 3 : 2,__ATOMIC_RELEASE);
+    RAW(SYS_futex,&native_framework_render_state,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
+    return status;
+}
+#endif
+
 #ifdef ARLINUX_DARLING
 static int native_inherit_bootstrap(void)
 {
@@ -610,6 +648,40 @@ void *darwin_native_service_run(void *unused)
             if (status) darling_abort("send process-info reply");
             continue;
         }
+        if (header->local==native_render_port &&
+            header->id!=D_MIG_CA_COPY_DISPLAY_LIST && header->id!=D_MIG_CA_COPY_DISPLAY_PROPERTIES) {
+            uint32_t render_port=__atomic_load_n(&native_framework_render_port,__ATOMIC_ACQUIRE);
+            unsigned int reply_type=header->bits&255;
+            if (render_port && !header->voucher &&
+                ((!header->remote && !reply_type) || (header->remote && reply_type==D_MACH_TYPE_MOVE_SEND_ONCE))) {
+                /* Forward the actual request and move its original reply right.
+                 * No reply, client ID, context port or shared memory is invented.
+                 * Received port descriptor dispositions already describe the
+                 * rights we own. Move received OOL mappings with the message. */
+                if (header->bits&D_MACH_MSG_COMPLEX) {
+                    uint32_t count; __builtin_memcpy(&count,request+sizeof(*header),4);
+                    size_t cursor=sizeof(*header)+4;
+                    for (uint32_t i=0;i<count;i++) {
+                        if (cursor>header->size || header->size-cursor<12)
+                            darling_abort("truncated render descriptor");
+                        unsigned int type=request[cursor+11];
+                        size_t bytes=type==D_MACH_MSG_PORT_DESCRIPTOR ? 12 : 16;
+                        if (type>D_MACH_MSG_OOL_VOLATILE_DESCRIPTOR || bytes>header->size-cursor)
+                            darling_abort("unsupported render descriptor");
+                        if (type!=D_MACH_MSG_PORT_DESCRIPTOR) request[cursor+8]=1;
+                        cursor+=bytes;
+                    }
+                }
+                uint32_t reply=header->remote,id=header->id;
+                header->bits=(header->bits&D_MACH_MSG_COMPLEX)|D_MACH_TYPE_COPY_SEND|
+                    (reply_type<<D_MACH_MSG_LOCAL_BITS_SHIFT);
+                header->remote=render_port; header->local=reply;
+                int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_SEND_MSG,header->size,0,0,0,0,NULL);
+                trace_record("NATIVE_RENDER_FORWARD id=0x",id,render_port,status);
+                if (status) darling_abort("forward real QuartzCore request");
+                continue;
+            }
+        }
         if (
             (header->bits&D_MACH_MSG_COMPLEX) || header->voucher ||
             (header->bits&255)!=D_MACH_TYPE_MOVE_SEND_ONCE || header->id>INT32_MAX-D_MIG_REPLY_ID_OFFSET) {
@@ -811,6 +883,12 @@ uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t 
     if (flags || (target && target!=RAW(SYS_getpid,0,0,0,0,0,0))) return D_KERN_NOT_SUPPORTED;
     char service[D_BOOTSTRAP_NAME_MAX]; uint32_t error=native_service_name(name,service);
     if (error) return error;
+#ifdef ARLINUX_DARLING
+    if (darling_active && !target && native_service_equal(service,"com.apple.CARenderServer")) {
+        uint32_t status=native_framework_render_start();
+        if (status) return status;
+    }
+#endif
     native_registry_lock();
     uint32_t port=target ? 0 : native_service_static(service);
     for (unsigned int i=0;!port && i<32;i++)
