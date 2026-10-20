@@ -185,7 +185,7 @@ struct darwin_dirent64 {
 };
 enum darwin_vm_flags {
     D_VM_FLAGS_ANYWHERE = 1, D_VM_FLAGS_TAG_MASK = 0xff000000U,
-    D_MAP_PRIVATE = 2, D_MAP_ANON = 0x1000
+    D_MAP_SHARED = 1, D_MAP_PRIVATE = 2, D_MAP_FIXED = 0x10, D_MAP_ANON = 0x1000
 };
 enum darwin_platform_operation { D_PLATFORM_SET_TSD = 2, D_PLATFORM_GET_TSD = 3 };
 enum darwin_ulock_operation {

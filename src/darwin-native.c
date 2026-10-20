@@ -250,6 +250,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 #include "darling-native.h"
 #include "darwin-filesystem.h"
 #include "darwin-process.h"
+#include "darwin-mmap.h"
 #include "darwin-ipc.h"
 #include "darwin-threads.h"
 #include "darwin-psynch.h"
@@ -692,12 +693,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         result = RAW(r[D_ARM64_SYSCALL_REGISTER]==D_SYS_MUNMAP ? SYS_munmap : SYS_mprotect,
                      r[0],(r[1]+PAGE16-1)&~(PAGE16-1),r[2],0,0,0);
         break;
-    case D_SYS_MMAP:
-        if (r[0] || r[3] != (D_MAP_PRIVATE|D_MAP_ANON) || r[4] != (unsigned long)-1 || r[5]) {
-            result = -ENOTSUP; break;
-        }
-        result = darwin_native_memory(r[1],r[2]);
-        break;
+    case D_SYS_MMAP: result=native_mmap(r); break;
     case D_SYS_PLATFORM:
         if (r[3] == D_PLATFORM_SET_TSD) {
             __asm__ volatile("msr tpidr_el0,%0" :: "r"(r[0]) : "memory");
