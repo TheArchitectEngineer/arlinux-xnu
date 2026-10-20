@@ -19,10 +19,10 @@ and two cross-app scenarios; a selected subset cannot certify the whole suite.
 
 ## Latest verified Linux result
 
-Run [39497491656](https://github.com/taowen/arlinux-xnu/actions/runs/39497491656),
-source **622442faca9e6c52e1af759a970b1c245ec890d9**, selected Console, Counter,
+Run [39499951516](https://github.com/taowen/arlinux-xnu/actions/runs/39499951516),
+source **fb255ac6cafcb852c7952413c8a8ac664e909208**, selected Console, Counter,
 Foundation and SwiftCards. Receipt SHA-256
-**e0d81a326be0b911b124582d6e413ba7a0e371ac611b79b62aef100adbeac3d5**
+**baea597d8ddae4dfb95a5cb2511c1d7e4ca4e69a773f913ea6728f2a03051e81**
 and all 43 retained file hashes were verified. This is partial coverage and the
 run fails GUI acceptance.
 
@@ -68,7 +68,7 @@ The current software renderer has not completed a UIKit journey on this input.
 Do not call delegate/control actions from the harness, force readiness, or
 report successful service operations without implementing their effects.
 
-## Cleanup after the baseline
+## Cleanup verified by this run
 
 The legacy FrontBoard launch/scene serializer, workspace registration and
 launch/scene reply state have been deleted, together with their build inputs.
@@ -78,7 +78,10 @@ original-process stack collection remain available, including explicit targeted
 lookups when a diagnosis needs them. The runtime no longer emits the old codec
 class-export diagnostics. This cleanup does not implement host-backed lifecycle.
 
-The run above precedes this cleanup; it is not validation of the modified code.
+The runner compiled the modified runtime and executed the four selected
+journeys after this cleanup. Console/Foundation retain their passing baseline;
+Counter/Swift retain the unsupported lifecycle negotiation failure. This does
+not validate GUI functionality or the unselected app collection.
 
 ## Evidence and reference limits
 
