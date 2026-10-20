@@ -10,3 +10,6 @@
 [submodule "third_party/darling"]
 	path = third_party/darling
 	url = https://github.com/taowen/darling.git
+[submodule "third_party/libspc"]
+	path = third_party/libspc
+	url = https://github.com/saelo/pwn2own2018.git

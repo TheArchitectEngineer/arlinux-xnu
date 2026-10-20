@@ -443,6 +443,14 @@ int darwin_native_services_enabled(void)
 {
     return darling_active && native_display_port;
 }
+uint32_t darwin_native_host_task(void) { return CURRENT_TASK_PORT; }
+int darwin_native_host_port_refs(uint32_t port,int delta)
+{
+#ifdef ARLINUX_DARLING
+    if (darling_active) return dserver_rpc_mach_port_mod_refs(CURRENT_TASK_PORT,port,D_PORT_RIGHT_SEND,delta);
+#endif
+    (void)port; (void)delta; return D_KERN_NOT_SUPPORTED;
+}
 void *darwin_native_service_run(void *unused)
 {
     (void)unused;
@@ -468,8 +476,11 @@ void *darwin_native_service_run(void *unused)
         out->bits=D_MACH_TYPE_MOVE_SEND_ONCE; out->remote=header->remote;
         out->size=36; out->id=header->id+D_MIG_REPLY_ID_OFFSET;
         response[7]=1; response[8]=(uint32_t)D_MIG_BAD_ID;
-        unsigned long ool=ipc_display_response(header->local==native_render_port,
-            header->local==native_display_port,request,header->size,response,0,0);
+        unsigned long ool=0; uint32_t held_port=0;
+        if (header->local!=native_bootstrap_port ||
+            !arlinux_xpc_bootstrap(request,response,sizeof(response),native_bootstrap_port,&held_port))
+            ool=ipc_display_response(header->local==native_render_port,
+                header->local==native_display_port,request,header->size,response,0,0);
         if (traces++<D_DIAGNOSTIC_REQUEST_LIMIT) {
             const char label[]="DARLING_SERVICE_REPLY port/id/request/reply follows\n";
             RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
@@ -477,6 +488,7 @@ void *darwin_native_service_run(void *unused)
             trace_call(2,0,header->size); trace_call(3,0,out->size);
         }
         status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL);
+        if (held_port) darwin_native_host_port_refs(held_port,-1);
         /* The source mapping remains ours (deallocate=0); XNU owns its snapshot
          * after successful send. No host mapping is exposed as a fake copyout. */
         if (ool) RAW(SYS_munmap,ool,PAGE16,0,0,0,0);

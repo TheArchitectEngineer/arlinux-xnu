@@ -14,6 +14,13 @@
     "commit": "663906528d1cd5ea8fde7de6f16de73db9511549"
   },
   "guestPageSize": 16384,
+  "xpcCodec": {
+    "repository": "saelo/pwn2own2018",
+    "commit": "96c16ca43f0d9ec0a64f3da30f2d0798ed70582c",
+    "path": "third_party/libspc",
+    "license": "MIT",
+    "role": "Unmodified libspc codec for host-thread bootstrap XPC messages; Mach rights use Darling"
+  },
   "darlingIpc": {
     "repository": "taowen/darling",
     "commit": "60f5ef3fdc6a560edb11820f6f0154d396d8ebc7",

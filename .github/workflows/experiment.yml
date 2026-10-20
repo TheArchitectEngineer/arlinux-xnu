@@ -162,6 +162,15 @@ jobs:
           ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/ARHello.o -needed_library guests/libSystem.tbd -needed_library guests/ARHello/UIKit.tbd -needed_library guests/ARHello/Foundation.tbd -needed_library guests/ARHello/libobjc.tbd -o build/native/ARHello.app/ARHello
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
           rpc_flags=()
+          git submodule update --init third_party/libspc
+          spc_flags=(-Isrc -Icomponents/libspc/include -Ithird_party/libspc/libspc -include string.h -fcommon)
+          spc_objects=()
+          for source in serialization datatypes dictionary array; do
+            cc -O2 -g "${spc_flags[@]}" -c "third_party/libspc/libspc/$source.c" -o "build/native/spc-$source.o"
+            spc_objects+=("build/native/spc-$source.o")
+          done
+          cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/native-xpc.c -o build/native/native-xpc.o
+          cp third_party/libspc/LICENSE build/native/libspc-LICENSE
           if [[ '${{ inputs.ipc }}' == darling ]]; then
             rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include)
             cp build/darling-ipc/receipt.json build/native/darling-input-receipt.json
@@ -170,7 +179,7 @@ jobs:
           cc -c src/darwin-native.S -o build/native/entry.o
           wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-client-protocol.h
           wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
-          cc -Wall -Wextra -Werror -O2 -g -Ibuild/native src/macho-native.c build/native/xdg-shell-protocol.c build/native/runtime.o build/native/entry.o -ldl -lwayland-client -pthread -o build/native/macho-native
+          cc -Wall -Wextra -Werror -O2 -g -Ibuild/native src/macho-native.c build/native/xdg-shell-protocol.c build/native/runtime.o build/native/entry.o build/native/native-xpc.o "${spc_objects[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
           # Two complete independent launches of the interactive program, not
           # a source assertion or isolated TLS probe. Runtime exit status is
           # the guest's real Linux-backed normal process exit status.
