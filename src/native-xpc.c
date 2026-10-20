@@ -183,13 +183,53 @@ static void session_send_launch(struct processinfo_peer *peer,uint32_t set)
     session_send_event(peer,set,dictionary,&peer->launch_reply,&peer->launch_state,"SESSION_LAUNCH_SEND");
 }
 
+static spc_dictionary_t *session_encoded_object(const char *class_name)
+{
+    spc_dictionary_t *object=spc_dictionary_create();
+    spc_dictionary_set_string(object,"bs_encodedObjectClassName",class_name);
+    return object;
+}
+
+static void session_dictionary_object(spc_dictionary_t *dictionary,const char *key,spc_dictionary_t *object)
+{
+    spc_dictionary_set_value(dictionary,key,(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=object});
+}
+
+static spc_dictionary_t *session_display_configuration(const struct session_display *display)
+{
+    /* Real codecs in runs 39404428141/39405060101. Identity type 0 is the
+     * primary display; its decoder normalizes displayID to 1. Mode preferred
+     * scale is uint64, while refreshRate is an XPC double. Missing pixelSize
+     * and bounds are derived by the real decoder from currentMode.size. */
+    enum { FBS_DISPLAY_MAIN=0 };
+    spc_dictionary_t *identity=session_encoded_object("FBSDisplayIdentity");
+    spc_dictionary_set_int64(identity,"type",FBS_DISPLAY_MAIN);
+    spc_dictionary_set_uint64(identity,"displayID",D_WAYLAND_MAIN_DISPLAY_ID);
+    spc_dictionary_set_string(identity,"uniqueID","arlinux-wayland-1");
+    spc_dictionary_t *mode=session_encoded_object("FBSDisplayMode");
+    spc_dictionary_set_uint64(mode,"width",display->width);
+    spc_dictionary_set_uint64(mode,"height",display->height);
+    spc_dictionary_set_uint64(mode,"preferredScale",1);
+    spc_dictionary_set_value(mode,"refreshRate",(spc_value_t){.type=SPC_TYPE_DOUBLE,.value.dbl=display->refresh/1000.0});
+    spc_dictionary_t *configuration=session_encoded_object("FBSDisplayConfiguration");
+    session_dictionary_object(configuration,"identity",identity);
+    session_dictionary_object(configuration,"currentMode",mode);
+    spc_dictionary_set_string(configuration,"name","ARLinux Wayland");
+    spc_dictionary_set_string(configuration,"deviceName","ARLinux Wayland");
+    spc_dictionary_set_string(configuration,"hardwareIdentifier","arlinux-wayland-1");
+    return configuration;
+}
+
 static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
 {
     /* Run 39395977685: queue_handleMessage's actual jump table maps 5 to
      * _queue_handleCreateScene:. The codecs validate specClass and read the
      * sceneID/settings/clientSettings/transitionContext fields. Start with
      * genuine framework defaults; geometry/activation are not established. */
-    enum { FBS_WORKSPACE_CREATE_SCENE=5 };
+    enum { FBS_WORKSPACE_CREATE_SCENE=5, FBS_SCENE_DISPLAY_CONFIGURATION=2 };
+    struct session_display *display=session_displays;
+    while (display && (display->pid!=peer->pid || display->incarnation!=peer->incarnation)) display=display->next;
+    if (!display) return; /* No invented fallback geometry before registration. */
     char identifier[80];
     snprintf(identifier,sizeof(identifier),"arlinux:%u:%u:main",peer->pid,peer->incarnation);
     spc_dictionary_t *event=spc_dictionary_create(),*dictionary=spc_dictionary_create();
@@ -214,13 +254,23 @@ static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
         spc_array_set_value(entry,1,(spc_value_t){.type=SPC_TYPE_STRING,.value.str=strdup(classes[i])});
         spc_array_set_value(entry,2,(spc_value_t){.type=SPC_TYPE_BOOL,.value.u64=BS_SETTINGS_FOUNDATION_FORMAT});
         spc_array_set_value(objects,0,(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=entry});
+        if (!i) {
+            spc_array_t *configuration=spc_array_create();
+            spc_array_set_value(configuration,0,(spc_value_t){.type=SPC_TYPE_UINT64,.value.u64=FBS_SCENE_DISPLAY_CONFIGURATION});
+            spc_array_set_value(configuration,1,(spc_value_t){.type=SPC_TYPE_DICT,
+                .value.dict=session_display_configuration(display)});
+            /* No Foundation-format marker: BSSettings invokes BSXPCCoding
+             * for this actual framework object rather than converting a dict. */
+            spc_array_set_value(objects,1,(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=configuration});
+        }
         spc_dictionary_set_value(changes,"objects",(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=objects});
         spc_dictionary_set_value(diff,"changes",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=changes});
         spc_dictionary_set_value(event,keys[i],(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=diff});
     }
     spc_dictionary_set_value(dictionary,"event",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=event});
     spc_dictionary_set_int64(dictionary,"message",FBS_WORKSPACE_CREATE_SCENE);
-    fprintf(stderr,"SESSION_SCENE_CONFIGURATION pid=%u scene=%s settings=initial-class-diffs geometry-established=false\n",peer->pid,identifier);
+    fprintf(stderr,"SESSION_SCENE_CONFIGURATION pid=%u scene=%s settings=class-and-display-diffs width=%u height=%u refresh_millihz=%u geometry-established=false\n",
+        peer->pid,identifier,display->width,display->height,display->refresh);
     session_send_event(peer,set,dictionary,&peer->scene_reply,&peer->scene_state,"SESSION_SCENE_SEND");
 }
 

@@ -20,6 +20,8 @@ enum darwin_session_service { D_SESSION_PROCESSINFO, D_SESSION_WORKSPACE,
 int arlinux_xpc_session(void *request,unsigned long length,void *response,unsigned long capacity,const uint32_t *listeners,uint32_t set,const uint32_t *audit);
 void arlinux_xpc_session_tick(uint32_t set);
 /* Private native display registration, delivered over real audited Mach IPC. */
+/* One registered virtual Wayland display, independent of device model. */
+#define D_WAYLAND_MAIN_DISPLAY_ID 1
 #define D_SESSION_DISPLAY_REGISTER 0x41524450U
 int arlinux_session_display(void *request,unsigned long length,const uint32_t *audit);
 

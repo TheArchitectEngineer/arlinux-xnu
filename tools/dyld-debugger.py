@@ -73,7 +73,7 @@ _settings_entries = {}
 def settings_callback(frame, location, internal_dict):
     breakpoint=location.GetBreakpoint()
     name=_settings_entries[breakpoint.GetID()]
-    if name.endswith(' _setObject:forSetting:') and frame.FindRegister('x3').GetValueAsUnsigned()!=1:
+    if name.endswith(' _setObject:forSetting:') and frame.FindRegister('x3').GetValueAsUnsigned() not in (1,2):
         return False
     objects=GuestObjects(frame.GetThread().GetProcess())
     record={'method':name,'tid':frame.GetThread().GetThreadID(),
@@ -156,7 +156,10 @@ def install_launch_breakpoints(target):
                     if name in ('_OBJC_CLASS_$_FBSSettingsDiff','_OBJC_CLASS_$_FBSSceneSettingsDiff',
                                 '_OBJC_CLASS_$_FBSSceneClientSettingsDiff','_OBJC_CLASS_$_BSSettings') and selector in (
                             'initWithXPCDictionary:','_initWithChanges:otherSettingsDiff:settingsClass:',
-                            'settingsByApplyingToMutableCopyOfSettings:','_setObject:forSetting:'):
+                            'settingsByApplyingToMutableCopyOfSettings:','_setObject:forSetting:') or (
+                            name in ('_OBJC_CLASS_$_FBSSceneSettings','_OBJC_CLASS_$_FBSDisplayConfiguration',
+                                     '_OBJC_CLASS_$_FBSDisplayIdentity','_OBJC_CLASS_$_FBSDisplayMode') and
+                            selector in ('initWithXPCDictionary:','_setDisplayConfiguration:')):
                         breakpoint=target.BreakpointCreateByAddress(objects.u64(entry+16))
                         _settings_entries[breakpoint.GetID()]=name+' '+selector
                         breakpoint.SetScriptCallbackFunction('dyld_debugger.settings_callback')
