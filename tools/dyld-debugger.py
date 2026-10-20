@@ -123,6 +123,7 @@ def launch_callback(frame, location, internal_dict):
 
 
 def install_launch_breakpoints(target):
+    install_canvas_breakpoints(target)
     objects = GuestObjects(target.GetProcess())
     for symbol in diagnostic_symbols():
         name = symbol.get('symbol', '')
@@ -208,6 +209,45 @@ def install_launch_breakpoints(target):
             _launch_entries[breakpoint.GetID()] = label
             breakpoint.SetScriptCallbackFunction('dyld_debugger.launch_callback')
             breakpoint.SetAutoContinue(True)
+
+
+def install_canvas_breakpoints(target):
+    """Follow the real scene-to-application lifecycle, including class methods."""
+    objects=GuestObjects(target.GetProcess())
+    names={'_OBJC_CLASS_$__UICanvas','_OBJC_CLASS_$__UIApplicationCanvas',
+           '_OBJC_CLASS_$__UICanvasLifecycleMonitor','_OBJC_CLASS_$_UIApplicationSceneSettings'}
+    exact={'initWithScene:','canvasForScene:','_canvasForScene:create:',
+           'scene:didUpdateWithDiff:transitionContext:completion:',
+           '_isMainSceneCanvas','isUISubclass','canvasClass','initWithSettings:',
+           '_hasLifecycle','isBackgrounded','isForeground'}
+    for symbol in diagnostic_symbols():
+        name=symbol.get('symbol','')
+        if name not in names:
+            continue
+        cls=int(symbol['address'],16)
+        for kind,metadata in (('instance',cls),('class',objects.u64(cls))):
+            methods=objects.u64(objects.class_ro(metadata)+32)
+            if not methods:
+                continue
+            size,count=objects.u32(methods)&~3,objects.u32(methods+4)
+            if size!=24 or count>2048:
+                print('APP_CANVAS_METADATA_ERROR',name,kind,flush=True)
+                continue
+            for index in range(count):
+                entry=methods+8+index*size
+                selector=objects.cstring(objects.u64(entry))
+                if selector not in exact and not any(value in selector.lower() for value in ('transitionlifecycle','updatelifecycle','evaluatelifecycle')):
+                    continue
+                address=objects.u64(entry+16)
+                label=name+' '+kind+' '+selector
+                print('APP_CANVAS_CODE '+json.dumps({'method':label,'address':hex(address)}),flush=True)
+                target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 256')
+                capture_code_references(target,address,256,'APP_CANVAS_REFERENCE')
+                capture_protocol_blocks(target,address,128)
+                breakpoint=target.BreakpointCreateByAddress(address)
+                _launch_entries[breakpoint.GetID()]=label
+                breakpoint.SetScriptCallbackFunction('dyld_debugger.launch_callback')
+                breakpoint.SetAutoContinue(True)
 
 
 def capture_exit_callers(frame):
