@@ -7,5 +7,5 @@ compatibility-version: 1.0
 exports:
   - archs: [ arm64 ]
     symbols: [ ___CFConstantStringClassReference ]
-    objc-classes: [ NSObject, NSString ]
+    objc-classes: [ NSObject, NSString, NSXPCConnection, NSXPCInterface, NSXPCListener ]
 ...

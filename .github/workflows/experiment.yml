@@ -184,9 +184,14 @@ jobs:
           for app in ARHello ARWorkbench; do
             mkdir -p "build/native/$app.app"
             cp "guests/$app/Info.plist" "build/native/$app.app/"
-            ccache clang-18 --target=arm64-apple-ios12.0 -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c "guests/$app/main.m" -o "build/native/$app.o"
+            ccache clang-18 --target=arm64-apple-ios12.0 -fblocks -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c "guests/$app/main.m" -o "build/native/$app.o"
             ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main "build/native/$app.o" -needed_library guests/libSystem.tbd -needed_library guests/sdk/UIKit.tbd -needed_library guests/sdk/Foundation.tbd -needed_library guests/sdk/libobjc.tbd -o "build/native/$app.app/$app"
           done
+          helper=build/native/ARWorkbench.app/XPCServices/ARJourneyWorker.xpc
+          mkdir -p "$helper"
+          cp guests/ARJourneyWorker/Info.plist "$helper/"
+          ccache clang-18 --target=arm64-apple-ios12.0 -fblocks -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c guests/ARJourneyWorker/main.m -o build/native/ARJourneyWorker.o
+          ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/ARJourneyWorker.o -needed_library guests/libSystem.tbd -needed_library guests/sdk/Foundation.tbd -needed_library guests/sdk/libobjc.tbd -o "$helper/ARJourneyWorker"
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
           rpc_flags=()
           core_flags=()

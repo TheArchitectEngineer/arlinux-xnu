@@ -6,5 +6,5 @@ current-version: 1.0
 compatibility-version: 1.0
 exports:
   - archs: [ arm64 ]
-    symbols: [ dyld_stub_binder, _write, _read, _malloc, _free, _pthread_create, _pthread_join, _mmap, _munmap, _fork, _waitpid, __exit, _open, _close ]
+    symbols: [ dyld_stub_binder, _write, _read, _malloc, _free, _pthread_create, _pthread_join, _mmap, _munmap, _fork, _waitpid, __exit, _open, _close, __NSConcreteStackBlock, __NSConcreteGlobalBlock, __Block_copy, __Block_release, __Block_object_assign, __Block_object_dispose, __dispatch_main_q, _dispatch_async ]
 ...

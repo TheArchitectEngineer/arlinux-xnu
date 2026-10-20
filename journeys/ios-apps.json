@@ -9,7 +9,8 @@
     "workbench": {
       "name": "ARWorkbench",
       "version": "1.0",
-      "binary": "build/native/ARWorkbench.app/ARWorkbench"
+      "binary": "build/native/ARWorkbench.app/ARWorkbench",
+      "helper": "build/native/ARWorkbench.app/XPCServices/ARJourneyWorker.xpc/ARJourneyWorker"
     }
   },
   "cases": [
@@ -159,6 +160,65 @@
         },
         {
           "do": "exit",
+          "app": "workbench"
+        }
+      ]
+    },
+    {
+      "id": "xpc-helper-lifecycle",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "workbench"
+        },
+        {
+          "do": "click",
+          "text": "^XPC$"
+        },
+        {
+          "do": "see",
+          "text": "XPC: ?pong"
+        },
+        {
+          "do": "helper",
+          "app": "workbench"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "workbench"
+        },
+        {
+          "do": "helper-exit",
+          "app": "workbench"
+        },
+        {
+          "do": "launch",
+          "app": "workbench"
+        },
+        {
+          "do": "click",
+          "text": "^XPC$"
+        },
+        {
+          "do": "see",
+          "text": "XPC: ?pong"
+        },
+        {
+          "do": "helper",
+          "app": "workbench"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "workbench"
+        },
+        {
+          "do": "helper-exit",
           "app": "workbench"
         }
       ]

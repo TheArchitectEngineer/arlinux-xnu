@@ -196,7 +196,7 @@ static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
     if (!display) return; /* No invented fallback geometry before registration. */
     char identifier[80];
     snprintf(identifier,sizeof(identifier),"arlinux:%u:%u:main",peer->pid,peer->incarnation);
-    struct ios_scene_geometry geometry={display->width,display->height,display->refresh};
+    struct ios_scene_geometry geometry={display->width,display->height,display->refresh,D_WAYLAND_MAIN_DISPLAY_ID};
     spc_dictionary_t *dictionary=ios_scene_create_event(identifier,&geometry);
     fprintf(stderr,"SESSION_SCENE_CONFIGURATION pid=%u scene=%s settings=class-display-frame-diffs lifecycle_action=activate width=%u height=%u refresh_millihz=%u geometry-established=false\n",
         peer->pid,identifier,display->width,display->height,display->refresh);

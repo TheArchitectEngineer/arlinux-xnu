@@ -46,6 +46,28 @@ class Journey:
         self.processes, self.streams, self.generations = {}, [], []
         self.steps, self.observations, self.cleanup = [], [], []
         self.current = None
+        self.helpers = []
+
+    def helper_processes(self, name):
+        binary = str(ROOT / self.apps[name]['helper'])
+        matches = []
+        for proc in Path('/proc').iterdir():
+            if not proc.name.isdecimal():
+                continue
+            try:
+                if binary.encode() not in (proc / 'cmdline').read_bytes().split(b'\0'):
+                    continue
+                environment = (proc / 'environ').read_bytes().split(b'\0')
+                expected = ('ARLINUX_DARLING_PID=' + str(self.session['pid'])).encode()
+                if expected not in environment:
+                    continue
+                candidate = identity(int(proc.name))
+                if candidate['executable'] != str(ROOT / 'build/native/macho-native'):
+                    continue
+                matches.append(candidate)
+            except (OSError, ValueError):
+                continue  # process vanished or is not readable by this runner
+        return matches
 
     def guard(self):
         if identity(self.session['pid']) != self.session:
@@ -147,6 +169,21 @@ class Journey:
             item = self.processes[name]
             if item['process'].poll() is not None or identity(item['process'].pid) != item['identity']:
                 raise RuntimeError('Peer identity/lifetime was disrupted: ' + name)
+        elif action == 'helper':
+            matches = self.helper_processes(name)
+            if len(matches) != 1 or matches[0] == self.processes[name]['identity']:
+                raise RuntimeError('No unique independent XPC helper in this compatibility session')
+            if any(old['identity'] == matches[0] for old in self.helpers):
+                raise RuntimeError('XPC relaunch reused the old helper generation')
+            record = {'app': name, 'identity': matches[0], 'binarySHA256': sha(ROOT / self.apps[name]['helper'])}
+            self.helpers.append(record)
+            self.steps[-1]['helper'] = record
+        elif action == 'helper-exit':
+            deadline = time.monotonic() + 5
+            while self.helper_processes(name):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('XPC helper survived normal application close')
+                time.sleep(.1)
         elif action == 'crash':
             item = self.processes[name]
             item['expectedExit'] = True
@@ -218,9 +255,20 @@ class Journey:
                                      'status': process.returncode, 'acceptanceEvidence': False})
             for stream in self.streams:
                 stream.close()
+            for name, app in self.apps.items():
+                if 'helper' not in app:
+                    continue
+                for helper in self.helper_processes(name):
+                    try:
+                        os.kill(helper['pid'], signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    self.cleanup.append({'app': name, 'helper': helper, 'forced': True,
+                                         'acceptanceEvidence': False})
         return {'id': self.case['id'], 'status': 'failed' if error else 'passed', 'error': error,
                 'session': self.session, 'processes': self.generations, 'steps': self.steps,
-                'observations': self.observations, 'diagnostic': self.diagnostic, 'cleanup': self.cleanup}
+                'observations': self.observations, 'helpers': self.helpers,
+                'diagnostic': self.diagnostic, 'cleanup': self.cleanup}
 
 
 def main():

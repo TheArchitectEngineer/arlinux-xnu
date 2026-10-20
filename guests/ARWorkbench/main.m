@@ -1,5 +1,5 @@
 /* ARWorkbench 1.0: real UIKit actions, real POSIX effects; no driver RPC. */
-#import "../sdk/UIKit.h"
+#import "../sdk/XPC.h"
 typedef unsigned long pthread_t;
 extern int pthread_create(pthread_t *,const void *,void *(*)(void *),void *);
 extern int pthread_join(pthread_t,void **);
@@ -16,12 +16,14 @@ enum { ReadOnly=0, WriteOnly=1, Create=0x200, Truncate=0x400,
     UIWindow *_window;
     UILabel *_result;
     UITextField *_input;
+    NSXPCConnection *_connection;
 }
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(id)options;
 - (void)save:(id)sender;
 - (void)thread:(id)sender;
 - (void)memory:(id)sender;
 - (void)helper:(id)sender;
+- (void)xpc:(id)sender;
 @end
 static void *worker(void *pointer) { *(volatile int *)pointer=42; return (void *)37; }
 @implementation ARWorkbenchDelegate
@@ -37,11 +39,11 @@ static void *worker(void *pointer) { *(volatile int *)pointer=42; return (void *
     [_result setText:@"Ready"]; [_result setTextColor:[UIColor blackColor]]; [view addSubview:_result];
     _input=[[UITextField alloc] initWithFrame:(CGRect){{20,140},{280,40}}];
     [_input setPlaceholder:@"Edit"]; [view addSubview:_input];
-    NSString *names[]={@"Save",@"Thread",@"Memory",@"Helper"};
-    SEL actions[]={@selector(save:),@selector(thread:),@selector(memory:),@selector(helper:)};
-    for (unsigned int i=0;i<4;i++) {
+    NSString *names[]={@"Save",@"Thread",@"Memory",@"Helper",@"XPC"};
+    SEL actions[]={@selector(save:),@selector(thread:),@selector(memory:),@selector(helper:),@selector(xpc:)};
+    for (unsigned int i=0;i<5;i++) {
         UIButton *button=[UIButton buttonWithType:ButtonTypeSystem];
-        [button setFrame:(CGRect){{20,200+i*50},{280,40}}]; [button setTitle:names[i] forState:0];
+        [button setFrame:(CGRect){{20+(i%2)*150,200+(i/2)*50},{130,40}}]; [button setTitle:names[i] forState:0];
         [button addTarget:self action:actions[i] forControlEvents:TouchUpInside]; [view addSubview:button];
     }
     char note[128]; int fd=open("note.txt",ReadOnly);
@@ -85,6 +87,19 @@ static void *worker(void *pointer) { *(volatile int *)pointer=42; return (void *
     (void)sender; int status=0; int child=fork(); if (!child) _exit(37);
     int waited=child>0 ? waitpid(child,&status,0) : -1;
     [_result setText:waited==child && child>0 && status==(37<<8) ? @"Helper: 37" : @"Helper failed"];
+}
+- (void)xpc:(id)sender
+{
+    (void)sender;
+    _connection=[[NSXPCConnection alloc] initWithServiceName:@"io.arlinux.ARJourneyWorker"];
+    [_connection setRemoteObjectInterface:[NSXPCInterface interfaceWithProtocol:@protocol(ARJourneyWorker)]];
+    [_connection resume];
+    id<ARJourneyWorker> proxy=[_connection remoteObjectProxyWithErrorHandler:^(NSError *error) {
+        (void)error; dispatch_async(dispatch_get_main_queue(),^{ [_result setText:@"XPC failed"]; });
+    }];
+    [proxy ping:@"ping" reply:^(NSString *value) {
+        dispatch_async(dispatch_get_main_queue(),^{ [_result setText:[NSString stringWithFormat:@"XPC: %@",value]]; });
+    }];
 }
 @end
 int main(int argc,char **argv)

@@ -28,7 +28,7 @@ static spc_dictionary_t *session_display_configuration(const struct ios_scene_ge
     enum { FBS_DISPLAY_MAIN=0 };
     spc_dictionary_t *identity=session_encoded_object("FBSDisplayIdentity");
     spc_dictionary_set_int64(identity,"type",FBS_DISPLAY_MAIN);
-    spc_dictionary_set_uint64(identity,"displayID",D_WAYLAND_MAIN_DISPLAY_ID);
+    spc_dictionary_set_uint64(identity,"displayID",display->display_id);
     spc_dictionary_set_string(identity,"uniqueID","arlinux-wayland-1");
     spc_dictionary_t *mode=session_encoded_object("FBSDisplayMode");
     spc_dictionary_set_uint64(mode,"width",display->width);

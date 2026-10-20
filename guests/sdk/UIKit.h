@@ -1,3 +1,4 @@
+#pragma once
 /* Shared declaration-only SDK subset for real journey apps. Implementations are supplied
  * exclusively by the selected firmware's UIKit/Foundation/Objective-C runtime.
  * LP64 iOS ABI: CGFloat is double, BOOL is signed char, NSInteger is long.
