@@ -79,7 +79,10 @@ def capture_display_code(target):
                 text = objects.cfstring(pointer)
             except (ValueError, UnicodeError):
                 try:
-                    candidate = objects.cstring(pointer)
+                    # Arbitrary references may be binary blocks, not strings.
+                    # LLDB 18's CString SWIG binding can raise SystemError on
+                    # such bytes; inspect bounded raw memory instead.
+                    candidate = objects.read(pointer, 256).split(b'\0', 1)[0].decode('ascii')
                     if 3 <= len(candidate) <= 256 and all(32 <= ord(c) < 127 for c in candidate):
                         text = candidate
                 except (ValueError, UnicodeError):
@@ -126,9 +129,9 @@ def capture_display_code(target):
                             for child in list(dict.fromkeys(calls(implementation, 48)))[:3]:
                                 if kind == 'class' and name in ('mainDisplay', 'displays'):
                                     disassemble('DISPLAY_METHOD_CALLEE_CODE', child, 400)
-                                    references(child, 400)
                                     for grandchild in list(dict.fromkeys(calls(child, 64)))[:6]:
                                         disassemble('DISPLAY_METHOD_CALLEE_CODE', grandchild, 180)
+                                    references(child, 400)
                                 else:
                                     disassemble('DISPLAY_METHOD_CALLEE_CODE', child, 96)
             except (ValueError, UnicodeError) as error:
