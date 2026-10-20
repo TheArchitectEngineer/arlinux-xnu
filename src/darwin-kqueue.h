@@ -20,6 +20,7 @@ struct native_kqueue {
 static struct native_kqueue native_kqueues[D_KQUEUE_COUNT];
 static int native_kqueue_mutex,workqueue_kqueue=-1;
 static unsigned int native_kevent_errors;
+static unsigned int native_workloop_cancels;
 static void native_kqueue_lock(void)
 {
     while (__atomic_exchange_n(&native_kqueue_mutex,1,__ATOMIC_ACQUIRE))
@@ -102,11 +103,30 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
     if (event->filter==D_EVFILT_MEMORYSTATUS &&
         (event->ident || (event->fflags&~(D_MEMORY_NORMAL|D_MEMORY_WARN|D_MEMORY_CRITICAL|
             D_MEMORY_PROC_WARN|D_MEMORY_PROC_CRITICAL|D_MEMORY_MSL_STATUS)))) return -ENOTSUP;
+    struct native_knote *note=NULL;
+    unsigned int index=0;
+    for (;index<D_KQUEUE_WATCHES;index++) {
+        struct native_knote *candidate=queue->watches+index;
+        if (candidate->used && candidate->event.ident==event->ident &&
+            candidate->event.filter==event->filter &&
+            (!(event->flags&D_EV_UDATA_SPECIFIC) || candidate->event.udata==event->udata)) { note=candidate; break; }
+    }
     if (event->filter==D_EVFILT_WORKLOOP) {
         if (!queue->dynamic_id || event->ident!=queue->dynamic_id ||
             !(event->fflags&D_NOTE_WL_THREAD_REQUEST) ||
             (event->fflags&~(D_NOTE_WL_THREAD_REQUEST|D_NOTE_WL_UPDATE_QOS|D_NOTE_WL_IGNORE_ESTALE|
                             D_NOTE_WL_DISCOVER_OWNER|D_NOTE_WL_END_OWNERSHIP))) return -ENOTSUP;
+        if (!note && (event->flags&(D_EV_ADD|D_EV_DELETE))==(D_EV_ADD|D_EV_DELETE)) {
+            /* XNU kevent_register (darling-xnu 40bc7ec): ADD|DELETE on a
+             * workloop is a soft delete. An absent note succeeds before its
+             * filter/debounce runs, without creating a note or changing owner. */
+            if (__atomic_fetch_add(&native_workloop_cancels,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
+                const char label[]="DARWIN_WORKLOOP_SOFT_DELETE queue/owner follows\n";
+                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                trace_call(0,0,queue->dynamic_id); trace_call(1,0,queue->client_owner);
+            }
+            return 0;
+        }
         /* Match XNU's debounce snapshot. A stale ignored request must not
          * attach, modify or wake a source. Preserve the actual state in an
          * error receipt when the caller asks to see ESTALE. */
@@ -150,14 +170,6 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
                 __atomic_store_n(&queue->priority,priority,__ATOMIC_RELEASE);
             }
         }
-    }
-    struct native_knote *note=NULL;
-    unsigned int index=0;
-    for (;index<D_KQUEUE_WATCHES;index++) {
-        struct native_knote *candidate=queue->watches+index;
-        if (candidate->used && candidate->event.ident==event->ident &&
-            candidate->event.filter==event->filter &&
-            (!(event->flags&D_EV_UDATA_SPECIFIC) || candidate->event.udata==event->udata)) { note=candidate; break; }
     }
     if (event->flags&D_EV_DELETE) {
         if (!note) return -ENOENT;
