@@ -113,6 +113,7 @@ def install_launch_breakpoints(target):
                        '_OBJC_CLASS_$_FBSSceneSettingsDiff',
                        '_OBJC_CLASS_$_FBSSceneClientSettingsDiff',
                        '_OBJC_CLASS_$_FBSSettingsDiff', '_OBJC_CLASS_$_FBSScene',
+                       '_OBJC_CLASS_$_BSSettings', '_OBJC_CLASS_$_FBSSceneSettings',
                        '_OBJC_CLASS_$_FBSSceneTransitionContext'):
             entries = []
             try:
@@ -124,8 +125,10 @@ def install_launch_breakpoints(target):
                 for index in range(count):
                     entry = methods+8+index*size
                     selector = objects.cstring(objects.u64(entry))
-                    if name.startswith('_OBJC_CLASS_$_FBS') and selector in (
+                    if (name.startswith('_OBJC_CLASS_$_FBS') or name=='_OBJC_CLASS_$_BSSettings') and selector in (
                             'queue_handleMessage:',
+                            'settingsByApplyingToMutableCopyOfSettings:',
+                            '_initWithChanges:otherSettingsDiff:settingsClass:',
                             'initWithIdentifier:specification:',
                             '_queue_handleMessageWithType:message:', 'queue_handleMessageWithType:message:client:',
                             '_queue_handleLaunch:', '_queue_handleCreateScene:',
@@ -135,6 +138,11 @@ def install_launch_breakpoints(target):
                         print('APP_LAUNCH_PROTOCOL ' + json.dumps({'method': label, 'address': hex(address)}), flush=True)
                         target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 256')
                         capture_code_references(target,address,256,'APP_LAUNCH_PROTOCOL_REFERENCE')
+                    if name=='_OBJC_CLASS_$_FBSSceneSettings' and selector in ('init','frame','displayConfiguration','isBackgrounded'):
+                        address=objects.u64(entry+16)
+                        print('APP_SCENE_SETTINGS_CODE '+json.dumps({'method':selector,'address':hex(address)}),flush=True)
+                        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 128')
+                        capture_code_references(target,address,128,'APP_SCENE_SETTINGS_REFERENCE')
                     if name == '_OBJC_CLASS_$_BKSWorkspace' or any(part in selector.lower() for part in
                            ('launch', 'initializ', 'checkin', 'connect', 'scene', '_run', 'bootstrap')):
                         address = objects.u64(entry+16)

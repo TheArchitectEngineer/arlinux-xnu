@@ -374,6 +374,8 @@ jobs:
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSSceneClientSettingsDiff' \
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSSettingsDiff' \
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSScene' \
+              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSSceneSettings' \
+              --lookup /System/Library/PrivateFrameworks/BaseBoard.framework/BaseBoard '_OBJC_CLASS_$_BSSettings' \
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSSceneTransitionContext' \
               --lookup /usr/lib/system/libxpc.dylib __xpc_connection_call_event_handler \
               --lookup /usr/lib/system/libxpc.dylib __xpc_mach_port_get_context \

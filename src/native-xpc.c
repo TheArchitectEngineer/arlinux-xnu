@@ -153,6 +153,20 @@ static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
     spc_dictionary_set_string(event,"bs_encodedObjectClassName","FBSWorkspaceCreateSceneEvent");
     spc_dictionary_set_string(event,"sceneID",identifier);
     spc_dictionary_set_string(event,"specClass","UIApplicationSceneSpecification");
+    /* Run 39397655202 requires non-null settings; FBSSettingsDiff's actual
+     * codec decodes changes + settingsClass. Let the real framework create
+     * its typed defaults from an empty BSSettings change set. */
+    const char *keys[]={"settings","clientSettings"};
+    const char *diffs[]={"FBSSceneSettingsDiff","FBSSceneClientSettingsDiff"};
+    const char *classes[]={"UIApplicationSceneSettings","UIApplicationSceneClientSettings"};
+    for (unsigned int i=0;i<2;i++) {
+        spc_dictionary_t *diff=spc_dictionary_create(),*changes=spc_dictionary_create();
+        spc_dictionary_set_string(diff,"bs_encodedObjectClassName",diffs[i]);
+        spc_dictionary_set_string(diff,"settingsClass",classes[i]);
+        spc_dictionary_set_string(changes,"bs_encodedObjectClassName","BSSettings");
+        spc_dictionary_set_value(diff,"changes",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=changes});
+        spc_dictionary_set_value(event,keys[i],(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=diff});
+    }
     spc_dictionary_set_value(dictionary,"event",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=event});
     spc_dictionary_set_int64(dictionary,"message",FBS_WORKSPACE_CREATE_SCENE);
     fprintf(stderr,"SESSION_SCENE_CONFIGURATION pid=%u scene=%s settings=framework-defaults geometry-established=false\n",peer->pid,identifier);
