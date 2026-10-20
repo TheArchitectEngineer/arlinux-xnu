@@ -89,4 +89,24 @@ darwin_objc_rect:
     ldp x29,x30,[sp],#32
     ret
 .size darwin_objc_rect,.-darwin_objc_rect
+.global darwin_ui_context_flip
+.hidden darwin_ui_context_flip
+.type darwin_ui_context_flip,%function
+darwin_ui_context_flip:
+    stp x29,x30,[sp,#-32]!
+    mov x29,sp
+    stp x19,x20,[sp,#16]
+    mov x19,x0
+    mov x20,x2
+    fmov d0,xzr
+    ucvtf d1,w3
+    blr x1
+    mov x0,x19
+    fmov d0,#1.0
+    fmov d1,#-1.0
+    blr x20
+    ldp x19,x20,[sp,#16]
+    ldp x29,x30,[sp],#32
+    ret
+.size darwin_ui_context_flip,.-darwin_ui_context_flip
 .section .note.GNU-stack,"",%progbits

@@ -198,6 +198,8 @@ static uint64_t load_native_cache(const char *root)
                         if (cg_image) {
                             if (!strcmp(text,"_CGColorSpaceCreateDeviceRGB")) ui_target=&ui_api.color_space;
                             if (!strcmp(text,"_CGBitmapContextCreate")) ui_target=&ui_api.bitmap_create;
+                            if (!strcmp(text,"_CGContextTranslateCTM")) ui_target=&ui_api.context_translate;
+                            if (!strcmp(text,"_CGContextScaleCTM")) ui_target=&ui_api.context_scale;
                         }
                         if (ui_target) {
                             need(cache_contains(address,4,4),"UIKit software output function address");

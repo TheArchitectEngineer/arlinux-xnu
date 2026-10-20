@@ -10,6 +10,7 @@ static int native_ui_notify=-1,native_ui_observer,native_ui_drawing;
 static char native_ui_capture_path[1024];
 enum { NATIVE_CG_ALPHA_NONE_SKIP_FIRST=6, NATIVE_CG_BYTE_ORDER_32_LITTLE=2U<<12 };
 extern void darwin_objc_rect(void *object,void *selector,uint64_t message,uint64_t output[4]);
+extern void darwin_ui_context_flip(void *context,uint64_t translate,uint64_t scale,uint32_t height);
 void darwin_native_ui_api(const struct darwin_ui_api *api) { native_ui_api=*api; }
 void darwin_native_ui_output(void *pixels,uint32_t width,uint32_t height,
                             struct darwin_frame_control *control,int notify)
@@ -78,10 +79,15 @@ static void native_ui_frame(void *observer,uint64_t activity,void *info)
             trace_record("UI_RENDER_BEGIN windows=0x",count,native_ui_width,native_ui_height);
             native_ui_color_space=((void *(*)(void))(uintptr_t)native_ui_api.color_space)();
         }
-        if (!native_ui_context[slot] && native_ui_color_space)
+        if (!native_ui_context[slot] && native_ui_color_space) {
             native_ui_context[slot]=((void *(*)(void *,uint64_t,uint64_t,uint64_t,uint64_t,void *,uint32_t))(uintptr_t)native_ui_api.bitmap_create)
                 (pixels,native_ui_width,native_ui_height,8,native_ui_width*4,native_ui_color_space,
                  NATIVE_CG_BYTE_ORDER_32_LITTLE|NATIVE_CG_ALPHA_NONE_SKIP_FIRST);
+            /* UIKit layers use a downward Y axis; bitmap CG contexts do not.
+             * Apply it once per context, not once per frame. */
+            if (native_ui_context[slot]) darwin_ui_context_flip(native_ui_context[slot],
+                native_ui_api.context_translate,native_ui_api.context_scale,native_ui_height);
+        }
         if (!native_ui_context[slot]) {
             __atomic_store_n(native_ui_control->state+slot,D_FRAME_FREE,__ATOMIC_RELEASE);
             trace_record("UI_BITMAP_CONTEXT_UNAVAILABLE slot=0x",slot,0,0);
@@ -123,6 +129,7 @@ static void native_ui_install_observer(void)
         !native_ui_api.runloop_main || !native_ui_api.observer_create || !native_ui_api.observer_add ||
         !native_ui_api.common_modes || !native_ui_api.objc_class || !native_ui_api.selector ||
         !native_ui_api.message || !native_ui_api.color_space || !native_ui_api.bitmap_create ||
+        !native_ui_api.context_translate || !native_ui_api.context_scale ||
         native_current_thread()!=native_threads) return;
     native_ui_observer=1;
     void *loop=((void *(*)(void))(uintptr_t)native_ui_api.runloop_main)();
