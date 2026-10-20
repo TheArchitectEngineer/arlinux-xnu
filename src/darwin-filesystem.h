@@ -31,6 +31,86 @@ static int native_mount_token(char **cursor,char *out,unsigned int capacity)
     }
     out[n]=0; return n!=0;
 }
+static long native_mapped_identity_path(char *line,uint32_t device,uint64_t inode,
+                                       unsigned long destination,unsigned long capacity)
+{
+    char token[128],*cursor=line;
+    for(unsigned int i=0;i<5;i++)
+        if(!native_mount_token(&cursor,token,sizeof(token))) return 0;
+    uint64_t object=0;
+    for(unsigned int i=0;token[i];i++) {
+        if(token[i]<'0' || token[i]>'9' || object>(UINT64_MAX-(token[i]-'0'))/10) return 0;
+        object=object*10+token[i]-'0';
+    }
+    if(object!=inode) return 0;
+    while(*cursor==' ') cursor++;
+    if(*cursor!='/') return 0;
+    char path[4096];unsigned int length=0;
+    while(*cursor) {
+        unsigned char c=*cursor++;
+        if(c=='\\' && cursor[0]>='0' && cursor[0]<='7' &&
+           cursor[1]>='0' && cursor[1]<='7' && cursor[2]>='0' && cursor[2]<='7') {
+            c=(cursor[0]-'0')*64+(cursor[1]-'0')*8+cursor[2]-'0';cursor+=3;
+        }
+        if(!c || length+1>=sizeof(path)) return 0;
+        path[length++]=c;
+    }
+    path[length]=0;
+    struct stat actual;
+    if(RAW(SYS_newfstatat,AT_FDCWD,path,&actual,0,0,0) ||
+       actual.st_ino!=inode || (uint32_t)actual.st_dev!=device) return 0;
+    char root[1024];
+    long error=native_fd_path(root_descriptor,root);if(error) return error;
+    unsigned int prefix=0;while(root[prefix] && root[prefix]==path[prefix]) prefix++;
+    const char *guest=path;
+    if(root[0]=='/' && !root[1]) { /* Host root is already the guest namespace. */ }
+    else if(!root[prefix] && path[prefix]=='/') guest=path+prefix;
+    else {
+        unsigned int matched=0;
+        while(matched<bundle_path_length && path[matched]==bundle_path[matched]) matched++;
+        if(bundle_descriptor<0 || matched!=bundle_path_length ||
+           (path[matched] && path[matched]!='/')) return 0;
+    }
+    unsigned int size=0;while(guest[size]) size++;size++;
+    if(size>capacity) return -ERANGE;
+    error=guest_copy((void *)guest,destination,size,1);
+    return error ? error : (long)size;
+}
+static long native_fsgetpath(const unsigned long long *r)
+{
+    /* XNU fsgetpath_extended uses fsid.val[0] and the real object ID. Linux
+     * has no unprivileged reverse-inode syscall. Resolve currently mapped
+     * files from the kernel's maps, then re-stat and translate their actual
+     * path into the declared guest root/bundle. Unknown identities fail;
+     * this is not a fabricated path or a persistent inode catalogue. */
+    uint32_t fsid[2];
+    if(!r[1] || r[1]>D_GUEST_PAGE_SIZE) return -EINVAL;
+    long error=guest_copy(fsid,r[2],sizeof(fsid),0);if(error) return error;
+    long fd=RAW(SYS_openat,AT_FDCWD,"/proc/self/maps",O_RDONLY|O_CLOEXEC,0,0,0);
+    if(fd<0) return fd;
+    char input[4096],line[8192];unsigned int used=0;int overflow=0;
+    long result=-ENOENT;
+    for(;;) {
+        long size=RAW(SYS_read,fd,input,sizeof(input),0,0,0);
+        if(size==-EINTR) continue;
+        if(size<0) { result=size;break; }
+        if(!size) break;
+        for(long i=0;i<size;i++) {
+            if(input[i]!='\n') {
+                if(used+1<sizeof(line)) line[used++]=input[i];else overflow=1;
+                continue;
+            }
+            line[used]=0;
+            long match=overflow ? 0 : native_mapped_identity_path(line,fsid[0],r[3],r[0],r[1]);
+            used=0;overflow=0;
+            if(match) { result=match;goto done; }
+        }
+    }
+done:
+    RAW(SYS_close,fd,0,0,0,0,0);
+    trace_record("DARWIN_FSGETPATH object=0x",r[3],fsid[0],result);
+    return result;
+}
 static long native_fstatfs(int fd,unsigned long destination)
 {
     struct statfs actual={0};

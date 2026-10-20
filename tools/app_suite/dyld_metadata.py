@@ -90,12 +90,13 @@ def collect(target, info_address, runtime_path):
             cache=mapped_file();bits=pvle();take((bits+7)//8)
             print('DYLD_COMPACT_CACHE',json.dumps(dict(address=hex(cache['delta']*page),bitmapBits=bits)))
         images=pvle()
-        if images>128:raise ValueError('non-cache image count outside diagnostic bound')
+        if images>4096:raise ValueError('non-cache image count outside diagnostic bound')
         print('DYLD_COMPACT_METADATA',json.dumps(dict(flags=flags,platform=platform,
               initialCount=initial_count,state=state,images=images)))
         address=0
         for _ in range(images):
             image=mapped_file();address+=image.pop('delta')*page
-            print('DYLD_COMPACT_IMAGE',json.dumps(dict(address=hex(address),**image)))
+            if '/build/apps/' in (image['path'] or '') or image['path']=='/usr/lib/dyld':
+                print('DYLD_COMPACT_IMAGE',json.dumps(dict(address=hex(address),**image)))
     except (ValueError,struct.error) as error:
         print('DYLD_METADATA_UNAVAILABLE',str(error))

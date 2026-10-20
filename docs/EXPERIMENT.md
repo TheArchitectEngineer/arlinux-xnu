@@ -90,12 +90,32 @@ source a586c985b2e6937347c33cb6f555cb3a8963a51b, verified receipt
 and all 43 retained files. The actual decoder uses the measured 16K/4K flag and
 cumulative image deltas. Console/Foundation pass; the same GUI fault remains.
 Its requested dyld logs did not reach the guest: the launcher's environment
-allowlist forwarded only the declared platform library. Explicit read-only log
-switch forwarding and original-process compact-metadata decoding are the next
-unverified diagnostic changes. Compare the real image table, serialized snapshot
-and fault object to locate the first divergent address. Apple source's
-identity mapper dereferences that saved address; do not fix this by mapping
-arbitrary memory at the stale address or disabling snapshot notifications.
+allowlist forwarded only the declared platform library. Source db9d15f adds
+explicit read-only log forwarding and original-process compact-metadata reading.
+
+Run [39488192650](https://github.com/taowen/arlinux-xnu/actions/runs/39488192650),
+source db9d15f0da4dc27eb4106dc4ed075dfa1664f789, verified receipt
+**53e749dd7e73d16d9d621b7395438187ef95564194d9f47dc0f018a9cfc7844f**
+and all 43 retained files. The original image-info table (version 17, 371 entries)
+records the platform library at its actual 0x300984000 mapping. Its 30,576-byte
+compact snapshot has no shared-cache record and exceeds the initial 128-image
+diagnostic bound. The original Image object nevertheless saves 0x300758000.
+Console/Foundation still pass; UIKit still faults.
+
+The concrete missing capability is fsgetpath (427): both original startup calls
+return ENOSYS. Apple dyld's FileRecord uses it to recover the cache's path from
+the actual device/inode supplied by our cache dynamic configuration. Without
+that path it cannot add the shared-cache record. Atlas then serializes cache
+images as individual address deltas in 16K units, losing low bits from images
+inside the shared cache. This explains why the true image table and the later
+compact-derived Image can disagree without an actual dylib unload.
+
+The current fix resolves mapped file identities from real kernel mappings,
+re-stats candidate paths to verify device/inode, and translates into the real
+guest root/bundle. It fails for unknown identities instead of fabricating a
+cache path. Runtime confirmation still requires successful fsgetpath, an actual
+compact shared-cache record and no recurrence of the original Atlas fault.
+GUI rendering/input/lifecycle acceptance remains outstanding.
 
 The same-cache reader uses declared slide-v2 pointer metadata for constant
 CFStrings, bounded decoded instructions and actual call/branch observations.
