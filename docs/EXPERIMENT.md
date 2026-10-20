@@ -60,14 +60,23 @@ or deactivation handlers. No ARHELLO_READY or window journey passes.
 LLDB log SHA-256 `c204a5037e9d1bf05a9abdbd1f93a1f4462c8944b0661a8bb95be6ac38854899`
 was verified against its receipt.
 
-Exact pending run: [39407602453](https://github.com/taowen/arlinux-xnu/actions/runs/39407602453),
-source `fb3f1e7b5cf4ac814e8de4fb15375d82c38b8ceb`, reads actual
-UIApplicationSceneTransitionContext getters/setters, lifecycle monitors and
-the complete activation branch table. Resolve the setting key/type and action
-value from this code, then send a real initial launch transition context with
-the create-scene event. This is diagnosis of the same actual app journey, not
-an injected delegate call. Continue that exact run; local observation timeouts
-do not justify restarting it.
+[Run 39407602453](https://github.com/taowen/arlinux-xnu/actions/runs/39407602453),
+source `fb3f1e7b5cf4ac814e8de4fb15375d82c38b8ceb`, resolves the missing
+transition protocol. UIApplicationSceneTransitionContext._lifecycleActionType
+reads otherSettings object key 7 as unsignedIntegerValue. The actual canvas
+branch table maps 1 to activateEventsOnly:NO, 2 to events-only activation, and
+3/4 to deactivation. Nil context selects action 0/non-launch-specific actions.
+LLDB log SHA-256 `3dba51aa1a104356c73af7034439529e41e8d926ff33f4ac0726763ee2147ada`
+was verified against its receipt.
+
+Exact pending run: [39408194802](https://github.com/taowen/arlinux-xnu/actions/runs/39408194802),
+source `62b41c913ca690dbf70e033ce417b082453be336`, sends an actual
+UIApplicationSceneTransitionContext with BSMutableSettings object key 7, NSNumber
+value 1 via Foundation-format XPC decoding, on the initial create-scene event.
+Verify genuine context decode, normal activation, _runWithMainScene and actual
+app delegate/window progress. This is a framework lifecycle request, not an
+injected delegate call. Continue this exact run; local observation timeouts do
+not justify restarting it. No GUI acceptance result is available yet.
 
 Header-only MACH_NOTIFY_SEND_ONCE cancellation is accepted only on outstanding
 reply ports with the exact kernel notification and zero audit identity; it is
