@@ -27,10 +27,10 @@ The target includes **multiple independent iOS application processes running
 concurrently in one session**, with separate address spaces and lifecycles.
 A shared session service must provide bootstrap, service registration and
 process-state management, reusing Darling/XNU cross-process Mach rights and
-messages. An independent session provider now accepts bootstrap and process-info
-connections from two concurrent app processes, retains their real workspace
-capabilities, and releases each registration on pidfd-observed exit. Complete
-multi-process application behavior is not implemented or validated yet.
+messages. The independent session now connects two concurrent app processes,
+delivers real FrontBoard launch events and receives each framework response;
+process exit releases its retained rights. Scene creation, interactive apps
+and the complete multi-process journey remain unimplemented or unverified.
 This includes auxiliary/XPC processes requested by a single app, not only
 separate foreground apps; their launch and lifetime belong to the session.
 

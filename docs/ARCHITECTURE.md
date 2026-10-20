@@ -388,15 +388,17 @@ stack alone does not identify a missing daemon or establish its protocol.
   This is not yet a general peer-facing XPC implementation or an assertiond.
   [Our pinned fork](https://github.com/taowen/arlinux-libspc/tree/25448224f76c78c11dfb137fdeb777fbee5e640e/libspc)
   exposes validated adoption of an already received check-in. A controlled
-  system-domain process-info listener now owns actual XNU rights. Unknown
-  process-state messages remain unsupported except the observed BKSWorkspace
-  message-11 registration. The session retains its submitted task and endpoint
-  rights under the kernel-audited client identity; Linux pidfds drive release
-  of rights and connection records on process exit (run 39392250655). Early
-  exit during check-in still needs graceful rejection, and helper spawning,
-  scene launch and full process state remain unfinished. Run 39391469924
-  identifies message 11 from the real BKSWorkspace.init constructor.
-  Publication/lookup alone never proves check-in or application startup.
+  system-domain process-info listener and two default-domain FrontBoard listeners
+  own actual XNU rights. The observed BKSWorkspace registration retains task and
+  endpoint capabilities; workspace association validates its supplied process
+  handle PID against the kernel-audited sender. Linux pidfds drive retirement.
+  Stale check-ins now release their received rights; forced race validation and
+  complete crash isolation remain unfinished.
+  Run 39394942049 delivers the real message-1 UIApplication launch event to two
+  concurrent app processes and receives separate genuine launch responses.
+  LLDB confirms the actual FrontBoard/UIKit launch callbacks. Main-scene creation,
+  application initialization/display/input and helper spawning remain incomplete;
+  a launch response or transport success does not establish app startup.
 
 The private libxpc mapping's launchd trust predicate now accepts only the actual
 independent session provider's PID, effective UID and Linux-backed incarnation.

@@ -12,8 +12,8 @@ none of that complete multi-process/Android journey has passed.
 
 Current app: **ARHello 1.0** (`io.arlinux.ARHello`), source in guests/ARHello,
 using the real pinned UIKit/frameworks. Latest executed source:
-`8079b473c62d86b112a472bc9851dd1a4e0743fa`,
-[run 39392250655](https://github.com/taowen/arlinux-xnu/actions/runs/39392250655).
+`baa76908d9ba96a5a849bb9ed0b56239e6815d9e`,
+[run 39394942049](https://github.com/taowen/arlinux-xnu/actions/runs/39394942049).
 Use the sole build.sh entry, `build --mode app --ipc darling`.
 
 Two genuine dyld/libSystem console journeys still pass: malloc, pthread join
@@ -22,54 +22,63 @@ Darling/XNU owns real Mach rights/messages; current-task VM/time/BSD remain
 Linux-backed. Synchronous anonymous S2C mapping works for observed OOL flows;
 file/fixed/executable mappings and asynchronous callbacks remain incomplete.
 
-The independent session process (Linux PID 4406) owns bootstrap and process-info
-receive rights. Concurrent ARHello processes 4414 and 4415 both complete real
-XPC check-in and register distinct submitted task/listener capabilities. Linux
-pidfds pin their identities; kernel audit PID/incarnation identifies each
-requester. The session retains real Mach send references while the process is
-alive and releases them, its connection rights and record on observed exit.
-Both clients have PROCESSINFO_WORKSPACE_REGISTERED and PROCESSINFO_RETIRED
-records; a subsequent debugger process 4514 also registers and retires.
-No virtual PID 1/root audit identity is fabricated.
+The independent session (Linux PID 4290) owns bootstrap, process-info and two
+FrontBoard listeners. Concurrent ARHello PIDs 4298 and 4299 both check in,
+register actual task/listener rights, and associate their real workspace
+process metadata. Kernel audit PID/incarnation binds each connection; Linux
+pidfds drive release of retained rights/records on exit. Submitted task rights
+remain capabilities, not independently verified task-to-PID mappings.
+No virtual PID 1/root audit identity is fabricated. Early exited/recycled
+check-ins now release their rights instead of aborting the session; this race
+branch has not yet been forced in the complete app journey.
 
-The first message is now identified from actual code: BKSWorkspace.init packs
-signed `message=11`, `taskPort` and `endpoint`, then calls sendToConnection:.
-Run 39391469924 captured the constructor, not merely a guessed wire schema.
-Registration now performs that retained-state operation; other process-info
-messages still return ENOTSUP. Submitted task rights are capabilities, not
-independently verified task-to-PID mappings. Exit-before-check-in races still
-need graceful retirement rather than the current identity-failure abort.
+BKSWorkspace.init's signed message 11 registration is identified from actual
+constructor code. FrontBoard workspace message 0 carries
+FBSWorkspaceConnectEvent/FBSProcessHandle; association requires its PID to match
+the audited sender. The session retains this connection's application metadata.
+System-app facility registration/operations remain explicitly unsupported.
 
-**Startup still fails.** Both ordinary apps time out at 30 seconds (124).
-The debugger observes UIKit `_run`, but no selected scene launch/initialization
-callback. Its main thread is in the GraphicsServices/CoreFoundation event loop.
-FrontBoard workspace/systemappservices still return unknown-service 1102;
-registration alone does not provide scene creation or launch event delivery.
-Wayland submits a blank host buffer, not an application frame. Full process
-state, helper spawning, crash isolation and interactive lifecycles are unproven.
+Run 39393971710 establishes the real UIApplication workspace dispatcher:
+message 1 routes to _queue_handleLaunch:, with an FBSUIApplicationLaunchEvent
+whose base event encoding has no additional fields. The session now delivers
+that event over each actual client connection and provides a genuine send-once
+reply path. Both ordinary app PIDs receive it and reply; debugger PID 4405 also
+replies. Its actual callbacks include _queue_handleLaunch:,
+workspace:didLaunchWithCompletion: and
+_handleApplicationLaunchEventWithCompletion:. Replies contain
+FBSUIApplicationLaunchResponseEvent/FBSUIApplicationLaunchResponse with
+taskSuspend=true and taskSuspendOnLock=true. No process-suspension behavior is
+claimed from decoding those flags.
 
-Next: provide actual session-owned FrontBoard listeners and inspect their real
-check-in/messages; implement scene creation/startup event delivery using actual
-framework protocol or an explicit framework adaptation. Do not suppress the
-initialization delegate or substitute a host-drawn app. Harden early client-exit
-races before claiming process isolation. Retain normal exit/relaunch, concurrent
-input, app-requested helpers and ARLinux integration as acceptance requirements.
+**Startup still fails.** Both ordinary apps time out at 30 seconds (124),
+without ARHELLO_READY. No main-scene creation/_runWithMainScene: or application
+initialization delegate has been observed. The launch handshake alone updates
+UIKit launch state and returns policy; it does not create the main scene.
+Wayland still submits a blank host buffer, not an application frame. Helpers,
+full state/crash isolation, interactive lifecycle and Android remain unproven.
+
+Next: implement real main-scene creation/activation through the workspace,
+using the actual create-scene dispatcher and event/settings codecs. Preserve
+the separate launch-reply evidence; do not manufacture scene state or invoke
+the app delegate directly. Diagnose actual UIKit/QuartzCore requirements as
+its genuine scene path advances, then verify display/input/exit/relaunch,
+concurrent apps, requested helpers and ARLinux integration.
 
 ## Exact evidence and inputs
 
-Latest run jobs: server `118526334339`, native `118526744162`, app
-`118526942431`. Downloaded session/app/peer/LLDB textual logs match the receipt.
+Latest run jobs: server `118535237409`, native `118535673592`, app
+`118535958267`. Downloaded session/app/peer/LLDB textual logs match the receipt.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Native ELF | `ffade032f503512f4a879df1bd08f4eaa53aa39e535e86fd26ba744c5a08b3aa` |
-| Darling server ELF | `a3fa72fdab34edf5824fba5035558c20525b72e4781419d13a3a58dd0a4c4d7e` |
-| App evidence receipt | `b1762d0c4d0652c04d1cf6cbd514099e51cbf502fc4eea65fa6e4beef283f6e3` |
-| Native receipt | `4aa61aeafd84cf7cb0dff1b9fe4e6009fb442ed121efebebacd08191553973e2` |
-| Server receipt | `957854f1f6b63c62ad4b139fe802643530ce883deaf370f1b4c4cc66a845eb06` |
-| Session log | `673e61cd235fbdccf2cf8410b594a8dc70df7bdf74f33f228ebd5eb222699642` |
-| Session decoded dictionaries | `f866a6696d54403168471a55fac5bfadce9a44f3ddf5ac9ecba9bce6b4e60bcd` |
-| LLDB log | `78fce267130fe8ad2aadf974add24d117c2b45f4d79bb4fd43f164e82d76b972` |
+| Native ELF | `3c99de98e7481abf67f8a876d7de360307b7b8fcb40a0dde66efa6bbbccce53c` |
+| Darling server ELF | `cb0ef60765aba1e190f2a355a3f64028ebe8285493e43293d700e005abf0852c` |
+| App evidence receipt | `e4ca94e92b1d1ec926232205db7f975c405790cb5f9ac1a41bf46520ca6fbda2` |
+| Native receipt | `71fb387c8a18939525643d68e7de9e3e2b5c72162601fbb067a9539e1ffc60bb` |
+| Server receipt | `f5bcefa8b5319d45a399cbc1a92a363e3168b447d4c2638f153193db0e21ec01` |
+| Session log | `1c431f76acebce964be59c671db5865300d162d8b69b2f819d32f9b756155e83` |
+| Session decoded dictionaries | `ffa0de930c7a20165c69661e37beebc5fd36ce7007641db012392ae10c00fb62` |
+| LLDB log | `e46db857533ecec8b81e0db583ba930bd9411ea2e91e341ae530eda8ccf67ac6` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain

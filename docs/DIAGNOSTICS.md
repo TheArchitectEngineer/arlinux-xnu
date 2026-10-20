@@ -122,6 +122,14 @@ sendToConnection: path. Run 39392250655 records real registration/retirement
 for two concurrent clients plus the separate debugger client. A connection or
 registration does not establish scene launch, app rendering or input.
 
+APP_LAUNCH_PROTOCOL reads bounded code for the actual workspace dispatcher and
+event codecs without calling guest methods. Run 39393971710 identifies signed
+message 1 -> _queue_handleLaunch: and the empty base event encoding. Run
+39394942049 then verifies real event delivery, the UIKit launch callbacks and
+separate replies from two concurrent apps. The decoded response requests task
+suspension policy; it is not proof that a scene exists, an app delegate ran or
+a process was suspended. Continue at actual main-scene creation.
+
 ## Primary references
 
 - [LLDB breakpoint scripts](https://lldb.llvm.org/use/tutorials/breakpoint-triggered-scripts.html)
