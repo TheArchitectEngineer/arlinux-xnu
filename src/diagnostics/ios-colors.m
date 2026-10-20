@@ -15,9 +15,14 @@ static id traced_lookup(id cls,SEL selector,long long name,long long design,long
     id result=original_lookup(cls,selector,name,design,palette,scheme,contrast,styling,gamut,error);
     if (!result) {
         NSError *failure=error ? *error : nil;
-        fprintf(stderr,"IOS_COLOR_LOOKUP_FAILED name=%lld design=%lld palette=%lld scheme=%lld contrast=%lld styling=%lld gamut=%lld domain=%.128s code=%ld description=%.1024s\n",
+        NSError *underlying=failure.userInfo[NSUnderlyingErrorKey];
+        NSString *path=[failure.userInfo[NSFilePathErrorKey] description];
+        if (![underlying isKindOfClass:[NSError class]]) underlying=nil;
+        fprintf(stderr,"IOS_COLOR_LOOKUP_FAILED name=%lld design=%lld palette=%lld scheme=%lld contrast=%lld styling=%lld gamut=%lld domain=%.128s code=%ld underlying_domain=%.128s underlying_code=%ld path=%.512s description=%.1024s\n",
             name,design,palette,scheme,contrast,styling,gamut,
             failure ? failure.domain.UTF8String : "<absent>",(long)failure.code,
+            underlying ? underlying.domain.UTF8String : "<absent>",(long)underlying.code,
+            path ? path.UTF8String : "<absent>",
             failure ? failure.localizedDescription.UTF8String : "<absent>");
     }
     return result;
