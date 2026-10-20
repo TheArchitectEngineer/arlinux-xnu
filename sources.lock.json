@@ -15,11 +15,13 @@
   },
   "guestPageSize": 16384,
   "xpcCodec": {
-    "repository": "saelo/pwn2own2018",
-    "commit": "96c16ca43f0d9ec0a64f3da30f2d0798ed70582c",
+    "repository": "taowen/arlinux-libspc",
+    "commit": "5b6a39a0c117ffe63bf9339f322e27a1ea3e7270",
+    "upstreamRepository": "saelo/pwn2own2018",
+    "upstreamCommit": "96c16ca43f0d9ec0a64f3da30f2d0798ed70582c",
     "path": "third_party/libspc",
     "license": "MIT",
-    "role": "Unmodified libspc codec for host-thread bootstrap XPC messages; Mach rights use Darling"
+    "role": "Community libspc codec and checked check-in adoption for host services; Mach rights use Darling"
   },
   "darlingIpc": {
     "repository": "taowen/darling",

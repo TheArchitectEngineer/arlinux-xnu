@@ -31,6 +31,7 @@ typedef mach_msg_ool_descriptor_t mach_msg_ool_ports_descriptor_t;
 #define MACH_MSG_OOL_PORTS_DESCRIPTOR 2
 #define MACH_MSG_TYPE_COPY_SEND D_MACH_TYPE_COPY_SEND
 #define MACH_MSG_TYPE_MOVE_RECEIVE 16
+#define MACH_MSG_TYPE_MOVE_SEND D_MACH_TYPE_MOVE_SEND
 #define MACH_PORT_RIGHT_SEND D_PORT_RIGHT_SEND
 #define MACH_PORT_RIGHT_RECEIVE D_PORT_RIGHT_RECEIVE
 mach_port_t mach_task_self(void);

@@ -7,6 +7,7 @@
 #include "datatypes.h"
 #include "dictionary.h"
 #include "serialization.h"
+#include "accept.h"
 
 mach_port_t mach_task_self(void) { return darwin_native_host_task(); }
 int mach_port_deallocate(mach_port_t task,mach_port_t port)
@@ -44,11 +45,13 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     /* libspc connection.c: spc_domain_routine / spc_look_up_endpoint.
      * Only this process's default namespace is currently implemented. */
     if (subsystem==3 && routine==0x324 && name &&
-        spc_dictionary_get_uint64(message->content,"type")==7 &&
         !spc_dictionary_get_uint64(message->content,"handle") &&
-        !spc_dictionary_get_uint64(message->content,"lookup-handle"))
-        error=darwin_native_service_lookup(bootstrap,(uintptr_t)name,(uintptr_t)&port,0,0,
-            spc_dictionary_get_uint64(message->content,"flags"));
+        !spc_dictionary_get_uint64(message->content,"lookup-handle")) {
+        uint64_t type=spc_dictionary_get_uint64(message->content,"type");
+        uint64_t flags=spc_dictionary_get_uint64(message->content,"flags");
+        if (type==7) error=darwin_native_service_lookup(bootstrap,(uintptr_t)name,(uintptr_t)&port,0,0,flags);
+        else error=darwin_native_system_lookup(name,type,flags,&port);
+    }
     spc_dictionary_t *reply=spc_dictionary_create();
     spc_dictionary_set_int64(reply,"error",error);
     if (!error) spc_dictionary_set_send_port(reply,"port",port);
@@ -66,4 +69,57 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     *held_port=port; /* Keep lookup's send reference through the actual send. */
     spc_message_destroy(message);
     return 1;
+}
+
+/* Connection associations only; XNU owns the transferred rights and queues. */
+static struct processinfo_peer {
+    spc_connection_t connection;
+    struct processinfo_peer *next;
+} *processinfo_peers;
+
+int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capacity,uint32_t listener,uint32_t set)
+{
+    mach_msg_header_t *header=request;
+    if (header->msgh_local_port==listener) {
+        struct processinfo_peer *peer=calloc(1,sizeof(*peer));
+        if (!peer || !spc_accept_message(request,length,&peer->connection)) {
+            fprintf(stderr,"PROCESSINFO_CHECKIN_REJECTED id=%x bits=%x bytes=%zu\n",header->msgh_id,header->msgh_bits,length);
+            abort();
+        }
+        int error=darwin_native_host_join(peer->connection.receive_port,set);
+        if (error) { fprintf(stderr,"PROCESSINFO_CHECKIN_JOIN_FAILED error=%d\n",error); abort(); }
+        peer->next=processinfo_peers; processinfo_peers=peer;
+        fprintf(stderr,"PROCESSINFO_CONNECTED receive=%u send=%u\n",peer->connection.receive_port,peer->connection.send_port);
+        return 0;
+    }
+    struct processinfo_peer *peer=processinfo_peers;
+    while (peer && peer->connection.receive_port!=header->msgh_local_port) peer=peer->next;
+    if (!peer) return -1;
+    fprintf(stderr,"PROCESSINFO_MESSAGE id=%x bits=%x bytes=%zu reply=%u\n",header->msgh_id,header->msgh_bits,length,header->msgh_remote_port);
+    /* Do not let upstream silently discard OOL resources. Actual process-state
+     * protocol behavior is still being diagnosed, not acknowledged as success. */
+    if ((header->msgh_bits&MACH_MSGH_BITS_COMPLEX) || length<32 || header->msgh_id!=0x10000000) {
+        fprintf(stderr,"PROCESSINFO_MESSAGE_UNSUPPORTED\n"); abort();
+    }
+    spc_message_t *message=spc_deserialize(request);
+    if (!message) abort();
+    fprintf(stderr,"PROCESSINFO_REQUEST_UNSUPPORTED fields=%zu\n",message->content->num_items);
+    spc_dump(message->content); fflush(stdout);
+    int reply=header->msgh_remote_port!=MACH_PORT_NULL;
+    if (reply && MACH_MSGH_BITS_REMOTE(header->msgh_bits)!=D_MACH_TYPE_MOVE_SEND_ONCE) {
+        fprintf(stderr,"PROCESSINFO_REPLY_RIGHT_UNSUPPORTED\n"); abort();
+    }
+    if (reply) {
+        spc_dictionary_t *dictionary=spc_dictionary_create();
+        spc_dictionary_set_int64(dictionary,"error",D_ENOTSUP);
+        spc_message_t response={.remote_port={header->msgh_remote_port,D_MACH_TYPE_MOVE_SEND_ONCE},
+            .id=0x20000000,.content=dictionary};
+        spc_mach_message_t *encoded=spc_serialize(&response);
+        if (!encoded || encoded->header.msgh_size>capacity) abort();
+        encoded->header.msgh_voucher_port=0;
+        memcpy(output,encoded,encoded->header.msgh_size);
+        free(encoded); spc_dictionary_destroy(dictionary);
+    }
+    spc_message_destroy(message);
+    return reply;
 }

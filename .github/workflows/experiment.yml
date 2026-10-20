@@ -165,7 +165,7 @@ jobs:
           git submodule update --init third_party/libspc
           spc_flags=(-Isrc -Icomponents/libspc/include -Ithird_party/libspc/libspc -include string.h -fcommon)
           spc_objects=()
-          for source in serialization datatypes dictionary array; do
+          for source in serialization datatypes dictionary array accept; do
             cc -O2 -g "${spc_flags[@]}" -c "third_party/libspc/libspc/$source.c" -o "build/native/spc-$source.o"
             spc_objects+=("build/native/spc-$source.o")
           done

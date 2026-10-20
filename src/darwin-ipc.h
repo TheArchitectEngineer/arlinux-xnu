@@ -26,6 +26,7 @@ struct ipc_endpoint {
 };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 static uint32_t native_bootstrap_port,native_display_port,native_render_port;
+static uint32_t native_processinfo_port;
 static uint32_t native_display_width,native_display_height;
 static uint32_t native_display_refresh;
 static uint64_t native_display_period_bits;
@@ -408,8 +409,8 @@ int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refre
     if (!width || !height || width>8192 || height>8192 || backend_pid<=0 || native_bootstrap_port) return -1;
     #ifdef ARLINUX_DARLING
     if (darling_active) {
-        uint32_t *names[]={&native_bootstrap_port,&native_display_port,&native_render_port};
-        for (unsigned int i=0;i<3;i++) {
+        uint32_t *names[]={&native_bootstrap_port,&native_display_port,&native_render_port,&native_processinfo_port};
+        for (unsigned int i=0;i<4;i++) {
             if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,names[i]) ||
                 dserver_rpc_mach_port_insert_right(CURRENT_TASK_PORT,*names[i],*names[i],D_MACH_TYPE_MAKE_SEND)) return -1;
         }
@@ -444,6 +445,13 @@ int darwin_native_services_enabled(void)
     return darling_active && native_display_port;
 }
 uint32_t darwin_native_host_task(void) { return CURRENT_TASK_PORT; }
+int darwin_native_host_join(uint32_t port,uint32_t set)
+{
+#ifdef ARLINUX_DARLING
+    if (darling_active) return dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,port,set);
+#endif
+    (void)port; (void)set; return D_KERN_NOT_SUPPORTED;
+}
 int darwin_native_host_port_refs(uint32_t port,int delta)
 {
 #ifdef ARLINUX_DARLING
@@ -460,6 +468,7 @@ void *darwin_native_service_run(void *unused)
     if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_PORT_SET,&set) ||
         dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_display_port,set) ||
         dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_render_port,set) ||
+        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_processinfo_port,set) ||
         dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_bootstrap_port,set))
         darling_abort("create display service port set");
     unsigned int traces=0;
@@ -468,7 +477,16 @@ void *darwin_native_service_run(void *unused)
         int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_RCV_MSG,0,sizeof(request),set,0,0,NULL);
         if (status) { trace_call(0,0,status); darling_abort("receive display service request"); }
         struct ipc_header *header=(void *)request,*out=(void *)response;
-        if (header->size<sizeof(*header) || header->size>IPC_BYTES ||
+        if (header->size<sizeof(*header) || header->size>IPC_BYTES)
+            darling_abort("invalid service request size");
+        int processinfo=arlinux_xpc_processinfo(request,header->size,response,sizeof(response),native_processinfo_port,set);
+        if (!processinfo) continue;
+        if (processinfo>0) {
+            status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL);
+            if (status) darling_abort("send process-info reply");
+            continue;
+        }
+        if (
             (header->bits&D_MACH_MSG_COMPLEX) || header->voucher ||
             (header->bits&255)!=D_MACH_TYPE_MOVE_SEND_ONCE || header->id>INT32_MAX-D_MIG_REPLY_ID_OFFSET)
             darling_abort("unsupported display request rights/body");
@@ -529,6 +547,17 @@ static uint32_t native_service_static(const char *name)
 {
     return native_service_equal(name,"com.apple.backboard.display.services") ? native_display_port :
         native_service_equal(name,"com.apple.CARenderServer") ? native_render_port : 0;
+}
+int darwin_native_system_lookup(const char *name,uint64_t type,uint64_t flags,uint32_t *port)
+{
+    /* The compatibility system namespace contains only our actual provider.
+     * A privileged lookup selects this controlled namespace; it does not mint
+     * a root audit token or authorize arbitrary application registrations. */
+    if (type!=1 || flags!=8 || !native_processinfo_port ||
+        !native_service_equal(name,"com.apple.assertiond.processinfoservice")) return D_ENOTSUP;
+    int status=darwin_native_host_port_refs(native_processinfo_port,1);
+    if (!status) *port=native_processinfo_port;
+    return status;
 }
 uint32_t darwin_native_service_check_in(uint32_t bootstrap,uint64_t name,uint64_t output,uint64_t flags)
 {
