@@ -30,6 +30,12 @@ the requested log against its receipt SHA-256 before correlating it. Ordinary
 and LLDB attempts use distinct processes/port namespaces: never match numeric
 port names across them. IPC_CALLBACK follows real send/continuation/hook objects;
 DARLING_PORT_CONSTRUCT/GUARD record the actual kernel-operation input/results.
+XPC creation and handler/event callbacks correlate service names with actual
+connection pointers within one attempt. EXIT_CALLER_CODE walks the hit thread's
+real FP/LR chain and reads bounded caller disassembly/string references. It
+must not use LLDB's potentially different selected thread. Run 39383448706
+uses this evidence to identify the assertiond process-info disconnect exit;
+the observed error object alone does not specify the missing service protocol.
 
 Do not interpret the legacy IPC endpoint array as Darling's server queues;
 the snapshot is suppressed when the community backend is active.

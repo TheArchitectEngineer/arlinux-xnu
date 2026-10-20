@@ -14,8 +14,8 @@ UIKit window, label and increment button. Source/TBD declarations are under
 guests/ARHello; real framework implementations come from the pinned firmware.
 
 Current integration attempt:
-[39382175891](https://github.com/taowen/arlinux-xnu/actions/runs/39382175891),
-source `9871363bb87455c3ed931005c3acb1ab427b8f6d`, dyld job `118494174612`.
+[39383448706](https://github.com/taowen/arlinux-xnu/actions/runs/39383448706),
+source `6db45272a7f62693f4973637513e15df72da2c82`, dyld job `118498073035`.
 Use `build.sh build --mode app --ipc darling` through the sole root entry.
 The taowen/darling parent gitlink pins our community server fork and upstream
 MIG/header dependencies; sources.lock.json records the community base.
@@ -76,7 +76,7 @@ The libxpc async reply crash is fixed: its disconnect branch queries the reply
 port's context. The message/continuation retained its context, but the native
 bridge returned KERN_NOT_SUPPORTED for guard trap 41, leaving the actual port
 context zero. The bridge now forwards guard/unguard to Darling's existing RPCs.
-In the current LLDB attempt, port 0x3303 is guarded with context 0x30022c820,
+In run 39382175891's LLDB attempt, port 0x3303 is guarded with context 0x30022c820,
 strict=false, result=0; the actual libxpc callback receives that same nonzero
 second argument. No context table or guard success is fabricated.
 
@@ -86,7 +86,24 @@ before ARHELLO_READY. Its actual exit stack includes AssertionServices at
 exits 0 without a window-ready callback; it no longer hits the former SIGSEGV.
 The startup step now explicitly rejects a zero exit before the real app ready
 callback. A prior green run (39379317212) was only such an early zero exit,
-not a working app. Determine the AssertionServices event/exit condition next.
+not a working app.
+
+Run 39383448706 identifies the exit's actual connection: the creation of
+`com.apple.assertiond.processinfoservice` at caller 0x1836bdb00 is followed by
+handler installation on connection 0x30022e4f0 at 0x1836bdb44. That same
+connection receives event 0x1b102de10, then its thread exits. The real exit
+caller's code references "Exiting because the workspace server has disconnected."
+and calls exit(0). FrontBoard systemappservices/workspace connections receive
+the same error object earlier. The bootstrap endpoint 0x303 also receives four
+232-byte XPC message-ID 0x10000000 requests; our current producer returns its
+36-byte MIG_BAD_ID response. This establishes a bootstrap/XPC protocol gap,
+not a working assertion service or proof of its required reply schema. Next:
+inspect those actual requests and reuse community XPC encoding/bootstrap
+dispatch before implementing the process-info service behavior. Do not bypass
+the framework's exit or invent a successful connection.
+
+The downloaded textual lldb.log SHA-256 matches its receipt:
+`fdabf8ea0fa9f6cdba09fc6156163c7e3e5508a854429d9cb4ac56269d4e084a`.
 
 The Wayland host child still supplies a real 1024x640@60Hz surface with a blank
 wl_shm buffer: **no application frame or input journey is validated**. The
