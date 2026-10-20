@@ -52,7 +52,11 @@ Measured Counter lifecycle-diagnostic feedback: run
 selected SDK compilation took 18 seconds. Both fail the same required GUI step.
 The new run separates 8.024 seconds of effect waiting from 12.297 seconds of
 original-process diagnosis. These are individual measured runs, not a latency
-promise; runner queues/network still vary. Firmware remains transient and fully
+promise; runner queues/network still vary. Follow-up run
+[39504697195](https://github.com/taowen/arlinux-xnu/actions/runs/39504697195)
+passed the real Console and Foundation journeys in 149 seconds; the same command
+verified all 23 evidence files and exited zero. It remains explicitly partial.
+Firmware remains transient and fully
 hash-verified, and no Apple firmware/cache is uploaded for caching.
 
 ## Start with the effect that failed

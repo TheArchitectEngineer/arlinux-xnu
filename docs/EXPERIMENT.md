@@ -81,7 +81,13 @@ single-app compilation and same-run receipt handoff completed. The single
 build --wait --evidence invocation followed the exact run, reported the failed
 GUI step, verified receipt
 e7633b43e6f24130a74afe3f29a7a2043c58c158633d81bb25ebf8f0692203e8 and all
-20 files, and exited nonzero. This improves feedback, not UIKit compatibility.
+20 files, and exited nonzero. Follow-up run
+[39504697195](https://github.com/taowen/arlinux-xnu/actions/runs/39504697195),
+source 2326e771feaa4ba5bc9b67f9ec63965858259bfb, passed Console and Foundation
+with fullSuite=false. The command verified receipt
+fbed9e7d32538114fb9a03ccdff762720b37d22bf166fd6396ce7b6e8a876e45 and all
+23 files and exited zero. This validates both feedback outcome paths; UIKit
+compatibility is unchanged.
 
 ## Direction and next implementation
 
