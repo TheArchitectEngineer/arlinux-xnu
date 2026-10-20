@@ -70,7 +70,15 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
             }
         }
     }
-    if (render && header->id==D_MIG_CA_COPY_DISPLAY_LIST && request_size==sizeof(struct ipc_header)) {
+    if (render && header->id==D_MIG_CA_COPY_DISPLAY_LIST &&
+        (request_size==sizeof(struct ipc_header) || request_size==36)) {
+        /* The measured extended request adds NDR and a zero selector. Serve
+         * that default query from our actual registered display. Other
+         * selectors are not implemented and must not silently get this list. */
+        if (request_size==36) {
+            uint32_t selector;__builtin_memcpy(&selector,request+32,sizeof(selector));
+            if (selector) { response[8]=D_KERN_INVALID_ARGUMENT;return 0; }
+        }
         int live=ipc_display_live();
         response[8]=live ? D_KERN_RESOURCE_SHORTAGE : D_KERN_FAILURE;
         if (live) {
