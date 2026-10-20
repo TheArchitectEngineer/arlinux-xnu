@@ -88,8 +88,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
 /* Connection associations only; XNU owns the transferred rights and queues. */
 static struct processinfo_peer {
     spc_connection_t connection;
-    uint32_t pid,incarnation,task,endpoint,launch_reply;
-    int pidfd,service,launch_state;
+    uint32_t pid,incarnation,task,endpoint,launch_reply,scene_reply;
+    int pidfd,service,launch_state,scene_state;
     spc_message_t *workspace_registration;
     struct processinfo_peer *next;
 } *processinfo_peers;
@@ -101,6 +101,7 @@ static void session_peer_destroy(struct processinfo_peer *peer)
     if ((peer->task && darwin_native_host_port_deallocate(peer->task)) ||
         (peer->endpoint && darwin_native_host_port_deallocate(peer->endpoint)) ||
         (peer->launch_reply && darwin_native_host_receive_destroy(peer->launch_reply)) ||
+        (peer->scene_reply && darwin_native_host_receive_destroy(peer->scene_reply)) ||
         darwin_native_host_port_deallocate(peer->connection.send_port) ||
         darwin_native_host_receive_destroy(peer->connection.receive_port)) abort();
     if (peer->pidfd>=0) close(peer->pidfd);
@@ -108,33 +109,54 @@ static void session_peer_destroy(struct processinfo_peer *peer)
     free(peer);
 }
 
-static void session_send_launch(struct processinfo_peer *peer,uint32_t set)
+static void session_send_event(struct processinfo_peer *peer,uint32_t set,spc_dictionary_t *dictionary,
+    uint32_t *reply,int *state,const char *label)
 {
-    /* Run 39393971710: the real UIApplication workspace dispatcher routes
-     * signed message 1 to _queue_handleLaunch:. Its event inherits the empty
-     * FBSWorkspaceEvent encoding. Use a real send-once reply path because the
-     * framework creates an XPC reply and calls its genuine launch delegate. */
-    enum { FBS_UIAPPLICATION_LAUNCH=1 };
-    if (darwin_native_host_receive_create(&peer->launch_reply) ||
-        darwin_native_host_join(peer->launch_reply,set)) abort();
-    spc_dictionary_t *event=spc_dictionary_create(),*dictionary=spc_dictionary_create();
-    spc_dictionary_set_string(event,"bs_encodedObjectClassName","FBSUIApplicationLaunchEvent");
-    spc_dictionary_set_value(dictionary,"event",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=event});
-    spc_dictionary_set_int64(dictionary,"message",FBS_UIAPPLICATION_LAUNCH);
+    if (darwin_native_host_receive_create(reply) || darwin_native_host_join(*reply,set)) abort();
     spc_message_t message={.remote_port={peer->connection.send_port,D_MACH_TYPE_COPY_SEND},
-        .local_port={peer->launch_reply,D_MACH_TYPE_MAKE_SEND_ONCE},.id=0x10000000,.content=dictionary};
+        .local_port={*reply,D_MACH_TYPE_MAKE_SEND_ONCE},.id=0x10000000,.content=dictionary};
     spc_mach_message_t *encoded=spc_serialize(&message);
     if (!encoded) abort();
     encoded->header.msgh_voucher_port=0;
     int status=darwin_native_host_send(encoded,encoded->header.msgh_size);
     free(encoded); spc_dictionary_destroy(dictionary);
-    peer->launch_state=status ? -1 : 1;
-    fprintf(stderr,"SESSION_LAUNCH_SEND pid=%u incarnation=%u status=%d reply=%u\n",
-        peer->pid,peer->incarnation,status,peer->launch_reply);
+    *state=status ? -1 : 1;
+    fprintf(stderr,"%s pid=%u incarnation=%u status=%d reply=%u\n",
+        label,peer->pid,peer->incarnation,status,*reply);
     if (status) {
-        if (darwin_native_host_receive_destroy(peer->launch_reply)) abort();
-        peer->launch_reply=0;
+        if (darwin_native_host_receive_destroy(*reply)) abort();
+        *reply=0;
     }
+}
+
+static void session_send_launch(struct processinfo_peer *peer,uint32_t set)
+{
+    /* Actual dispatcher/codecs in run 39393971710; genuine send-once reply. */
+    enum { FBS_UIAPPLICATION_LAUNCH=1 };
+    spc_dictionary_t *event=spc_dictionary_create(),*dictionary=spc_dictionary_create();
+    spc_dictionary_set_string(event,"bs_encodedObjectClassName","FBSUIApplicationLaunchEvent");
+    spc_dictionary_set_value(dictionary,"event",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=event});
+    spc_dictionary_set_int64(dictionary,"message",FBS_UIAPPLICATION_LAUNCH);
+    session_send_event(peer,set,dictionary,&peer->launch_reply,&peer->launch_state,"SESSION_LAUNCH_SEND");
+}
+
+static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
+{
+    /* Run 39395977685: queue_handleMessage's actual jump table maps 5 to
+     * _queue_handleCreateScene:. The codecs validate specClass and read the
+     * sceneID/settings/clientSettings/transitionContext fields. Start with
+     * genuine framework defaults; geometry/activation are not established. */
+    enum { FBS_WORKSPACE_CREATE_SCENE=5 };
+    char identifier[80];
+    snprintf(identifier,sizeof(identifier),"arlinux:%u:%u:main",peer->pid,peer->incarnation);
+    spc_dictionary_t *event=spc_dictionary_create(),*dictionary=spc_dictionary_create();
+    spc_dictionary_set_string(event,"bs_encodedObjectClassName","FBSWorkspaceCreateSceneEvent");
+    spc_dictionary_set_string(event,"sceneID",identifier);
+    spc_dictionary_set_string(event,"specClass","UIApplicationSceneSpecification");
+    spc_dictionary_set_value(dictionary,"event",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=event});
+    spc_dictionary_set_int64(dictionary,"message",FBS_WORKSPACE_CREATE_SCENE);
+    fprintf(stderr,"SESSION_SCENE_CONFIGURATION pid=%u scene=%s settings=framework-defaults geometry-established=false\n",peer->pid,identifier);
+    session_send_event(peer,set,dictionary,&peer->scene_reply,&peer->scene_state,"SESSION_SCENE_SEND");
 }
 
 void arlinux_xpc_session_tick(uint32_t set)
@@ -148,6 +170,7 @@ void arlinux_xpc_session_tick(uint32_t set)
         if (ready<0) { perror("poll session client pidfd"); abort(); }
         if (!ready) {
             if (peer->workspace_registration && !peer->launch_state) session_send_launch(peer,set);
+            if (peer->launch_state==2 && !peer->scene_state) session_send_scene(peer,set);
             slot=&peer->next; continue;
         }
         if (!(fd.revents&POLLIN)) { fprintf(stderr,"PROCESSINFO_PIDFD_ERROR events=%x\n",fd.revents); abort(); }
@@ -193,7 +216,8 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
     }
     struct processinfo_peer *peer=processinfo_peers;
     while (peer && peer->connection.receive_port!=header->msgh_local_port &&
-        (!peer->launch_reply || peer->launch_reply!=header->msgh_local_port)) peer=peer->next;
+        (!peer->launch_reply || peer->launch_reply!=header->msgh_local_port) &&
+        (!peer->scene_reply || peer->scene_reply!=header->msgh_local_port)) peer=peer->next;
     if (!peer) return -1;
     if (!audit || audit[5]!=peer->pid || audit[7]!=peer->incarnation) {
         fprintf(stderr,"PROCESSINFO_PEER_IDENTITY_MISMATCH\n"); abort();
@@ -204,7 +228,8 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
     /* Do not let upstream silently discard OOL resources. Actual process-state
      * protocol behavior is still being diagnosed, not acknowledged as success. */
     int launch_reply=peer->launch_reply && peer->launch_reply==header->msgh_local_port;
-    if (length<32 || header->msgh_id!=(launch_reply ? 0x20000000 : 0x10000000)) {
+    int scene_reply=peer->scene_reply && peer->scene_reply==header->msgh_local_port;
+    if (length<32 || header->msgh_id!=((launch_reply || scene_reply) ? 0x20000000 : 0x10000000)) {
         fprintf(stderr,"PROCESSINFO_MESSAGE_UNSUPPORTED\n"); abort();
     }
     if (header->msgh_bits&MACH_MSGH_BITS_COMPLEX) {
@@ -225,14 +250,17 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
     }
     spc_message_t *message=spc_deserialize(request);
     if (!message) abort();
-    if (launch_reply) {
-        fprintf(stderr,"SESSION_LAUNCH_REPLY pid=%u incarnation=%u fields=%zu\n",peer->pid,peer->incarnation,message->content->num_items);
-        fprintf(stdout,"SESSION_LAUNCH_REPLY_DICTIONARY pid=%u\n",peer->pid);
+    if (launch_reply || scene_reply) {
+        const char *label=scene_reply ? "SESSION_SCENE_REPLY" : "SESSION_LAUNCH_REPLY";
+        fprintf(stderr,"%s pid=%u incarnation=%u fields=%zu\n",label,peer->pid,peer->incarnation,message->content->num_items);
+        fprintf(stdout,"%s_DICTIONARY pid=%u\n",label,peer->pid);
         spc_dump(message->content); fflush(stdout);
         spc_message_destroy(message);
         if (header->msgh_remote_port && darwin_native_host_port_deallocate(header->msgh_remote_port)) abort();
-        if (darwin_native_host_receive_destroy(peer->launch_reply)) abort();
-        peer->launch_reply=0; peer->launch_state=2;
+        uint32_t *port=scene_reply ? &peer->scene_reply : &peer->launch_reply;
+        int *state=scene_reply ? &peer->scene_state : &peer->launch_state;
+        if (darwin_native_host_receive_destroy(*port)) abort();
+        *port=0; *state=2;
         return 0;
     }
     int error=D_ENOTSUP;

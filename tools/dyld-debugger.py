@@ -112,6 +112,7 @@ def install_launch_breakpoints(target):
                        '_OBJC_CLASS_$_FBSWorkspaceSceneEvent',
                        '_OBJC_CLASS_$_FBSSceneSettingsDiff',
                        '_OBJC_CLASS_$_FBSSceneClientSettingsDiff',
+                       '_OBJC_CLASS_$_FBSSettingsDiff', '_OBJC_CLASS_$_FBSScene',
                        '_OBJC_CLASS_$_FBSSceneTransitionContext'):
             entries = []
             try:
@@ -125,6 +126,7 @@ def install_launch_breakpoints(target):
                     selector = objects.cstring(objects.u64(entry))
                     if name.startswith('_OBJC_CLASS_$_FBS') and selector in (
                             'queue_handleMessage:',
+                            'initWithIdentifier:specification:',
                             '_queue_handleMessageWithType:message:', 'queue_handleMessageWithType:message:client:',
                             '_queue_handleLaunch:', '_queue_handleCreateScene:',
                             '_queue_workspaceEventFromMessage:ofType:', 'initWithXPCDictionary:', 'encodeWithXPCDictionary:'):
