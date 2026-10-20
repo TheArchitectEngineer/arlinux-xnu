@@ -50,9 +50,11 @@ Subsets explicitly record fullSuite=false. Forced cleanup never proves close.
 
 Linux input goes through Xvfb -> Weston X11 backend -> real Wayland seat. The
 Apple-host reference uses host desktop events, not injected Objective-C actions.
-Composed screenshots and OCR establish GUI effects. Canvas additionally counts
+Composed screenshots and OCR (Linux Tesseract; Apple Vision) establish GUI effects. Canvas additionally counts
 actual screenshot color pixels; app callback text alone cannot prove drawing.
 Network requires both the app-visible response and the real HTTP peer log.
+The Apple reference records screenshots when accepting only its ephemeral Python
+HTTP peer local-network prompt; unrelated system dialogs remain failures.
 Console stdout is accepted only for console apps; every process exit is checked.
 Original PID/start identity, binaries/input hashes, stdout/stderr/runtime streams,
 screenshots, step status, bounded original-process stacks and cleanup are retained.

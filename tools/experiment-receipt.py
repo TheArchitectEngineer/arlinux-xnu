@@ -41,6 +41,10 @@ receipt = {
 }
 receipt_path = output / 'receipt.json'
 receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
+step_output=os.environ.get('GITHUB_OUTPUT')
+if step_output:
+    with open(step_output,'a') as stream:
+        stream.write('sha256='+hashlib.sha256(receipt_path.read_bytes()).hexdigest()+'\n')
 # Expose provenance and executable hashes in Actions logs. Diagnosing a run
 # must not require downloading its kernel objects or complete artifact archive.
 print('EXPERIMENT_RECEIPT ' + json.dumps({

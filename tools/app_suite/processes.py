@@ -82,6 +82,10 @@ class Processes:
         self.generations.append(record)
         self.processes[name] = {**record, 'process': process, 'runtime': str(prefix.with_suffix('.runtime.log')), 'stdout': str(prefix.with_suffix('.stdout'))}
         self.current = name
+        if self.reference and app['kind']=='application':
+            result=subprocess.run([str(ROOT/'build/reference-tools/desktop-events'),'focus',str(process.pid)],capture_output=True,timeout=7)
+            if result.returncode:
+                stderr.write(b'REFERENCE_FOCUS_PENDING '+result.stderr);stderr.flush()
 
     def diagnose(self):
         # Read the failed original process, not a replay that changes scheduling.

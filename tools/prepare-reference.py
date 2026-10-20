@@ -18,7 +18,6 @@ for name in ['playcover-convert.swift','playcover-mach-bridge.h']:
     shutil.copyfile(ROOT/'tools'/name,corresponding/name)
 run('xcrun','swiftc','-O','-import-objc-header',corresponding/'playcover-mach-bridge.h',corresponding/'Macho.swift',corresponding/'DataExtensions.swift',corresponding/'PlayCoverError.swift',corresponding/'playcover-convert.swift','-o',OUT/'convert')
 run('xcrun','swiftc',ROOT/'tools/desktop-events.swift','-o',OUT/'desktop-events')
-run('brew','install','tesseract')
 products=json.loads((ROOT/'build/apps/products.json').read_text())
 for app in products['apps']:
     if app['build']!='passed':continue

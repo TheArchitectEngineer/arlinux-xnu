@@ -2,6 +2,7 @@
 import AppKit
 import ApplicationServices
 import ImageIO
+import Vision
 let args=CommandLine.arguments
 func application(_ index:Int) -> NSRunningApplication {
     guard args.count>index,let pid=Int32(args[index]),let app=NSRunningApplication(processIdentifier:pid) else { fatalError("Missing live app") }
@@ -9,7 +10,11 @@ func application(_ index:Int) -> NSRunningApplication {
 }
 switch args.count>1 ? args[1] : "" {
 case "focus":
-    guard application(2).activate(options:[.activateIgnoringOtherApps]) else { fatalError("Cannot focus app") }
+    for _ in 0..<40 {
+        if let pid=Int32(args[2]),let app=NSRunningApplication(processIdentifier:pid),app.activate(options:[.activateIgnoringOtherApps]) { exit(0) }
+        Thread.sleep(forTimeInterval:0.1)
+    }
+    fatalError("Cannot focus app")
 case "close":
     guard application(2).terminate() else { fatalError("Normal termination rejected") }
 case "click":
@@ -21,6 +26,18 @@ case "click":
         guard let event=CGEvent(mouseEventSource:nil,mouseType:kind,mouseCursorPosition:point,mouseButton:.left) else { fatalError("Cannot create pointer event") }
         event.post(tap:.cghidEventTap);Thread.sleep(forTimeInterval:0.08)
     }
+case "ocr":
+    guard args.count==3,let source=CGImageSourceCreateWithURL(URL(fileURLWithPath:args[2]) as CFURL,nil),
+        let image=CGImageSourceCreateImageAtIndex(source,0,nil) else { fatalError("Missing composed screenshot") }
+    let request=VNRecognizeTextRequest();request.recognitionLevel = .accurate;request.recognitionLanguages=["en-US"]
+    try VNImageRequestHandler(cgImage:image).perform([request])
+    let words:[[String:Any]]=(request.results ?? []).compactMap { observation in
+        guard let text=observation.topCandidates(1).first else { return nil }
+        let box=observation.boundingBox
+        return ["text":text.string,"left":box.minX*Double(image.width),"top":(1-box.maxY)*Double(image.height),
+            "width":box.width*Double(image.width),"height":box.height*Double(image.height),"confidence":text.confidence]
+    }
+    print(String(data:try JSONSerialization.data(withJSONObject:words),encoding:.utf8)!)
 case "pixels":
     guard args.count==4,let source=CGImageSourceCreateWithURL(URL(fileURLWithPath:args[2]) as CFURL,nil),
         let image=CGImageSourceCreateImageAtIndex(source,0,nil) else { fatalError("Missing composed screenshot") }

@@ -2,7 +2,10 @@
 import hashlib,json,os
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];directory=root/'build/apps'
-r=json.loads((directory/'receipt.json').read_text())
+receipt=(directory/'receipt.json').read_bytes()
+if hashlib.sha256(receipt).hexdigest()!=os.environ['APP_INPUT_RECEIPT']:
+    raise SystemExit('Downloaded app receipt does not match the producing job output')
+r=json.loads(receipt)
 if (r['commit'],r['runId'],str(r['runAttempt']))!=(os.environ['GITHUB_SHA'],os.environ['GITHUB_RUN_ID'],os.environ['GITHUB_RUN_ATTEMPT']):
     raise SystemExit('Downloaded app source/run/attempt mismatch')
 for item in r['files']:

@@ -40,6 +40,7 @@ class Case(Processes,Desktop):
             stream.write(step['text'].encode());stream.flush()
         elif action == 'http-start':
             self.http=HttpFixture(self.directory);self.http.start()
+            if self.reference:self.prepare_http_permission()
         elif action == 'http-request':
             if not self.http or not self.http.received(): raise RuntimeError('No real HTTP request reached fixture')
         elif action == 'pixels':

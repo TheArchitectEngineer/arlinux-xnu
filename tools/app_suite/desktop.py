@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import re
 import time
 from .context import ROOT,command,sha
@@ -8,11 +9,14 @@ class Desktop:
     def snapshot(self, label):
         path = self.directory / f'{len(self.observations):03d}-{label}.png'
         command('screencapture','-x',path) if self.reference else command('scrot',path)
-        result = command('tesseract', path, 'stdout', '--psm', '11', 'tsv',
-                         capture_output=True, text=True)
-        path.with_suffix('.tsv').write_text(result.stdout)
-        words = [row for row in csv.DictReader(io.StringIO(result.stdout), delimiter='\t')
-                 if row['text'].strip()]
+        if self.reference:
+            result=command(ROOT/'build/reference-tools/desktop-events','ocr',path,capture_output=True,text=True)
+            path.with_suffix('.ocr.json').write_text(result.stdout)
+            words=json.loads(result.stdout)
+        else:
+            result = command('tesseract', path, 'stdout', '--psm', '11', 'tsv',capture_output=True,text=True)
+            path.with_suffix('.tsv').write_text(result.stdout)
+            words=[row for row in csv.DictReader(io.StringIO(result.stdout),delimiter='\t') if row['text'].strip()]
         text = ' '.join(word['text'] for word in words)
         path.with_suffix('.txt').write_text(text + '\n')
         self.observations.append({'screenshot': str(path.relative_to(self.output)),
@@ -39,8 +43,8 @@ class Desktop:
             time.sleep(.5)
 
     def click_word(self, target):
-        x = int(target['left']) + int(target['width'])//2
-        y = int(target['top']) + int(target['height'])//2
+        x = int(float(target['left']) + float(target['width'])/2)
+        y = int(float(target['top']) + float(target['height'])/2)
         if self.reference:
             command(ROOT/'build/reference-tools/desktop-events','click',x,y)
             return
@@ -65,3 +69,16 @@ class Desktop:
             if count>=step['minimum']:return
             if time.monotonic()>=deadline:raise RuntimeError('Missing composed color effect: '+step['color'])
             time.sleep(.5)
+
+    def prepare_http_permission(self):
+        # macOS attributes the ephemeral loopback peer to its Python runner.
+        # Approve only that exact infrastructure prompt, retaining actual screenshots.
+        deadline=time.monotonic()+3
+        while time.monotonic()<deadline:
+            words,text=self.snapshot('http-peer-permission')
+            if re.search(r'Python.*find devices on local networks',text,re.I):
+                buttons=[item for item in words if item['text']=='Allow']
+                if len(buttons)!=1:raise RuntimeError('Cannot uniquely identify local HTTP peer permission button')
+                self.observations[-1]['fixturePermission']='Allow local network for ephemeral Python HTTP peer'
+                self.click_word(buttons[0]);return
+            time.sleep(.2)

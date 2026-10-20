@@ -2,7 +2,8 @@
 
 Read the exact run before changing behavior. Use the sole build.sh entry:
 status and report inspect an existing run; download selects its retained evidence.
-See README for commands and APPS.md for acceptance. The default build runs the independent app collection, not a timeout/readiness check. Compilation and guest execution
+See README for commands and APPS.md for acceptance. The default build runs the
+independent app collection, not a timeout/readiness check. Compilation and guest execution
 remain on hosted runners, never WSL or the workstation.
 
 ## Start with the effect that failed
@@ -17,7 +18,7 @@ remain on hosted runners, never WSL or the workstation.
 | Did a message arrive? | Real send/receive rights, header, OOL descriptors and receiver continuation | Producer/reply logs alone do not prove consumption |
 | Did a service really work? | App-visible response plus helper process/session identity and lifetime | A name lookup or an empty receive endpoint is discovery only |
 | Did close/relaunch work? | Actual exit status, fresh generation identity, still-interactive peer | Forced cleanup and readiness are not normal close |
-| Did a UIKit exception explain failure? | objc_exception_throw breakpoint and read-only GuestObjects metadata | Never use po/injected guest calls to invent an exception reason |
+| Did a UIKit exception explain failure? | Original stack/register evidence; same-cache exception symbol addresses for targeted LLDB breakpoints | Never use po/injected guest calls to invent an exception reason |
 
 Verify downloaded receipt.json against the exact run's published receipt SHA-256,
 then verify each relied-upon artifact against that receipt. Selected downloads
