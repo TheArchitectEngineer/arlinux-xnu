@@ -150,7 +150,7 @@ static long native_file_mmap(const unsigned long long *r)
         status=RAW(SYS_mprotect,address,length,protection,0,0,0);
         if (status) { RAW(SYS_munmap,address,length,0,0,0,0); return status; }
         const char label[]="NATIVE_DYNAMIC_TLS_REWRITE ranges/instructions/address/bytes follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         trace_call(0,0,count); trace_call(1,0,rewritten); trace_call(2,0,address); trace_call(3,0,length);
     }
     return address;
@@ -163,7 +163,7 @@ static long native_mmap(const unsigned long long *r)
     static unsigned int traces;
     if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
         const char label[]="DARWIN_FILE_MMAP address/bytes/protection/flags/fd/offset/result follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         for (unsigned int i=0;i<6;i++) trace_call(i,0,r[i]);
         trace_call(6,0,result);
     }

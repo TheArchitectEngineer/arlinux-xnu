@@ -25,9 +25,9 @@ static void native_ui_layout_description(void *window)
     if (!text) return;
     unsigned long length=0; while (length<8192 && text[length]) length++;
     const char marker[]="UI_VIEW_TREE genuine UIKit recursiveDescription follows\n";
-    RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
-    RAW(SYS_write,2,text,length,0,0,0);
-    RAW(SYS_write,2,"\n",1,0,0,0);
+    RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,text,length,0,0,0);
+    RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
 }
 static void native_ui_capture(void *pixels,unsigned long bytes)
 {

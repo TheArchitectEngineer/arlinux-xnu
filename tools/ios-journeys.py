@@ -120,16 +120,20 @@ class Journey:
         state.mkdir(exist_ok=True)  # same state on relaunch; fresh for each case
         number = sum(item['app'] == name for item in self.generations) + 1
         prefix = self.directory / f'{name}-{number}'
-        stdout, stderr = prefix.with_suffix('.stdout').open('wb'), prefix.with_suffix('.runtime.log').open('wb')
-        self.streams += [stdout, stderr]
+        stdout = prefix.with_suffix('.stdout').open('wb')
+        stderr = prefix.with_suffix('.stderr').open('wb')
+        trace = prefix.with_suffix('.runtime.log').open('wb')
+        self.streams += [stdout, stderr, trace]
         env = os.environ.copy()
+        env['ARLINUX_TRACE_FD'] = str(trace.fileno())
         capture = self.directory / f'{name}-{number}-renderer'
         capture.mkdir()
         env['ARLINUX_CAPTURE_DIR'] = str(capture)
         binary = ROOT / self.apps[name]['binary']
         process = subprocess.Popen([str(ROOT / 'build/native/macho-native'), '--role', 'application', '--dyld',
             str(ROOT / 'build/ios-input/dyld'), '--root', str(ROOT / 'build/ios-input/filesystem/root'),
-            str(binary)], cwd=state, env=env, stdout=stdout, stderr=stderr, start_new_session=True)
+            str(binary)], cwd=state, env=env, stdout=stdout, stderr=stderr,
+            pass_fds=(trace.fileno(),), start_new_session=True)
         record = {'app': name, 'generation': number,
                   'identity': {'pid': process.pid, 'startTicks': None, 'executable': None},
                   'input': self.apps[name], 'binarySHA256': sha(binary)}

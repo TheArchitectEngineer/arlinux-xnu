@@ -172,7 +172,7 @@ static long native_csops(const unsigned long long *r)
     }
     if (__atomic_fetch_add(&native_codesign_traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
         const char label[]="DARWIN_CODESIGN_QUERY pid/op/bytes/signature_bytes/idversion/result follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         trace_call(0,0,pid); trace_call(1,0,r[1]); trace_call(2,0,r[3]);
         trace_call(3,0,native_signature_bytes); trace_call(4,0,version); trace_call(5,0,result);
     }
@@ -201,7 +201,7 @@ static long native_fcntl(const unsigned long long *r)
     static unsigned int traces;
     if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
         const char label[]="DARWIN_FCNTL library_validation=disabled fd/command/argument/result follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         trace_call(0,0,r[0]); trace_call(1,0,r[1]); trace_call(2,0,r[2]); trace_call(3,0,status);
     }
     return status;

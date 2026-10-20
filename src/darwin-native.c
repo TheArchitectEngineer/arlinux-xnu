@@ -85,6 +85,23 @@ static int darwin_error(long result)
     }
 }
 
+static int native_trace_fd=2;
+static void native_trace_prepare(void)
+{
+    /* Host-TLS setup only. Keep syscall tracing out of the guest's stderr so
+     * dyld's small writes remain readable as one original error message. */
+    static int prepared;
+    if (prepared) return;
+    const char *value=getenv("ARLINUX_TRACE_FD");
+    if (value) {
+        char *end=NULL; long descriptor=strtol(value,&end,10);
+        if (!*value || *end || descriptor<=2 || descriptor>INT32_MAX || fcntl(descriptor,F_GETFD)<0) {
+            fprintf(stderr,"Invalid inherited ARLinux trace descriptor\n"); exit(2);
+        }
+        native_trace_fd=(int)descriptor;
+    }
+    prepared=1;
+}
 static void trace_record(const char *tag,unsigned long number,unsigned long pc,unsigned long result)
 {
     /* Bounded, TLS/libc-free diagnosis. No guest buffers or credentials. */
@@ -98,7 +115,7 @@ static void trace_record(const char *tag,unsigned long number,unsigned long pc,u
         for (int bit=60;bit>=0;bit-=4) line[n++]=hex[(values[i]>>bit)&15];
     }
     line[n++]='\n';
-    RAW(SYS_write,2,line,n,0,0,0);
+    RAW(SYS_write,native_trace_fd,line,n,0,0,0);
 }
 static void trace_call(unsigned long number,unsigned long pc,unsigned long result)
 {
@@ -201,12 +218,12 @@ static long guest_open(unsigned long address,unsigned long flags)
     if (error) return error;
     const char label[]="DARWIN_OPEN ";
     unsigned int length=0; while (buffer[length]) length++;
-    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
-    RAW(SYS_write,2,buffer,length,0,0,0);
-    RAW(SYS_write,2,"\n",1,0,0,0);
+    RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,buffer,length,0,0,0);
+    RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
     if (flags & ~(D_O_NONBLOCK|D_O_NOFOLLOW|D_O_DIRECTORY|D_O_CLOEXEC)) {
         const char rejected[]="DARWIN_OPEN_UNSUPPORTED_FLAGS follows\n";
-        RAW(SYS_write,2,rejected,sizeof(rejected)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,rejected,sizeof(rejected)-1,0,0,0);
         trace_call(0,0,flags);
         return -ENOTSUP;
     }
@@ -306,7 +323,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         }
         if (number>=D_TRAP_TIMER_CREATE && number<=D_TRAP_TIMER_ARM_LEEWAY) {
             const char label[]="DARWIN_TIMER_OPERATION trap/arguments follows\n";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(number,uc->uc_mcontext.pc,0);
             for (unsigned int i=0;i<4;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
             r[0]=number==D_TRAP_TIMER_CREATE ? ipc_timer_create() : ipc_timer_control(number,r);
@@ -317,7 +334,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             number==D_TRAP_PORT_DESTRUCT ||
             number==D_TRAP_PORT_INSERT_MEMBER || number==D_TRAP_PORT_EXTRACT_MEMBER) {
             const char label[]="DARWIN_PORT_OPERATION trap/arguments follows\n";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(number,uc->uc_mcontext.pc,0);
             for (unsigned int i=0;i<4;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
             r[0]=number==D_TRAP_PORT_ALLOCATE ? ipc_port_allocate(r) :
@@ -433,7 +450,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             }
             if (status) {
                 const char label[]="DARWIN_VM_REJECTED argument-index/pc/value follows\n";
-                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
                 for (unsigned int i=0;i<6;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
             }
             r[0]=status;
@@ -481,13 +498,13 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     switch (r[D_ARM64_SYSCALL_REGISTER]) {
     case D_SYS_BSDTHREAD_CREATE: case D_SYS_BSDTHREAD_REGISTER: {
         const char label[]="DARWIN_THREAD_REQUEST argument-index/pc/value follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         for (unsigned int i=0;i<6;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
         if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_REGISTER && r[4]>=8 && r[4]<=128) {
             uint64_t metadata[16]={0};
             if (!guest_copy(metadata,r[3],r[4],0)) {
                 const char record[]="DARWIN_THREAD_REGISTRATION word-index/pc/value follows\n";
-                RAW(SYS_write,2,record,sizeof(record)-1,0,0,0);
+                RAW(SYS_write,native_trace_fd,record,sizeof(record)-1,0,0,0);
                 for (unsigned int i=0;i<r[4]/8;i++) trace_call(i,uc->uc_mcontext.pc,metadata[i]);
             }
         }
@@ -505,7 +522,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         static unsigned int requests;
         if (__atomic_fetch_add(&requests,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
             const char label[]="DARWIN_SCHEDULER_REQUEST syscall then argument-index/pc/value follows\n";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,0);
             unsigned int count=(r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_QOS ||
                                 r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_ID) ? 8 :
@@ -515,7 +532,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
                 struct darwin_kevent_qos event;
                 if (!guest_copy(&event,r[1],sizeof(event),0)) {
                     const char event_label[]="DARWIN_KEVENT_ID_CHANGE ident/filter/flags/qos/udata/fflags/xflags/data/ext follows\n";
-                    RAW(SYS_write,2,event_label,sizeof(event_label)-1,0,0,0);
+                    RAW(SYS_write,native_trace_fd,event_label,sizeof(event_label)-1,0,0,0);
                     trace_call(0,uc->uc_mcontext.pc,event.ident);
                     trace_call(1,uc->uc_mcontext.pc,(long)event.filter);
                     trace_call(2,uc->uc_mcontext.pc,event.flags);
@@ -594,9 +611,9 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             unsigned long length=0;
             while (length<(unsigned long)size && text[length]) length++;
             const char label[]="DARWIN_ABORT_REASON ";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
-            RAW(SYS_write,2,text,length,0,0,0);
-            RAW(SYS_write,2,"\n",1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,text,length,0,0,0);
+            RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
         }
         break;
     }
@@ -635,7 +652,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case D_SYS_PROC_INFO: result=native_proc_info(r); break;
     case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_open(r[0],r[1]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
-        result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
+        result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor ||
+                (native_trace_fd>2 && (int)r[0]==native_trace_fd)) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
     case D_SYS_PREAD: case D_SYS_PREAD_NOCANCEL: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
     case D_SYS_LSEEK: result=RAW(SYS_lseek,r[0],r[1],r[2],0,0,0); break;
     case D_SYS_SHARED_REGION_CHECK: /* Actual process-private cache mappings prepared before entry. */
@@ -733,11 +751,11 @@ static void dispatch(int signal, siginfo_t *info, void *context)
 static void fault(int signal,siginfo_t *info,void *context)
 {
     const char label[]="DARWIN_NATIVE_FAULT signal/pc/address follows\n";
-    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
     ucontext_t *uc=context;
     trace_call(signal,uc->uc_mcontext.pc,(uintptr_t)info->si_addr);
     const char registers[]="DARWIN_FAULT_REGISTERS x0..x30\n";
-    RAW(SYS_write,2,registers,sizeof(registers)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,registers,sizeof(registers)-1,0,0,0);
     for (unsigned int i=0;i<31;i++)
         trace_call(i,uc->uc_mcontext.pc,uc->uc_mcontext.regs[i]);
     RAW(SYS_exit_group,128+signal,0,0,0,0,0);
@@ -746,6 +764,7 @@ static void fault(int signal,siginfo_t *info,void *context)
 
 void darwin_native_connect(void)
 {
+    native_trace_prepare();
     /* Select affinity before starting either native services or guest threads. */
     cpu_set_t available,one;
     if (sched_getaffinity(0,sizeof(available),&available)) { perror("guest CPU affinity"); exit(1); }

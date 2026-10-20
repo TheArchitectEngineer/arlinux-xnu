@@ -77,7 +77,7 @@ static long native_psynch(const unsigned long long *r,int *bsd_error)
         static unsigned int traces;
         if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
             const char label[]="DARLING_PSYNCH syscall/status/update then actual argument-index/value follows\n";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(r[D_ARM64_SYSCALL_REGISTER],0,status);
             trace_call(0,0,update);
             for (unsigned int i=0;i<8;i++) trace_call(i+1,0,r[i]);

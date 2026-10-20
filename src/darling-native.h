@@ -20,9 +20,9 @@ static void *darling_copy(void *destination,const void *source,size_t size)
 static void darling_error(const char *operation)
 {
     size_t length=0; while (operation[length]) length++;
-    RAW(SYS_write,2,"DARLING_RPC_ERROR ",18,0,0,0);
-    RAW(SYS_write,2,operation,length,0,0,0);
-    RAW(SYS_write,2,"\n",1,0,0,0);
+    RAW(SYS_write,native_trace_fd,"DARLING_RPC_ERROR ",18,0,0,0);
+    RAW(SYS_write,native_trace_fd,operation,length,0,0,0);
+    RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
 }
 static void darling_abort(const char *operation)
 {
@@ -149,7 +149,7 @@ static void darling_prepare(void)
     if (dserver_rpc_task_self_trap(&darling_task_port) || !darling_task_port ||
         dserver_rpc_host_self_trap(&darling_host_port) || !darling_host_port) darling_abort("task/host self");
     const char marker[]="DARLING_NATIVE_CONNECTED task/host ports follow\n";
-    RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
     trace_call(0,0,darling_task_port); trace_call(1,0,darling_host_port);
 }
 static long darling_mach(unsigned long number,const unsigned long long *r)
@@ -195,7 +195,7 @@ static long darling_mach(unsigned long number,const unsigned long long *r)
         static unsigned int traces;
         if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
             const char marker[]="DARLING_PORT_CONSTRUCT target/flags/context/name/result follows\n";
-            RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
             trace_call(0,0,r[0]); trace_call(1,0,readable ? options.flags : UINT32_MAX);
             trace_call(2,0,r[2]); trace_call(3,0,name); trace_call(4,0,result);
         }
@@ -209,7 +209,7 @@ static long darling_mach(unsigned long number,const unsigned long long *r)
         static unsigned int traces;
         if(__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
             const char marker[]="DARLING_PORT_GUARD trap/name/context/strict/result follows\n";
-            RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
             trace_call(0,0,number); trace_call(1,0,r[1]); trace_call(2,0,r[2]);
             trace_call(3,0,number==D_TRAP_PORT_GUARD ? r[3] : 0); trace_call(4,0,result);
         }

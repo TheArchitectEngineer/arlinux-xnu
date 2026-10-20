@@ -58,7 +58,7 @@ static uint32_t native_framework_render_start(void)
      * These are real framework calls, not calls from our host-TLS service thread.
      * WebKit QuartzCoreSPI.h declares the bool start and Mach-port getter ABI. */
     const char marker[]="NATIVE_RENDER_FRAMEWORK_START real QuartzCore entry\n";
-    RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
     _Bool started=((_Bool (*)(void))(uintptr_t)native_render_start_address)();
     uint32_t port=started ? ((uint32_t (*)(void))(uintptr_t)native_render_get_port_address)() : 0;
     uint32_t status=port ? dserver_rpc_mach_port_mod_refs(CURRENT_TASK_PORT,port,D_PORT_RIGHT_SEND,1) : D_KERN_FAILURE;
@@ -147,7 +147,7 @@ static long ipc_timer_capture(struct ipc_endpoint *endpoint)
     if (bytes!=(long)size) return bytes<0 ? bytes : -EIO;
     endpoint->queued++; endpoint->timer_pending=1;
     const char label[]="DARWIN_TIMER_EXPIRED port follows\n";
-    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
     trace_call(0,0,endpoint->name);
     return 0;
 }
@@ -452,7 +452,7 @@ static unsigned long ipc_special_reply_destruct(const unsigned long long *r)
                 __atomic_fetch_add(&endpoint->space_sequence,1,__ATOMIC_RELEASE);
                 RAW(SYS_futex,&endpoint->space_sequence,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
                 const char label[]="DARWIN_REPLY_PORT_DESTROYED name/dead-references follows\n";
-                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
                 trace_call(0,0,endpoint->name); trace_call(1,0,refs+delta);
             }
         }
@@ -634,7 +634,7 @@ void *darwin_native_service_run(void *unused)
             if (dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_session_ports[i],set))
                 darling_abort("join session service port set");
         const char ready[]="SESSION_READY shared-bootstrap-process\n";
-        RAW(SYS_write,2,ready,sizeof(ready)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,ready,sizeof(ready)-1,0,0,0);
     }
     unsigned int traces=0;
     for (;;) {
@@ -699,7 +699,7 @@ void *darwin_native_service_run(void *unused)
             (header->bits&D_MACH_MSG_COMPLEX) || header->voucher ||
             (header->bits&255)!=D_MACH_TYPE_MOVE_SEND_ONCE || header->id>INT32_MAX-D_MIG_REPLY_ID_OFFSET) {
             const char marker[]="DARLING_UNSUPPORTED_SERVICE port/id/bytes/bits/voucher/descriptors follows\n";
-            RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
             trace_call(0,0,header->local); trace_call(1,0,header->id);
             trace_call(2,0,header->size); trace_call(3,0,header->bits); trace_call(4,0,header->voucher);
             uint32_t descriptors=0;
@@ -723,7 +723,7 @@ void *darwin_native_service_run(void *unused)
                     __builtin_memcpy(&name_or_size,request+cursor+12,4);
                 }
                 const char descriptor_marker[]="DARLING_SERVICE_DESCRIPTOR index/type/flags/name-or-size/address follows\n";
-                RAW(SYS_write,2,descriptor_marker,sizeof(descriptor_marker)-1,0,0,0);
+                RAW(SYS_write,native_trace_fd,descriptor_marker,sizeof(descriptor_marker)-1,0,0,0);
                 trace_call(0,0,decoded); trace_call(1,0,type);
                 trace_call(2,0,request[cursor+10]); trace_call(3,0,name_or_size); trace_call(4,0,address);
                 cursor+=bytes;
@@ -732,7 +732,7 @@ void *darwin_native_service_run(void *unused)
              * retaining exact offsets instead of guessing a method layout. */
             if (decoded==descriptors) {
                 const char scalar_marker[]="DARLING_SERVICE_INLINE offset/value pairs follow\n";
-                RAW(SYS_write,2,scalar_marker,sizeof(scalar_marker)-1,0,0,0);
+                RAW(SYS_write,native_trace_fd,scalar_marker,sizeof(scalar_marker)-1,0,0,0);
                 for (unsigned int i=0;i<8 && cursor<=header->size && header->size-cursor>=4;i++,cursor+=4) {
                     uint32_t value; __builtin_memcpy(&value,request+cursor,4);
                     trace_call(cursor,0,value);
@@ -751,7 +751,7 @@ void *darwin_native_service_run(void *unused)
                 header->local==native_display_port,request,header->size,response,0,0);
         if (traces++<D_DIAGNOSTIC_REQUEST_LIMIT) {
             const char label[]="DARLING_SERVICE_REPLY port/id/request/reply follows\n";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(0,0,header->local); trace_call(1,0,header->id);
             trace_call(2,0,header->size); trace_call(3,0,out->size);
         }
@@ -883,9 +883,9 @@ uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_
     if (darling_active && port && status) dserver_rpc_mach_port_deallocate(CURRENT_TASK_PORT,port);
     #endif
     const char label[]="DARWIN_SERVICE_REGISTER name/port/status follows\n";
-    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
     unsigned int length=0; while (service[length]) length++;
-    RAW(SYS_write,2,service,length,0,0,0); RAW(SYS_write,2,"\n",1,0,0,0);
+    RAW(SYS_write,native_trace_fd,service,length,0,0,0); RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
     trace_call(0,0,port); trace_call(1,0,status);
     return status;
 }
@@ -945,7 +945,7 @@ static unsigned long ipc_port_construct(const unsigned long long *r,unsigned lon
     if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
     if (guest_copy(&options,r[1],sizeof(options),0)) return D_KERN_INVALID_ADDRESS;
     const char label[]="DARWIN_PORT_CONSTRUCT flags/qlimit/context follows\n";
-    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
     trace_call(0,pc,options.flags); trace_call(1,pc,options.queue_limit); trace_call(2,pc,r[2]);
     if (options.flags&~(D_MPO_CONTEXT_AS_GUARD|D_MPO_INSERT_SEND_RIGHT|D_MPO_STRICT|
                        D_MPO_QLIMIT|D_MPO_IMPORTANCE_RECEIVER|D_MPO_TEMPOWNER) ||
@@ -1014,7 +1014,7 @@ static unsigned long ipc_receive_complete(struct ipc_endpoint *endpoint,unsigned
     __atomic_store_n(&endpoint->sync_destination,0,__ATOMIC_RELEASE);
     if (status==D_MACH_RCV_PORT_DIED) {
         const char label[]="DARWIN_REPLY_RECEIVE_DIED port follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0); trace_call(0,0,endpoint->name);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0); trace_call(0,0,endpoint->name);
     }
     return status;
 }
@@ -1034,7 +1034,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         static unsigned int rejected;
         if (__atomic_fetch_add(&rejected,1,__ATOMIC_RELAXED)<32) {
             const char label[]="DARWIN_MACH_OPTIONS_REJECTED argument-index/pc/value follows\n";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             for (unsigned int i=0;i<7;i++) trace_call(i,pc,r[i]);
         }
         return D_MACH_SEND_INVALID_OPTIONS;
@@ -1046,14 +1046,14 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             static unsigned int rejected;
             if (__atomic_fetch_add(&rejected,1,__ATOMIC_RELAXED)<16) {
                 const char label[]="DARWIN_MACH_SEND_DATA_REJECTED argument-index/pc/value follows\n";
-                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
                 for (unsigned int i=0;i<7;i++) trace_call(i,pc,r[i]);
             }
             return r[2]>sizeof(request) ? D_MACH_SEND_TOO_LARGE : D_MACH_SEND_INVALID_DATA;
         }
         struct ipc_header *header=(void *)request;
         const char label[]="DARWIN_MACH_REQUEST word-index/pc/value follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         for (unsigned int i=0;i<r[2]/4 && i<16;i++) {
             uint32_t word; __builtin_memcpy(&word,request+i*4,4);
             trace_call(i,pc,word);
@@ -1141,7 +1141,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 response[8]=D_KERN_NOT_SUPPORTED; /* thread rights use another namespace */
             if (type) { response[8]=D_KERN_SUCCESS; response[9]=type; out->size=40; }
             const char label[]="DARWIN_PORT_TYPE name/type/status follows\n";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(0,pc,name); trace_call(1,pc,type); trace_call(2,pc,response[8]);
         }
         if (task && header->id==D_MIG_TASK_INFO && r[2]==40) {

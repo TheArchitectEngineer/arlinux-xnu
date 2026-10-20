@@ -113,6 +113,6 @@ static long native_ios_platform_attach(void)
     ((void (*)(void *,void *,void *))(uintptr_t)ui.api.observer_add)(loop,observer,(void *)(uintptr_t)ui.api.common_modes);
     ui.observer=1;
     const char marker[]="UI_RUNLOOP_OBSERVER_INSTALLED genuine main run loop, before waiting\n";
-    RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
     return 0;
 }

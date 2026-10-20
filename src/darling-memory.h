@@ -149,7 +149,7 @@ static void darling_memory_reply(int fd,const dserver_s2c_call_t *call,long coun
     }
     if (__atomic_fetch_add(&darling_memory_traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
         const char label[]="DARLING_S2C_MEMORY opcode/address/bytes/protection/flags/result follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         trace_call(0,0,reply.header.s2c_number); trace_call(1,0,call->mmap.address);
         trace_call(2,0,call->mmap.length);
         trace_call(3,0,reply.header.s2c_number==dserver_s2c_msgnum_mmap ? call->mmap.protection : 0);

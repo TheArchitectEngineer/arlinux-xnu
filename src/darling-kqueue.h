@@ -25,7 +25,7 @@ static long darling_kq_open(const struct darwin_kevent_qos *event)
     if (error) { RAW(SYS_close,fd,0,0,0,0,0); return error; }
     if (__atomic_fetch_add(&darling_kq_traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
         const char label[]="DARLING_KQCHAN_OPEN port/fd/flags follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         trace_call(0,0,event->ident); trace_call(1,0,fd); trace_call(2,0,event->fflags);
     }
     return fd;
@@ -84,7 +84,7 @@ static long darling_kq_read(int fd,struct darwin_kevent_qos *event,uint64_t addr
     for (unsigned int i=0;i<4;i++) event->ext[i]=reply.kev.ext[i];
     if (__atomic_fetch_add(&darling_kq_traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
         const char label[]="DARLING_KQCHAN_EVENT port/status/address/bytes/residual follows\n";
-        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         trace_call(0,0,event->ident); trace_call(1,0,event->fflags);
         trace_call(2,0,event->ext[0]); trace_call(3,0,event->ext[1]); trace_call(4,0,*residual);
     }

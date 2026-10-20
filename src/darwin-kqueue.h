@@ -241,7 +241,7 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
              * filter/debounce runs, without creating a note or changing owner. */
             if (__atomic_fetch_add(&native_workloop_cancels,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
                 const char label[]="DARWIN_WORKLOOP_SOFT_DELETE queue/owner follows\n";
-                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
                 trace_call(0,0,queue->dynamic_id); trace_call(1,0,queue->client_owner);
             }
             return 0;
@@ -424,13 +424,13 @@ static long native_kqueue_changes(struct native_kqueue *queue,uint64_t changes,u
         }
         if (result && __atomic_fetch_add(&native_kevent_errors,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
             const char label[]="DARWIN_KEVENT_ERROR ident/filter/flags/fflags/xflags/result follows\n";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(0,0,event.ident); trace_call(1,0,(long)event.filter);
             trace_call(2,0,event.flags); trace_call(3,0,event.fflags);
             trace_call(4,0,event.xflags); trace_call(5,0,result);
             if (event.filter==D_EVFILT_WORKLOOP) {
                 const char detail[]="DARWIN_WORKLOOP_ERROR_STATE queue/owner/servicer/qos/udata/ext0..3 follows\n";
-                RAW(SYS_write,2,detail,sizeof(detail)-1,0,0,0);
+                RAW(SYS_write,native_trace_fd,detail,sizeof(detail)-1,0,0,0);
                 trace_call(0,0,queue->dynamic_id); trace_call(1,0,queue->client_owner);
                 trace_call(2,0,queue->owner_tid); trace_call(3,0,event.qos);
                 trace_call(4,0,event.udata);
@@ -555,7 +555,7 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
                                 data->remaining-=total_size;
                                 if (!data->stack) data->address+=total_size;
                                 const char label[]="DARWIN_KEVENT_BUFFER_DELIVERY port/address/bytes/remaining follows\n";
-                                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                                RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
                                 trace_call(0,0,endpoint->name); trace_call(1,0,address);
                                 trace_call(2,0,total_size); trace_call(3,0,data->remaining);
                             }
@@ -652,7 +652,7 @@ static __attribute__((noreturn)) void native_event_worker_start(struct native_th
     do { count=queue ? native_event_collect(queue,thread,buffer) : -EBADF; } while (count==-EINTR);
     if (count<=0) { RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0); __builtin_unreachable(); }
     const char label[]="DARWIN_EVENT_DELIVERY queue-id/count/tid follows\n";
-    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
     trace_call(0,0,queue->dynamic_id); trace_call(1,0,count); trace_call(2,0,thread->tid);
     darwin_thread_enter(thread->guest_sp,workqueue_start_callback,thread->pthread,thread->port,
                         thread->stack_low,buffer,thread->flags|

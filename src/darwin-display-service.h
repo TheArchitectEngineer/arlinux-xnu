@@ -50,7 +50,7 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
                     __builtin_memcpy(buffer+cursor,&properties,sizeof(properties));
                     out->size=cursor+sizeof(properties);
                     const char label[]="DARWIN_RENDER_PROPERTIES width/height/millihz/mode follows\n";
-                    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                    RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
                     trace_call(0,pc,native_display_width); trace_call(1,pc,native_display_height);
                     trace_call(2,pc,native_display_refresh); trace_call(3,pc,mode);
                 }
@@ -85,7 +85,7 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
                 response[11]=0; response[12]=1; /* NDR */
                 response[13]=sizeof(list)-1;
                 const char label[]="DARWIN_RENDER_DISPLAY_LIST id/address/bytes follows\n";
-                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
                 trace_call(0,pc,D_WAYLAND_MAIN_DISPLAY_ID); trace_call(1,pc,address); trace_call(2,pc,sizeof(list)-1);
             }
         }
@@ -104,7 +104,7 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
             response[11]=0x3f800000U; /* 1.0: unscaled buffer pixels */
             response[12]=0; /* 0.0: normal, unrotated surface */
             const char label[]="DARWIN_DISPLAY_QUERY width/height follows\n";
-            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(0,pc,native_display_width); trace_call(1,pc,native_display_height);
         }
     }
