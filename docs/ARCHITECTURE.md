@@ -125,8 +125,9 @@ right using the normal complex descriptor format. Clock time uses Linux clocks.
 mach_port_construct also allocates a real socket queue/receive right and records
 its guard/context and requested initial send right. Queue limits use synchronized
 packet counts, not an approximation based on socket byte capacity. The observed
-XPC options are 0x31 and 0x3b (the latter requests a 16-message limit). Importance
-receiver eligibility uses the standalone ordinary Linux scheduling policy;
+XPC options include 0x31, 0x3b and 0x3f (including actual requested queue limits).
+Temporary ownership names the creating task; importance receiver eligibility
+uses the standalone ordinary Linux scheduling policy;
 there is no App Nap or cross-process importance inheritance. Inline local
 COPY_SEND/MOVE_SEND messages with no body rights use real queues and bounded waits;
 guard destruction and broader port ownership remain unsupported. A successful
@@ -143,6 +144,10 @@ Linux threads. A blocking special-reply receive yields that thread's workloop
 ownership and waits on real readiness; no completion is invented. Receive
 deadlines survive races with another consumer. Port allocation returns NULL on
 failure, never a kern_return value that userland could misinterpret as a name.
+MACH_RCV_SYNC_WAIT verifies the current thread's special reply port, records a
+live destination linkage during the actual receive and clears it on completion.
+A vanished destination does not fail the receive, matching XNU. This ordinary
+Linux scheduling policy performs no cross-task priority donation.
 
 The observed semaphore-create request allocates an actual Linux eventfd counter.
 Signal/wait traps are implemented, but have not passed a complete
@@ -162,6 +167,23 @@ Each receive queue can belong to multiple sets. Making a send right from the
 same local receive right increments its tracked reference. Port-set destruction,
 membership enumeration and other right-transfer operations remain unsupported;
 see the current handoff for which operations the real app has exercised.
+Current-task mach_port_type reports actual local receive/set rights and tracked
+send references through MIG routine 3201. Unimplemented thread-right queries
+fail instead of inventing a type.
+mach_port_mod_refs retains/releases an existing send right using synchronized
+counts, rejecting underflow/overflow; receive-right destruction remains unsupported.
+
+Mach timer ports own a receive socket plus a monotonic timerfd, aggregated by
+epoll so a port set or kqueue can wait on either a pending notification or a
+new expiry. The same 1:1 nanosecond timebase backs mach_absolute_time and
+absolute timer deadlines. Reading an actual expiry queues the 48-byte Darwin
+timer message with the compatibility kernel's audit/security trailer; peek and
+LARGE retries retain it. Cancel/rearm first captures an expired notification,
+so an already queued message survives those operations. Creation failure returns
+NULL, never a kern_return masquerading as a name. Normal timers may fire at
+their exact deadline within a requested leeway; critical scheduling flags fail.
+Concurrent timer destruction/namespace mutation remains unverified. The current
+handoff distinguishes implemented paths from actual framework observations.
 
 ## Event workers and process services
 
@@ -170,6 +192,12 @@ capabilities backed by actual Linux clone threads, private signal/runtime
 stacks and a scheduling gate before guest callback entry. The original
 libdispatch, pthread callback and user blocks still execute. Native epoll,
 eventfd and timerfd supply readiness for descriptor, user and timer filters.
+Timer filters select CLOCK_BOOTTIME for continuous time and CLOCK_MONOTONIC
+otherwise. Mach units use the same 1:1 timebase; calendar absolute deadlines
+are converted once into the selected clock. Absolute timers are one-shot.
+The standalone policy delivers at the requested deadline without adding a
+coalescing delay, within the supplied leeway. Changing an existing timer's
+clock kind remains unsupported.
 Memory-status subscriptions sample actual Linux /proc/meminfo once per second;
 the compatibility policy uses MemAvailable <=10% for warning and <=3% for
 critical pressure. Initial measured state and subsequent transitions are

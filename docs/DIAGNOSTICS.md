@@ -22,7 +22,7 @@ remain the source for details outside the concise report.
 | --- | --- | --- |
 | Why did UIKit throw? | Failure-only LLDB breakpoint at the actual cache's `objc_exception_throw`; read-only Objective-C ivar/CFString decoder | Selected firmware layouts only; unsupported strings report a decoding error. Never use `po` or injected guest methods to obtain the reason. |
 | Where did the ordinary attempt crash? | `app.runtime.log`, `NORMAL_RUNTIME_FAULT_PC`, same-cache symbolication and nearby disassembly | LLDB retry can take a different thread interleaving; keep both attempts distinct. Nearest symbols do not prove a function's internal semantics. |
-| Which threads are waiting? | Bounded LLDB resume, interruption and all-thread stacks | Stopping changes scheduling. A wait timeout is not normal exit; forced interruption still needs an actual hanging-run validation. |
+| Which threads are waiting? | Bounded LLDB resume, interruption and all-thread stacks; IPC_WAIT and IPC_QUEUE_SNAPSHOT read saved Mach arguments and queue state | Stopping changes scheduling. A wait timeout is not normal exit. An empty queue identifies a wait, not the missing sender; correlate headers, service lookup and stacks. Optimized-out arguments report a decoding error. |
 | Did a Mach/workloop event really arrive? | Runtime event-delivery trace plus receiver/worker stacks | Delivery alone does not prove callback completion or a successful reply. |
 | Which service does a framework actually request? | Bounded LLDB bootstrap lookup callbacks, using the actual hit frame for service name, port and caller | No lookup success is fabricated. A NULL bootstrap port is different from a reachable server rejecting a request. |
 | Is the Linux transport stuck? | LLDB native frames; targeted `strace` if Linux syscall arguments/timing are needed | Linux syscalls describe the transport, not the guest Darwin operation. Tracing and LLDB both use ptrace; choose separate runs. |
@@ -33,6 +33,15 @@ and exception APIs. Our ELF process hosts mapped Mach-O code, so native ObjC
 plugin discovery and `GetCurrentException()` cannot be assumed to work here.
 The currently verified path resolves the throw function from the exact cache
 and reads metadata without executing guest code.
+
+Run [39357483030](https://github.com/taowen/arlinux-xnu/actions/runs/39357483030)
+also validates the bounded interruption path on a genuinely waiting app:
+the ordinary attempt times out (124), LLDB interrupts after 12 seconds and
+captures all-thread stacks. That does not establish application progress.
+Run [39357931610](https://github.com/taowen/arlinux-xnu/actions/runs/39357931610)
+also verifies saved Mach arguments and the queue snapshot: three threads wait
+on empty special reply queues. A receive-only buffer's leftover header is not
+proof of its original request; use the actual send trace for that relationship.
 
 Record/replay would help scheduling failures, but is not a ready replacement:
 rr documents support for selected ARM CPUs (Apple M1+), not arbitrary hosted

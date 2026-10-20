@@ -13,36 +13,44 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39356359356](https://github.com/taowen/arlinux-xnu/actions/runs/39356359356),
-source `83650c03fc6425dede313f6a97229ee9c6b5430e`, dyld job `118412076558`.
+[39359548189](https://github.com/taowen/arlinux-xnu/actions/runs/39359548189),
+source `9c9a79fd608ae8f0b921b87a5d47b52da32758d2`, dyld job `118422380483`.
 The host child connects directly to headless Weston, configures a 1024x640
 xdg-shell surface and submits an actual wl_shm buffer. Its entered output
 advertises 60000 mHz refresh. A real frame callback
 precedes endpoint registration. This buffer is still blank: no application
 content or input has been presented.
 
-The genuine BackBoardServices screen-info exchange passes. QuartzCore then
-looks up the separate render endpoint and sends display-list routine 40231.
-The server transfers a fresh 16 KiB guest mapping containing the actual single
-Wayland resource's name, device name and ID 1. The 56-byte complex reply passes
-the real client's descriptor/type/length checks; genuine CoreFoundation parses
-the 250-byte XML property list. A main-thread VM deallocation returns success,
-and QuartzCore accepts display ID 1's property request, routine 40232: actual
-bounds/frame, current/preferred 1024x640@60Hz mode and refresh periods. This is
-not general OOL/descriptor ownership validation.
+The genuine BackBoardServices screen-info exchange, QuartzCore display list
+(40231) and display properties (40232) pass again: actual bounds/frame,
+current/preferred 1024x640@60Hz mode and refresh periods. General client OOL
+ownership and rendering remain unsupported. mach_port_type now reads real
+rights; mach_port_mod_refs retains/releases tracked send references. Missing
+retains had briefly invalidated the render service; the actual +1 operations
+and properties exchange now succeed together.
 
-The former `main display is nil` and `main display bounds are empty` assertions
-are passed. UIKit reaches _UIApplicationInitialize and creates the main
-CFRunLoop. Its port set is a real Linux epoll object; allocation and insertion
-of its genuine wakeup receive queue both return success in the actual trace.
-Port-set receive/extraction paths are implemented but not yet exercised by this
-app journey. The next missing dependency is mk_timer_create (trap 91). It still
-hits the generic unsupported trap path and returns 46, which the client treats
-as a port name; insertion fails with KERN_INVALID_NAME. CFRunLoopFindMode then
-traps at 0x180e52c70. Implement real timer creation/expiry/receive semantics;
-never treat a kern_return value as a successfully created resource.
-The ordinary app still aborts with status 133. LLDB_COMMAND_STATUS=0 describes
-evidence capture only. UIKit content has not appeared on the Wayland surface.
+Earlier real-app run [39357034127](https://github.com/taowen/arlinux-xnu/actions/runs/39357034127)
+passes CFRunLoop port-set creation and insertion of wakeup/timer ports; a Mach
+timer owns a real timerfd/receive queue. Arm/cancel/expiry delivery and port-set
+receive/extraction still lack a complete app observation. The subsequent
+calendar/continuous kevent timer correction eliminates the observed unsupported
+0x9c timer flags, reaching an actual wait in run 39357483030. These historical
+observations are not repeated by every later thread interleaving.
+
+Current failure: ordinary app status 133, PC 0x1808c3ce4,
+libdispatch __dispatch_kq_poll. The preceding kevent_id has valid flags 0x20401,
+one MACHPORT change (flags 0x186), and nonzero data_out/data_available pointers
+(arguments 5/6). native_kevent_id explicitly rejects those direct data buffers
+with ENOTSUP. Implement their actual receive-buffer allocation/writeback
+semantics, preserving message sizes, trailers, ownership and error handling;
+do not merely remove the rejection.
+
+The debugger retry also verifies MACH_RCV_SYNC_WAIT: thread 4428 waits on its
+owned reply port 0x1803, linked to live send port 0x1703, with zero queued
+messages. This confirms actual blocking/linkage metadata, not a working XPC
+peer. Temporary-owner XPC port construction now succeeds under the standalone
+ordinary Linux scheduling policy. UIKit content has not appeared on Wayland;
+LLDB_COMMAND_STATUS=0 describes evidence capture only.
 
 Both independent real-libSystem console journeys still pass: worker return 37,
 shared memory 42, input counter 1 and normal exit. Real workloop event delivery
@@ -153,10 +161,10 @@ Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
 never reached the button; the accepted run uses the actual macOS HID queue.
 
 Latest app failure receipt:
-`af18b8d0cf85f787b7c98506cc7988142ec3a8ae9c0718dd6c4d30da93c77b2d`.
-Native runtime SHA-256: `9af26d76c42469efc6f4c4abf7b54759fae9e5488894385a2e60719f3c22f033`.
-Local text: build/runs/39356359356/attempt-1/job-118412076558.log
-and job-118411952735.log. Both independent real-libSystem console launches
+`ec31936e83bd2a01fb5ee47c8e7b3cc4763fa1276385a86f749466a8e9bb6500`.
+Native runtime SHA-256: `13e846fd134083cc91034143cf578a519cd646af47ae95e6846ec806826c9f46`.
+Local text: build/runs/39359548189/attempt-1/job-118422380483.log
+and job-118422224534.log. Both independent real-libSystem console launches
 still complete. Earlier intermediate failures remain in Actions/Git history.
 
 ### Reproducible inputs and evidence
