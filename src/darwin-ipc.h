@@ -21,6 +21,11 @@ static uint32_t native_bootstrap_port,native_display_port,native_render_port;
 static uint32_t native_display_width,native_display_height;
 static int32_t native_display_pid;
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
+/* XNU message.h: LP64 OOL uses flags before size, unlike the 32-bit form. */
+struct ipc_ool_descriptor {
+    uint64_t address; uint8_t deallocate,copy,padding,type; uint32_t size;
+} __attribute__((packed,aligned(4)));
+_Static_assert(sizeof(struct ipc_ool_descriptor)==16,"Darwin LP64 OOL descriptor ABI");
 struct ipc_packet { struct darwin_audit_token sender; unsigned char message[IPC_BYTES]; };
 static void native_reply_wait(uint32_t);
 static void ipc_queue_lock(struct ipc_endpoint *endpoint)
@@ -338,13 +343,46 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             header->id>INT32_MAX-D_MIG_REPLY_ID_OFFSET) return D_MACH_SEND_INVALID_HEADER;
         /* MIG host_info: header, NDR, flavor, output count. Unknown routines
          * get a genuine MIG error reply rather than a successful empty body. */
-        uint32_t response[18];
+        uint32_t response[18]; unsigned long response_ool=0;
         for (volatile uint32_t *word=response;word<response+18;word++) *word=0;
         struct ipc_header *out=(void *)response;
         out->bits=D_MACH_TYPE_MOVE_SEND_ONCE<<D_MACH_MSG_LOCAL_BITS_SHIFT; out->size=36; out->local=reply->name;
         out->id=header->id+D_MIG_REPLY_ID_OFFSET;
         response[7]=1; /* NDR little-endian integer representation */
         response[8]=(uint32_t)D_MIG_BAD_ID; /* MIG_BAD_ID */
+        if (render && header->id==D_MIG_CA_COPY_DISPLAY_LIST && r[2]==sizeof(struct ipc_header)) {
+            int live=ipc_display_live();
+            response[8]=live ? D_KERN_RESOURCE_SHORTAGE : D_KERN_FAILURE;
+            if (live) {
+                /* The real CADisplay initializer parses a property-list array
+                 * and constructs its own remote Display objects. Describe the
+                 * actual single Wayland resource, not an invented iPhone. */
+#define IPC_STRING_INNER(x) #x
+#define IPC_STRING(x) IPC_STRING_INNER(x)
+                static const char list[]="<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                    "<plist version=\"1.0\"><array><dict>"
+                    "<key>kCADisplayName</key><string>ARLinux Wayland</string>"
+                    "<key>kCADisplayDeviceName</key><string>Wayland</string>"
+                    "<key>kCADisplayId</key><integer>" IPC_STRING(D_WAYLAND_MAIN_DISPLAY_ID) "</integer>"
+                    "</dict></array></plist>";
+#undef IPC_STRING
+#undef IPC_STRING_INNER
+                long address=anonymous_aligned(PAGE16,PROT_READ|PROT_WRITE,0);
+                if ((unsigned long)address<(unsigned long)-4095) {
+                    response_ool=address;
+                    for (unsigned int i=0;i<sizeof(list)-1;i++) ((volatile char *)address)[i]=list[i];
+                    struct ipc_ool_descriptor descriptor={.address=address,.deallocate=1,
+                        .copy=D_MACH_MSG_VIRTUAL_COPY,.type=D_MACH_MSG_OOL_DESCRIPTOR,.size=sizeof(list)-1};
+                    out->bits|=D_MACH_MSG_COMPLEX; out->size=56; response[6]=1;
+                    __builtin_memcpy(response+7,&descriptor,sizeof(descriptor));
+                    response[11]=0; response[12]=1; /* NDR */
+                    response[13]=sizeof(list)-1;
+                    const char label[]="DARWIN_RENDER_DISPLAY_LIST id/address/bytes follows\n";
+                    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                    trace_call(0,pc,D_WAYLAND_MAIN_DISPLAY_ID); trace_call(1,pc,address); trace_call(2,pc,sizeof(list)-1);
+                }
+            }
+        }
         if (display && header->id==D_MIG_BKS_GET_MAIN_SCREEN_INFO && r[2]==sizeof(struct ipc_header)) {
             response[8]=ipc_display_live() ? D_KERN_SUCCESS : D_KERN_FAILURE;
             if (!response[8]) {
@@ -433,7 +471,10 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             if (!status) { out->size=44; response[9]=now.tv_sec; response[10]=now.tv_nsec; }
         }
         long sent=ipc_enqueue_wait(reply,response,out->size,options,r[5]);
-        if (sent!=(long)out->size) return D_MACH_SEND_TIMED_OUT; /* MACH_SEND_TIMED_OUT */
+        if (sent!=(long)out->size) {
+            if (response_ool) RAW(SYS_munmap,response_ool,PAGE16,0,0,0,0);
+            return D_MACH_SEND_TIMED_OUT;
+        }
     }
 receive_message:
     if (options&D_MACH_RCV_MSG) {

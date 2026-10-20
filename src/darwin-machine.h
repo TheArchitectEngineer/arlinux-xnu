@@ -32,3 +32,5 @@
 #define D_MEMORY_SAMPLE_SECONDS 1
 #define D_MEMORY_WARN_PERCENT 10
 #define D_MEMORY_CRITICAL_PERCENT 3
+/* One registered virtual Wayland display, independent of device model. */
+#define D_WAYLAND_MAIN_DISPLAY_ID 1
