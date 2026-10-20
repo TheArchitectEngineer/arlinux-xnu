@@ -53,6 +53,7 @@ def failure_summary(result,output):
                 witnesses(stderr,('IOS_HOST_WINDOW ','WAYLAND_BACKEND_READY ','WAYLAND_TOPLEVEL_FOCUS ',
                     'Assertion failed: ',
                     'IOS_RENDER_BINDING_FAILED ','IOS_RENDER_LOCAL_CONTEXT ',
+                    'IOS_RENDER_CPU_BACKING ','IOS_RENDER_CPU_BACKING_FAILED ',
                     'IOS_INPUT_BINDING_FAILED ','IOS_INPUT_KEY_WINDOW ',
                     'IOS_LIFECYCLE_BINDING_FAILED ','IOS_LIFECYCLE_UNSUPPORTED ','IOS_LIFECYCLE_CONTRACT ',
                     'IOS_SCENE_CONSTRUCT_BEGIN ','IOS_SCENE_DELIVER_BEGIN ','IOS_SCENE_DELIVER_RETURNED ',

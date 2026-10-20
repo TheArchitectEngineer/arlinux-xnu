@@ -133,6 +133,10 @@ class Processes:
                 for symbol in ('__Z29init_max_renderable_iosurfacePv','_CABackingStoreUpdate_',
                     '__ZL29CABackingStorePrepareUpdates_P14CABackingStoremmjjjyPN2CA14GenericContextEP11UpdateState'):
                     arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore',symbol])
+            if 'IOS_RENDER_CPU_BACKING ' in Path(item['stdout']).with_suffix('.stderr').read_text(errors='replace'):
+                arguments.extend(['--lookup-bytes','4096'])
+                for symbol in ('-[CALayer display]','-[CALayer _display]'):
+                    arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore',symbol])
             result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
             runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
             if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))
