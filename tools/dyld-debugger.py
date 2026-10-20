@@ -64,6 +64,49 @@ def graphics_failure(frame, location, internal_dict):
     return False
 
 
+_security_entries = {}
+_security_returns = {}
+
+
+def security_query(frame, location, internal_dict):
+    process = frame.GetThread().GetProcess()
+    breakpoint = location.GetBreakpoint()
+    symbol = _security_entries[breakpoint.GetID()]
+    registers = [frame.FindRegister('x' + str(i)).GetValueAsUnsigned() for i in range(3)]
+    caller = frame.FindRegister('lr').GetValueAsUnsigned()
+    record = {'symbol': symbol, 'tid': frame.GetThread().GetThreadID(),
+              'caller': hex(caller), 'arguments': [hex(value) for value in registers]}
+    if symbol == '_SecTaskCopyValueForEntitlement':
+        try:
+            record['entitlement'] = GuestObjects(process).string(registers[1])
+        except (ValueError, UnicodeError, SystemError) as error:
+            record['entitlementReadError'] = str(error)
+    print('SECURITY_QUERY ' + json.dumps(record), flush=True)
+    if caller:
+        returning = process.GetTarget().BreakpointCreateByAddress(caller)
+        returning.SetThreadID(frame.GetThread().GetThreadID())
+        returning.SetOneShot(True)
+        returning.SetScriptCallbackFunction('dyld_debugger.security_return')
+        returning.SetAutoContinue(True)
+        _security_returns[returning.GetID()] = (symbol, registers[2])
+    if breakpoint.GetHitCount() >= 16:
+        breakpoint.SetEnabled(False)
+    return False
+
+
+def security_return(frame, location, internal_dict):
+    symbol, error_pointer = _security_returns.pop(location.GetBreakpoint().GetID())
+    record = {'symbol': symbol, 'tid': frame.GetThread().GetThreadID(),
+              'result': hex(frame.FindRegister('x0').GetValueAsUnsigned())}
+    if symbol == '_SecTaskCopyValueForEntitlement' and error_pointer:
+        try:
+            record['errorObject'] = hex(GuestObjects(frame.GetThread().GetProcess()).u64(error_pointer))
+        except (ValueError, SystemError) as error:
+            record['errorReadError'] = str(error)
+    print('SECURITY_RETURN ' + json.dumps(record), flush=True)
+    return False
+
+
 def install_service_breakpoints(target):
     for symbol in diagnostic_symbols():
         if symbol.get('symbol') in ('_bootstrap_look_up', '_bootstrap_look_up2', '_bootstrap_look_up3'):
@@ -81,6 +124,12 @@ def install_service_breakpoints(target):
             breakpoint.SetScriptCallbackFunction('dyld_debugger.graphics_failure')
             breakpoint.SetAutoContinue(True)
             print('GRAPHICS_FAILURE_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
+        elif symbol.get('symbol') in ('_SecTaskCreateFromSelf', '_SecTaskCopyValueForEntitlement'):
+            breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
+            _security_entries[breakpoint.GetID()] = symbol['symbol']
+            breakpoint.SetScriptCallbackFunction('dyld_debugger.security_query')
+            breakpoint.SetAutoContinue(True)
+            print('SECURITY_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
 
 
 def capture_code_references(target, address, count, label):
@@ -329,6 +378,12 @@ def capture_exception(process, breakpoint):
     except (ValueError, UnicodeError) as error:
         print('OBJC_EXCEPTION_DECODE_ERROR', str(error), flush=True)
         process.GetTarget().GetDebugger().HandleCommand('memory read --format x --size 8 --count 8 ' + hex(address))
+    for symbol in diagnostic_symbols():
+        if symbol.get('symbol') == '__UICopyValueForEntitlementUsingTaskCreationBlock':
+            address = int(symbol['address'], 16)
+            print('ENTITLEMENT_CODE', hex(address), flush=True)
+            process.GetTarget().GetDebugger().HandleCommand('disassemble --start-address ' + hex(address) + ' --count 80')
+            capture_code_references(process.GetTarget(), address, 80, 'ENTITLEMENT_REFERENCE')
 
 
 def resume_bounded(process, seconds=12):

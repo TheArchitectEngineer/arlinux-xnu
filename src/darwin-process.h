@@ -144,3 +144,37 @@ static long native_current_audit_token(struct darwin_audit_token *token)
     if (error) return error;
     return native_linux_audit_number("/proc/self/sessionid",&token->session);
 }
+
+static uint32_t native_signature_bytes,native_codesign_traces;
+static long native_csops(const unsigned long long *r)
+{
+    uint32_t pid=RAW(SYS_getpid,0,0,0,0,0,0);
+    if ((int32_t)r[0] && (int32_t)r[0]!=(int32_t)pid) return -ESRCH;
+    uint32_t version=0;
+    if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_CSOPS_AUDITTOKEN && r[4]) {
+        struct darwin_audit_token token;
+        if (guest_copy(&token,r[4],sizeof(token),0)) return -EFAULT;
+        uint64_t ticks=0; uint32_t parent=0;
+        long error=native_proc_start(pid,&ticks,&parent);
+        if (error) return error;
+        if (token.pid!=pid || token.idversion!=(uint32_t)ticks) return -ESRCH;
+        version=token.idversion;
+    }
+    long result=-ENOTSUP;
+    /* The loader records actual LC_CODE_SIGNATURE presence. No signature means
+     * status zero and no entitlements, as XNU reports for unsigned code. An
+     * embedded, unvalidated signature must not be silently labelled unsigned. */
+    if (!native_signature_bytes) {
+        if ((uint32_t)r[1]==D_CS_OPS_STATUS) {
+            uint32_t flags=0;
+            result=r[2] ? guest_copy(&flags,r[2],sizeof(flags),1) : 0;
+        } else if ((uint32_t)r[1]==D_CS_OPS_ENTITLEMENTS_BLOB) result=-EINVAL;
+    }
+    if (__atomic_fetch_add(&native_codesign_traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
+        const char label[]="DARWIN_CODESIGN_QUERY pid/op/bytes/signature_bytes/idversion/result follows\n";
+        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        trace_call(0,0,pid); trace_call(1,0,r[1]); trace_call(2,0,r[3]);
+        trace_call(3,0,native_signature_bytes); trace_call(4,0,version); trace_call(5,0,result);
+    }
+    return result;
+}

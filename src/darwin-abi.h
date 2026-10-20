@@ -28,6 +28,7 @@ enum darwin_syscall {
     D_SYS_OPEN = 5,
     D_SYS_ACCESS = 33, D_SYS_READ_NOCANCEL = 396, D_SYS_WRITE_NOCANCEL = 397,
     D_SYS_PROC_INFO = 336, D_SYS_SYSCTLBYNAME = 274,
+    D_SYS_CSOPS = 169, D_SYS_CSOPS_AUDITTOKEN = 170,
     D_SYS_CLOSE = 6,
     D_SYS_WAIT4 = 7,
     D_SYS_GETPID = 20,
@@ -212,6 +213,8 @@ enum darwin_service_abi {
     D_AMFI_ALLOW_AT_PATHS = 1, D_AMFI_ALLOW_PATH_ENV = 2, D_AMFI_ALLOW_CUSTOM_CACHE = 4,
     D_AMFI_ALLOW_FALLBACK_PATHS = 8, D_AMFI_ALLOW_PRINT_ENV = 16, D_AMFI_ALLOW_FAILED_INSERT = 32
 };
+/* XNU bsd/sys/codesign.h: read-only current-executable metadata. */
+enum darwin_codesign_operation { D_CS_OPS_STATUS=0, D_CS_OPS_ENTITLEMENTS_BLOB=7 };
 enum darwin_commpage_offset {
     D_COMM_VERSION = 0x1e, D_COMM_CPU_CAPABILITIES = 0x20,
     D_COMM_USER_PAGE_SHIFT_32 = 0x24, D_COMM_USER_PAGE_SHIFT_64 = 0x25,

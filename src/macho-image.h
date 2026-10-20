@@ -5,6 +5,7 @@
 #define LC_MAIN 0x80000028U
 #define LC_UNIXTHREAD 5
 #define LC_UUID 0x1b
+#define LC_CODE_SIGNATURE 0x1d
 #define NT_ARM_SYSTEM_CALL 0x404
 #define CARRY (1UL<<29)
 #define MAX_SEGMENTS 32
@@ -22,6 +23,7 @@ struct image {
     uint64_t entry;
     uint64_t header_address,slide;
     uint32_t filetype;
+    uint32_t signature_bytes;
     unsigned char uuid[16];
 };
 static int range(uint64_t offset,uint64_t length,uint64_t size) { return offset<=size && length<=size-offset; }
@@ -41,11 +43,19 @@ static void load_image(const char *path,struct image *im,int dynamic) {
     im->slide=h.type==7 ? 0x200000000ULL : 0;
     need(h.ncmds<=256 && range(sizeof(h),h.sizeofcmds,im->size),"invalid load commands");
     uint64_t pos=sizeof(h),commands_end=pos+h.sizeofcmds,entryoff=UINT64_MAX,thread_entry=0;
+    int signature_seen=0;
     for(uint32_t i=0;i<h.ncmds;i++) {
         need(range(pos,sizeof(struct command),commands_end),"truncated command");
         struct command cmd; memcpy(&cmd,im->bytes+pos,sizeof(cmd));
         need(cmd.size>=sizeof(cmd) && !(cmd.size%8) && range(pos,cmd.size,commands_end),"invalid command bounds");
-        if(cmd.cmd==LC_SEGMENT_64) {
+        if(cmd.cmd==LC_CODE_SIGNATURE) {
+            need(!signature_seen,"duplicate code signature command"); signature_seen=1;
+            uint32_t data[2];
+            need(cmd.size==sizeof(cmd)+sizeof(data),"invalid code signature command");
+            memcpy(data,im->bytes+pos+sizeof(cmd),sizeof(data));
+            need(range(data[0],data[1],im->size),"code signature bounds");
+            im->signature_bytes=data[1];
+        } else if(cmd.cmd==LC_SEGMENT_64) {
             need(cmd.size>=sizeof(struct segment) && im->count<MAX_SEGMENTS,"invalid segment command");
             struct segment s; memcpy(&s,im->bytes+pos,sizeof(s));
             need(s.filesize<=s.size && range(s.offset,s.filesize,im->size),"invalid segment file bounds");

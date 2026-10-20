@@ -598,6 +598,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         break;
     }
     case D_SYS_SYSCTLBYNAME: result=native_sysctlbyname(r); break;
+    case D_SYS_CSOPS: case D_SYS_CSOPS_AUDITTOKEN: result=native_csops(r); break;
     case D_SYS_PROC_INFO: result=native_proc_info(r); break;
     case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_open(r[0],r[1]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
@@ -709,9 +710,10 @@ void darwin_native_connect(void)
     darling_prepare();
 }
 
-void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base,const unsigned char uuid[16])
+void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base,const unsigned char uuid[16],uint32_t signature_bytes)
 {
     darwin_native_connect();
+    native_signature_bytes=signature_bytes;
     native_threads[0].tid=RAW(SYS_gettid,0,0,0,0,0,0);
     native_threads[0].state=2; native_threads[0].port=(D_THREAD_PORT_INDEX_BASE<<D_PORT_NAME_INDEX_SHIFT)|D_PORT_GENERATION_TAG; native_threads[0].refs=1;
 #ifdef ARLINUX_DARLING
