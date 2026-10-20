@@ -14,8 +14,8 @@ UIKit window, label and increment button. Source/TBD declarations are under
 guests/ARHello; real framework implementations come from the pinned firmware.
 
 Current integration attempt:
-[39367892856](https://github.com/taowen/arlinux-xnu/actions/runs/39367892856),
-source `8d14f628b00a55381b500860a50d882995f3fd46`, dyld job `118449298555`.
+[39370264712](https://github.com/taowen/arlinux-xnu/actions/runs/39370264712),
+source `c037bd2368f4fe15148d306b8948b166bd2e1b3a`, dyld job `118456691278`.
 Use `build.sh build --mode app --ipc darling` through the sole root entry.
 The taowen/darling parent gitlink pins our community server fork and upstream
 MIG/header dependencies; sources.lock.json records the community base.
@@ -32,45 +32,52 @@ normal return and independent relaunch. Self ports and Mach port/message traps
 use Darling's real namespace. Current-task VM, clocks and other native BSD
 services remain Linux-backed. General S2C memory/OOL behavior is not validated.
 
-**ARHello still fails**, ordinary status 133 at 0x1809bbf6c. Failure-only LLDB
-records NSInternalInconsistencyException:
-`backboardd isn't running -- or we couldn't talk to it -- result:10000003`.
-Bootstrap lookup requests com.apple.backboard.display.services with port 0;
-the old display registry is intentionally unavailable to Darling names. The
-previous task-voucher error is gone after preserving the strict empty bank
-voucher policy; it creates no port and does not emulate extra accounting keys.
+The same app now obtains real bootstrap/display send rights and the native
+service thread handles actual Mach requests through a receive-right port set.
+BackBoard screen info succeeds (1024x640). QuartzCore parses the OOL display
+list and requests display properties (40232), using a real 1024x640@60Hz mode.
+Synchronous S2C anonymous mapping callbacks allocate actual 16 KiB-aligned low
+addresses (observed 0x301754000 and 0x302990000 for 4096-byte host requests).
+The server copies the real OOL bytes into those mappings. File/fixed/executable
+S2C mappings and asynchronous signal-driven callbacks remain incomplete.
 
-The app also registers EVFILT_MACHPORT (-8) with flags 0x385 and fflags
-0x0400080e. The native kqueue explicitly rejects this until actual Darling
-kqchannels are connected. LLDB captures a real generated mach_msg_overwrite
-RPC waiting with send size 40, receive size 256, options 3. An old local queue
-snapshot cannot describe these server queues and is now suppressed.
+Mach-port kqchannels now attach and deliver actual data. One observed receive
+has status 0, 112 bytes at 0x302a1bf90 and 0x3910 bytes remaining in the caller's
+stack data area. The upstream filter had first panicked on missing locked /
+suppressed knote scan state (run 39369011861); a real cooperative processing
+mutex and scoped scan state fix that assertion without removing it. Channel
+read flags/residual extensions preserve caller-owned kevent data storage.
 
-The Wayland host child configures a real 1024x640@60Hz surface and submits a
-blank wl_shm buffer. This is **not application output**. The earlier local IPC
-baseline [39364012679](https://github.com/taowen/arlinux-xnu/actions/runs/39364012679)
-establishes BackBoard/QuartzCore display-query wire formats, but rejects an
-actual 1260-byte XPC COPY_SEND/MAKE_SEND_ONCE request. Reuse its display protocol
-knowledge, not its incomplete port/right model. The local backend remains an
-explicit comparison, not a fallback inside the Darling namespace.
+**ARHello still fails**, ordinary status 133 at 0x1808c5810. The actual BRK path
+references `BUG IN LIBDISPATCH: Unexpected error from kevent`. A workloop update
+for ident 0x300217740, filter -17, flags 7 (ADD|DELETE|ENABLE), fflags 1 and
+xflags 0 returns Linux -ENOENT. It follows the observed Mach event delivery.
+Inspect the actual XNU/libdispatch workloop cancellation/rearm lifecycle;
+ignoring ENOENT or merely retaining a dummy note would not establish ownership.
 
-Next action: connect the existing native bootstrap/display services to real
-Darling receive/send rights and actual reply delivery, then its Mach-port
-kqchannels and required S2C mappings. Keep native TLS and direct Wayland.
-Verify actual send-once transfer, peer replies, ownership and wakeups in the
-same app. Do not equate a queue enqueue or server build with app compatibility.
+The Wayland host child still supplies a real 1024x640@60Hz surface with a blank
+wl_shm buffer: **no application frame or input journey is validated**. The
+local IPC baseline remains an explicit comparison, never a fallback in the
+Darling namespace. Its display protocol knowledge is shared by both producers.
+The former 1260-byte XPC COPY_SEND/MAKE_SEND_ONCE request still needs an actual
+peer/reply observation on this backend; enqueue or right acceptance alone is
+not a preferences service response.
 
+Next action: fix the measured workloop lifecycle error, then continue this
+same app toward actual rendering/input/normal exit/relaunch and ARLinux
+integration. Keep native TLS, real port ownership, mapped OOL storage and
+direct Wayland. Extend S2C signals/FD mappings only from actual required flows.
 ## Exact evidence and inputs
 
-Latest source/run above: server job `118448809620`, native job `118449110599`.
+Latest source/run above: server job `118456313438`, native job `118456551266`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Native ELF | `0dd4b16fa22142e096f864bf2eaa8abb1f559fdf1d55a05de989e64527d87103` |
-| Darling server ELF | `0dbea5d0d891a4ed0a6aef23cfcae4e5f3a20b52e4b850e7d23c1b431d56e195` |
-| Failed app evidence receipt | `8ce356d60f7dea5c9621570d779baa28dd7b6a0b895f3b768fe6ce484bc0711f` |
-| Native receipt | `f5fd2d1916ef55c0497886498192b09f9d5b31ddbf134dee337ea7b37c0fc789` |
-| Server receipt | `1b4508ea06ebcec8d60851b097b3af573e192db0a0a393908182ab69458f9550` |
+| Native ELF | `9f614f267002f0e19f8b99b7307bdfea96078d8a8b23303b4eb9ccf08c63dc5e` |
+| Darling server ELF | `6545dea43a2e7a9b732b326bef7e2ad87e192c1d1306f3b6138af153693a82f8` |
+| Failed app evidence receipt | `1108431f06520bdf831873a33f4d9b4eed17855303012b90b2b468f8fd0ca8ff` |
+| Native receipt | `bc0d76160c1e19b11b3adc00b6aa6bda3886cceb510e247aa6d57c854c73374d` |
+| Server receipt | `af2ceb0370973aac50a6e0f96e80fefa1efb6303b549deee0899cd40606ef442` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json. Selected firmware
 is iPhone7,2 / iOS 12.5.7 / 16H81. Actual input/cache metadata and runtime hashes
@@ -88,7 +95,7 @@ cache and cores remain transient on runners, never workstation artifacts.
 
 | Experiment | Established at the linked source/run | Does not establish |
 | --- | --- | --- |
-| Darling/native dyld | [Two real libSystem console journeys](https://github.com/taowen/arlinux-xnu/actions/runs/39367892856) | UIKit GUI, general IPC/S2C/OOL, Android or all 16 KiB VM behavior |
+| Darling/native dyld | [Two real libSystem console journeys](https://github.com/taowen/arlinux-xnu/actions/runs/39370264712) | UIKit GUI, general IPC/S2C/OOL, Android or all 16 KiB VM behavior |
 | Local native runtime | [VM/COW/TLS/input/normal exit/restart](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457) | The same lifecycle on the Darling backend or Android |
 | PlayCover macOS reference | [Identical iOS input, real HID click, Count: 1 screenshot, normal exit and relaunch](https://github.com/taowen/arlinux-xnu/actions/runs/39338697656) | Linux/Android compatibility; macOS supplies its own runtime |
 | Full-system XNU reference | [Exec, VM/COW, child exit and parent wait](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725) | Userspace XNU, dyld, iOS frameworks or app compatibility |

@@ -274,8 +274,10 @@ without setting up a second full Darling userland or launchd.
 The generated RPC client uses per-thread Linux sockets, actual thread checkin
 and checkout, raw syscall hooks and no host TLS. Client memory access is
 authorized to the exact server PID. Self ports and port/message traps use the
-server's namespace; unported local registry/kqueue code must not interpret
-those numeric names as old local objects. Current-task VM and clocks continue
+server's namespace; local queue code must not interpret those numeric names
+as old local objects. The native display registry retains actual send references;
+a host service thread keeps its own libc/TLS and receives/replies through real
+Mach ports. Its bootstrap slot is set by XNU with a copied send right. Current-task VM and clocks continue
 to use native Linux operations. The strict empty bank-voucher policy below
 creates no port. There is no silent fallback to local IPC.
 
@@ -284,10 +286,13 @@ map shift accordingly. Backend mapping hooks still count Linux host pages;
 these units must remain distinct. Client and RPC-server threads are pinned to
 one CPU, with matching host/processor information. Run 39367375551 completes
 two real dyld/libSystem console journeys through this backend, including a
-pthread create/join, input, normal exit and relaunch. General server-to-client
-memory callbacks, bootstrap/display services, Mach-port kqchannels and the
-UIKit/Android journeys remain incomplete. Unsupported S2C memory requests fail
-explicitly; configuration alone does not verify all 16 KiB VM/OOL behavior.
+pthread create/join, input, normal exit and relaunch. Run 39370264712 also
+establishes real display queries/OOL copies and a 112-byte kqchannel receive
+into the caller's stack data area. Synchronous S2C anonymous mappings use the
+native low-address allocator. Guest granules and host-page hook counts remain
+distinct. File/fixed/executable mappings and asynchronous S2C signal handling
+remain incomplete. Workloop cancellation/rearm currently fails with ENOENT;
+the UIKit display/input journey and Android integration remain unverified.
 
 First-fit mutex slow waits consume real futex-backed wake credits; the genuine
 pthread library still owns its lock state and owner compare-and-swap. Other

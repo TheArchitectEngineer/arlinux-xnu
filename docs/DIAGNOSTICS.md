@@ -22,6 +22,13 @@ actual self-port RPC results. DARLING_RPC_WAIT reads the generated call's saved
 header/body from a stopped native frame, or reports unavailable fields as null.
 Do not interpret the legacy IPC endpoint array as Darling's server queues;
 the snapshot is suppressed when the community backend is active.
+DARLING_KQCHAN_EVENT records actual server-filled kevent data, including its
+returned receive address, byte count and residual. DARLING_S2C_MEMORY records
+real mapping/protection results; a display reply producer marker alone does
+not prove delivery. Correlate the genuine client's following request/stack.
+If the original RPC server has exited, the workflow preserves darling.log and
+reports DARLING_SERVER_UNAVAILABLE instead of trying LLDB against a dead IPC
+service. A skipped retry is not a diagnosis or a passing application result.
 
 ## Choose evidence for the question
 
