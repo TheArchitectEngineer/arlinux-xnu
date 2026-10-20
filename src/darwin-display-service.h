@@ -1,6 +1,19 @@
 /* Replies for the measured native display protocols. Both transports consume
  * this producer; Mach rights and OOL delivery belong to their selected backend. */
 #pragma once
+/* Measured __BKSDisplayGetMainScreenInfo MIG reply: 60 bytes, not the
+ * 68-byte receive allocation (which includes trailer room). The real client
+ * copies floats at 36..48 and one byte in each 32-bit slot at 52 and 56.
+ * BKSDisplayServicesStart uses either flag to permit empty screen bounds.
+ * This backend has a configured nonempty surface and enables neither policy. */
+struct darwin_bks_screen_info_reply {
+    struct ipc_header header;
+    uint32_t ndr[2]; int32_t status;
+    uint32_t width,height,scale,rotation;
+    uint32_t empty_bounds_policy[2];
+};
+_Static_assert(sizeof(struct darwin_bks_screen_info_reply)==60,"BKS screen-info wire layout");
+_Static_assert(offsetof(struct darwin_bks_screen_info_reply,empty_bounds_policy)==52,"BKS flag offsets");
 static unsigned long ipc_display_response(int render,int display,const unsigned char *request,
                                            unsigned long request_size,uint32_t *response,
                                            unsigned long pc,int deallocate)
@@ -90,7 +103,8 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
             }
         }
     }
-    if (display && header->id==D_MIG_BKS_GET_MAIN_SCREEN_INFO && request_size==sizeof(struct ipc_header)) {
+    if (display && (header->id==D_MIG_BKS_GET_MAIN_SCREEN_INFO ||
+                    header->id==D_MIG_BKS_GET_MAIN_SCREEN_INFO_EXTENDED) && request_size==sizeof(struct ipc_header)) {
         response[8]=ipc_display_live() ? D_KERN_SUCCESS : D_KERN_FAILURE;
         if (!response[8]) {
             /* Actual iOS 12 client: 24-byte request, 52-byte reply; four
@@ -103,6 +117,12 @@ static unsigned long ipc_display_response(int render,int display,const unsigned 
             response[10]=ipc_display_float(native_display_height);
             response[11]=0x3f800000U; /* 1.0: unscaled buffer pixels */
             response[12]=0; /* 0.0: normal, unrotated surface */
+            if (header->id==D_MIG_BKS_GET_MAIN_SCREEN_INFO_EXTENDED) {
+                struct darwin_bks_screen_info_reply *screen=(void *)response;
+                out->size=sizeof(*screen);
+                screen->empty_bounds_policy[0]=0;
+                screen->empty_bounds_policy[1]=0;
+            }
             const char label[]="DARWIN_DISPLAY_QUERY width/height follows\n";
             RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(0,pc,native_display_width); trace_call(1,pc,native_display_height);
