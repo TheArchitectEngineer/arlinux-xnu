@@ -13,22 +13,27 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39351144939](https://github.com/taowen/arlinux-xnu/actions/runs/39351144939),
-source `fe9f1d65366642abaede2f3e286f025e0d6d22bc`, dyld job `118395522325`.
+[39353289697](https://github.com/taowen/arlinux-xnu/actions/runs/39353289697),
+source `c04d2c782c941c3fe95d0f24a51b9748a71c436e`, dyld job `118402414551`.
 The host child connects directly to headless Weston, configures a 1024x640
 xdg-shell surface and submits an actual wl_shm buffer. A real frame callback
 precedes endpoint registration. This buffer is still blank: no application
 content or input has been presented.
 
-The actual bootstrap lookup now grants the registered display endpoint's send
-right. Genuine BackBoardServices sends screen-info MIG routine 6001004 and
-accepts the 52-byte reply containing configured dimensions, scale 1 and
-rotation 0. The prior backboardd connection assertion is passed. The next actual
-exception is NSInternalInconsistencyException, `main display is nil`, from
-BKSDisplayServicesStart +668; the app also queries the unimplemented
-`com.apple.CARenderServer`. The ordinary app still aborts with status 133;
-LLDB_COMMAND_STATUS=0 describes evidence capture only. A backend surface is
-not a working CADisplay/CoreAnimation render server.
+The genuine BackBoardServices screen-info exchange passes. QuartzCore then
+looks up the separate render endpoint and sends display-list routine 40231.
+The server transfers a fresh 16 KiB guest mapping containing the actual single
+Wayland resource's name, device name and ID 1. The 56-byte complex reply passes
+the real client's descriptor/type/length checks; genuine CoreFoundation parses
+the 250-byte XML property list. A main-thread VM deallocation returns success,
+and QuartzCore proceeds to display ID 1's property request, routine 40232.
+This is not general OOL/descriptor ownership validation.
+
+The former `main display is nil` assertion is passed. The new exception is
+NSInternalInconsistencyException, `main display bounds are empty`. Display
+properties/modes are not implemented yet, so 40232 receives MIG_BAD_ID.
+The ordinary app still aborts with status 133. LLDB_COMMAND_STATUS=0 describes
+evidence capture only. UIKit content has not appeared on the Wayland surface.
 
 Both independent real-libSystem console journeys still pass: worker return 37,
 shared memory 42, input counter 1 and normal exit. Real workloop event delivery
@@ -80,13 +85,22 @@ integration journey remain incomplete.
 
 ### Current boundary and next action
 
-Continue at QuartzCore/CADisplay and the actual CARenderServer client protocol.
-Connect a real display object and rendering path to the Wayland framebuffer;
-do not supply a fabricated CADisplay object or mark a blank surface as UIKit
-output. The currently supported display RPC is screen geometry only. All
-other display routines fail with MIG_BAD_ID. Native lookup replaces launchd
-name discovery at the public API boundary; it does not implement launchd's
-XPC dictionary protocol. Unsupported names, flags and target-PID lookups fail.
+Continue with CADisplay's property request 40232 (0x9d28). The observed request
+is 36 bytes (NDR + display ID), and its client reserves 632 bytes for the reply.
+The current disassembly captures the start of its inline stub in the actual
+_initWithDisplay: update callee. Expand that callee beyond the initial 96
+instructions to derive the full reply layout and field use before supplying
+actual dimensions/modes. Then connect rendering and input to the framebuffer.
+Never mark the blank backend surface as application output.
+
+Display-list routine 40231 was measured in run 39352885663: 24-byte request,
+56-byte complex reply with one LP64 OOL descriptor, NDR and matching byte count.
+CADisplay's actual metadata/code provide the keys kCADisplayName,
+kCADisplayDeviceName and kCADisplayId. Real QuartzCore builds its own remote
+Display/CADisplay objects from the parsed list. XNU's LP64 descriptor has flags
+before size, unlike the 32-bit form. The server transfers a new mapping within
+the current task; arbitrary OOL sends, cross-process transfers and discarded
+message resource cleanup remain unproven. Other unsupported routines fail.
 
 The screen ABI was established from this firmware's actual client and
 GSSetMainScreenInfo disassembly (run 39350427317): 24-byte request, 52-byte
@@ -130,10 +144,10 @@ Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
 never reached the button; the accepted run uses the actual macOS HID queue.
 
 Latest app failure receipt:
-`600f226b072e0d99bc6011103774387f90701f10a3d63cf34c752960269c4217`.
-Native runtime SHA-256: `a737f3c8952ebe84f7b5a17ebe6a408bd27dcdf3e8144788c057ae56f35ab51d`.
-Local text: build/runs/39351144939/attempt-1/job-118395522325.log
-and job-118395345767.log. Both independent real-libSystem
+`aa28208d7d74f4eac68ea6694352a0590c938f17b03d7e5ba60095d2f6d0e785`.
+Native runtime SHA-256: `778d47565231f8b30c38e534d242f027a544c7682724b87bc88cdb6c7b13211f`.
+Local text: build/runs/39353289697/attempt-1/job-118402414551.log
+and job-118402241807.log. Both independent real-libSystem
 console launches still complete. The earlier first worker run 39340039442
 reached the voucher assertion; its receipt is
 `71a285b07a8e6423117eaff487e91342f323db11930de04b66d431d6077c12e2`.

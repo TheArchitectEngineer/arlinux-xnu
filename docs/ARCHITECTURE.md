@@ -86,8 +86,9 @@ An empty mapped surface never counts as displaying the application.
 
 The task then gets an actual standalone bootstrap endpoint. The private cache's
 public bootstrap_look_up3 entry is redirected by symbol to a libc/TLS-independent
-registry adapter; no firmware-specific address is used. Only the live display
-backend's com.apple.backboard.display.services is registered, and lookup grants
+registry adapter; no firmware-specific address is used. The live backend
+registers separate display and render endpoints named
+com.apple.backboard.display.services and com.apple.CARenderServer; lookup grants
 a tracked send reference. Other names return BOOTSTRAP_UNKNOWN_SERVICE;
 unsupported flags/target-PID lookups fail. This replaces name discovery at the
 API boundary rather than pretending to implement launchd's XPC dictionary
@@ -95,7 +96,13 @@ protocol. Display requests/replies still use real Mach queues and MIG layouts.
 The measured 24-byte screen-info request uses routine 6001004; its 52-byte reply
 contains configured width/height, scale 1 and rotation 0 for the actual default
 Wayland buffer transform. Backend liveness is checked before lookup and query.
-Unimplemented display routines return MIG_BAD_ID. See the current handoff for
+Render routine 40231 returns a property-list array describing that same virtual
+display, through a fresh 16 KiB mapping and a LP64 Mach OOL descriptor. The
+actual client checks descriptor type/size, copies it into CFData, parses it and
+builds its own CADisplay object. Modes, bounds and rendering are still missing.
+This narrow server-generated transfer does not implement arbitrary client OOL
+sends, cross-process ownership or discarded-message resource cleanup.
+Unimplemented display/render routines return MIG_BAD_ID. See the current handoff for
 which requests have actually completed under genuine UIKit.
 
 Protocol reference: [Wayland specification](https://wayland.freedesktop.org/docs/html/apa.html).

@@ -90,3 +90,12 @@ for CARenderServer. The backend buffer is blank and never counts as an app
 screenshot. Weston runs headless with pixman on the runner; deployment should
 connect to ARLinux's existing compositor through WAYLAND_DISPLAY/WAYLAND_SOCKET.
 No ARLinux device integration has been validated.
+
+Display-list follow-up [39353289697](https://github.com/taowen/arlinux-xnu/actions/runs/39353289697)
+passes the nil-main-display assertion and reaches a bounds assertion.
+DARWIN_RENDER_DISPLAY_LIST records the actual mapping and byte count.
+Method inspection uses the real class metadata, including objc4's low two
+method-list fixup bits. Adjacent ADRP/ADD references are read as bounded raw
+bytes: arbitrary code references must not be handed to LLDB 18's CString SWIG
+binding, which raised SystemError on a binary block in run 39352538927.
+LLDB command success alone does not prove every optional decoder ran.
