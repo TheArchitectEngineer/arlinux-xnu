@@ -10,6 +10,16 @@
 #pragma once
 #include <stdint.h>
 
+/* launchd liblaunch/bootstrap{,_priv}.h: name-port service registry ABI. */
+enum darwin_bootstrap {
+    D_BOOTSTRAP_NAME_MAX = 128,
+    D_BOOTSTRAP_PER_PID_SERVICE = 1,
+    D_BOOTSTRAP_NAME_IN_USE = 1101,
+    D_BOOTSTRAP_UNKNOWN_SERVICE = 1102,
+    D_BOOTSTRAP_SERVICE_ACTIVE = 1103,
+    D_BOOTSTRAP_NO_MEMORY = 1105
+};
+
 enum darwin_syscall {
     D_SYS_EXIT = 1,
     D_SYS_FORK = 2,

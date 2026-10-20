@@ -86,12 +86,19 @@ resize, UIKit rendering, input forwarding and application close are unfinished.
 An empty mapped surface never counts as displaying the application.
 
 The task then gets an actual standalone bootstrap endpoint. The private cache's
-public bootstrap_look_up3 entry is redirected by symbol to a libc/TLS-independent
+public bootstrap_look_up3/register2/check_in2 entries are redirected by symbol to a libc/TLS-independent
 registry adapter; no firmware-specific address is used. The live backend
 registers separate display and render endpoints named
 com.apple.backboard.display.services and com.apple.CARenderServer; lookup grants
-a tracked send reference. Other names return BOOTSTRAP_UNKNOWN_SERVICE;
-unsupported flags/target-PID lookups fail. This replaces name discovery at the
+a tracked send reference. A mutex-protected bounded registry accepts application
+name/send-right bindings, with separate global and per-PID namespaces. Each
+binding owns a server reference independent of the client's send references;
+lookup grants a client reference to that same queue, and NULL registration
+removes a binding. Duplicate names and unknown services fail. No on-demand
+services are configured: check-in returns UNKNOWN_SERVICE or SERVICE_ACTIVE,
+never invented receive rights. Nonlocal PID lookups and unsupported flags fail.
+Receive-right destruction and cross-process registry ownership remain absent;
+destroyable timer ports cannot be registered. This replaces name discovery at the
 API boundary rather than pretending to implement launchd's XPC dictionary
 protocol. Display requests/replies still use real Mach queues and MIG layouts.
 The measured 24-byte screen-info request uses routine 6001004; its 52-byte reply
@@ -148,6 +155,11 @@ MACH_RCV_SYNC_WAIT verifies the current thread's special reply port, records a
 live destination linkage during the actual receive and clears it on completion.
 A vanished destination does not fail the receive, matching XNU. This ordinary
 Linux scheduling policy performs no cross-task priority donation.
+Combined send/receive calls follow XNU's separate path without special-reply
+linkage. SEND_OVERRIDE, SEND_SYNC_OVERRIDE, SEND_PROPAGATE_QOS and
+SEND_NOIMPORTANCE are accepted scheduling hints under this policy; their
+priority argument is not interpreted as a notification port. Actual transport,
+right and buffer errors still fail the operation.
 
 The observed semaphore-create request allocates an actual Linux eventfd counter.
 Signal/wait traps are implemented, but have not passed a complete
@@ -209,6 +221,14 @@ does not yet model cgroup memory ceilings; Android integration must address that
 where applicable. Successful registration alone does not verify pressure delivery.
 Mach-port filters watch real queue sockets and can receive into explicit guest
 buffers or report a genuine too-large message for libdispatch's allocation/retry.
+For kevent data_out/data_available, a MACHPORT note with no explicit buffer
+probes the queued message under its queue lock, includes its requested trailer,
+and carves storage from the supplied region. STACK_DATA grows downward;
+ordinary storage grows upward. A too-large message remains queued and reports
+the required size/identity. Only an actual successful copy reduces the residual
+capacity written back to the caller. Workqueue callbacks receive storage in
+the reserved page above their guest stack, disjoint from the event array.
+The current handoff distinguishes implementation from observed delivery.
 Dynamic queues have distinct IDs/epoll objects and a dedicated serial Linux
 worker. Real libpthread receives WORKLOOP flags and the ID immediately before
 the event list; its registered workloop callback executes the guest code.
@@ -226,6 +246,15 @@ Explicit SYNC_WAIT/SYNC_WAKE, full turnstiles, automatic queue retirement and
 the workloop control syscall remain unsupported. The capability bit selects real libpthread
 workloop registration; it is not a claim of full XNU workloop semantics.
 See the exact app run in docs/EXPERIMENT.md before claiming callback delivery.
+
+An implementation reference is [Darlingserver's reuse of XNU](https://docs.darlinghq.org/internals/darlingserver/index.html)
+and its [Mach-port kqueue channels](https://docs.darlinghq.org/internals/darlingserver/kqchannels.html).
+Research checkout `89751e64bc6c2082f7725061824ee0e33395b0de` supplies actual
+IPC/right/message code plus host memory, thread, lock and timer hooks. It is
+not linked here. Its duct-tape target includes i386/rtclock.c and requires
+Darling's task/thread hooks and generated MIG/RPC wrappers; importing that
+target is not a demonstrated ARM64/16 KiB/Android solution. Evaluate reuse at
+the IPC boundary while preserving the native execution and Wayland path.
 
 First-fit mutex slow waits consume real futex-backed wake credits; the genuine
 pthread library still owns its lock state and owner compare-and-swap. Other

@@ -166,12 +166,14 @@ static uint64_t load_native_cache(const char *root)
                         if (name>=table[3] || symbol[4]&0xe0 || (symbol[4]&0xe)!=0xe || !symbol[5]) continue;
                         const char *text=(const char *)file+table[2]+name;
                         need(memchr(text,0,table[3]-name)!=NULL,"cache symbol name termination");
-                        if (strcmp(text,"_bootstrap_look_up3")) continue;
+                        uint64_t target=!strcmp(text,"_bootstrap_look_up3") ? (uintptr_t)darwin_native_service_lookup :
+                            !strcmp(text,"_bootstrap_register2") ? (uintptr_t)darwin_native_service_register :
+                            !strcmp(text,"_bootstrap_check_in2") ? (uintptr_t)darwin_native_service_check_in : 0;
+                        if (!target) continue;
                         need(!(address&3) && cache_contains(address,16,4),"service adapter code bounds");
                         /* LP64 ARM64 absolute tail jump; preserve the original
                          * public API arguments and guest LR. Map is private. */
                         uint32_t code[2]={0x58000050U,0xd61f0200U};
-                        uint64_t target=(uintptr_t)darwin_native_service_lookup;
                         memcpy((void *)address,code,sizeof(code));
                         memcpy((void *)(address+8),&target,sizeof(target));
                         cache_service_hooks++;
@@ -185,7 +187,7 @@ static uint64_t load_native_cache(const char *root)
 
     }
     free(seen);
-    need(!native_display_enabled || cache_service_hooks==1,"exact service lookup adapter symbol unavailable");
+    need(!native_display_enabled || cache_service_hooks==3,"exact service registry adapter symbols unavailable");
     for (unsigned int i=0;i<3;i++) {
         struct cache_map *m=cache_maps+i;
         if (m->prot&4) __builtin___clear_cache((void *)m->address,(void *)(m->address+m->size));

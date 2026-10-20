@@ -27,6 +27,13 @@ static uint32_t native_display_width,native_display_height;
 static uint32_t native_display_refresh;
 static uint64_t native_display_period_bits;
 static int32_t native_display_pid;
+/* Each occupied binding owns a server-side send reference, distinct from
+ * the app's send_refs. Local receive objects currently live until exit;
+ * timer objects, which can be destroyed, cannot enter this registry. */
+static struct native_service_binding {
+    char name[D_BOOTSTRAP_NAME_MAX]; uint32_t port; int32_t pid;
+} native_services[32];
+static int native_registry_mutex;
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
 /* XNU message.h: LP64 OOL uses flags before size, unlike the 32-bit form. */
 struct ipc_ool_descriptor {
@@ -344,8 +351,7 @@ static unsigned long ipc_port_mod_refs(const unsigned long long *r)
     }
 }
 /* A registry for this standalone compatibility machine, not launchd/XPC.
- * The public lookup API is redirected here by name in the private cache map.
- * Only an actually created Linux display is registered. Other names fail. */
+ * Public APIs are redirected by symbol in the private cache map. */
 int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refresh_millihz,
                                    uint64_t period_bits,int32_t backend_pid)
 {
@@ -371,33 +377,116 @@ static uint32_t ipc_display_float(uint32_t value)
     unsigned int exponent=31-__builtin_clz(value);
     return ((exponent+127)<<23)|((value<<(23-exponent))&0x7fffffU);
 }
+static void native_registry_lock(void)
+{
+    while (__atomic_exchange_n(&native_registry_mutex,1,__ATOMIC_ACQUIRE))
+        RAW(SYS_futex,&native_registry_mutex,FUTEX_WAIT_PRIVATE,1,0,0,0);
+}
+static void native_registry_unlock(void)
+{
+    __atomic_store_n(&native_registry_mutex,0,__ATOMIC_RELEASE);
+    RAW(SYS_futex,&native_registry_mutex,FUTEX_WAKE_PRIVATE,1,0,0,0);
+}
+static uint32_t native_service_name(uint64_t address,char *name)
+{
+    for (unsigned int i=0;i<D_BOOTSTRAP_NAME_MAX;i++) {
+        if (guest_copy(name+i,address+i,1,0)) return D_KERN_INVALID_ADDRESS;
+        if (!name[i]) return i ? D_KERN_SUCCESS : D_KERN_INVALID_ARGUMENT;
+    }
+    return D_KERN_INVALID_ARGUMENT;
+}
+static int native_service_equal(const char *left,const char *right)
+{
+    for (unsigned int i=0;i<D_BOOTSTRAP_NAME_MAX;i++) {
+        if (left[i]!=right[i]) return 0;
+        if (!left[i]) return 1;
+    }
+    return 0;
+}
+static uint32_t native_service_static(const char *name)
+{
+    return native_service_equal(name,"com.apple.backboard.display.services") ? native_display_port :
+        native_service_equal(name,"com.apple.CARenderServer") ? native_render_port : 0;
+}
+uint32_t darwin_native_service_check_in(uint32_t bootstrap,uint64_t name,uint64_t output,uint64_t flags)
+{
+    (void)output;
+    if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
+    if (flags&~(uint64_t)D_BOOTSTRAP_PER_PID_SERVICE) return D_KERN_NOT_SUPPORTED;
+    char service[D_BOOTSTRAP_NAME_MAX]; uint32_t error=native_service_name(name,service);
+    if (error) return error;
+    int32_t pid=flags ? RAW(SYS_getpid,0,0,0,0,0,0) : 0;
+    /* No launch-on-demand receive rights are preconfigured. Dynamically
+     * registered services already have an owner; check-in cannot steal it. */
+    uint32_t status=!pid && native_service_static(service) ?
+        D_BOOTSTRAP_SERVICE_ACTIVE : D_BOOTSTRAP_UNKNOWN_SERVICE;
+    native_registry_lock();
+    for (unsigned int i=0;i<32;i++)
+        if (native_services[i].port && native_services[i].pid==pid &&
+            native_service_equal(service,native_services[i].name)) status=D_BOOTSTRAP_SERVICE_ACTIVE;
+    native_registry_unlock();
+    return status;
+}
+uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_t port,uint64_t flags)
+{
+    if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
+    if (flags&~(uint64_t)D_BOOTSTRAP_PER_PID_SERVICE) return D_KERN_NOT_SUPPORTED;
+    char service[D_BOOTSTRAP_NAME_MAX]; uint32_t error=native_service_name(name,service);
+    if (error) return error;
+    int32_t pid=flags ? RAW(SYS_getpid,0,0,0,0,0,0) : 0;
+    if (!pid && native_service_static(service)) return D_BOOTSTRAP_NAME_IN_USE;
+    struct ipc_endpoint *endpoint=port ? ipc_find(port) : NULL;
+    if (port && (!endpoint || endpoint->kind || endpoint->timer_fd>=0 ||
+        !__atomic_load_n(&endpoint->send_refs,__ATOMIC_ACQUIRE))) return D_KERN_INVALID_RIGHT;
+    native_registry_lock();
+    struct native_service_binding *entry=NULL,*empty=NULL;
+    for (unsigned int i=0;i<32;i++) {
+        struct native_service_binding *candidate=native_services+i;
+        if (!candidate->port) { if (!empty) empty=candidate; continue; }
+        if (candidate->pid==pid && native_service_equal(candidate->name,service)) entry=candidate;
+    }
+    uint32_t status=D_KERN_SUCCESS;
+    if (!port) {
+        if (entry) entry->port=0;
+        else status=D_BOOTSTRAP_UNKNOWN_SERVICE;
+    } else if (entry) status=D_BOOTSTRAP_NAME_IN_USE;
+    else if (!empty) status=D_BOOTSTRAP_NO_MEMORY;
+    else {
+        unsigned int i=0; do { empty->name[i]=service[i]; } while (service[i++]);
+        empty->pid=pid; empty->port=port;
+    }
+    native_registry_unlock();
+    const char label[]="DARWIN_SERVICE_REGISTER name/port/status follows\n";
+    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    unsigned int length=0; while (service[length]) length++;
+    RAW(SYS_write,2,service,length,0,0,0); RAW(SYS_write,2,"\n",1,0,0,0);
+    trace_call(0,0,port); trace_call(1,0,status);
+    return status;
+}
 uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t output,
                                     int32_t target,uint64_t instance,uint64_t flags)
 {
     (void)instance; /* Default lookup has no instance-selection flag. */
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
     if (!ipc_display_live()) return D_KERN_FAILURE;
-    if (target || flags) return D_KERN_NOT_SUPPORTED;
-    char service[256]; unsigned int length=0;
-    for (;length<sizeof(service);length++) {
-        if (guest_copy(service+length,name+length,1,0)) return D_KERN_INVALID_ADDRESS;
-        if (!service[length]) break;
+    if (flags || (target && target!=RAW(SYS_getpid,0,0,0,0,0,0))) return D_KERN_NOT_SUPPORTED;
+    char service[D_BOOTSTRAP_NAME_MAX]; uint32_t error=native_service_name(name,service);
+    if (error) return error;
+    native_registry_lock();
+    uint32_t port=target ? 0 : native_service_static(service);
+    for (unsigned int i=0;!port && i<32;i++)
+        if (native_services[i].port && native_services[i].pid==target &&
+            native_service_equal(service,native_services[i].name)) port=native_services[i].port;
+    uint32_t status=D_BOOTSTRAP_UNKNOWN_SERVICE;
+    if (port) {
+        struct ipc_endpoint *endpoint=ipc_find(port);
+        if (endpoint) {
+            status=guest_copy(&port,output,sizeof(port),1) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
+            if (!status) __atomic_fetch_add(&endpoint->send_refs,1,__ATOMIC_ACQ_REL);
+        }
     }
-    const char display[]="com.apple.backboard.display.services";
-    const char render[]="com.apple.CARenderServer";
-    const struct { const char *name; unsigned int length; uint32_t port; } services[]={
-        {display,sizeof(display)-1,native_display_port}, {render,sizeof(render)-1,native_render_port}
-    };
-    uint32_t port=0;
-    for (unsigned int i=0;i<sizeof(services)/sizeof(services[0]);i++) {
-        if (length!=services[i].length) continue;
-        unsigned int j=0; while (j<length && service[j]==services[i].name[j]) j++;
-        if (j==length) { port=services[i].port; break; }
-    }
-    if (!port) return 1102; /* BOOTSTRAP_UNKNOWN_SERVICE */
-    if (guest_copy(&port,output,sizeof(port),1)) return D_KERN_INVALID_ADDRESS;
-    __atomic_fetch_add(&ipc_find(port)->send_refs,1,__ATOMIC_ACQ_REL);
-    return D_KERN_SUCCESS;
+    native_registry_unlock();
+    return status;
 }
 static unsigned long ipc_port_construct(const unsigned long long *r,unsigned long pc)
 {
