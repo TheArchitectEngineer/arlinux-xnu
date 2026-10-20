@@ -42,7 +42,7 @@ static long native_file_code_ranges(int fd,uint64_t mapped_offset,uint64_t mappe
     struct stat info;
     long status=RAW(SYS_fstat,fd,&info,0,0,0,0);
     if (status<0) return status;
-    if (!S_ISREG(info.st_mode) || info.st_size<0) return -ENOEXEC;
+    if ((info.st_mode&S_IFMT)!=S_IFREG || info.st_size<0) return -ENOEXEC;
     uint64_t base=0,limit=info.st_size;
     struct native_mach_header header;
     status=native_file_read(fd,&header,sizeof(header),0);
