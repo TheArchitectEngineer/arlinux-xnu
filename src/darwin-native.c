@@ -837,6 +837,7 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     if (page==MAP_FAILED) { perror("Darwin commpage"); exit(1); }
     memcpy(page,"commpage 64-bit",14);
     *(uint16_t *)(page+D_COMM_VERSION)=D_COMM_COMPAT_VERSION;
+    *(uint64_t *)(page+D_COMM_CPU_CAPABILITIES64)=UINT64_C(1)<<D_COMM_CPU_COUNT_SHIFT;
     *(uint32_t *)(page+D_COMM_CPU_CAPABILITIES)=1U<<D_COMM_CPU_COUNT_SHIFT; /* one configured CPU, conservative features */
     page[D_COMM_USER_PAGE_SHIFT_32]=page[D_COMM_USER_PAGE_SHIFT_64]=D_GUEST_PAGE_SHIFT;
     long cache=sysconf(_SC_LEVEL1_DCACHE_LINESIZE);

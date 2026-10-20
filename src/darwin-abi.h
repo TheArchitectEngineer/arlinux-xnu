@@ -254,7 +254,7 @@ enum darwin_service_abi {
 /* XNU bsd/sys/codesign.h: read-only current-executable metadata. */
 enum darwin_codesign_operation { D_CS_OPS_STATUS=0, D_CS_OPS_ENTITLEMENTS_BLOB=7 };
 enum darwin_commpage_offset {
-    D_COMM_VERSION = 0x1e, D_COMM_CPU_CAPABILITIES = 0x20,
+    D_COMM_VERSION = 0x1e, D_COMM_CPU_CAPABILITIES64 = 0x10, D_COMM_CPU_CAPABILITIES = 0x20,
     D_COMM_USER_PAGE_SHIFT_32 = 0x24, D_COMM_USER_PAGE_SHIFT_64 = 0x25,
     D_COMM_CACHE_LINE_SIZE = 0x26, D_COMM_ACTIVE_CPUS = 0x34,
     D_COMM_PHYSICAL_CPUS = 0x35, D_COMM_LOGICAL_CPUS = 0x36,
@@ -292,7 +292,7 @@ enum darwin_workqueue_abi {
     D_PTHREAD_FEATURE_MAINTENANCE = 0x10, D_PTHREAD_FEATURE_KEVENT = 0x40,
     D_PTHREAD_FEATURE_WORKLOOP = 0x80, D_PTHREAD_FEATURE_DEFAULT = 0x40000000,
     D_WQ_RETURN = 0x004, D_WQ_KEVENT_RETURN = 0x040, D_WQ_WORKLOOP_RETURN = 0x100,
-    D_WQ_NEWSPISUPP = 0x010, D_WQ_REQTHREADS = 0x020,
+    D_WQ_NEWSPISUPP = 0x010, D_WQ_REQTHREADS = 0x020, D_WQ_SETUP_DISPATCH = 0x400,
     D_WQ_EVENT_MANAGER_PRIORITY = 0x080, D_WQ_SHOULD_NARROW = 0x200,
     D_WQ_PRIO_QOS = 0x4000, D_WQ_OVERCOMMIT = 0x10000,
     D_WQ_NEWSPI = 0x40000, D_WQ_KEVENT = 0x80000, D_WQ_EVENT_MANAGER = 0x100000,
@@ -391,7 +391,10 @@ struct darwin_port_options { uint32_t flags,queue_limit; uint64_t reserved[2]; }
 _Static_assert(sizeof(struct darwin_port_options)==24,"Darwin port options wire layout");
 
 /* XNU bsd/sys/fcntl.h, fchecklv_t LP64 wire layout. */
-enum darwin_fcntl { D_F_CHECK_LV=98 };
+enum darwin_fcntl { D_F_GETPATH=50, D_F_CHECK_LV=98 };
+/* XNU bsd/pthread/workqueue_syscalls.h, configuration metadata v1/v2. */
+struct darwin_workq_dispatch_config { uint32_t version,flags; uint64_t serial_offset,label_offset; };
+_Static_assert(sizeof(struct darwin_workq_dispatch_config)==24,"workq_dispatch_config ABI");
 struct darwin_fchecklv {
     int64_t file_start;
     uint64_t error_message_size,error_message;

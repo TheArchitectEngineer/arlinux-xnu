@@ -228,7 +228,21 @@ static long native_fcntl(const unsigned long long *r)
     long status=RAW(SYS_fcntl,r[0],F_GETFD,0,0,0,0);
     if (status<0) return status;
     status=-ENOTSUP;
-    if (r[1]==D_F_CHECK_LV) {
+    if (r[1]==D_F_GETPATH) {
+        char path[1024],root[1024];
+        status=native_fd_path(r[0],path);
+        if(!status) {
+            char *guest=path;
+            if(root_descriptor>=0) {
+                status=native_fd_path(root_descriptor,root);
+                if(status)return status;
+                unsigned int n=0;while(root[n] && root[n]==path[n])n++;
+                if(!root[n] && (!path[n] || path[n]=='/'))guest=path[n] ? path+n : "/";
+            }
+            unsigned int length=0;while(guest[length])length++;
+            status=guest_copy(guest,r[2],length+1,1);
+        }
+    } else if (r[1]==D_F_CHECK_LV) {
         struct darwin_fchecklv request;
         if (guest_copy(&request,r[2],sizeof(request),0)) return -EFAULT;
         if (request.file_start<0) return -EINVAL;
@@ -244,7 +258,7 @@ static long native_fcntl(const unsigned long long *r)
     }
     static unsigned int traces;
     if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
-        const char label[]="DARWIN_FCNTL library_validation=disabled fd/command/argument/result follows\n";
+        const char label[]="DARWIN_FCNTL fd/command/argument/result follows\n";
         RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         trace_call(0,0,r[0]); trace_call(1,0,r[1]); trace_call(2,0,r[2]); trace_call(3,0,status);
     }
