@@ -399,16 +399,41 @@ def capture_protocol_blocks(target, address, count):
         if immediate&(1<<20): immediate-=1<<21
         pointer=((address+index*4)&~4095)+(immediate<<12)
         pointer+=((following>>10)&4095)<<(12 if following&(1<<22) else 0)
-        if pointer in seen or address<=pointer<address+count*4:
+        register=following&31
+        stored=False
+        for instruction in words[index+2:index+7]:
+            if instruction&0xffc003e0==0xf90003e0 and instruction&31==register:
+                stored=True
+            if instruction&0xffc003e0==0xa90003e0 and register in (instruction&31,(instruction>>10)&31):
+                stored=True
+        if not stored or pointer&3 or pointer in seen or address<=pointer<address+count*4:
             continue
         region=lldb.SBMemoryRegionInfo()
         error=target.GetProcess().GetMemoryRegionInfo(pointer,region)
         if error.Fail() or not region.IsExecutable():
             continue
+        first=objects.u32(pointer)
+        if first&0xffc003ff!=0xd10003ff and first&0xffc003e0!=0xa98003e0:
+            continue
         seen.add(pointer)
         print('APP_SETTINGS_CODEC_BLOCK '+json.dumps({'method':hex(address),'pc':hex(address+index*4),'block':hex(pointer)}),flush=True)
         target.GetDebugger().HandleCommand('disassemble --start-address '+hex(pointer)+' --count 128')
         capture_code_references(target,pointer,128,'APP_SETTINGS_CODEC_REFERENCE')
+        callees=set()
+        for offset,word in enumerate(struct.unpack('<'+'I'*128,objects.read(pointer,512))):
+            if word&0xfc000000!=0x94000000:
+                continue
+            displacement=word&0x03ffffff
+            if displacement&(1<<25): displacement-=1<<26
+            callee=pointer+offset*4+displacement*4
+            if callee in callees or abs(callee-pointer)>0x100000:
+                continue
+            callees.add(callee)
+            print('APP_SETTINGS_CODEC_CALLEE '+json.dumps({'block':hex(pointer),'callee':hex(callee)}),flush=True)
+            target.GetDebugger().HandleCommand('disassemble --start-address '+hex(callee)+' --count 128')
+            capture_code_references(target,callee,128,'APP_SETTINGS_CODEC_CALLEE_REFERENCE')
+            if len(callees)>=2:
+                break
         if len(seen)>=4:
             break
 
