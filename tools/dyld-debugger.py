@@ -68,6 +68,34 @@ _security_entries = {}
 _ipc_callback_entries = {}
 
 
+def capture_exit_callers(frame):
+    """Use the breakpoint's actual thread; LLDB's selected thread may differ."""
+    target = frame.GetThread().GetProcess().GetTarget()
+    objects = GuestObjects(target.GetProcess())
+    pointer = frame.FindRegister('fp').GetValueAsUnsigned()
+    caller = frame.FindRegister('lr').GetValueAsUnsigned()
+    seen = set()
+    for depth in range(8):
+        if caller < 4096 or caller in seen:
+            break
+        seen.add(caller)
+        start = caller - 96
+        print('EXIT_CALLER_CODE ' + json.dumps({'depth': depth, 'caller': hex(caller),
+              'tid': frame.GetThread().GetThreadID()}), flush=True)
+        target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(start) + ' --count 64')
+        try:
+            capture_code_references(target, start, 64, 'EXIT_CALLER_REFERENCE')
+            if pointer < 4096 or pointer & 15:
+                break
+            next_pointer, caller = struct.unpack('<QQ', objects.read(pointer, 16))
+            if next_pointer <= pointer:
+                break
+            pointer = next_pointer
+        except (ValueError, UnicodeError, SystemError) as error:
+            print('EXIT_CALLER_READ_ERROR', str(error), flush=True)
+            break
+
+
 def capture_callback_callees(target, address, budget=12):
     pending = [(address, 0)]
     seen = {address}
@@ -101,6 +129,11 @@ def ipc_callback(frame, location, internal_dict):
     record = {'symbol': symbol, 'tid': frame.GetThread().GetThreadID(),
               'caller': hex(frame.FindRegister('lr').GetValueAsUnsigned()),
               'arguments': [hex(value) for value in arguments], 'objects': []}
+    if symbol == '_xpc_connection_create_mach_service':
+        try:
+            record['serviceName'] = objects.cstring(arguments[0])
+        except (ValueError, UnicodeError, SystemError) as error:
+            record['serviceNameReadError'] = str(error)
     for argument, pointer in enumerate(arguments[:3]):
         if pointer < 4096:
             continue
@@ -119,7 +152,7 @@ def ipc_callback(frame, location, internal_dict):
             record['continuationReadError'] = str(error)
     print('IPC_CALLBACK ' + json.dumps(record), flush=True)
     if symbol == '__exit':
-        frame.GetThread().GetProcess().GetTarget().GetDebugger().HandleCommand('thread backtrace --count 12')
+        capture_exit_callers(frame)
     if breakpoint.GetHitCount() == 1:
         address = frame.GetPC()
         print('IPC_CALLBACK_CODE', hex(address), symbol, flush=True)
@@ -208,6 +241,8 @@ def dictionary_inputs(frame, location, internal_dict):
 def install_service_breakpoints(target):
     for symbol in diagnostic_symbols():
         if symbol.get('symbol') in ('__exit', '__xpc_connection_call_reply_async', '__xpc_mach_port_get_context',
+                '_xpc_connection_create_mach_service', '_xpc_connection_set_event_handler',
+                '__xpc_connection_call_event_handler',
                 '_dispatch_mach_send_with_result_and_async_reply_4libxpc',
                 '__dispatch_mach_msg_async_reply_invoke$VARIANT$mp'):
             breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))

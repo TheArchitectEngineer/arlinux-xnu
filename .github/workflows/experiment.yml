@@ -313,6 +313,9 @@ jobs:
               --lookup /usr/lib/libobjc.A.dylib _objc_exception_throw \
               --lookup /usr/lib/system/libsystem_kernel.dylib __exit \
               --lookup /usr/lib/system/libxpc.dylib __xpc_connection_call_reply_async \
+              --lookup /usr/lib/system/libxpc.dylib _xpc_connection_create_mach_service \
+              --lookup /usr/lib/system/libxpc.dylib _xpc_connection_set_event_handler \
+              --lookup /usr/lib/system/libxpc.dylib __xpc_connection_call_event_handler \
               --lookup /usr/lib/system/libxpc.dylib __xpc_mach_port_get_context \
               --lookup /usr/lib/system/libdispatch.dylib '_dispatch_mach_send_with_result_and_async_reply_4libxpc' \
               --lookup /usr/lib/system/libdispatch.dylib '__dispatch_mach_msg_async_reply_invoke$VARIANT$mp' \

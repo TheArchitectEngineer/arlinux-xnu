@@ -336,6 +336,40 @@ Full-system ios-sweet/XNU runs are behavioral references, not proof of ARLinux
 compatibility. The active application path uses native ARM64 execution; its
 build does not depend on a CPU instruction-emulation engine.
 
+## Community reuse decisions
+
+Source review (2026-10-20); these candidates are not new runtime dependencies.
+Keep the pinned Darlingserver/XNU IPC backend. For the current AssertionServices
+early exit, first identify the actual XPC connection, event and request; the exit
+stack alone does not identify a missing daemon or establish its protocol.
+
+- [Darling libxpc](https://github.com/darlinghq/darling-libxpc/tree/394e033333d3c253a12f08a99090c113b0917d00):
+  `src/serialization.m`, `connection.m`, `pipe.m` and
+  `internal-include/xpc/serialization.h` implement wire encoding, connection
+  check-in and Mach descriptors. The reviewed files are GPL-3.0-or-later.
+  Prefer this implementation over a new codec; its Objective-C/dispatch
+  dependencies and compatibility with the selected iOS cache need integration
+  evidence. Numerous functions in `launchd.m` remain stubs.
+- [Darling launchd](https://github.com/taowen/darling/blob/60f5ef3fdc6a560edb11820f6f0154d396d8ebc7/src/launchd/src/core.c)
+  already contains service registration, lookup/check-in and XPC-domain logic
+  (reviewed `core.c`: Apache-2.0). Reuse the relevant protocol implementation
+  where needed; starting its complete userland is a separate integration cost.
+- [libspc](https://github.com/saelo/pwn2own2018/tree/96c16ca43f0d9ec0a64f3da30f2d0798ed70582c/libspc)
+  is a small MIT-licensed C protocol reference cited by Darling's serializer.
+  Its decoder ignores OOL descriptors and aborts/exits on several errors; it is
+  not a drop-in production transport. Any extracted code needs actual descriptor
+  ownership and bounded decoding, using the existing Mach backend.
+- [VibeDarling Wayland backend](https://github.com/VibeDarling/darling-cocotron/tree/f0e1b1b28c439af9fcd01f039d74fbfe958f3067/AppKit/Wayland.backend)
+  supplies window/configure, shared buffers, input and EGL subwindows. Reviewed
+  `WaylandWindow.m` is MIT-licensed. Reuse applicable host-side pieces; its
+  AppKit/NSEvent/Onyx2D boundary is not UIKit, iOS CoreAnimation or IOHID wiring.
+
+Darling's reviewed `BKSProcessAssertion.m` only forwards invocations to a stub
+logger; it is not an AssertionServices service implementation. PureDarwin/XPC
+also explicitly documents incomplete/no-op XPC behavior. Neither establishes a
+solution to the current exit. Preserve component-specific licenses and pinned
+source when promoting any candidate into the dependency graph.
+
 ## PlayCover reference boundary
 
 PlayCover's pinned Macho.swift changes iOS Mach-O platform commands to Mac
