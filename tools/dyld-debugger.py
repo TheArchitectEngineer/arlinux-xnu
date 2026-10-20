@@ -42,18 +42,31 @@ def install_service_breakpoints(target):
 
 
 def capture_display_code(target):
+    def calls(address, count):
+        instructions = target.ReadInstructions(target.ResolveLoadAddress(address), count)
+        for instruction in instructions:
+            if instruction.GetMnemonic(target) == 'bl':
+                operand = instruction.GetOperands(target).split()[0]
+                if re.fullmatch('0x[0-9a-fA-F]+', operand):
+                    yield int(operand, 16)
+
+    def disassemble(label, address, count):
+        print(label, hex(address), flush=True)
+        target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(address) + ' --count ' + str(count))
+
     for symbol in diagnostic_symbols():
         if symbol.get('symbol') == '_BKSDisplayServicesStart':
-            print('DISPLAY_START_CODE', symbol['address'], flush=True)
-            target.GetDebugger().HandleCommand('disassemble --start-address ' + symbol['address'] + ' --count 160')
-            instructions = target.ReadInstructions(target.ResolveLoadAddress(int(symbol['address'], 16)), 16)
-            for instruction in instructions:
-                if instruction.GetMnemonic(target) == 'bl':
-                    operand = instruction.GetOperands(target).split()[0]
-                    if re.fullmatch('0x[0-9a-fA-F]+', operand):
-                        print('DISPLAY_START_QUERY_CODE', operand, flush=True)
-                        target.GetDebugger().HandleCommand('disassemble --start-address ' + operand + ' --count 120')
-                    break
+            address = int(symbol['address'], 16)
+            disassemble('DISPLAY_START_CODE', address, 120)
+            query = next(calls(address, 16), None)
+            if query:
+                disassemble('DISPLAY_START_QUERY_CODE', query, 40)
+                # Inspect the actual port getter and MIG client called by the
+                # observed query. No firmware-specific addresses are assumed.
+                for child in list(dict.fromkeys(calls(query, 32)))[:4]:
+                    disassemble('DISPLAY_QUERY_CALLEE_CODE', child, 180)
+        elif symbol.get('symbol') == '_bootstrap_look_up3':
+            disassemble('BOOTSTRAP_LOOKUP_CODE', int(symbol['address'], 16), 160)
 
 
 def install_exception_breakpoint(target):
