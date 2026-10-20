@@ -1,0 +1,8 @@
+--- !tapi-tbd-v3
+archs: [ arm64 ]
+platform: ios
+install-name: /System/Library/Frameworks/CoreGraphics.framework/CoreGraphics
+exports:
+  - archs: [ arm64 ]
+    symbols: [ _CGColorSpaceCreateDeviceRGB ]
+...

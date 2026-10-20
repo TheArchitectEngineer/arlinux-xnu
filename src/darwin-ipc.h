@@ -892,7 +892,6 @@ uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_
 uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t output,
                                     int32_t target,uint64_t instance,uint64_t flags)
 {
-    native_ui_install_observer();
     (void)instance; /* Default lookup has no instance-selection flag. */
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
     if (!native_session_manager) {

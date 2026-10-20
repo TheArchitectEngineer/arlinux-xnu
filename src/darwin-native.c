@@ -6,6 +6,7 @@
 #include "darwin-native.h"
 #include "darwin-abi.h"
 #include "darwin-machine.h"
+#include "ios-platform-abi.h"
 #include <errno.h>
 #include <sys/wait.h>
 #include <stddef.h>
@@ -696,7 +697,10 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         break;
     case D_SYS_MMAP: result=native_mmap(r); break;
     case D_SYS_PLATFORM:
-        if (r[3] == D_PLATFORM_SET_TSD) {
+        if (r[3] == ARLINUX_IOS_PLATFORM_QUERY) {
+            result=r[0]==ARLINUX_IOS_PLATFORM_ABI_VERSION && ui.pixels && ui.control ?
+                (long)(uintptr_t)native_ui_install_observer : -ENOTSUP;
+        } else if (r[3] == D_PLATFORM_SET_TSD) {
             __asm__ volatile("msr tpidr_el0,%0" :: "r"(r[0]) : "memory");
             result = 0;
         } else if (r[3] == D_PLATFORM_GET_TSD) {

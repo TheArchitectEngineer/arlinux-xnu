@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include "darwin-native.h"
+#include "ios-platform-abi.h"
 #ifdef ARLINUX_DARLING
 #include "../components/darling/session-core.h"
 #endif
@@ -149,15 +150,33 @@ int main(int argc,char **argv)
         memcpy((void *)(top+16),absolute,strlen(absolute)+1);
         free(absolute);
         uint64_t apple=top;
-        top-=8*8;
+        uint64_t environment=0;
+        if (options.role==NATIVE_APPLICATION) {
+            /* Only the declared compatibility library enters guest envp;
+             * host credentials/build environment are never copied wholesale. */
+            char *library=realpath(program,NULL);
+            need(library!=NULL,"canonical application path for platform library");
+            char *separator=strrchr(library,'/'); need(separator!=NULL,"application bundle path");
+            *separator=0;
+            char injected[8192];
+            int count=snprintf(injected,sizeof(injected),"DYLD_INSERT_LIBRARIES=%s/%s",library,ARLINUX_IOS_PLATFORM_LIBRARY);
+            free(library);
+            need(count>0 && (size_t)count<sizeof(injected),"platform library environment length");
+            top=(top-count-1)&~15UL;
+            memcpy((void *)top,injected,count+1); environment=top;
+        }
+        top-=(environment ? 10 : 8)*8;
         uint64_t *words=(void *)top;
         words[0]=im.header_address;
         words[1]=1;
         words[2]=name;
         words[3]=0;             /* argv terminator */
-        words[4]=0;             /* envp terminator */
-        words[5]=apple;
-        words[6]=words[7]=0;
+        if (environment) {
+            words[4]=environment; words[5]=0;
+            words[6]=apple; words[7]=words[8]=words[9]=0;
+        } else {
+            words[4]=0; words[5]=apple; words[6]=words[7]=0;
+        }
     }
     /* Zeroed argc/argv/env/apple terminators for this freestanding entry. */
     fprintf(stderr,"NATIVE_DARWIN_ENTRY entry=%#" PRIx64 " host_page=%ld (Linux services, not XNU boot)\n",im.entry,host);
