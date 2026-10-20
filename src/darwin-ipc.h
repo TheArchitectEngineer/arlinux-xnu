@@ -13,7 +13,10 @@
 #include <linux/futex.h>
 static unsigned long host_send_refs,clock_send_refs[2];
 #define IPC_ENDPOINTS 64
-#define IPC_BYTES 1024
+/* Bounded inline transport, one guest page. The observed XPC request is
+ * 1260 bytes; the former 1024-byte buffer misreported it as invalid data.
+ * Larger messages still require dynamically owned message storage. */
+#define IPC_BYTES D_GUEST_PAGE_SIZE
 struct ipc_endpoint {
     uint32_t name,generation; int used,kind,read_fd,write_fd;
     unsigned long send_refs,dead_refs; uint64_t context; uint32_t options;
@@ -73,7 +76,9 @@ static long ipc_timer_capture(struct ipc_endpoint *endpoint)
     struct ipc_timer_message message={.header={
         .bits=D_MACH_TYPE_MOVE_SEND<<D_MACH_MSG_LOCAL_BITS_SHIFT,
         .size=sizeof(message),.local=endpoint->name}};
-    struct ipc_packet packet;
+    /* Timer notifications are fixed-size: don't reserve an entire maximum
+     * message on each nested timer probe's runtime stack. */
+    struct { struct darwin_audit_token sender; unsigned char message[sizeof(message)]; } packet;
     for (volatile uint32_t *word=(uint32_t *)&packet.sender;
          word<(uint32_t *)(&packet.sender+1);word++) *word=0;
     __builtin_memcpy(packet.message,&message,sizeof(message));
@@ -640,7 +645,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
                 for (unsigned int i=0;i<7;i++) trace_call(i,pc,r[i]);
             }
-            return D_MACH_SEND_INVALID_DATA;
+            return r[2]>sizeof(request) ? D_MACH_SEND_TOO_LARGE : D_MACH_SEND_INVALID_DATA;
         }
         struct ipc_header *header=(void *)request;
         const char label[]="DARWIN_MACH_REQUEST word-index/pc/value follows\n";
