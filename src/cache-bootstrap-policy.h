@@ -5,7 +5,7 @@
 static unsigned int cache_bootstrap_policy_hooks;
 static uint64_t cache_cb_target(uint64_t pc,uint32_t word)
 {
-    int32_t offset=(int32_t)(word<<8)>>11;
+    int32_t offset=(int32_t)(word<<8)>>13;
     return pc+(int64_t)offset*4;
 }
 static void cache_bootstrap_policy(uint64_t base,uint64_t bytes)
