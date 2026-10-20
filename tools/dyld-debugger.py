@@ -77,7 +77,7 @@ def capture_display_code(target):
             text = None
             try:
                 text = objects.cfstring(pointer)
-            except (ValueError, UnicodeError):
+            except (ValueError, UnicodeError, SystemError):
                 try:
                     # Arbitrary references may be binary blocks, not strings.
                     # LLDB 18's CString SWIG binding can raise SystemError on
@@ -85,7 +85,7 @@ def capture_display_code(target):
                     candidate = objects.read(pointer, 256).split(b'\0', 1)[0].decode('ascii')
                     if 3 <= len(candidate) <= 256 and all(32 <= ord(c) < 127 for c in candidate):
                         text = candidate
-                except (ValueError, UnicodeError):
+                except (ValueError, UnicodeError, SystemError):
                     pass
             if text:
                 print('DISPLAY_REFERENCE ' + json.dumps({'pc': hex(address+index*4), 'address': hex(pointer), 'text': text}), flush=True)
@@ -124,7 +124,7 @@ def capture_display_code(target):
                         name = objects.cstring(objects.u64(entry))
                         implementation = objects.u64(entry+16)
                         print('OBJC_DISPLAY_METHOD ' + json.dumps({'kind': kind, 'selector': name, 'address': hex(implementation)}), flush=True)
-                        if name in ('mainDisplay', 'displays') or name.lstrip('_').startswith('initWith'):
+                        if name in ('mainDisplay', 'displays', 'bounds', 'currentMode', 'availableModes', 'preferredMode') or name.lstrip('_').startswith('initWith'):
                             disassemble('DISPLAY_METHOD_CODE', implementation, 96)
                             for child in list(dict.fromkeys(calls(implementation, 48)))[:3]:
                                 if kind == 'class' and name in ('mainDisplay', 'displays'):
@@ -133,8 +133,11 @@ def capture_display_code(target):
                                         disassemble('DISPLAY_METHOD_CALLEE_CODE', grandchild, 180)
                                     references(child, 400)
                                 else:
-                                    disassemble('DISPLAY_METHOD_CALLEE_CODE', child, 96)
-            except (ValueError, UnicodeError) as error:
+                                    count = 720 if name.lstrip('_').startswith('initWith') and child != next(calls(implementation, 48), None) else 96
+                                    disassemble('DISPLAY_METHOD_CALLEE_CODE', child, count)
+                                    if count > 96:
+                                        references(child, count)
+            except (ValueError, UnicodeError, SystemError) as error:
                 print('OBJC_DISPLAY_DECODE_ERROR', str(error), flush=True)
 
 
