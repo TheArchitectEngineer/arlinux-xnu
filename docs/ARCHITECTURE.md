@@ -26,8 +26,9 @@ operations, with Darwin metadata layouts translated from Linux statx.
 The Linux kernel supplies real anonymous 16 KiB-aligned mappings, protection,
 read/write, fork/COW, wait and process exit. The kernel validates user buffers.
 The runtime converts Linux error results to Darwin's carry/positive-errno ABI.
-No XNU kernel is linked into this native path. The historical ptrace hello shim
-remains an explicitly separate host diagnostic, never app acceptance.
+The local IPC backend does not link XNU. The opt-in Darling backend runs real
+XNU IPC code in a separate Linux process. The historical ptrace hello shim
+remains a separate host diagnostic, never app acceptance.
 
 Primary sources: [tawcroot runtime](https://github.com/taowen/tawc/blob/bee5ae2d216f6283a8a6e6b60f18e2a7b6d8451d/notes/tawcroot/seccomp-filter.md),
 [Apple TSD](https://github.com/apple-oss-distributions/xnu/blob/1b191cb58250d0705d8a51287127505aa4bc0789/libsyscall/os/tsd.h)
@@ -262,30 +263,31 @@ See the exact app run in docs/EXPERIMENT.md before claiming callback delivery.
 
 An implementation reference is [Darlingserver's reuse of XNU](https://docs.darlinghq.org/internals/darlingserver/index.html)
 and its [Mach-port kqueue channels](https://docs.darlinghq.org/internals/darlingserver/kqchannels.html).
-The official research checkout is `89751e64bc6c2082f7725061824ee0e33395b0de`.
-The more relevant ARM64 candidate is [VibeDarling/darlingserver](https://github.com/VibeDarling/darlingserver/tree/91415406f46359c1fd78a8a5feadf0eefb18fb53),
-pinned by VibeDarling/darling `47cd6dc7aa0e16596777ad189dddc6e75c3de4ba`.
-Its duct-tape target selects rtclock_arm64.c on ARM64 and supplies real XNU
-ipc_space, ipc_right, ipc_kmsg and ipc_notify implementations. Generated RPC
-includes mach_msg_overwrite; dtape hooks cover current task/thread, blocking,
-timers and guest memory. Neither checkout is linked into this runtime yet.
+`--ipc darling` selects the pinned [community ARM64 implementation](https://github.com/VibeDarling/darlingserver).
+Our taowen/darling parent gitlink fixes its server, MIG and header dependencies;
+the lock records the upstream base. The component adapter consumes upstream
+CMake targets. XNU ipc_space, ipc_right, ipc_kmsg and ipc_notify execute in the
+server, with upstream dtape scheduling, timers and process_vm memory hooks.
+Our server fork adds an explicit `--rpc-only` lifecycle and guest configuration,
+without setting up a second full Darling userland or launchd.
 
-Prioritize adapting that existing IPC implementation rather than extending
-our socket shim with another independent right-name/notification model. Keep
-the native Mach-O/TLS execution and Wayland services; evaluate an isolated
-server/host bridge so Darling's host libc never runs under guest TLS.
-The community memory initializer derives PAGE_SHIFT_CONST from the host page
-size: this is not proof of fixed 16 KiB guests on a 4 KiB runner. Its CMake also
-needs parent-provided libsimple, MIG and generated RPC targets. ARM64 source
-support now builds on our ARM64 runner (run 39366405665); execution, our iOS app
-journey and Android integration remain unverified. The upstream server's
-generated client RPC exposes socket, send/receive and process/thread hooks;
-these can use our raw Linux syscall path without changing guest TLS. The full
-server already supplies the dtape host hooks, avoiding a second implementation
-of its scheduler and memory access. Its current launcher also prepares a full
-Darling prefix and launchd; isolate the server lifecycle needed by our native
-launcher before attempting application integration. Any required component
-edits belong in a pinned fork.
+The generated RPC client uses per-thread Linux sockets, actual thread checkin
+and checkout, raw syscall hooks and no host TLS. Client memory access is
+authorized to the exact server PID. Self ports and port/message traps use the
+server's namespace; unported local registry/kqueue code must not interpret
+those numeric names as old local objects. Current-task VM and clocks continue
+to use native Linux operations. The strict empty bank-voucher policy below
+creates no port. There is no silent fallback to local IPC.
+
+The fork explicitly configures the ARM64 XNU VM granule to 16 KiB and its VM
+map shift accordingly. Backend mapping hooks still count Linux host pages;
+these units must remain distinct. Client and RPC-server threads are pinned to
+one CPU, with matching host/processor information. Run 39367375551 completes
+two real dyld/libSystem console journeys through this backend, including a
+pthread create/join, input, normal exit and relaunch. General server-to-client
+memory callbacks, bootstrap/display services, Mach-port kqchannels and the
+UIKit/Android journeys remain incomplete. Unsupported S2C memory requests fail
+explicitly; configuration alone does not verify all 16 KiB VM/OOL behavior.
 
 First-fit mutex slow waits consume real futex-backed wake credits; the genuine
 pthread library still owns its lock state and owner compare-and-swap. Other

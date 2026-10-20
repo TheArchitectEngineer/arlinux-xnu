@@ -2,316 +2,130 @@
 
 ## Current handoff
 
-The active target is a modifiable Darwin/iOS compatibility environment on
-Linux/Android. Native ARM64, 16 KiB guest pages and one advertised CPU remain
-fixed. Original XNU boot is a behavioral reference, not an application gate.
-No third-party iOS app, Linux UI or Android integration has passed.
-
-Current integration experiment: `build.sh build --mode darling` builds the
-community ARM64 darlingserver from the parent gitlink in sources.lock.json.
-[Run 39366405665](https://github.com/taowen/arlinux-xnu/actions/runs/39366405665),
-source `3a01205f217f2b24e1500283923a0b7c2f52c4f6`, job `118444158513`, built
-the actual ARM64 Linux server successfully. Executable SHA-256:
-`0c42db11d276c93cc9cbb0dee37cdefc2f5046c4302e51fcf7724c55a621b7a1`;
-receipt SHA-256:
-`0524855d7eab9f4ae6c2089919f62312baaec0bc9ef8474e3c859f36230cbb51`.
-The thin components/darling adapter consumes upstream CMake targets and their
-MIG/RPC generators. Parent-pinned XNU and pthread supply MIG header symlinks.
-This mode does not execute the server, run ARHello or replace its local IPC yet.
-The next gates are real RPC integration, 16 KiB guest semantics and the same
-UIKit app journey.
+The target is a modifiable Darwin/iOS compatibility environment on
+Linux/Android: native ARM64, 16 KiB guest pages, one advertised/scheduled CPU
+and non-arm64e code. Original XNU boot is a behavioral reference. Acceptance
+still requires an actual iOS app's display, input, normal exit and relaunch,
+followed by its actual ARLinux integration journey. None of those GUI/Android
+requirements has passed on Linux.
 
 Current application: **ARHello 1.0** (`io.arlinux.ARHello`), a programmatic
-UIKit window, label and increment button. Its interfaces/TBD files contain only
-ABI declarations; real implementations come from the selected iOS firmware.
-The app's code and bundle metadata are committed under guests/ARHello.
+UIKit window, label and increment button. Source/TBD declarations are under
+guests/ARHello; real framework implementations come from the pinned firmware.
 
-Latest application attempt:
-[39364012679](https://github.com/taowen/arlinux-xnu/actions/runs/39364012679),
-source `cf61e92e1ebce7e89aecdbbab2461a6fcdd233e6`, dyld job `118436647929`.
-The host child connects directly to headless Weston, configures a 1024x640
-xdg-shell surface and submits an actual wl_shm buffer. Its entered output
-advertises 60000 mHz refresh. A real frame callback
-precedes endpoint registration. This buffer is still blank: no application
-content or input has been presented.
+Current integration attempt:
+[39367892856](https://github.com/taowen/arlinux-xnu/actions/runs/39367892856),
+source `8d14f628b00a55381b500860a50d882995f3fd46`, dyld job `118449298555`.
+Use `build.sh build --mode app --ipc darling` through the sole root entry.
+The taowen/darling parent gitlink pins our community server fork and upstream
+MIG/header dependencies; sources.lock.json records the community base.
 
-The genuine BackBoardServices screen-info exchange, QuartzCore display list
-(40231) and display properties (40232) pass again: actual bounds/frame,
-current/preferred 1024x640@60Hz mode and refresh periods. General client OOL
-ownership and rendering remain unsupported. mach_port_type now reads real
-rights; mach_port_mod_refs retains/releases tracked send references. Missing
-retains had briefly invalidated the render service; the actual +1 operations
-and properties exchange now succeed together.
+The RPC service runs separately with `--rpc-only`: no second userland,
+launchd or mount setup. Its ARM64 XNU configuration is guest shift 14, with
+one CPU; this runner's Linux pages are 4096 bytes. Backend memory hooks still
+count host pages. The native generated RPC client uses raw Linux syscalls,
+actual per-thread checkin/checkout and authorization to the exact server PID.
 
-Earlier real-app run [39357034127](https://github.com/taowen/arlinux-xnu/actions/runs/39357034127)
-passes CFRunLoop port-set creation and insertion of wakeup/timer ports; a Mach
-timer owns a real timerfd/receive queue. Arm/cancel/expiry delivery and port-set
-receive/extraction still lack a complete app observation. The subsequent
-calendar/continuous kevent timer correction eliminates the observed unsupported
-0x9c timer flags, reaching an actual wait in run 39357483030. These historical
-observations are not repeated by every later thread interleaving.
+**Two genuine dyld/libSystem console journeys pass through Darling**, with
+malloc, a real pthread create/join (value 37, shared memory 42), input counter 1,
+normal return and independent relaunch. Self ports and Mach port/message traps
+use Darling's real namespace. Current-task VM, clocks and other native BSD
+services remain Linux-backed. General S2C memory/OOL behavior is not validated.
 
-Current failure: ordinary app status 133 at 0x180b1d1b8 in libxpc.
-The actual preceding branch references "Data corruption: Malformed Mach
-message or kernel bug." Run 39363495230 established one cause: our 1024-byte
-transport rejected a readable 1260-byte XPC request before attempting to copy
-it. Current inline capacity is one guest page (16 KiB), and capacity overflow
-returns SEND_TOO_LARGE rather than invalid user data. Timer notifications use
-fixed-size temporary storage so nested receives do not reserve a full message
-on every timer probe. Larger messages still need dynamically owned storage.
+**ARHello still fails**, ordinary status 133 at 0x1809bbf6c. Failure-only LLDB
+records NSInternalInconsistencyException:
+`backboardd isn't running -- or we couldn't talk to it -- result:10000003`.
+Bootstrap lookup requests com.apple.backboard.display.services with port 0;
+the old display registry is intentionally unavailable to Darling names. The
+previous task-voucher error is gone after preserving the strict empty bank
+voucher policy; it creates no port and does not emulate extra accounting keys.
 
-That 1260-byte request now reaches header validation and returns
-MACH_SEND_INVALID_HEADER (0x10000010), not the earlier invalid-data error.
-Its actual header is bits 0x1513, size 0x4ec, destination 0x1303, reply 0xf03,
-voucher 0, ID 0x10000000, with inline XPC serialization beginning 0x40585043.
-This is COPY_SEND plus MAKE_SEND_ONCE for the reply right, without a complex
-body. The generic local transport currently rejects all reply-right transfers.
-Implement actual send-once ownership/name allocation and delivery before
-accepting this request; stripping the local port or its disposition would
-silently lose the reply path. Then establish which real peer owns the target
-queue; enqueue alone cannot stand in for a preferences daemon response.
+The app also registers EVFILT_MACHPORT (-8) with flags 0x385 and fflags
+0x0400080e. The native kqueue explicitly rejects this until actual Darling
+kqchannels are connected. LLDB captures a real generated mach_msg_overwrite
+RPC waiting with send size 40, receive size 256, options 3. An old local queue
+snapshot cannot describe these server queues and is now suppressed.
 
-Special-reply destruction is now implemented for empty, unguarded queues and
-actually executes: trap 25 destroys reply port 0xf03 and preserves one dead-name
-reference. The following receive starts after destruction and returns
-INVALID_NAME. No DARWIN_REPLY_RECEIVE_DIED marker has yet verified wakeup of an
-already blocked receiver. Tombstones remain until exit; general guarded/queued
-message cleanup, reclamation and concurrent reference mutation remain gaps.
-Earlier run 39362388407 verifies successful ARHello.gsEvents registration.
-The later XPC failure may occur before that milestone in a different thread
-interleaving; absence of the registration marker is not a registration regression.
+The Wayland host child configures a real 1024x640@60Hz surface and submits a
+blank wl_shm buffer. This is **not application output**. The earlier local IPC
+baseline [39364012679](https://github.com/taowen/arlinux-xnu/actions/runs/39364012679)
+establishes BackBoard/QuartzCore display-query wire formats, but rejects an
+actual 1260-byte XPC COPY_SEND/MAKE_SEND_ONCE request. Reuse its display protocol
+knowledge, not its incomplete port/right model. The local backend remains an
+explicit comparison, not a fallback inside the Darling namespace.
 
-Direct kevent receive buffers now implement real allocation, stack/forward
-placement, trailer sizing and residual writeback; workqueue workers reserve
-receive storage above their actual guest callback stacks. The earlier explicit
-ENOTSUP is gone, but no successful buffer-message delivery marker has yet been
-observed. Do not claim this receive path is accepted by the app journey.
+Next action: connect the existing native bootstrap/display services to real
+Darling receive/send rights and actual reply delivery, then its Mach-port
+kqchannels and required S2C mappings. Keep native TLS and direct Wayland.
+Verify actual send-once transfer, peer replies, ownership and wakeups in the
+same app. Do not equate a queue enqueue or server build with app compatibility.
 
-The current receipt SHA-256 is
-`136cc2d486a418495974512e9c35a5d224a93f188c1acfd7a7d27cd751174f27`.
-LLDB_COMMAND_STATUS=0 describes evidence capture only.
+## Exact evidence and inputs
 
-Both independent real-libSystem console journeys still pass: worker return 37,
-shared memory 42, input counter 1 and normal exit. Real workloop event delivery
-also repeats. Linux UIKit display/input/normal close/relaunch and the ARLinux
-integration journey remain incomplete.
+Latest source/run above: server job `118448809620`, native job `118449110599`.
 
-### Verified execution
+| Artifact | SHA-256 |
+| --- | --- |
+| Native ELF | `0dd4b16fa22142e096f864bf2eaa8abb1f559fdf1d55a05de989e64527d87103` |
+| Darling server ELF | `0dbea5d0d891a4ed0a6aef23cfcae4e5f3a20b52e4b850e7d23c1b431d56e195` |
+| Failed app evidence receipt | `8ce356d60f7dea5c9621570d779baa28dd7b6a0b895f3b768fe6ce484bc0711f` |
+| Native receipt | `f5fd2d1916ef55c0497886498192b09f9d5b31ddbf134dee337ea7b37c0fc789` |
+| Server receipt | `1b4508ea06ebcec8d60851b097b3af573e192db0a0a393908182ab69458f9550` |
 
-- The freestanding Mach-O console performs real 16 KiB VM operations, TLS,
-  fork/COW, exact child status 37, input, parent exit 0 and independent relaunch.
-  Original milestone: [39320163457](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457),
-  source `809b6abcb14e99224b4ae5c10cbdecce5510778c`.
-- Genuine iOS 12.5.7 dyld passes page geometry, TSD setup, entropy, executable
-  startup parameters, explicit permissive loading policy and real clocks.
-- The cache's three regions are genuinely mapped at their declared addresses
-  into private Linux mappings. Version-2 pointer chains are decoded at slide 0.
-  1439 Mach-O images are inspected and 4147 TLS instructions are adapted;
-  executable permissions are restored only after rewriting and cache flush.
-  Aliased image addresses are deduplicated to avoid rewriting an instruction
-  twice. This is not general proof for every code/data mixture or later JIT.
-- shared_region_check returns an address only after those mappings exist.
-  Apple signature authentication is explicitly disabled in this compatibility
-  policy; the firmware input is SHA-256 verified. No fake signature-registration
-  or shared-region success is used to substitute for mapping/relocation.
-- Current-task Mach VM allocate, deallocate and anonymous vm_map reach real
-  Linux memory operations. Unsupported targets, flags and map modes fail.
-- Host priority-info and Clock service lookup complete actual MIG queue
-  send/receive exchanges; the real pthread/libc clients accept their replies.
-  Semaphores created by libc have real eventfd counters. A task's empty Bootstrap
-  slot returns its actual NULL state; no launchd/XPC service is fabricated.
-- Legacy iOS pointer layouts require low guest addresses. Heap/stack mappings
-  now stay below the 36-bit commpage, with real alignment masks honored.
-  Previously Linux auto-placement at 0xff6a2e0005c0 was masked by Objective-C
-  to an unmapped 0x7f6a2e000580. The actual low-address run passes that point.
-- The genuine dynamic C main prints DYNAMIC_MAIN through real libSystem write,
-  obtains/touches memory through real malloc, creates/joins a worker, verifies
-  DYNAMIC_THREAD joined value=37 memory=42, then handles input and prints
-  DYNAMIC_CONSOLE counter=1 normal return. No substitute pthread library is used.
-- Registered pthread callbacks run with per-thread guest TLS, private Linux
-  signal/runtime stacks and a real current-thread port. The child restores the
-  parent's pre-SIGSYS signal mask before entering guest code; inheriting the
-  temporary handler mask previously killed the child on its first trapped call.
-  Darwin ulocks use real Linux futex wait/wake, and thread termination uses
-  SYS_exit rather than ending the whole process.
-- LLDB resolves actual dyld symbols, hits a real policy-function breakpoint,
-  reads registers, steps an instruction and captures the fatal library stack.
-  Cache-frame symbolication uses the same firmware's real Mach-O/local symbol
-  tables and records the nearest available symbol, not an invented function.
+Firmware identity/URL/IPSW SHA-256 live in sources.lock.json. Selected firmware
+is iPhone7,2 / iOS 12.5.7 / 16H81. Actual input/cache metadata and runtime hashes
+are retained in each run's artifacts and receipts. Apple executables, firmware,
+cache and cores remain transient on runners, never workstation artifacts.
 
-### Current boundary and next action
-
-Use the community Darling implementation for the next IPC integration:
-VibeDarling/darlingserver `91415406f46359c1fd78a8a5feadf0eefb18fb53` already
-contains an ARM64 clock/build path and XNU right/message/notification machinery.
-The standalone socket shim remains the measured baseline; an unverified local
-send-once prototype is not part of the committed runtime. Evaluate the existing
-dtape/RPC boundary, its parent build dependencies and fixed 16 KiB guest-page
-adaptation through the sole root entry on runners. Preserve native ARM64/TLS
-and Wayland integration. See ARCHITECTURE.md for exact inspected sources.
-
-The acceptance case remains the observed noncomplex COPY_SEND/MAKE_SEND_ONCE
-request: verify actual right delivery and the peer's reply, not just a new
-library's compilation or a successful enqueue. Rendering, input,
-normal close, relaunch and ARLinux integration remain required; a blank backend
-surface never counts as application output.
-
-Display-list routine 40231 was measured in run 39352885663: 24-byte request,
-56-byte complex reply with one LP64 OOL descriptor, NDR and matching byte count.
-CADisplay's actual metadata/code provide the keys kCADisplayName,
-kCADisplayDeviceName and kCADisplayId. Real QuartzCore builds its own remote
-Display/CADisplay objects from the parsed list. XNU's LP64 descriptor has flags
-before size, unlike the 32-bit form. The server transfers a new mapping within
-the current task; arbitrary OOL sends, cross-process transfers and discarded
-message resource cleanup remain unproven. Other unsupported routines fail.
-
-The screen ABI was established from this firmware's actual client and
-GSSetMainScreenInfo disassembly (run 39350427317): 24-byte request, 52-byte
-reply, four binary32 outputs; scale divides pixel dimensions and rotation
-feeds a transform. There are no device-model/version address tables. The
-current Wayland client chooses buffer scale 1 and the normal transform.
-The backend runs in a separate host process with its own TLS and event loop;
-Linux child-state checks reject lookups/queries after it exits. Resize,
-input routing, app frame submission and normal window close remain unfinished.
-See [execution design](ARCHITECTURE.md) for the service/Wayland boundary.
-
-The earlier special-reply fix establishes actual waiting in ipc_message/ppoll
-and workloop delivery. The older 0x1808bf9d4 stack access is absent in later
-observed attempts; that is not proof against every lifetime race. Complex
-Mach descriptors, full reply/voucher-right transfer, workloop SYNC_WAIT/WAKE,
-turnstile inheritance and queue retirement remain incomplete. Forced-interrupt
-diagnostics still need an actual hanging-run validation. No run is pending.
-
-ABI sources: libpthread-330.250.2
-`b4b8795e1d4030f45efe04947773b265240ce03c`, XNU's pinned ipc_entry/event/voucher
-sources, and libdispatch-1173.100.2
-`007e3cc2e720293070b6e93b6541595f601cc1d3` for the workloop code absent from the
-older public source snapshot. These are references; the selected iOS binary's
-actual requests determine required wire behavior.
-
-The macOS reference now completes **two actual GUI journeys**:
-[39338697656](https://github.com/taowen/arlinux-xnu/actions/runs/39338697656),
-source `2cffea293786eeb28826291a8eba7a5b24ab199a`, job `118354771378`.
-The identical iOS input is converted by pinned, unchanged PlayCover code and
-ad-hoc signed; no PlayTools is injected. Actual HID mouse events produce the
-app callback and a screenshot displaying Count: 1. Normal NSRunningApplication
-termination yields inferior exit 0 under LLDB. Relaunch starts at Count: 0,
-then a second click and normal exit repeat successfully. All three inspected
-clicked/relaunch screenshots agree with the app logs. macOS success does not
-establish Linux/Android compatibility.
-
-Original input hash matches the Linux app hash below; converted/signed hash is
-`5b08e8cf4c36e5894825b254bc3de4e43058da9fc77c407fff948e6b196e340f`.
-Reference receipt: `b2e4e987dea4a4840b0f125b56c425bb42ec05490c0aed87cbae41b76c26bc62`.
-Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
-never reached the button; the accepted run uses the actual macOS HID queue.
-
-Latest app failure receipt:
-`136cc2d486a418495974512e9c35a5d224a93f188c1acfd7a7d27cd751174f27`.
-Native runtime SHA-256: `911f4276acbf43d23b4de68d6dcd6c63d7f3aa9099ad2771001cc4d7f5934a12`.
-Local text: build/runs/39364012679/attempt-1/job-118436647929.log
-and job-118436517742.log. Both independent real-libSystem console launches
-still complete. Earlier intermediate failures remain in Actions/Git history.
-
-### Reproducible inputs and evidence
-
-- Firmware: iPhone7,2 / iOS 12.5.7 / 16H81, from the Apple URL in sources.lock.json.
-- IPSW SHA-256: `7c10ff0e4cdbe24f33012e47e8458a8ae8c858f2e3dbfce766c196f5d229cadb`.
-- OS DMG SHA-256: `7040c19bd5b62182ccf6449ca562bbeb6071f4e404138ace93c5f731d1a9e5a7`.
-- dyld SHA-256: `5c5563ec91c78cfe060cb500e3ca8d764350572f124f98144bac175aa25655e9`.
-- Cache: 1276837888 bytes, SHA-256 `a60a0653eb730f73b5d1de61a97e86e5a241f7a4ff00c83659f9eefb965cac6f`.
-- ARHello 1.0 Mach-O SHA-256: `4b346aa7dd998425990cb9ef282ddb7e5252b4d9d069b12c369d32d407f29b77`.
-- Failed app attempt receipt SHA-256: `746ebdd5a489cde0e40c12c10378a11f4bcbd7abb884896e800ace99d721ec4e`.
-- Failed application text: build/runs/39336911768/dyld-job.log. Actual LLDB frames
-  are symbolicated against the same cache; the stop is libsystem_pthread
-  _pthread_workqueue_supported +44, reached from UIKitCore/libdispatch.
-- Dynamic C Mach-O SHA-256: `2b66ddec09f799b483a2e97b86b859ed5cc1e0474a9c6afb197dde17cf3327ca`.
-- Native runtime SHA-256: `a4b010f189b6edf98b728d79519a5049a60230e2dbffb5f0e652fca4281eed46`.
-- Successful dyld receipt SHA-256:
-  `1c210c9872d50435a4a75eede5c180d1e2aa30634ccf61dfe321c8d21aef014f`.
-- Local text: build/runs/39336200293/dyld-job.log. Run artifacts retain verified
-  input/cache metadata, native executable hashes and runtime logs. Apple firmware,
-  cache and executable files remain transient on the runner.
-
-ABI reference sources also inspected locally: libpthread-330.250.2 commit
-`b4b8795e1d4030f45efe04947773b265240ce03c` and Libc-1272.250.1 commit
-`c175362543a5e715f0152c5f0164f12951346375`. Registration fields are read from
-actual userland metadata rather than assuming a specific pthread object layout.
-
-The cache format reference inspected locally is Apple dyld-655.1, source
-5fe128e4e6a5966ebe01bfaf3bbffdfb17da1390. It informs format interpretation;
-the actual 650.3.4 binary/runtime evidence determines observed ABI behavior.
-The fcntl command 97 was observed before preloading existed (run 39328635511).
-Its variadic wrapper had not yet materialized its third argument in x2; this
-must not be mistaken for the raw syscall ABI. Preloading now replaces this
-kernel loading responsibility with genuine host mappings.
-
-Earlier milestones/failures remain in Actions and Git history: real dyld entry
-39322206750; missing thread ID/entropy/startup path/AMFI; real clocks
-39325147072; live debugger 39326720941; real cache reads and Mach VM allocation
-39328108372; cache initialization 39328927723; vm_map 39329330536. The original
-XNU full-system VM/COW/exit reference is run 39311945725, not Linux adaptation
-or application acceptance. The removed kernel candidate is preserved in Git.
-macOS reference tracing and the ARHello window are now observed in the run
-above; Linux and macOS both use the root build.sh entry.
+| Input | SHA-256 |
+| --- | --- |
+| ARHello 1.0 original Mach-O | `4b346aa7dd998425990cb9ef282ddb7e5252b4d9d069b12c369d32d407f29b77` |
+| Dynamic console Mach-O | `2b66ddec09f799b483a2e97b86b859ed5cc1e0474a9c6afb197dde17cf3327ca` |
+| dyld 650.3.4 | `5c5563ec91c78cfe060cb500e3ca8d764350572f124f98144bac175aa25655e9` |
+| ARM64 cache (1276837888 bytes) | `a60a0653eb730f73b5d1de61a97e86e5a241f7a4ff00c83659f9eefb965cac6f` |
 
 ## Evidence boundaries
 
-| Experiment | Last established result | Does not establish |
+| Experiment | Established at the linked source/run | Does not establish |
 | --- | --- | --- |
-| `native-userland` | [Native console: VM/COW/TLS/input/normal exit/restart](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457) | dyld, genuine frameworks, iOS UI App or Android integration |
-| `dyld-userland` | [Real cached libSystem, malloc, pthread create/join, input, normal exit and independent relaunch](https://github.com/taowen/arlinux-xnu/actions/runs/39336200293) | Third-party App, UI frameworks or Android integration |
-| `host-substrate` | [ARM64 ptrace/register and 16 KiB mapping probe](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU VM or Android sandbox operation |
-| `macho-userland` | [Freestanding ARM64 Mach-O output/error/exit via host shim](https://github.com/taowen/arlinux-xnu/actions/runs/39214608040) | XNU execution, dyld or frameworks |
-| `xnu-baseline` + `xnu-reference-boot` | [Full-system XNU exec, memory/COW, child exit and parent wait](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725) | Userspace XNU, dyld, iOS frameworks or apps |
+| Darling/native dyld | [Two real libSystem console journeys](https://github.com/taowen/arlinux-xnu/actions/runs/39367892856) | UIKit GUI, general IPC/S2C/OOL, Android or all 16 KiB VM behavior |
+| Local native runtime | [VM/COW/TLS/input/normal exit/restart](https://github.com/taowen/arlinux-xnu/actions/runs/39320163457) | The same lifecycle on the Darling backend or Android |
+| PlayCover macOS reference | [Identical iOS input, real HID click, Count: 1 screenshot, normal exit and relaunch](https://github.com/taowen/arlinux-xnu/actions/runs/39338697656) | Linux/Android compatibility; macOS supplies its own runtime |
+| Full-system XNU reference | [Exec, VM/COW, child exit and parent wait](https://github.com/taowen/arlinux-xnu/actions/runs/39311945725) | Userspace XNU, dyld, iOS frameworks or app compatibility |
 
-These are historical observations at their runs' source revisions, not promises
-about current HEAD. No Android app-sandbox journey or third-party iOS app has
-been validated. Required gates remain memory/tasks/exceptions/IPC as needed,
-dyld and system libraries, frameworks/display/input, then an actual App journey
-on Android. Kernel initialization is not a prerequisite when Linux-backed
-services supply the required application behavior. Record the highest gate
-actually observed; a green probe never advances a later gate.
+These observations belong to their exact source revisions. No Android
+app-sandbox journey or third-party iOS app has been validated. A green probe
+never advances a later acceptance gate. Architecture/ABI reasoning belongs in
+[ARCHITECTURE.md](ARCHITECTURE.md); diagnostic evidence selection belongs in
+[DIAGNOSTICS.md](DIAGNOSTICS.md), not a duplicated run diary here.
 
 ## Working loop
 
-1. Read this handoff and the exact failing run before changing code. State one
-   hypothesis and the observable result that would confirm or reject it.
-2. Commit the source, dependency pins and workflow changes together. Dispatch
-   only the relevant mode through `build.sh`; `both` explicitly runs all stages.
-3. Track the exact run ID and attempt. Inspect its status after interruptions;
-   a local wait timeout is not grounds to dispatch another build.
-4. Use `build.sh report --run-id RUN_ID` for the existing run's failure,
-   exception, original fault and receipt/executable hashes; inspect raw logs
-   for causal details. See [diagnostic tool selection](DIAGNOSTICS.md).
-   Download a specific artifact only when its contents are needed for
-   diagnosis or durable preservation, not as a routine workstation build step.
-   Preserve failures; never relax checks to make an unfinished stage green.
-5. Replace the current handoff when the blocker changes. Update the table only
-   when an acceptance gate changes. Keep trial history in Actions and Git,
-   rather than appending run diaries to README or this document.
-
-Avoid changing unrelated layers in one trial. Re-run the affected upstream and
-downstream stages when interfaces change. An unchanged bare-metal baseline need
-not run for every Linux host edit. Source pins fix source identity, but hosted
-runner images/package repositories still change: retain environment versions,
-and do not claim bit-for-bit reproducibility from pins alone.
+1. Read this handoff and the exact failing run. State one hypothesis and the
+   observable result that would confirm or reject it.
+2. Commit source, dependency pins and workflow changes together; dispatch only
+   relevant work through build.sh. Compilation/execution remain runner-only.
+3. Track exact run ID and attempt. A local observation timeout is not grounds
+   to restart a job; inspect its authoritative status first.
+4. Use `build.sh report --run-id RUN_ID` for status, exceptions, original fault,
+   receipts and executable hashes, with raw logs for causal details. LLDB status
+   0 describes evidence collection, never an app pass. Keep ordinary and traced
+   attempts distinct. Preserve failures and do not relax checks to turn green.
+5. Replace this current handoff when the blocker changes; retain trial history
+   in Actions/Git. Re-run affected upstream/downstream stages when interfaces
+   change. Source pins do not freeze hosted images/packages or guarantee
+   bit-for-bit binary reproducibility; retain actual environment versions.
 
 ## Evidence lifecycle
 
-Each executed job writes `receipt.json` alongside its artifacts, including the
-Git revision, run/attempt/job identity, dependency lock, host identity, execution
-outcome before artifact upload and SHA-256 of retained files. The Actions job
-conclusion remains authoritative for upload failures/cancellation; a receipt
-cannot certify events after it was written. Checkout/runner failures can prevent
-receipt creation, so missing evidence is never a passing result.
+Each executed job records source/run/attempt/job identity, source lock, host
+versions, outcome before upload and retained-file SHA-256 in receipt.json.
+Actions conclusion remains authoritative for later upload/cancellation failures;
+missing evidence never passes a gate. Download only needed text/screenshots or
+open-source artifacts, never transient Apple executables/cores.
 
-Artifacts are retained for 30 days. Download useful failures and milestone runs
-through `build.sh download --run-id RUN_ID` before expiry; local downloads are
-not a durable shared archive. Before relying on a milestone long-term, preserve
-its exact artifact ZIPs, receipts and workflow logs in a versioned external
-archive or immutable release. Until that archive exists, old Actions links may
-lose their binaries. Do not silently replace expired evidence with a new build.
-
-Git stores source, pins and this short handoff. Actions stores run history and
-logs. Artifacts store bytes and provenance. These roles should stay separate.
+Artifacts expire after 30 days. Before relying on a milestone long-term,
+preserve its exact artifact ZIPs, receipts and workflow logs in a versioned
+external archive or immutable release. Local downloads are not a shared durable
+archive. Until preservation exists, links may lose binaries; never silently
+substitute a new build for expired evidence.

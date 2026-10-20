@@ -16,6 +16,13 @@ application's failure. Receipt markers expose provenance; downloading a report
 does not independently verify every artifact listed in a receipt. Raw logs
 remain the source for details outside the concise report.
 
+With `--ipc darling`, dyld evidence also contains darling.log and the exact
+server PID/prefix used by the native client. DARLING_NATIVE_CONNECTED records
+actual self-port RPC results. DARLING_RPC_WAIT reads the generated call's saved
+header/body from a stopped native frame, or reports unavailable fields as null.
+Do not interpret the legacy IPC endpoint array as Darling's server queues;
+the snapshot is suppressed when the community backend is active.
+
 ## Choose evidence for the question
 
 | Question | Existing tool / evidence | Limit |
