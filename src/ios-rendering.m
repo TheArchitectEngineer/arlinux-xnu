@@ -5,6 +5,7 @@
  * Remote context sharing and hardware compositor services are not supplied.
  */
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <QuartzCore/QuartzCore.h>
 #include <math.h>
@@ -43,7 +44,18 @@ static void software_layer_display(CALayer *layer,SEL selector)
         CGContextTranslateCTM(context,0,height);
         CGContextScaleCTM(context,scale,-scale);
         CGContextTranslateCTM(context,-bounds.origin.x,-bounds.origin.y);
-        [layer drawInContext:context];
+        void (^draw)(void)=^{
+            UIGraphicsPushContext(context);
+            @try { [layer drawInContext:context]; }
+            @finally { UIGraphicsPopContext(); }
+        };
+        /* Dynamic UIKit drawing resolves against the real view's traits and
+         * current graphics context. Supply that normal drawing environment,
+         * never substitute a color or modify the view's trait collection. */
+        UITraitCollection *traits=[delegate respondsToSelector:@selector(traitCollection)] ?
+            [(id<UITraitEnvironment>)delegate traitCollection] : nil;
+        if (traits) [traits performAsCurrentTraitCollection:draw];
+        else draw();
         image=CGBitmapContextCreateImage(context);
         if (!image) { fprintf(stderr,"IOS_RENDER_CPU_BACKING_FAILED reason=image-snapshot\n"); abort(); }
         layer.contents=(id)image;
