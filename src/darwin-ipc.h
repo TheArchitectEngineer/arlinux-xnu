@@ -477,13 +477,16 @@ static unsigned long ipc_receive_complete(struct ipc_endpoint *endpoint,unsigned
 static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
 {
     unsigned long options=r[1];
+    unsigned long send_options=D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT|D_MACH_SEND_OVERRIDE|
+        D_MACH_SEND_NOIMPORTANCE|D_MACH_SEND_SYNC_OVERRIDE|D_MACH_SEND_PROPAGATE_QOS;
+    int priority_argument=(options&D_MACH_SEND_MSG) &&
+        (options&(D_MACH_SEND_OVERRIDE|D_MACH_SEND_SYNC_OVERRIDE|D_MACH_SEND_PROPAGATE_QOS));
     /* Supported options: send, receive, receive-large, send/receive timeout.
      * No unsupported complex-message ownership or trailer policy is hidden. */
     if (!(options&(D_MACH_SEND_MSG|D_MACH_RCV_MSG)) ||
-        !ipc_receive_options(options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT)) ||
-        (r[6] && !(options&D_MACH_RCV_SYNC_WAIT)) ||
-        ((options&D_MACH_RCV_SYNC_WAIT) &&
-         (!(options&D_MACH_RCV_MSG) || (options&D_MACH_SEND_MSG)))) {
+        !ipc_receive_options(options&~send_options) ||
+        (r[6] && !(options&D_MACH_RCV_SYNC_WAIT) && !priority_argument) ||
+        ((options&D_MACH_RCV_SYNC_WAIT) && !(options&D_MACH_RCV_MSG))) {
         static unsigned int rejected;
         if (__atomic_fetch_add(&rejected,1,__ATOMIC_RELAXED)<32) {
             const char label[]="DARWIN_MACH_OPTIONS_REJECTED argument-index/pc/value follows\n";
@@ -743,7 +746,12 @@ receive_message:
     if (options&D_MACH_RCV_MSG) {
         struct ipc_endpoint *endpoint=ipc_find(r[4]);
         if (!endpoint || (endpoint->kind!=0 && endpoint->kind!=2)) return D_MACH_RCV_INVALID_NAME;
-        if (options&D_MACH_RCV_SYNC_WAIT) {
+        /* XNU excludes combined sends from the special-reply linkage path.
+         * Send override/propagation/no-importance flags select scheduling
+         * metadata, not message delivery. This standalone task uses ordinary
+         * Linux scheduling without Apple importance/QoS donation. r[6] may
+         * therefore be a priority value rather than a notification port. */
+        if ((options&D_MACH_RCV_SYNC_WAIT) && !(options&D_MACH_SEND_MSG)) {
             if (endpoint->kind || endpoint->special_tid!=RAW(SYS_gettid,0,0,0,0,0,0) ||
                 !r[6] || (uint32_t)r[6]==UINT32_MAX) return D_MACH_RCV_INVALID_NOTIFY;
             struct ipc_endpoint *destination=ipc_find(r[6]);
@@ -773,7 +781,7 @@ receive_message:
             if (member) {
                 ipc_queue_lock(member);
                 status=ipc_receive_locked(member,r[0],r[3],
-                    options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT),&message_size,&total_size);
+                    options&~send_options,&message_size,&total_size);
             }
             if (status==D_MACH_RCV_TOO_LARGE && (options&D_MACH_RCV_LARGE)) {
                 uint32_t size=message_size,identity=member->name;
