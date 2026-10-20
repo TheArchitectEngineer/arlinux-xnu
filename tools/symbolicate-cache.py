@@ -13,6 +13,8 @@ parser.add_argument('cache',type=Path)
 parser.add_argument('trace',type=Path)
 parser.add_argument('output',type=Path)
 parser.add_argument('--lookup',action='append',nargs=2,default=[],metavar=('IMAGE','SYMBOL'))
+parser.add_argument('--lookup-selector',action='append',nargs=2,default=[],metavar=('IMAGE','SELECTOR'),
+                    help='Resolve bounded actual class/instance selector symbols before reading their code')
 parser.add_argument('--lookup-bytes',type=int,help='Override instruction-byte budget per explicitly selected lookup/method (multiple of 4, at most 4096)')
 parser.add_argument('--bootstrap-context',action='store_true')
 parser.add_argument('--list-symbols',action='append',nargs=2,default=[],metavar=('IMAGE','FRAGMENT'))
@@ -59,10 +61,16 @@ with CacheSymbols(args.cache) as cache:
         ranges=image['executable']
         matches=[pc for pc in frames if any(base<=lookup_pc(pc)<base+size for base,size in ranges)]
         requested={name for path,name in args.lookup if path==image['name']}
+        selectors=[selector for path,selector in args.lookup_selector if path==image['name']]
         queries=[fragment for path,fragment in args.list_symbols if path==image['name']]
         methods=[(cls,selector) for path,cls,selector in args.objc_method if path==image['name']]
-        if not matches and not requested and not queries and not methods:continue
+        if not matches and not requested and not selectors and not queries and not methods:continue
         actual_symbols=list(cache.symbols(image))
+        for selector in selectors:
+            found=sorted({name for _,name in actual_symbols if name.startswith(('-[','+[')) and name.endswith(' '+selector+']')})
+            records.append({'image':image['name'],'selectorLookup':selector,'count':len(found),'matches':found[:4],
+                            'status':'not-found' if not found else 'bounded' if len(found)<=4 else 'ambiguous-use-exact-symbol'})
+            if len(found)<=4:requested.update(found)
         for query in queries:
             found=[{'address':hex(value),'symbol':name} for value,name in actual_symbols if query.lower() in name.lower()]
             records.append({'image':image['name'],'symbolsMatching':query,'count':len(found),'truncated':len(found)>256,'matches':found[:256]})

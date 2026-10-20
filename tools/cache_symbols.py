@@ -111,7 +111,7 @@ class CacheSymbols:
             if magic!=0xfeedfacf or cpu!=0x100000c or subtype&0xffffff or kind not in (6,7) or count>256:raise ValueError('Unsupported image: '+name)
             self.locate(address,32+size)
             cursor,end=start+32,start+32+size
-            executable=[];cstring=[];cfstring=[];linkedit=None;tables=[];objc_opt_ro=None
+            executable=[];cstring=[];cfstring=[];classrefs=[];linkedit=None;tables=[];objc_opt_ro=None
             for _ in range(count):
                 cmd,size=member.unpack('<II',cursor)
                 if size<8 or size%8 or cursor+size>end:raise ValueError('Invalid command: '+name)
@@ -128,6 +128,8 @@ class CacheSymbols:
                             cstring.append(member.unpack('<QQ',section+32))
                         if member.data[section:section+16].rstrip(b'\0')==b'__cfstring':
                             cfstring.append(member.unpack('<QQ',section+32))
+                        if member.data[section:section+16].rstrip(b'\0')==b'__objc_classrefs':
+                            classrefs.append(member.unpack('<QQ',section+32))
                         if member.data[section:section+16].rstrip(b'\0')==b'__objc_opt_ro':
                             objc_opt_ro=member.unpack('<QQ',section+32)
                 elif cmd==2:
@@ -135,7 +137,7 @@ class CacheSymbols:
                     tables.append(member.unpack('<IIII',cursor+8))
                 cursor+=size
             if cursor!=end:raise ValueError('Invalid command extent')
-            yield {'name':name,'address':address,'executable':executable,'cstring':cstring,'cfstring':cfstring,'linkedit':linkedit,'tables':tables,'objcOptRO':objc_opt_ro}
+            yield {'name':name,'address':address,'executable':executable,'cstring':cstring,'cfstring':cfstring,'classrefs':classrefs,'linkedit':linkedit,'tables':tables,'objcOptRO':objc_opt_ro}
 
     def objc_method(self,image,class_name,selector):
         """Resolve an instance IMP from declared Objective-C metadata, never a call.
@@ -295,7 +297,7 @@ class CacheSymbols:
         record=self.disassemble(start,end-start)
         record.update(symbol=nearest[1],faultPC=hex(pc),symbolAliases=[name for value,name in symbols if value==nearest[0]],
                       byteLimit=maximum,limitedByByteBudget=end<min(base+length,following,end_bound if end_bound is not None else base+length))
-        literals=[]
+        literals=[];classes=[]
         member,offset=self.locate(start,end-start)
         for i in range(0,end-start-4,4):
             word=member.unpack('<I',offset+i)[0]
@@ -303,11 +305,28 @@ class CacheSymbols:
             # ADRP Xn; ADD Xn,Xn,#imm: exact address, not a text search or
             # speculative dereference. Only declared C-string sections count.
             register=word&31
-            if word&0x9f000000!=0x90000000 or after&0xffc00000!=0x91000000:continue
-            if after&31!=register or (after>>5)&31!=register:continue
+            if word&0x9f000000!=0x90000000 or (after>>5)&31!=register:continue
             immediate=((word>>5)&0x7ffff)<<2 | ((word>>29)&3)
             if immediate&0x100000:immediate-=0x200000
-            address=((start+i)&~4095)+(immediate<<12)+((after>>10)&4095)
+            page=((start+i)&~4095)+(immediate<<12)
+            if after&0xffc00000==0xf9400000: # ADRP; LDR Xd,[Xn,#imm*8]
+                slot=page+((after>>10)&4095)*8
+                if any(begin<=slot and slot+8<=begin+size and (slot-begin)%8==0 for begin,size in image['classrefs']):
+                    entry={'instruction':hex(start+i),'slot':hex(slot)}
+                    try:
+                        target=self.typed_pointer(slot)
+                        entry['classAddress']=hex(target)
+                        if target:
+                            ro=self.typed_pointer(target+32)&0x00007ffffffffff8
+                            name=self.typed_pointer(ro+24)
+                            cmember,coffset=self.locate(name,1)
+                            entry['className']=cmember.string(coffset,512)
+                        else:entry['status']='null-class-reference'
+                    except ValueError as error:entry.update(status='metadata-unavailable',reason=str(error))
+                    classes.append(entry)
+                continue
+            if after&0xffc00000!=0x91000000 or after&31!=register:continue
+            address=page+((after>>10)&4095)
             constant=self.constant_string(image,address)
             if constant:literals.append({'instruction':hex(start+i),**constant})
             for cbase,csize in image['cstring']:
@@ -318,6 +337,7 @@ class CacheSymbols:
                 literals.append({'instruction':hex(start+i),'address':hex(address),
                     'literal':data.split(b'\0',1)[0].decode('utf-8',errors='replace'),'truncated':b'\0' not in data})
         record['referencedLiterals']=literals
+        record['referencedClasses']=classes
         names={}
         for value,name in symbols:
             if value not in names or symbol_preference((value,name))>symbol_preference((value,names[value])):
