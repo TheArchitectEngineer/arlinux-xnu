@@ -808,11 +808,9 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
         root_descriptor=open(root,O_PATH|O_DIRECTORY|O_CLOEXEC);
         if (root_descriptor<0) { perror("Darwin filesystem root"); exit(1); }
     }
-    /* Legacy ARM64 Darwin commpage ABI. These are real properties of the
-     * declared compatibility machine, not fabricated hardware capabilities.
-     * Leave optional acceleration/timebase features disabled. XNU's ARM
-     * cpu_capabilities.h defines the offsets; iOS 12 accesses kernel shift
-     * at +0x37 during dyld mach_init, as observed in the failed actual run. */
+    /* XNU arm/cpu_capabilities.h defines both legacy and immutable commpages.
+     * Publish actual configured machine properties at both ABI locations;
+     * optional acceleration/timebase features remain disabled. */
     unsigned char *page=mmap((void *)D_GUEST_COMMPAGE,PAGE16,PROT_READ|PROT_WRITE,
                             MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
     if (page==MAP_FAILED) { perror("Darwin commpage"); exit(1); }
@@ -829,6 +827,14 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     if (physical<=0 || host_page<=0) { fprintf(stderr,"Unknown native memory size\n"); exit(1); }
     *(uint64_t *)(page+D_COMM_MEMORY_SIZE)=(uint64_t)physical*(uint64_t)host_page;
     if (mprotect(page,PAGE16,PROT_READ)) { perror("read-only commpage"); exit(1); }
+    unsigned char *immutable=mmap((void *)D_GUEST_COMMPAGE_RO,PAGE16,PROT_READ|PROT_WRITE,
+                                  MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
+    if (immutable==MAP_FAILED) { perror("immutable Darwin commpage"); exit(1); }
+    /* Only fields moved to the RO ABI belong here. It is not an alias of the
+     * mutable/legacy page; reserved fields and dev-firmware status stay zero. */
+    immutable[D_COMM_USER_PAGE_SHIFT_32]=immutable[D_COMM_USER_PAGE_SHIFT_64]=D_GUEST_PAGE_SHIFT;
+    immutable[D_COMM_KERNEL_PAGE_SHIFT]=D_GUEST_PAGE_SHIFT;
+    if (mprotect(immutable,PAGE16,PROT_READ)) { perror("protect immutable commpage"); exit(1); }
     /* Initialize before the filter is live, on host TLS. The signal handler
      * thereafter uses only the exact allowed raw SVC site. Like tawcroot,
      * compare the address AFTER SVC, as Linux records it in seccomp_data. */

@@ -5,6 +5,8 @@
 #define D_GUEST_PAGE_SIZE (1UL << D_GUEST_PAGE_SHIFT)
 #define D_GUEST_HEAP_START 0x300000000UL
 #define D_GUEST_COMMPAGE 0xfffffc000ULL
+/* XNU arm/cpu_capabilities.h: immutable layout-1 fields have a distinct page. */
+#define D_GUEST_COMMPAGE_RO 0xfffff4000ULL
 #define D_GUEST_ADDRESS_LIMIT 0x1000000000ULL
 #define D_VM_MAX_ALLOCATION (1ULL << 32)
 #define D_SIGNAL_STACK_SIZE (128UL * 1024)
