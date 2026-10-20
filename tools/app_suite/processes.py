@@ -118,7 +118,12 @@ class Processes:
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
             if self.environment.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1':
                 arguments.extend(['--lookup-bytes','4096'])
-                arguments.extend(['--list-symbols','/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore','UIDynamicCatalog'])
+                for symbol in ('-[UIDynamicCatalogSystemColor _resolvedColorWithTraitCollection:]',
+                    '-[UIDynamicCatalogColor _resolvedColorWithTraitCollection:]',
+                    '-[UIDynamicCatalogSystemColor initWithName:coreUIColorName:]'):
+                    arguments.extend(['--lookup','/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore',symbol])
+                arguments.extend(['--lookup','/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices',
+                    '-[FBSDisplayConfiguration colorGamut]'])
             if 'DARLING_UNHANDLED_SERVICE_INLINE' in runtime.read_text(errors='replace'):
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZL14query_displaysv'])
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZN2CA7Display7Display6updateEv'])
