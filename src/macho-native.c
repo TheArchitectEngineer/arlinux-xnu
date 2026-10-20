@@ -149,6 +149,23 @@ int main(int argc,char **argv)
         memcpy((void *)(top+16),absolute,strlen(absolute)+1);
         free(absolute);
         uint64_t apple=top;
+        /* XNU/libpthread's exec contract: describe the actual mapped main
+         * stack, and seed pointer signing from real kernel entropy. pthread
+         * consumes/erases these Apple-vector values during initialization. */
+        char stack_parameter[192],token_parameter[64];
+        int stack_count=snprintf(stack_parameter,sizeof(stack_parameter),
+            "main_stack=%#" PRIx64 ",%#x,%#" PRIx64 ",%#x",
+            (uint64_t)stack_address+1024*1024,1024*1024,(uint64_t)stack_address,1024*1024);
+        need(stack_count>0 && (size_t)stack_count<sizeof(stack_parameter),"main stack parameter length");
+        top=(top-stack_count-1)&~15UL;
+        memcpy((void *)top,stack_parameter,stack_count+1);uint64_t stack_parameter_address=top;
+        uint64_t token;
+        do { if(getentropy(&token,sizeof(token)))die("pthread pointer entropy"); } while(!token);
+        int token_count=snprintf(token_parameter,sizeof(token_parameter),"ptr_munge=%#" PRIx64,token);
+        need(token_count>0 && (size_t)token_count<sizeof(token_parameter),"pthread token parameter length");
+        top=(top-token_count-1)&~15UL;
+        memcpy((void *)top,token_parameter,token_count+1);uint64_t token_parameter_address=top;
+        token=0;memset(token_parameter,0,sizeof(token_parameter));
         uint64_t environment=0;
         if (options.role==NATIVE_APPLICATION) {
             /* Only the declared compatibility library enters guest envp;
@@ -164,18 +181,17 @@ int main(int argc,char **argv)
             top=(top-count-1)&~15UL;
             memcpy((void *)top,injected,count+1); environment=top;
         }
-        top-=(environment ? 10 : 8)*8;
-        uint64_t *words=(void *)top;
-        words[0]=im.header_address;
-        words[1]=1;
-        words[2]=name;
-        words[3]=0;             /* argv terminator */
-        if (environment) {
-            words[4]=environment; words[5]=0;
-            words[6]=apple; words[7]=words[8]=words[9]=0;
-        } else {
-            words[4]=0; words[5]=apple; words[6]=words[7]=0;
-        }
+        /* Header/argc/argv, optional env, and three Apple strings. Count the
+         * actual entries; stack alignment does not depend on magic slot totals. */
+        uint64_t initial[10];size_t count=0;
+        initial[count++]=im.header_address;initial[count++]=1;
+        initial[count++]=name;initial[count++]=0;
+        if(environment)initial[count++]=environment;
+        initial[count++]=0;
+        initial[count++]=apple;initial[count++]=stack_parameter_address;
+        initial[count++]=token_parameter_address;initial[count++]=0;
+        top=(top-count*sizeof(initial[0]))&~15UL;
+        memcpy((void *)top,initial,count*sizeof(initial[0]));
     }
     /* Zeroed argc/argv/env/apple terminators for this freestanding entry. */
     fprintf(stderr,"NATIVE_DARWIN_ENTRY entry=%#" PRIx64 " host_page=%ld (Linux services, not XNU boot)\n",im.entry,host);
