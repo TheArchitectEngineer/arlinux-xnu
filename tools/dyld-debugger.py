@@ -37,6 +37,7 @@ def install_service_breakpoints(target):
         if symbol.get('symbol') in ('_bootstrap_look_up', '_bootstrap_look_up2', '_bootstrap_look_up3'):
             breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
             breakpoint.SetScriptCallbackFunction('dyld_debugger.service_lookup')
+            breakpoint.SetAutoContinue(True)
             print('SERVICE_LOOKUP_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
 
 
@@ -45,6 +46,14 @@ def capture_display_code(target):
         if symbol.get('symbol') == '_BKSDisplayServicesStart':
             print('DISPLAY_START_CODE', symbol['address'], flush=True)
             target.GetDebugger().HandleCommand('disassemble --start-address ' + symbol['address'] + ' --count 160')
+            instructions = target.ReadInstructions(target.ResolveLoadAddress(int(symbol['address'], 16)), 16)
+            for instruction in instructions:
+                if instruction.GetMnemonic(target) == 'bl':
+                    operand = instruction.GetOperands(target).split()[0]
+                    if re.fullmatch('0x[0-9a-fA-F]+', operand):
+                        print('DISPLAY_START_QUERY_CODE', operand, flush=True)
+                        target.GetDebugger().HandleCommand('disassemble --start-address ' + operand + ' --count 120')
+                    break
 
 
 def install_exception_breakpoint(target):

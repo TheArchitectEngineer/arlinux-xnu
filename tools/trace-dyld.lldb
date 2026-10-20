@@ -3,6 +3,7 @@
 settings set auto-confirm true
 settings set target.disable-aslr false
 script import importlib.util, sys; helper_spec = importlib.util.spec_from_file_location("dyld_debugger", "tools/dyld-debugger.py"); helper = importlib.util.module_from_spec(helper_spec); sys.modules[helper_spec.name] = helper; helper_spec.loader.exec_module(helper)
+script import dyld_debugger
 target create build/native/macho-native
 breakpoint set --name darwin_native_enter
 script from pathlib import Path; import shlex; program_marker = Path("build/dyld/debugger.program"); program = program_marker.read_text().strip() if program_marker.exists() else "build/native/console-dynamic.macho"; lldb.debugger.HandleCommand("process launch -i build/dyld/debugger.stdin -o build/dyld/debugger.stdout -e build/dyld/debugger.runtime.log -- --dyld build/ios-input/dyld --root build/ios-input/filesystem/root " + shlex.quote(program))
