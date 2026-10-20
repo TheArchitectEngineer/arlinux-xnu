@@ -27,6 +27,7 @@ frames = sorted({int(item, 16) for item in
                  re.findall(r'DISPLAY_METHOD(?:_CALLEE)?_CODE (0x[0-9a-fA-F]+)', trace) +
                  re.findall(r'HID_CLIENT(?:_CALLEE)?_CODE (0x[0-9a-fA-F]+)', trace) +
                  re.findall(r'IPC_INDIRECT_CALLBACK_CODE (0x[0-9a-fA-F]+)', trace) +
+                 re.findall(r'IPC_CALLBACK_CALLEE_CODE (0x[0-9a-fA-F]+)', trace) +
                  re.findall(r'NORMAL_RUNTIME_FAULT_PC (0x[0-9a-fA-F]+)', trace)})
 
 with cache_path.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:

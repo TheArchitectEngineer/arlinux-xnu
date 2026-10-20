@@ -68,6 +68,30 @@ _security_entries = {}
 _ipc_callback_entries = {}
 
 
+def capture_callback_callees(target, address, budget=12):
+    pending = [(address, 0)]
+    seen = {address}
+    while pending and len(seen) <= budget:
+        parent, depth = pending.pop(0)
+        if depth >= 2:
+            continue
+        for instruction in target.ReadInstructions(target.ResolveLoadAddress(parent), 160):
+            if instruction.GetMnemonic(target) not in ('b', 'bl'):
+                continue
+            operand = instruction.GetOperands(target).split()[0]
+            if not re.fullmatch('0x[0-9a-fA-F]+', operand):
+                continue
+            callee = int(operand, 16)
+            if callee in seen:
+                continue
+            seen.add(callee)
+            print('IPC_CALLBACK_CALLEE_CODE', hex(callee), 'from', hex(parent), flush=True)
+            target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(callee) + ' --count 160')
+            pending.append((callee, depth+1))
+            if len(seen) >= budget:
+                return
+
+
 def ipc_callback(frame, location, internal_dict):
     """Observe real send/continuation/reply arguments without guest execution."""
     breakpoint = location.GetBreakpoint()
@@ -125,6 +149,7 @@ def ipc_callback(frame, location, internal_dict):
                     print('IPC_INDIRECT_CALLBACK_CODE', hex(target_address), flush=True)
                     frame.GetThread().GetProcess().GetTarget().GetDebugger().HandleCommand(
                         'disassemble --start-address ' + hex(target_address) + ' --count 160')
+                    capture_callback_callees(frame.GetThread().GetProcess().GetTarget(), target_address)
                 except (ValueError, SystemError) as error:
                     print('IPC_INDIRECT_CALLBACK_READ_ERROR', str(error), flush=True)
     if breakpoint.GetHitCount() >= 16:
