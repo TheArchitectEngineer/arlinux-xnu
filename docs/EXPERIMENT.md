@@ -12,90 +12,76 @@ none of that complete multi-process/Android journey has passed.
 
 Current app: **ARHello 1.0** (`io.arlinux.ARHello`), source in guests/ARHello,
 using the real pinned UIKit/frameworks. Latest executed source:
-`5c8d22d5a66af81458f949d4521e243569438b9b`,
-[run 39399351865](https://github.com/taowen/arlinux-xnu/actions/runs/39399351865).
+`b1df2cdb5a39e2627f05dc2caae23f614a50b56d`,
+[run 39403237349](https://github.com/taowen/arlinux-xnu/actions/runs/39403237349).
 Use the sole build.sh entry, `build --mode app --ipc darling`.
 
 Two genuine dyld/libSystem console journeys still pass: malloc, pthread join
 (value 37/shared memory 42), real input, normal return and independent relaunch.
-Darling/XNU owns real Mach rights/messages; current-task VM/time/BSD remain
-Linux-backed. Synchronous anonymous S2C mapping works for observed OOL flows;
-file/fixed/executable mappings and asynchronous callbacks remain incomplete.
+The independent session owns bootstrap, process-info and FrontBoard listeners;
+Darling/XNU owns actual cross-process Mach rights and messages. Kernel audit
+identities and Linux pidfds bind and retire connections. Submitted task rights
+are capabilities, not independently verified task-to-PID mappings. No PID 1/root
+identity is fabricated. System-app facilities and app-requested helper spawning
+remain incomplete.
 
-The independent session owns bootstrap, process-info and two FrontBoard
-listeners. Actual kernel audit identities and Linux pidfds bind/retire client
-connections and their real Mach rights. BKSWorkspace message 11 registration,
-workspace connect metadata and genuine UIApplication launch events/replies
-remain implemented. Submitted task rights are capabilities, not independently
-verified task-to-PID mappings. No PID 1/root identity is fabricated.
+Launch events and responses reach real UIKit. Workspace message 5 reaches the
+actual create-scene handler. Initial scene changes now decode correctly:
+BSSettings.objects contains arrays [uint64 key, value, bool format]; class key 1
+with true format uses CoreFoundation XPC conversion. LLDB observes both genuine
+class-name strings being written by BSSettings _setObject:forSetting:, then both
+scene settings diffs being applied. The prior `settings != nil` assertion is
+passed in this traced attempt.
 
-Main-scene event routing is now established from actual code: workspace message
-5 -> _queue_handleCreateScene:. The event carries a per-process sceneID and
-UIApplicationSceneSpecification, then settings/clientSettings diffs. Both
-ordinary apps (4290/4289) reach this stage but exit 133 without ARHELLO_READY.
-The independent debugger process (4386) confirms actual create-scene delivery,
-FBSWorkspace client:handleCreateScene:withCompletion:, then throws
-NSInternalInconsistencyException: `Invalid condition not satisfying: settings != nil`.
-Main-scene objects, app initialization, geometry/activation, frames and input
-are not established.
+Current traced failure: NSInvalidArgumentException,
+`*** -[NSCountedSet addObject:]: attempt to insert nil`.
+The real caller obtains displayIdentity and immediately adds it to the set.
+The payload currently supplies only initial settings classes, without display
+configuration. Hypothesis: the scene needs a valid FBSDisplayConfiguration and
+identity, consistent with the Wayland geometry. Decode their actual codecs and
+scene-setting keys before changing the payload. Ordinary app exits 133 at
+0x1808c4878 (libdispatch); this is a separate execution from LLDB's exception.
+Neither attempt reaches ARHELLO_READY. No UIKit frame or interactive GUI passes.
 
-The live codec reads FBSSettingsDiff's changes/settingsClass. Its concrete
-settingsByApplyingToMutableCopyOfSettings: reads class setting 1 from changes
-before constructing the first settings object. The current payload supplies
-BSSettings.objects["1"] as a raw class-name string, but the actual object-map
-callback calls a further typed decoder and still produces the nil-settings
-failure. Do not claim the current encoding creates settings. Inspect that
-actual decoder rather than adding speculative fields or bypassing assertions.
-The latest ordinary fault PC is 0x1809bbf6c; debugger and ordinary attempts stay
-separate. Older run 39396795755's fault also killed the session on a notification.
+Exact pending run: [39404428141](https://github.com/taowen/arlinux-xnu/actions/runs/39404428141),
+source `c2bd4dbbd673a9fad641bc72b6df67413b285d23`, adds read-only display identity,
+configuration/mode codec and scene-diff block inspection. Continue this run;
+observation timeouts do not justify restarting it. Do not bypass nil assertions,
+invoke the app delegate directly or substitute a host-drawn app.
 
-That session defect is fixed and verified: an unused reply send-once right
-produces header-only MACH_NOTIFY_SEND_ONCE (71) with kernel audit token zero.
-Only the exact notification on an outstanding event reply is accepted as
-cancellation; it is never a successful scene reply. Logs show cancellation and
-client retirement while the shared service remains alive for later clients.
-System-app facility operations, complete crash isolation, helper spawning,
-normal GUI exit/relaunch and Android remain incomplete.
+Header-only MACH_NOTIFY_SEND_ONCE cancellation is handled only on outstanding
+reply ports with the exact kernel notification and zero audit identity; it is
+not a successful scene response. Client retirement is observed. Complete crash
+isolation, actual helper launches, normal GUI exit/relaunch, two simultaneously
+interactive apps and the ARLinux/Android journey remain acceptance requirements.
 
-Pending exact run: [39400670557](https://github.com/taowen/arlinux-xnu/actions/runs/39400670557),
-source `d201bac04eb1f09ed42665def485818823c845e6`, narrows actual codec block
-identification and captures nearby direct decoder callees. Continue observing
-this same run; do not restart on a local timeout. The previous block reader
-incorrectly included string literals because executable cache mappings also
-contain strings. Use the actual stack-block storage/prologue and resulting
-code; old APP_SETTINGS_CODEC_BLOCK labels alone do not prove callable blocks.
-In the pinned cache the real object callback reaches 0x183696318; this address
-is diagnostic context, not a runtime version-specific hook.
-
-Next: read the pending run's actual typed object decoder, correct initial scene
-settings encoding, and verify that the genuine scene constructor progresses.
-Then derive actual display geometry/activation and rendering/input requirements.
-Keep normal exit/relaunch, two concurrent interactive apps, requested helpers
-and ARLinux integration as acceptance requirements. Do not call the app delegate
-directly, remove settings assertions or substitute a host-drawn app.
+Useful research: [ios-rendering-docs](https://github.com/EthanArbuckle/ios-rendering-docs)
+explains the scene/settings/context/render-server boundaries. Generated
+[FBSSceneSettings](https://github.com/nst/iOS-Runtime-Headers/blob/master/PrivateFrameworks/FrontBoardServices.framework/FBSSceneSettings.h),
+[FBSDisplayConfiguration](https://github.com/nst/iOS-Runtime-Headers/blob/master/PrivateFrameworks/FrontBoardServices.framework/FBSDisplayConfiguration.h)
+and [FBSDisplayIdentity](https://github.com/nst/iOS-Runtime-Headers/blob/master/PrivateFrameworks/FrontBoardServices.framework/FBSDisplayIdentity.h)
+headers identify interfaces, not the wire format or a ready implementation.
 
 ## Exact evidence and inputs
 
-Latest run jobs: server `118549883649`, native `118550192389`, app
-`118550430829`. Downloaded session/app/peer/LLDB textual logs match the receipt.
+Latest completed app job: `118563466255`. Downloaded app/peer/LLDB/session textual
+logs match the receipt SHA-256 entries. App evidence receipt SHA-256:
+`23c8a6d157bf095b1526b6257d8f749c8a1ab4e29b3668c11afbf7a34cd5a9fb`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Native ELF | `dfad36a0820c5e0956da1479f99191956fcefbad641da5eec8322aaf03fc34ac` |
-| Darling server ELF | `7864a8ed318cab5ea78cec751b9c4623a07176a2222bc6ac91f2f1db4d2e1c9a` |
-| App evidence receipt | `04c98e651a22d602bdfccc6b6cec2e4bda9c3eaeb27dfcb11a8ea7c2afb64e7f` |
-| Native receipt | `028ce19bbaab3cb4c94b354f5487b48638cf1cb6edf6f858ac578c4a0e1db568` |
-| Server receipt | `f42d3b0c7e80a70c6ff581090bd88c3bd3fa521eac22ab598506112487f36838` |
-| Session log | `c784eb4aeda45bdcf4b331a8d5fefd9c4966538f9277a63dea1d9d6a60219e7c` |
-| Session decoded dictionaries | `df6852a70ab1e0985d7f0f1a912fd40127b3e1890c8535ec6bc717baf19ed2ee` |
-| LLDB log | `9ff1086f3623905d3f9b07431507d8adf997c726f06de1b03b626336ebc8c459` |
+| app.runtime.log | `1302dad9d05c41d8003a3b0456f80628fdac0c7c776967c5a993fe4b5c29665d` |
+| lldb.log | `064f80055c63292bbd5c7976112adaa2a42017212f42c697746e85d537abefc1` |
+| peer.runtime.log | `0baba9e7d46e819a64eb1124b76c95cc33a839a4c792a256ae84f4e7d1f8d95c` |
+| session.log | `3a9348b54cd39b7adaf983b36afb026e9ecd802e325fe020fa93af1565c931c5` |
+| session.stdout | `692f04815af26a5e7380ac1672d0ab44f6076eebbcee44cc480b538798034736` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain
 transient on runners, never workstation artifacts. ARHello Mach-O SHA-256:
 `4b346aa7dd998425990cb9ef282ddb7e5252b4d9d069b12c369d32d407f29b77`.
-Dependency commits, input/cache and remaining file hashes are in the exact
-run's receipts. Keep trial history in Actions/Git rather than a growing diary.
+Dependency commits and other input/output hashes belong to the exact run's
+receipts. Keep trial history in Actions/Git rather than a growing diary.
 
 ## Evidence boundaries
 
