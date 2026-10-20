@@ -220,6 +220,24 @@ static spc_dictionary_t *session_display_configuration(const struct session_disp
     return configuration;
 }
 
+static spc_dictionary_t *session_launch_transition(void)
+{
+    /* Run 39407602453: UIApplicationSceneTransitionContext reads NSNumber
+     * object setting 7. The real lifecycle table routes action 1 to
+     * activateEventsOnly:NO; 2 is the separate events-only activation. */
+    enum { UI_CONTEXT_LIFECYCLE_ACTION=7, UI_LIFECYCLE_ACTIVATE=1 };
+    spc_dictionary_t *context=session_encoded_object("UIApplicationSceneTransitionContext");
+    spc_dictionary_t *settings=session_encoded_object("BSMutableSettings");
+    spc_array_t *objects=spc_array_create(),*entry=spc_array_create();
+    spc_array_set_value(entry,0,(spc_value_t){.type=SPC_TYPE_UINT64,.value.u64=UI_CONTEXT_LIFECYCLE_ACTION});
+    spc_array_set_value(entry,1,(spc_value_t){.type=SPC_TYPE_UINT64,.value.u64=UI_LIFECYCLE_ACTIVATE});
+    spc_array_set_value(entry,2,(spc_value_t){.type=SPC_TYPE_BOOL,.value.u64=1});
+    spc_array_set_value(objects,0,(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=entry});
+    spc_dictionary_set_value(settings,"objects",(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=objects});
+    session_dictionary_object(context,"otherSettings",settings);
+    return context;
+}
+
 static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
 {
     /* Run 39395977685: queue_handleMessage's actual jump table maps 5 to
@@ -269,7 +287,8 @@ static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
     }
     spc_dictionary_set_value(dictionary,"event",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=event});
     spc_dictionary_set_int64(dictionary,"message",FBS_WORKSPACE_CREATE_SCENE);
-    fprintf(stderr,"SESSION_SCENE_CONFIGURATION pid=%u scene=%s settings=class-and-display-diffs width=%u height=%u refresh_millihz=%u geometry-established=false\n",
+    session_dictionary_object(event,"transitionContext",session_launch_transition());
+    fprintf(stderr,"SESSION_SCENE_CONFIGURATION pid=%u scene=%s settings=class-and-display-diffs lifecycle_action=activate width=%u height=%u refresh_millihz=%u geometry-established=false\n",
         peer->pid,identifier,display->width,display->height,display->refresh);
     session_send_event(peer,set,dictionary,&peer->scene_reply,&peer->scene_state,"SESSION_SCENE_SEND");
 }

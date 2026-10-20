@@ -159,7 +159,8 @@ def install_launch_breakpoints(target):
                             'initWithXPCDictionary:','_initWithChanges:otherSettingsDiff:settingsClass:',
                             'settingsByApplyingToMutableCopyOfSettings:','_setObject:forSetting:') or (
                             name in ('_OBJC_CLASS_$_FBSSceneSettings','_OBJC_CLASS_$_FBSDisplayConfiguration',
-                                     '_OBJC_CLASS_$_FBSDisplayIdentity','_OBJC_CLASS_$_FBSDisplayMode') and
+                                     '_OBJC_CLASS_$_FBSDisplayIdentity','_OBJC_CLASS_$_FBSDisplayMode',
+                                     '_OBJC_CLASS_$_FBSSceneTransitionContext') and
                             selector in ('initWithXPCDictionary:','_setDisplayConfiguration:')):
                         breakpoint=target.BreakpointCreateByAddress(objects.u64(entry+16))
                         _settings_entries[breakpoint.GetID()]=name+' '+selector
