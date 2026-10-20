@@ -648,6 +648,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         break;
     }
     case D_SYS_SYSCTLBYNAME: result=native_sysctlbyname(r); break;
+    case D_SYS_SYSCTL: result=native_sysctl(r); break;
     case D_SYS_CSOPS: case D_SYS_CSOPS_AUDITTOKEN: result=native_csops(r); break;
     case D_SYS_PROC_INFO: result=native_proc_info(r); break;
     case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_open(r[0],r[1]); break;
@@ -753,11 +754,11 @@ static void fault(int signal,siginfo_t *info,void *context)
     const char label[]="DARWIN_NATIVE_FAULT signal/pc/address follows\n";
     RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
     ucontext_t *uc=context;
-    trace_call(signal,uc->uc_mcontext.pc,(uintptr_t)info->si_addr);
+    trace_record("DARWIN_FAULT signal=0x",signal,uc->uc_mcontext.pc,(uintptr_t)info->si_addr);
     const char registers[]="DARWIN_FAULT_REGISTERS x0..x30\n";
     RAW(SYS_write,native_trace_fd,registers,sizeof(registers)-1,0,0,0);
     for (unsigned int i=0;i<31;i++)
-        trace_call(i,uc->uc_mcontext.pc,uc->uc_mcontext.regs[i]);
+        trace_record("DARWIN_FAULT_REGISTER index=0x",i,uc->uc_mcontext.pc,uc->uc_mcontext.regs[i]);
     RAW(SYS_exit_group,128+signal,0,0,0,0,0);
     __builtin_unreachable();
 }

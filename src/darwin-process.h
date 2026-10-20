@@ -84,27 +84,71 @@ static long native_proc_info(const unsigned long long *r)
  * AppleInternal/factory content or internal-security policy. Answer this actual
  * read-only kernel node before libSystem's init can re-enter libdispatch via
  * the fallback XPC parser for SystemVersion.plist. Unknown nodes still fail. */
-static long native_sysctlbyname(const unsigned long long *r)
+static int native_sysctl_name(const char *name,uint64_t length,const char *expected)
 {
-    const char expected[]="kern.osvariant_status";
-    char name[128];
-    if (!r[1]) return -EINVAL;
-    if (r[1]>sizeof(name)) return -ENAMETOOLONG;
-    if (guest_copy(name,r[0],r[1],0)) return -EFAULT;
-    if (r[1]!=sizeof(expected)-1 && r[1]!=sizeof(expected)) return -ENOENT;
-    for (unsigned int i=0;i<sizeof(expected)-1;i++) if (name[i]!=expected[i]) return -ENOENT;
-    if (r[1]==sizeof(expected) && name[sizeof(expected)-1]) return -ENOENT;
-    if (r[4] || r[5]) return -EPERM;
-    uint64_t value=D_OS_VARIANT_INITIAL_BITS;
-    for (unsigned int i=0;i<D_OS_VARIANT_STATUS_FIELDS;i++)
-        value|=(uint64_t)D_OS_VARIANT_STATUS_NO<<(i*D_OS_VARIANT_STATUS_WIDTH);
+    unsigned int i=0;
+    while(expected[i]) { if(i>=length || name[i]!=expected[i]) return 0; i++; }
+    return length==i || (length==i+1 && !name[i]);
+}
+/* OID_AUTO nodes get numbers from the kernel's own registry. These two numbers
+ * belong to this compatibility machine, not to an assumed Apple OS release. */
+enum { NATIVE_SYSCTL_OSVARIANT=0x10000,NATIVE_SYSCTL_BOOTARGS };
+static int native_sysctl_node(const char *name,uint64_t length)
+{
+    if(native_sysctl_name(name,length,"kern.osvariant_status")) return NATIVE_SYSCTL_OSVARIANT;
+    if(native_sysctl_name(name,length,"kern.bootargs")) return NATIVE_SYSCTL_BOOTARGS;
+    return 0;
+}
+static long native_sysctl_output(const unsigned long long *r,const void *value,uint64_t required)
+{
     uint64_t capacity;
     if (!r[3] || guest_copy(&capacity,r[3],sizeof(capacity),0)) return -EFAULT;
-    uint64_t required=sizeof(value);
     if (guest_copy(&required,r[3],sizeof(required),1)) return -EFAULT;
     if (!r[2]) return 0;
-    if (capacity<sizeof(value)) return -ENOMEM;
-    return guest_copy(&value,r[2],sizeof(value),1);
+    uint64_t copied=capacity<required ? capacity : required;
+    if (copied && guest_copy((void *)value,r[2],copied,1)) return -EFAULT;
+    return capacity<required ? -ENOMEM : 0;
+}
+static long native_sysctl_value(const unsigned long long *r,int node)
+{
+    if (r[4] || r[5]) return -EPERM;
+    if(node==NATIVE_SYSCTL_BOOTARGS) {
+        /* No Darwin kernel boot flags were configured for this machine. */
+        const char empty=0;
+        return native_sysctl_output(r,&empty,1);
+    }
+    if(node==NATIVE_SYSCTL_OSVARIANT) {
+        uint64_t value=D_OS_VARIANT_INITIAL_BITS;
+        for(unsigned int i=0;i<D_OS_VARIANT_STATUS_FIELDS;i++)
+            value|=(uint64_t)D_OS_VARIANT_STATUS_NO<<(i*D_OS_VARIANT_STATUS_WIDTH);
+        return native_sysctl_output(r,&value,sizeof(value));
+    }
+    return -ENOENT;
+}
+static long native_sysctlbyname(const unsigned long long *r)
+{
+    char name[128];
+    if(!r[1])return -EINVAL;
+    if(r[1]>sizeof(name))return -ENAMETOOLONG;
+    if(guest_copy(name,r[0],r[1],0))return -EFAULT;
+    return native_sysctl_value(r,native_sysctl_node(name,r[1]));
+}
+static long native_sysctl(const unsigned long long *r)
+{
+    int32_t mib[2];
+    if(r[1]!=2)return -ENOTSUP;
+    if(guest_copy(mib,r[0],sizeof(mib),0))return -EFAULT;
+    if(mib[0]==0 && mib[1]==3) { /* XNU sysctl_sysctl_name: name2oid */
+        char name[128];
+        if(!r[4] || !r[5])return -EINVAL;
+        if(r[5]>sizeof(name))return -ENAMETOOLONG;
+        if(guest_copy(name,r[4],r[5],0))return -EFAULT;
+        int node=native_sysctl_node(name,r[5]);
+        if(!node)return -ENOENT;
+        const int32_t result[]={1,node}; /* CTL_KERN plus this machine's OID. */
+        return native_sysctl_output(r,result,sizeof(result));
+    }
+    return mib[0]==1 ? native_sysctl_value(r,mib[1]) : -ENOENT;
 }
 
 static long native_linux_audit_number(const char *path,uint32_t *value)
