@@ -11,7 +11,7 @@ or XPC-service launch, communication and cleanup. Repeat through ARLinux;
 none of that complete multi-process/Android journey has passed.
 
 Current app: **ARHello 1.0** (`io.arlinux.ARHello`), source in guests/ARHello,
-using real pinned UIKit/frameworks. Latest executed source:
+using real pinned UIKit/frameworks. Activation milestone source:
 `57c4705f38e9a83889f6419eeaaa1acc79eddad8`,
 [run 39409669685](https://github.com/taowen/arlinux-xnu/actions/runs/39409669685).
 Use the sole build.sh entry, `build --mode app --ipc darling`.
@@ -40,36 +40,37 @@ receives activateEventsOnly:NO, executes launch-option/action preparation and
 calls actual UIApplication._runWithMainScene:transitionContext:completion:.
 This is framework-driven activation, not an injected app delegate call.
 
-Current failure: the traced app reaches that main-scene startup and then traps
-at 0x1809bbf6c in libc abort. The actual chain includes libpthread abort,
-libpthread locking code, localtime_r, CF logging/NSLog, and UIKit's
-SetAppPriorityForcingFixedForcingThread. Nearest-symbol labels alone do not
-identify the failed lock predicate. The ordinary attempt times out (124), a
-separate process from this trace. No ARHELLO_READY, UIKit frame, real input,
-normal GUI exit/relaunch or concurrent interactive journey passes.
+The pthread read/write-lock gap is now exercised by real UIKit startup:
+[run 39411131655](https://github.com/taowen/arlinux-xnu/actions/runs/39411131655),
+source `1c90164f63f6a2807cd10f1d56464586f5c1d1e1`, sends actual read-lock
+and unlock operations to the pinned Darling/XNU queues. Both return status 0
+and update 0x100, accepted by real libpthread. This is actual queue behavior,
+not a zero-result stub. Write-lock routing is implemented but not independently
+observed in that trace. Server Darwin errors and Linux transport errors retain
+separate ABI handling. The local backend remains unsupported for these calls.
 
-[Run 39410444685](https://github.com/taowen/arlinux-xnu/actions/runs/39410444685),
-source `304e804614cc2b2bf22323189e4b74dbf780067a`, installs the real
-pthread abort-reason breakpoint but stops earlier in libdispatch at 0x1808c4878.
-The targeted abort is not reproduced; no pthread reason is captured. Preserve
-this distinct interleaving rather than interpreting the missing breakpoint as
-proof that locking works. LLDB log SHA-256 `529f244096a21f2fe2243c87afb232a7fa8ade78d6614af5d26650986311be57`
-was receipt verified.
+Current traced failure: dyld rejects /usr/lib/libobjc-trampolines.dylib with
+Library Validation failure. This occurs after the observed locking operations
+and genuine _runWithMainScene; the objc abort reason is explicit in the runtime
+log. fcntl (syscall 92) is unimplemented, including F_CHECK_LV. The standalone
+loader does not yet support general file/executable mmap, so more loading work
+can remain after this policy error is fixed. No ARHELLO_READY, UIKit frame,
+real input or normal GUI lifecycle passes.
 
-A concrete missing operation is independently established in run 39409669685:
-actual syscall 306 returns ENOSYS during the UIKit/localtime locking path.
-XNU syscalls.master identifies 306/307/308 as psynch_rw_rdlock/wrlock/unlock.
-The pinned Darling server exposes all three through its existing XNU queues.
+Exact pending run: [39411849622](https://github.com/taowen/arlinux-xnu/actions/runs/39411849622),
+source `9d7a01962dbc7c3db3856dae227677a70abd8759`, implements the declared
+trusted-input policy at F_CHECK_LV: this compatibility runtime does not enforce
+Apple Library Validation. It checks the real descriptor and fchecklv argument,
+clears the optional error string and permits composition; it does not claim to
+register or authenticate a signature. Other fcntl operations remain unsupported,
+with command/argument/result evidence. Verify actual dyld loading and its next
+real error before extending mapping behavior. Continue this exact run; local
+observation timeouts do not justify restarting it.
 
-Exact pending run: [39411131655](https://github.com/taowen/arlinux-xnu/actions/runs/39411131655),
-source `1c90164f63f6a2807cd10f1d56464586f5c1d1e1`, routes those operations
-to generated community RPCs. Actual returned generation/update bits are
-preserved; positive Darwin BSD errors use carry without Linux errno remapping,
-while negative Linux transport errors retain the existing conversion. Check
-DARLING_PSYNCH_RW, actual libpthread reasons, activation and subsequent app
-progress. No lock success is fabricated. The local backend remains unsupported
-for these operations. Continue this exact run; observation timeouts do not
-justify restarting it. No GUI acceptance passes.
+The prior diagnostic run 39410444685 stopped earlier in libdispatch at
+0x1808c4878 and did not reproduce the pthread abort; preserve that distinct
+interleaving. Actual app progress, not one selected successful trace, remains
+the acceptance criterion.
 
 Header-only MACH_NOTIFY_SEND_ONCE cancellation is accepted only on outstanding
 reply ports with the exact kernel notification and zero audit identity; it is
@@ -86,17 +87,15 @@ explains abort-reason/abort routing; compare it with the actual cache code.
 
 ## Exact evidence and inputs
 
-Downloaded app/peer/LLDB/session textual logs match the latest app receipt.
-App evidence receipt SHA-256:
-`316df971de499e10546838eef0226b4d2c87f4e1cc6ec0ab46fb71252303e0c9`.
+Latest failure evidence is run 39411131655; downloaded LLDB/runtime/session
+logs match its receipt. Receipt SHA-256:
+`c7a904a0113438a28c2713814244c837f86cedbc735386653777627d19a5cc09`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| app.runtime.log | `3c2193406cef498b305567f9b8a8cb3f5d63289e8543e4705f7a803f704a32c2` |
-| lldb.log | `9ccffe8df5cc5b7b9d12691db4d7605f14517bd577ae950cbc25b3fe38df6078` |
-| peer.runtime.log | `a5c4154b8a6ee708cece829b8e3dcabaf99af203500d8c3dc01ba446d38f53b7` |
-| session.log | `2e93ef7cade235892208971d2d34b4ed9ca251adb22b061bcc9e3d83abd3e003` |
-| session.stdout | `3056dda8b3ca9c32160e78ed276bbb50dffd887b5395ca8daa8deedebbb24d8d` |
+| debugger.runtime.log | `7263964427d6da2fd4eb555d2ad4749fac64ba4f0bfaeaf1206bf66d7880891b` |
+| lldb.log | `20c041305c54b28fca3dd9d5e45badcde0332f22c8ae0502e40b439d525e856c` |
+| session.log | `693d5bc20971762199264032acc9eb10edb26d6b022e593b6fdcf68895509e52` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain
