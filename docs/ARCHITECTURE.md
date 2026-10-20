@@ -5,6 +5,23 @@ of an unmodified kernel. ARM64, 16 KiB guest pages, one advertised CPU and
 non-arm64e code define the initial scope. Compilation and execution occur only
 on GitHub runners through the root build.sh entry.
 
+## Required multi-process session
+
+Multiple independent iOS app processes must run concurrently, each with its
+own address space, threads and lifecycle. Bootstrap, service registration and
+process-state management belong in an independent shared session service.
+Reuse Darling/XNU cross-task rights and message delivery; do not build a second
+Mach ownership model. The current in-task provider and same-task trust adapter
+are transitional and cannot establish this requirement. Requester identity
+must come from actual message provenance; provider identity must identify the
+session service rather than assume it is the application itself.
+
+A virtual PID 1 is optional. If introduced, its namespace must consistently
+cover process queries, parentage, audit incarnation, signals, wait and exit.
+Acceptance includes two concurrent application processes with real frames and
+input, exit/relaunch of one while the other remains interactive, and the same
+journey through ARLinux. None of this multi-process app acceptance has passed.
+
 ## Native execution first
 
 macho-native loads a bounded static Mach-O image. Its executable instruction
@@ -371,8 +388,19 @@ stack alone does not identify a missing daemon or establish its protocol.
   exposes validated adoption of an already received check-in. A controlled
   system-domain process-info listener now owns actual XNU rights. Unknown
   process-state messages remain unsupported and connection retirement remains
-  unfinished. Bootstrap identity verification currently stops the client before
-  check-in: publication/lookup is not proof of an established service connection.
+  unfinished. Run 39387933387 establishes actual check-in in both ordinary and
+  debugger attempts; the first descriptor-bearing process-state message is the
+  next unsupported operation. Publication/lookup alone never proves check-in.
+
+The private libxpc mapping's launchd trust predicate now accepts only the actual
+in-task bootstrap provider's PID, effective UID and Linux-backed incarnation.
+The original audit getter and requester-echo comparisons remain. No PID 1 or
+root audit identity is fabricated. A bounded instruction/branch-layout match
+locates the predicate; unknown or ambiguous layouts fail explicitly. There is
+no firmware-version offset selection. This single-process bootstrap policy
+does not establish inherited bootstrap service behavior in fork children or a
+multi-process iOS session. A future virtual PID 1 would require consistent
+process, parentage, signal and audit behavior, rather than one altered field.
 - [VibeDarling Wayland backend](https://github.com/VibeDarling/darling-cocotron/tree/f0e1b1b28c439af9fcd01f039d74fbfe958f3067/AppKit/Wayland.backend)
   supplies window/configure, shared buffers, input and EGL subwindows. Reviewed
   `WaylandWindow.m` is MIT-licensed. Reuse applicable host-side pieces; its

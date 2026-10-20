@@ -9,6 +9,12 @@ still requires an actual iOS app's display, input, normal exit and relaunch,
 followed by its actual ARLinux integration journey. None of those GUI/Android
 requirements has passed on Linux.
 
+Acceptance also requires at least two independent iOS application processes
+running concurrently in one session, with shared bootstrap/process services
+and real cross-process IPC. Closing and relaunching one must leave the other
+interactive, including through ARLinux. The in-task bootstrap experiment is
+transitional; multi-process iOS app support is not established.
+
 Current application: **ARHello 1.0** (`io.arlinux.ARHello`), a programmatic
 UIKit window, label and increment button. Source/TBD declarations are under
 guests/ARHello; real framework implementations come from the pinned firmware.
