@@ -43,7 +43,6 @@ int darwin_native_system_lookup(const char *name,uint64_t type,uint64_t flags,ui
 int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refresh_millihz,
                                    uint64_t period_bits,int32_t backend_pid);
 /* Real QuartzCore entry points, resolved from the currently loaded cache. */
-void darwin_native_render_api(uint64_t start,uint64_t get_port);
 #include "ios-framework-api.h"
 enum darwin_frame_state { D_FRAME_FREE, D_FRAME_DRAWING, D_FRAME_READY, D_FRAME_BUSY };
 struct darwin_frame_control { uint32_t state[2],sequence[2]; };

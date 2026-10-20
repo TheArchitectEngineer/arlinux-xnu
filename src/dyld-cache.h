@@ -69,7 +69,6 @@ static uint64_t load_native_cache(const char *root)
     need(header.images_count && header.images_count<=16384 && range(header.images_offset,(uint64_t)header.images_count*sizeof(struct cache_image),size),"cache image index bounds");
     /* Cache images may alias the same Mach-O. Adapt each image only once so a
      * rewritten TSD read cannot be mistaken for an original CPU metadata read. */
-    uint64_t render_start=0,render_get_port=0;
     struct darwin_ui_api ui_api={0};
     int diagnostic_exports=getenv("ARLINUX_DIAGNOSTICS")!=NULL;
     uint64_t *seen=calloc(header.images_count,sizeof(uint64_t));
@@ -148,8 +147,6 @@ static uint64_t load_native_cache(const char *root)
                         if (render_image) {
                             if (diagnostic_exports && !strncmp(text,"_CARender",9) && cache_contains(address,4,4))
                                 fprintf(stderr,"NATIVE_RENDER_EXPORT symbol=%s address=%#" PRIx64 "\n",text,address);
-                            if (!strcmp(text,"_CARenderServerStart")) render_start=address;
-                            if (!strcmp(text,"_CARenderServerGetPort")) render_get_port=address;
                             continue;
                         }
                         if (diagnostic_exports && ((scene_image && !strcmp(text,"_OBJC_CLASS_$_FBSSceneSettingsDiff")) ||
@@ -177,11 +174,7 @@ static uint64_t load_native_cache(const char *root)
     }
     free(seen);
     darwin_native_ui_api(&ui_api);
-    if (render_start && render_get_port) {
-        need(cache_contains(render_start,4,4) && cache_contains(render_get_port,4,4),"QuartzCore entry point bounds");
-        darwin_native_render_api(render_start,render_get_port);
-        fprintf(stderr,"NATIVE_RENDER_FRAMEWORK_API start=%#" PRIx64 " get_port=%#" PRIx64 "\n",render_start,render_get_port);
-    }
+
     need(!native_framework_services_enabled || cache_service_hooks==3,"exact service registry adapter symbols unavailable");
     need(!native_framework_services_enabled || cache_bootstrap_policy_hooks==1,"unsupported bootstrap trust predicate layout");
     for (unsigned int i=0;i<cache_map_count;i++) {
