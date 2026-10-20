@@ -90,6 +90,21 @@ def capture_display_code(target):
             if text:
                 print('DISPLAY_REFERENCE ' + json.dumps({'pc': hex(address+index*4), 'address': hex(pointer), 'text': text}), flush=True)
 
+    def mode_constants(address):
+        objects = GuestObjects(target.GetProcess())
+        words = struct.unpack('<'+'I'*24, objects.read(address, 24*4))
+        for index, word in enumerate(words[:-1]):
+            load = words[index+1]
+            if word & 0x9f000000 != 0x90000000 or load & 0xffc00000 != 0xfd400000:
+                continue
+            if (word & 31) != ((load >> 5) & 31):
+                continue
+            immediate = ((word >> 29) & 3) | (((word >> 5) & 0x7ffff) << 2)
+            if immediate & (1 << 20): immediate -= 1 << 21
+            pointer = ((address+index*4)&~4095)+(immediate<<12)+(((load>>10)&4095)*8)
+            value = struct.unpack('<d', objects.read(pointer, 8))[0]
+            print('DISPLAY_MODE_RATE_FACTOR ' + json.dumps({'pc': hex(address+index*4), 'address': hex(pointer), 'factor': value}), flush=True)
+
     for symbol in diagnostic_symbols():
         if symbol.get('symbol') == '_BKSDisplayServicesStart':
             address = int(symbol['address'], 16)
@@ -124,6 +139,8 @@ def capture_display_code(target):
                         name = objects.cstring(objects.u64(entry))
                         implementation = objects.u64(entry+16)
                         print('OBJC_DISPLAY_METHOD ' + json.dumps({'class': symbol['symbol'], 'kind': kind, 'selector': name, 'address': hex(implementation)}), flush=True)
+                        if symbol['symbol'] == '_OBJC_CLASS_$_CADisplayMode' and name == 'refreshRate':
+                            mode_constants(implementation)
                         if name in ('mainDisplay', 'displays', 'bounds', 'currentMode', 'availableModes', 'preferredMode', 'width', 'height', 'refreshRate') or name.lstrip('_').startswith('initWith'):
                             disassemble('DISPLAY_METHOD_CODE', implementation, 96)
                             for child_index, child in enumerate(list(dict.fromkeys(calls(implementation, 48)))[:3]):

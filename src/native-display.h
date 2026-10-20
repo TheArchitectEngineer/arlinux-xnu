@@ -9,6 +9,7 @@
 #include <signal.h>
 static int native_display_enabled;
 static void *native_display_pixels;
+struct native_wl_output { struct wl_output *object; uint32_t refresh; };
 struct native_wayland {
     struct wl_display *display;
     struct wl_compositor *compositor;
@@ -16,6 +17,8 @@ struct native_wayland {
     struct xdg_wm_base *shell;
     struct wl_surface *surface;
     struct wl_buffer *buffer;
+    struct native_wl_output outputs[8],*current_output;
+    unsigned int output_count;
     uint32_t width,height;
     int ready_fd,pixels_fd,running,configured,ready,xrgb;
 };
@@ -25,6 +28,36 @@ static const struct xdg_wm_base_listener native_wm_listener={.ping=native_wm_pin
 static void native_shm_format(void *data,struct wl_shm *shm,uint32_t format)
 { (void)shm; if (format==WL_SHM_FORMAT_XRGB8888) ((struct native_wayland *)data)->xrgb=1; }
 static const struct wl_shm_listener native_shm_listener={.format=native_shm_format};
+static void native_output_geometry(void *data,struct wl_output *output,int32_t x,int32_t y,
+                                    int32_t width,int32_t height,int32_t subpixel,
+                                    const char *make,const char *model,int32_t transform)
+{
+    (void)data; (void)output; (void)x; (void)y; (void)width; (void)height;
+    (void)subpixel; (void)make; (void)model; (void)transform;
+}
+static void native_output_mode(void *data,struct wl_output *output,uint32_t flags,
+                               int32_t width,int32_t height,int32_t refresh)
+{
+    (void)output; (void)width; (void)height;
+    if ((flags&WL_OUTPUT_MODE_CURRENT) && refresh>=0) ((struct native_wl_output *)data)->refresh=refresh;
+}
+static const struct wl_output_listener native_output_listener={
+    .geometry=native_output_geometry,.mode=native_output_mode
+};
+static void native_surface_enter(void *data,struct wl_surface *surface,struct wl_output *output)
+{
+    struct native_wayland *w=data; (void)surface;
+    if (!w->current_output) for (unsigned int i=0;i<w->output_count;i++)
+        if (w->outputs[i].object==output) { w->current_output=w->outputs+i; break; }
+}
+static void native_surface_leave(void *data,struct wl_surface *surface,struct wl_output *output)
+{
+    struct native_wayland *w=data; (void)surface;
+    if (w->current_output && w->current_output->object==output) w->current_output=NULL;
+}
+static const struct wl_surface_listener native_wl_surface_listener={
+    .enter=native_surface_enter,.leave=native_surface_leave
+};
 static void native_wl_global(void *data,struct wl_registry *registry,uint32_t name,
                              const char *interface,uint32_t version)
 {
@@ -38,6 +71,11 @@ static void native_wl_global(void *data,struct wl_registry *registry,uint32_t na
         w->shell=wl_registry_bind(registry,name,&xdg_wm_base_interface,1);
         xdg_wm_base_add_listener(w->shell,&native_wm_listener,w);
     }
+    else if (!strcmp(interface,"wl_output") && w->output_count<8) {
+        struct native_wl_output *output=w->outputs+w->output_count++;
+        output->object=wl_registry_bind(registry,name,&wl_output_interface,1);
+        wl_output_add_listener(output->object,&native_output_listener,output);
+    }
 }
 static void native_wl_remove(void *data,struct wl_registry *registry,uint32_t name)
 { (void)data; (void)registry; (void)name; }
@@ -46,10 +84,10 @@ static void native_wl_frame(void *data,struct wl_callback *callback,uint32_t tim
 {
     struct native_wayland *w=data; (void)time; wl_callback_destroy(callback);
     if (!w->ready) {
-        uint32_t geometry[2]={w->width,w->height};
+        uint32_t geometry[3]={w->width,w->height,w->current_output ? w->current_output->refresh : 0};
         need(write(w->ready_fd,geometry,sizeof(geometry))==(ssize_t)sizeof(geometry),"Wayland readiness reply");
         close(w->ready_fd); w->ready=1;
-        fprintf(stderr,"WAYLAND_BACKEND_READY width=%u height=%u app_frame_presented=false\n",w->width,w->height);
+        fprintf(stderr,"WAYLAND_BACKEND_READY width=%u height=%u refresh_millihz=%u app_frame_presented=false\n",w->width,w->height,geometry[2]);
     }
 }
 static const struct wl_callback_listener native_frame_listener={.done=native_wl_frame};
@@ -100,6 +138,7 @@ static void native_wayland_run(int ready_fd,int pixels_fd,pid_t parent)
     need(wl_display_roundtrip(w.display)>=0 && w.compositor && w.shm && w.shell,"Wayland display interfaces");
     need(wl_display_roundtrip(w.display)>=0 && w.xrgb,"Wayland XRGB framebuffer capability");
     w.surface=wl_compositor_create_surface(w.compositor);
+    wl_surface_add_listener(w.surface,&native_wl_surface_listener,&w);
     struct xdg_surface *surface=xdg_wm_base_get_xdg_surface(w.shell,w.surface);
     xdg_surface_add_listener(surface,&native_surface_listener,&w);
     struct xdg_toplevel *top=xdg_surface_get_toplevel(surface);
@@ -120,12 +159,14 @@ static void native_display_open(void)
     if (!child) { close(ready[0]); native_wayland_run(ready[1],pixels,parent); }
     close(ready[1]);
     struct pollfd descriptor={.fd=ready[0],.events=POLLIN};
-    uint32_t geometry[2];
+    uint32_t geometry[3];
     int received=poll(&descriptor,1,5000)>0 && read(ready[0],geometry,sizeof(geometry))==(ssize_t)sizeof(geometry);
     close(ready[0]);
     if (!received) { kill(child,SIGTERM); waitpid(child,NULL,0); need(0,"Wayland backend did not configure a surface"); }
     native_display_pixels=mmap(NULL,(size_t)geometry[0]*geometry[1]*4,PROT_READ|PROT_WRITE,MAP_SHARED,pixels,0);
     need(native_display_pixels!=MAP_FAILED,"map real Wayland framebuffer"); close(pixels);
-    need(!darwin_native_display_register(geometry[0],geometry[1],child),"register native Wayland display endpoint");
+    float refresh=(float)geometry[2]/1000.0f; uint32_t refresh_bits;
+    memcpy(&refresh_bits,&refresh,sizeof(refresh_bits));
+    need(!darwin_native_display_register(geometry[0],geometry[1],geometry[2],refresh_bits,child),"register native Wayland display endpoint");
     native_display_enabled=1;
 }

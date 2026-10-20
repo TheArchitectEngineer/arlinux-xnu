@@ -19,6 +19,7 @@ struct ipc_endpoint {
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 static uint32_t native_bootstrap_port,native_display_port,native_render_port;
 static uint32_t native_display_width,native_display_height;
+static uint32_t native_display_refresh,native_display_refresh_bits;
 static int32_t native_display_pid;
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
 /* XNU message.h: LP64 OOL uses flags before size, unlike the 32-bit form. */
@@ -174,13 +175,15 @@ static uint32_t ipc_reply_port(void)
 /* A registry for this standalone compatibility machine, not launchd/XPC.
  * The public lookup API is redirected here by name in the private cache map.
  * Only an actually created Linux display is registered. Other names fail. */
-int darwin_native_display_register(uint32_t width,uint32_t height,int32_t backend_pid)
+int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refresh_millihz,
+                                   uint32_t refresh_bits,int32_t backend_pid)
 {
     if (!width || !height || width>8192 || height>8192 || backend_pid<=0 || native_bootstrap_port) return -1;
     native_bootstrap_port=ipc_reply_port(); native_display_port=ipc_reply_port(); native_render_port=ipc_reply_port();
     if (!native_bootstrap_port || !native_display_port || !native_render_port) return -1;
     ipc_find(native_bootstrap_port)->send_refs=1;
     native_display_width=width; native_display_height=height;
+    native_display_refresh=refresh_millihz; native_display_refresh_bits=refresh_bits;
     native_display_pid=backend_pid;
     return 0;
 }
