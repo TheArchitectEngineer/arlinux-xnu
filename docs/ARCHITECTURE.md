@@ -389,11 +389,14 @@ stack alone does not identify a missing daemon or establish its protocol.
   [Our pinned fork](https://github.com/taowen/arlinux-libspc/tree/25448224f76c78c11dfb137fdeb777fbee5e640e/libspc)
   exposes validated adoption of an already received check-in. A controlled
   system-domain process-info listener now owns actual XNU rights. Unknown
-  process-state messages remain unsupported and connection retirement remains
-  unfinished. Run 39387933387 establishes actual check-in in both ordinary and
-  debugger attempts. Run 39389693704 decodes the first process-state request:
-  message=11, taskPort send right and endpoint send right. Its semantics remain
-  unsupported (ENOTSUP). Publication/lookup alone never proves check-in.
+  process-state messages remain unsupported except the observed BKSWorkspace
+  message-11 registration. The session retains its submitted task and endpoint
+  rights under the kernel-audited client identity; Linux pidfds drive release
+  of rights and connection records on process exit (run 39392250655). Early
+  exit during check-in still needs graceful rejection, and helper spawning,
+  scene launch and full process state remain unfinished. Run 39391469924
+  identifies message 11 from the real BKSWorkspace.init constructor.
+  Publication/lookup alone never proves check-in or application startup.
 
 The private libxpc mapping's launchd trust predicate now accepts only the actual
 independent session provider's PID, effective UID and Linux-backed incarnation.

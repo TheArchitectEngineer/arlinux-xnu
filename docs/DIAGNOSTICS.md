@@ -112,6 +112,16 @@ The callback module must be imported into LLDB's interpreter namespace; merely
 placing it in Python sys.modules did not activate callbacks in the preceding
 attempt. Callbacks auto-continue and have a per-breakpoint hit bound.
 
+For a UIKit event-loop wait before the application delegate runs, launch
+breakpoints read the actual Objective-C method metadata and observe selected
+UIApplication/workspace methods. APP_LAUNCH_CALL records the actual thread,
+caller, bounded stack and code; missing selected calls are not whole-program
+coverage. The signed/unsigned XPC integer setters filter message=11. Run
+39391469924 identifies its actual BKSWorkspace.init constructor and
+sendToConnection: path. Run 39392250655 records real registration/retirement
+for two concurrent clients plus the separate debugger client. A connection or
+registration does not establish scene launch, app rendering or input.
+
 ## Primary references
 
 - [LLDB breakpoint scripts](https://lldb.llvm.org/use/tutorials/breakpoint-triggered-scripts.html)
