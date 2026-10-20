@@ -365,6 +365,7 @@ jobs:
               --lookup /usr/lib/system/libxpc.dylib _xpc_uint64_create \
               --lookup /usr/lib/system/libxpc.dylib _xpc_bool_get_value \
               --lookup /usr/lib/system/libxpc.dylib _xpc_int64_get_value \
+              --lookup /usr/lib/system/libsystem_pthread.dylib ___pthread_abort_reason \
               --lookup /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation __CFXPCCreateCFObjectFromXPCObject \
               --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$_UIApplication' \
               --lookup /System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices '_OBJC_CLASS_$_BKSProcess' \

@@ -49,6 +49,25 @@ def service_register(frame, location, internal_dict):
     return False
 
 
+def pthread_failure(frame, location, internal_dict):
+    """Preserve the real libpthread abort reason before libc abort traps."""
+    process=frame.GetThread().GetProcess()
+    objects=GuestObjects(process)
+    values=[frame.FindRegister('x'+str(index)).GetValueAsUnsigned() for index in range(4)]
+    record={'tid':frame.GetThread().GetThreadID(),'caller':hex(frame.FindRegister('lr').GetValueAsUnsigned()),
+            'arguments':[hex(value) for value in values]}
+    try: record['format']=objects.cstring(values[0])
+    except (ValueError,UnicodeError,SystemError) as error: record['readError']=str(error)
+    print('PTHREAD_FAILURE '+json.dumps(record),flush=True)
+    target=process.GetTarget()
+    target.GetDebugger().HandleCommand('thread backtrace --count 20')
+    caller=frame.FindRegister('lr').GetValueAsUnsigned()
+    target.GetDebugger().HandleCommand('disassemble --start-address '+hex(caller-128)+' --count 96')
+    capture_code_references(target,caller-128,96,'PTHREAD_FAILURE_REFERENCE')
+    location.GetBreakpoint().SetEnabled(False)
+    return False
+
+
 def graphics_failure(frame, location, internal_dict):
     """Preserve the original error before stackshot reporting can block."""
     process = frame.GetThread().GetProcess()
@@ -521,6 +540,11 @@ def install_service_breakpoints(target):
                         print('DICTIONARY_INPUT_BREAKPOINT', hex(address), flush=True)
             except (ValueError, SystemError) as error:
                 print('DICTIONARY_METADATA_ERROR', str(error), flush=True)
+        elif symbol.get('symbol')=='___pthread_abort_reason':
+            breakpoint=target.BreakpointCreateByAddress(int(symbol['address'],16))
+            breakpoint.SetScriptCallbackFunction('dyld_debugger.pthread_failure')
+            breakpoint.SetAutoContinue(True)
+            print('PTHREAD_FAILURE_BREAKPOINT',symbol['address'],flush=True)
         elif symbol.get('symbol') in ('_bootstrap_look_up', '_bootstrap_look_up2', '_bootstrap_look_up3'):
             breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
             breakpoint.SetScriptCallbackFunction('dyld_debugger.service_lookup')
