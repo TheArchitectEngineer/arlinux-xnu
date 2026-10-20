@@ -265,6 +265,15 @@ static long darling_mach(unsigned long number,const unsigned long long *r)
     }
     case D_TRAP_PORT_ALLOCATE: return dserver_rpc_mach_port_allocate(r[0],r[1],(uint32_t *)r[2]);
     case D_TRAP_PORT_DEALLOCATE: return dserver_rpc_mach_port_deallocate(r[0],r[1]);
+    case D_TRAP_PORT_TYPE: {
+        long result=dserver_rpc_mach_port_type(r[0],r[1],(uint32_t *)r[2]);
+        uint32_t type=0;
+        if (!result) guest_copy(&type,r[2],sizeof(type),0);
+        trace_record("DARLING_PORT_TYPE name=0x",r[1],type,result);
+        return result;
+    }
+    case D_TRAP_PORT_REQUEST_NOTIFICATION:
+        return dserver_rpc_mach_port_request_notification(r[0],r[1],r[2],r[3],r[4],r[5],(uint32_t *)r[6]);
     case D_TRAP_PORT_MOD_REFS: return dserver_rpc_mach_port_mod_refs(r[0],r[1],r[2],r[3]);
     case D_TRAP_PORT_MOVE_MEMBER: {
         result=dserver_rpc_mach_port_move_member(r[0],r[1],r[2]);
