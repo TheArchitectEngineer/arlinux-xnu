@@ -22,6 +22,9 @@ patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT)_FRAME nr=\S+ p
           r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)']
 frames=sorted({int(pc,16) for pattern in patterns for pc in re.findall(pattern,trace)})
 faults={int(pc,16) for pc in re.findall(r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
+returns={int(pc,16):int(index,16) for index,pc in re.findall(
+    r'DARWIN_(?:EXIT|FAULT)_FRAME nr=0x([0-9a-fA-F]+) pc=(0x[0-9a-fA-F]+)',trace)}
+def lookup_pc(pc):return pc-4 if pc in returns and pc not in faults else pc
 fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(
     r'DARWIN_FAULT_REGISTER index=0x([0-9a-fA-F]+) pc=\S+ result=0x([0-9a-fA-F]+)',trace) if int(index,16)<31]
 records=[];matched=set()
@@ -39,7 +42,7 @@ with CacheSymbols(args.cache) as cache:
         if args.bootstrap_context and image['name']=='/usr/lib/system/libxpc.dylib':
             records.append({'image':image['name'],'bootstrapCandidates':cache.bootstrap_context(image)})
         ranges=image['executable']
-        matches=[pc for pc in frames if any(base<=pc<base+size for base,size in ranges)]
+        matches=[pc for pc in frames if any(base<=lookup_pc(pc)<base+size for base,size in ranges)]
         requested={name for path,name in args.lookup if path==image['name']}
         if not matches and not requested:continue
         symbols=[]
@@ -51,11 +54,13 @@ with CacheSymbols(args.cache) as cache:
         symbols.sort()
         for pc in matches:
             matched.add(pc)
-            nearest=max(((value,name) for value,name in symbols if value<=pc),default=None)
+            address=lookup_pc(pc)
+            nearest=max(((value,name) for value,name in symbols if value<=address),default=None)
             record={'pc':hex(pc),'image':image['name'],'imageAddress':hex(image['address'])}
-            if nearest:record.update(nearestSymbol=nearest[1],symbolAddress=hex(nearest[0]),displacement=pc-nearest[0])
-            if pc in faults or (nearest and 'display' in nearest[1].lower()):
-                record['faultContext']=cache.fault_context(image,pc,symbols)
+            if address!=pc:record.update(lookupAddress=hex(address),note='Saved return address; symbolize its actual ARM64 call instruction')
+            if nearest:record.update(nearestSymbol=nearest[1],symbolAddress=hex(nearest[0]),displacement=address-nearest[0])
+            if pc in faults or (pc in returns and returns[pc]<=3) or (nearest and 'display' in nearest[1].lower()):
+                record['faultContext']=cache.fault_context(image,address,symbols)
             records.append(record)
     for pc in frames:
         if pc not in matched:records.append({'pc':hex(pc),'status':'outside-cache','note':'Requires original app/interpreter or host symbols'})
