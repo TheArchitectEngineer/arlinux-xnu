@@ -49,6 +49,21 @@ def service_register(frame, location, internal_dict):
     return False
 
 
+def graphics_failure(frame, location, internal_dict):
+    """Preserve the original error before stackshot reporting can block."""
+    process = frame.GetThread().GetProcess()
+    error = lldb.SBError()
+    message = process.ReadCStringFromMemory(frame.FindRegister('x0').GetValueAsUnsigned(), 2048, error)
+    print('GRAPHICS_FAILURE ' + json.dumps({
+        'tid': frame.GetThread().GetThreadID(), 'pc': hex(frame.GetPC()),
+        'caller': hex(frame.FindRegister('lr').GetValueAsUnsigned()),
+        'message': message if error.Success() else None,
+        'readError': None if error.Success() else str(error),
+    }), flush=True)
+    location.GetBreakpoint().SetEnabled(False)
+    return False
+
+
 def install_service_breakpoints(target):
     for symbol in diagnostic_symbols():
         if symbol.get('symbol') in ('_bootstrap_look_up', '_bootstrap_look_up2', '_bootstrap_look_up3'):
@@ -61,6 +76,11 @@ def install_service_breakpoints(target):
             breakpoint.SetScriptCallbackFunction('dyld_debugger.service_register')
             breakpoint.SetAutoContinue(True)
             print('SERVICE_REGISTER_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
+        elif symbol.get('symbol') == '__GSWriteStackshot':
+            breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
+            breakpoint.SetScriptCallbackFunction('dyld_debugger.graphics_failure')
+            breakpoint.SetAutoContinue(True)
+            print('GRAPHICS_FAILURE_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
 
 
 def capture_display_code(target):

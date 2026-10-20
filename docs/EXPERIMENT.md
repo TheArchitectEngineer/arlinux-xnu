@@ -13,8 +13,8 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39359548189](https://github.com/taowen/arlinux-xnu/actions/runs/39359548189),
-source `9c9a79fd608ae8f0b921b87a5d47b52da32758d2`, dyld job `118422380483`.
+[39361080364](https://github.com/taowen/arlinux-xnu/actions/runs/39361080364),
+source `cb4c0ea287144792d71fc5b02b9f582bf32be9e8`, dyld job `118427304433`.
 The host child connects directly to headless Weston, configures a 1024x640
 xdg-shell surface and submits an actual wl_shm buffer. Its entered output
 advertises 60000 mHz refresh. A real frame callback
@@ -37,19 +37,28 @@ calendar/continuous kevent timer correction eliminates the observed unsupported
 0x9c timer flags, reaching an actual wait in run 39357483030. These historical
 observations are not repeated by every later thread interleaving.
 
-Current failure: ordinary app status 133, PC 0x1808c3ce4,
-libdispatch __dispatch_kq_poll. The preceding kevent_id has valid flags 0x20401,
-one MACHPORT change (flags 0x186), and nonzero data_out/data_available pointers
-(arguments 5/6). native_kevent_id explicitly rejects those direct data buffers
-with ENOTSUP. Implement their actual receive-buffer allocation/writeback
-semantics, preserving message sizes, trailers, ownership and error handling;
-do not merely remove the rejection.
+Current failure: ordinary app status 124. The debugger's main thread waits
+in libdispatch/XPC while CrashReporterSupport handles GraphicsServices event-port
+registration failure. The first registration error must be captured before
+stackshot reporting obscures it. The runner now resolves __GSWriteStackshot
+from the actual input cache and reads its error text at entry without calling
+any guest methods; this new callback is not yet verified.
 
-The debugger retry also verifies MACH_RCV_SYNC_WAIT: thread 4428 waits on its
-owned reply port 0x1803, linked to live send port 0x1703, with zero queued
-messages. This confirms actual blocking/linkage metadata, not a working XPC
-peer. Temporary-owner XPC port construction now succeeds under the standalone
-ordinary Linux scheduling policy. UIKit content has not appeared on Wayland;
+Direct kevent receive buffers now implement real allocation, stack/forward
+placement, trailer sizing and residual writeback; workqueue workers reserve
+receive storage above their actual guest callback stacks. The earlier explicit
+ENOTSUP is gone, but no successful buffer-message delivery marker has yet been
+observed. Do not claim this receive path is accepted by the app journey.
+
+Rejected send options in run 39360652820 matched the pinned Apple libdispatch's
+QoS/importance hints. The current run accepts those under ordinary Linux
+scheduling, distinguishes a priority argument from a notification port, and
+preserves real send/receive errors. No rejected-option marker repeats; the
+application still stalls, so this does not establish working XPC peers.
+The retry shows three actual empty reply queues, including a special reply
+port linked to live send port 0x1303. UIKit content has not appeared on Wayland.
+The receipt SHA-256 is
+`bc88b3151573d221e50837bd2321309d1d791929337e8cbd3e8b64f2e5597cba`.
 LLDB_COMMAND_STATUS=0 describes evidence capture only.
 
 Both independent real-libSystem console journeys still pass: worker return 37,
@@ -102,13 +111,11 @@ integration journey remain incomplete.
 
 ### Current boundary and next action
 
-Continue with CADisplay's property request 40232 (0x9d28). The observed request
-is 36 bytes (NDR + display ID), and its client reserves 632 bytes for the reply.
-The current disassembly captures the start of its inline stub in the actual
-_initWithDisplay: update callee. Expand that callee beyond the initial 96
-instructions to derive the full reply layout and field use before supplying
-actual dimensions/modes. Then connect rendering and input to the framebuffer.
-Never mark the blank backend surface as application output.
+Capture the original GraphicsServices registration failure and fix the
+corresponding namespace/right operation. CADisplay list and properties already
+pass; do not restart that completed ABI investigation. Then connect actual
+rendering and input to the framebuffer. Never mark the blank backend surface
+as application output.
 
 Display-list routine 40231 was measured in run 39352885663: 24-byte request,
 56-byte complex reply with one LP64 OOL descriptor, NDR and matching byte count.
@@ -163,7 +170,7 @@ never reached the button; the accepted run uses the actual macOS HID queue.
 Latest app failure receipt:
 `ec31936e83bd2a01fb5ee47c8e7b3cc4763fa1276385a86f749466a8e9bb6500`.
 Native runtime SHA-256: `13e846fd134083cc91034143cf578a519cd646af47ae95e6846ec806826c9f46`.
-Local text: build/runs/39359548189/attempt-1/job-118422380483.log
+Local text: build/runs/39361080364/attempt-1/job-118427304433.log
 and job-118422224534.log. Both independent real-libSystem console launches
 still complete. Earlier intermediate failures remain in Actions/Git history.
 

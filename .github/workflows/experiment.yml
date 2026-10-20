@@ -218,6 +218,7 @@ jobs:
               --lookup /System/Library/Frameworks/QuartzCore.framework/QuartzCore '_OBJC_CLASS_$_CADisplayMode' \
               --lookup /System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices _BKSDisplayServicesStart \
               --lookup /System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices __GSRegisterPurpleNamedPortInPrivateNamespace \
+              --lookup /System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices __GSWriteStackshot \
               --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up \
               --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up2 \
               --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up3 \

@@ -108,3 +108,11 @@ method-list fixup bits. Adjacent ADRP/ADD references are read as bounded raw
 bytes: arbitrary code references must not be handed to LLDB 18's CString SWIG
 binding, which raised SystemError on a binary block in run 39352538927.
 LLDB command success alone does not prove every optional decoder ran.
+
+GraphicsServices may report an event-port registration failure by requesting a
+stackshot through synchronous XPC, then block in the reporting path. A wait in
+CrashReporterSupport therefore does not identify the original registration
+error. The runner resolves __GSWriteStackshot by symbol in the same cache and
+captures its bounded C-string argument as GRAPHICS_FAILURE before continuing.
+The callback neither suppresses the failure nor invokes guest methods. Its
+first actual hit still needs runner verification.

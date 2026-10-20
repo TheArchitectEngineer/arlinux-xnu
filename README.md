@@ -98,6 +98,9 @@ ARM64 code does not imply a Metal dependency.
   decrypted iOS apps on Apple Silicon Macs, application adaptation and input
   mapping. It relies on macOS's existing iOS runtime; our Linux/Android target
   must also supply the underlying Darwin and framework compatibility.
+* [Darlingserver](https://github.com/darlinghq/darlingserver): a reference for
+  reusing XNU Mach IPC in a Linux userspace server and integrating Mach-port
+  kqueue events with epoll. It is not currently a runtime dependency here.
 * [Apple Open Source](https://github.com/apple-oss-distributions): XNU and the
   matching libdispatch kernel firehose implementation; licenses remain upstream.
 
