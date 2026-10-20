@@ -13,8 +13,8 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39348154790](https://github.com/taowen/arlinux-xnu/actions/runs/39348154790),
-source `94d1180ca38507ac4ce6c2a4f83caf6a368f75c7`, dyld job `118385803048`.
+[39349359592](https://github.com/taowen/arlinux-xnu/actions/runs/39349359592),
+source `5ce5bb2aafcb46b26a018e579afde6ab2d2c2686`, dyld job `118389731972`.
 UIKit submits actual background blocks to genuine libdispatch workers on Linux
 threads. LLDB sees _dispatch_root_queue_drain, _dispatch_worker_thread2 and
 _pthread_wqthread alongside CoreFoundation and QuartzCore initialization.
@@ -83,13 +83,25 @@ standalone console regression is
 
 ### Current boundary and next action
 
-The latest real app run, 39348154790, captures the actual exception at
+The latest real app run, 39349359592, captures the actual exception at
 objc_exception_throw before abort, without injecting guest method calls.
 Its read-only decoder obtains NSException's name/reason offsets from the real
 class ivar metadata. The reason identifies the backboardd connection failure;
 normal application status remains 133, while LLDB_COMMAND_STATUS=0 means only
 that evidence collection completed. Both real-libSystem console journeys pass.
 No Linux display/input journey has passed.
+
+Actual bootstrap breakpoints now record the hit frame's Linux TID, caller,
+service name, bootstrap port and output address, without injected guest calls.
+The display query requests `com.apple.backboard.display.services` with bootstrap
+port **0**. The existing task bootstrap slot is genuinely empty. libxpc also
+looks up logd and notification_center with that empty port; this does not prove
+that those services are the cause of the UIKit abort. Same-cache disassembly
+confirms BKSDisplayServicesStart calls _BKSDisplayServicesGetMainScreenInfo,
+which supplies four 32-bit output values to the startup code. The failing
+connection must lead to a real display backend, not a fabricated service right
+or a successful reply containing unrelated constants. The exact display RPC
+request/reply layout still needs inspection before implementing it.
 
 The earlier special-reply fix (39347374538) establishes actual waiting in
 ipc_message/ppoll and workloop delivery. The older 0x1808bf9d4 stack access
@@ -104,9 +116,9 @@ list. First event delivery is observed; successful completion of its callback
 and message round trips remain unproven. Explicit
 SYNC_WAIT/SYNC_WAKE commands, full turnstile/priority inheritance, dynamic queue
 retirement, the workloop control syscall, complex/right-transfer IPC, display
-services, graphics and ARLinux integration remain incomplete. Next inspect
-the BKSDisplayServicesStart connection and required protocol before adapting
-the real display path. Keep extending
+services, graphics and ARLinux integration remain incomplete. Next supply real service discovery and a display endpoint backed by an actual
+Linux display, inspecting the observed client protocol before implementing
+its replies. Keep extending
 the real ARHello journey; no isolated probe replaces UI acceptance.
 
 ABI sources: libpthread-330.250.2
@@ -134,9 +146,9 @@ Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
 never reached the button; the accepted run uses the actual macOS HID queue.
 
 Latest app failure receipt:
-`5d39707dc85a521361ff60719f3f333a97955fdd8a260af2f818a9d2f16df997`.
+`27992bfde85c56e7687bbf64806f8720bf5f77deb8449c67662afc8f6779d4ff`.
 Native runtime SHA-256: `6ce03a2b827f783c8d63f8da01e4a195ce8354e8e7ec6fc82fc105152ac55459`.
-Local text: build/runs/39348154790/dyld-job.log. Native hash is unchanged
+Local text: build/runs/39349359592/attempt-1/job-118389731972.log. Native hash is unchanged
 from build/runs/39347374538/native-SHA256SUMS. Both independent real-libSystem
 console launches still complete. The earlier first worker run 39340039442
 reached the voucher assertion; its receipt is

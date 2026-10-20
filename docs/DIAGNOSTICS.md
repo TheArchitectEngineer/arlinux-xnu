@@ -24,6 +24,7 @@ remain the source for details outside the concise report.
 | Where did the ordinary attempt crash? | `app.runtime.log`, `NORMAL_RUNTIME_FAULT_PC`, same-cache symbolication and nearby disassembly | LLDB retry can take a different thread interleaving; keep both attempts distinct. Nearest symbols do not prove a function's internal semantics. |
 | Which threads are waiting? | Bounded LLDB resume, interruption and all-thread stacks | Stopping changes scheduling. A wait timeout is not normal exit; forced interruption still needs an actual hanging-run validation. |
 | Did a Mach/workloop event really arrive? | Runtime event-delivery trace plus receiver/worker stacks | Delivery alone does not prove callback completion or a successful reply. |
+| Which service does a framework actually request? | Bounded LLDB bootstrap lookup callbacks, using the actual hit frame for service name, port and caller | No lookup success is fabricated. A NULL bootstrap port is different from a reachable server rejecting a request. |
 | Is the Linux transport stuck? | LLDB native frames; targeted `strace` if Linux syscall arguments/timing are needed | Linux syscalls describe the transport, not the guest Darwin operation. Tracing and LLDB both use ptrace; choose separate runs. |
 | Does the app itself work with Apple's UI runtime? | Existing PlayCover macOS reference journey, real HID input, screenshots, exit and relaunch | macOS provides services Linux lacks; reference success is not Linux acceptance. |
 
@@ -61,6 +62,15 @@ is a concrete exception reason: `NSInternalInconsistencyException`,
 The normal attempt aborts with status 133; the debugger retry stops at the
 throw. This narrows the next investigation to the display-service connection,
 but does not implement a working display service or Linux GUI.
+
+Follow-up run [39349359592](https://github.com/taowen/arlinux-xnu/actions/runs/39349359592)
+verifies the bootstrap callback: the actual display service name is
+`com.apple.backboard.display.services`, queried with bootstrap port 0.
+The same exception is captured afterward. The ordinary attempt remains status
+133, both dynamic console journeys pass, and LLDB completes evidence capture.
+The callback module must be imported into LLDB's interpreter namespace; merely
+placing it in Python sys.modules did not activate callbacks in the preceding
+attempt. Callbacks auto-continue and have a per-breakpoint hit bound.
 
 ## Primary references
 
