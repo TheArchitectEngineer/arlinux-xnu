@@ -15,7 +15,14 @@ ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'build/apps'
 
 def command(*args):
-    return subprocess.check_output(list(map(str,args)),stderr=subprocess.STDOUT)
+    try:return subprocess.check_output(list(map(str,args)),stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as error:
+        OUT.mkdir(parents=True,exist_ok=True)
+        with (OUT/'toolchain-error.log').open('ab') as stream:
+            stream.write(('COMMAND '+json.dumps(list(map(str,args)))+'\n').encode())
+            stream.write(error.output)
+        sys.stdout.buffer.write(error.output);sys.stdout.buffer.flush()
+        raise
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
