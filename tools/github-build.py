@@ -206,7 +206,7 @@ def report(run_id, job_name, verbose=False):
         for index,line in enumerate(lines):
             if line.startswith('Undefined symbols for architecture '):
                 item['errors'].extend(lines[index:min(index+16,len(lines))])
-        for line in item['errors'][-8:]:
+        for line in dict.fromkeys(item['errors'][:24]+item['errors'][-8:]):
             print('  ' + line)
         print('  Raw log: ' + str(log_path))
     path.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')

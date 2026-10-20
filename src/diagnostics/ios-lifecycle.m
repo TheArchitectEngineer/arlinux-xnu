@@ -12,6 +12,42 @@ static const struct arlinux_ios_platform_api *platform;
 static uint32_t last_generation=UINT32_MAX;
 static uint32_t last_flags=UINT32_MAX;
 static unsigned int samples;
+struct protocol_evidence {
+    Protocol *seen[32];
+    unsigned int protocols,methods,missing,encoding_differences;
+    int truncated;
+};
+static void describe_protocol(Protocol *protocol,Class adapter,struct protocol_evidence *evidence)
+{
+    for (unsigned int i=0;i<evidence->protocols;i++)
+        if (evidence->seen[i]==protocol) return;
+    if (evidence->protocols==32) { evidence->truncated=1; return; }
+    evidence->seen[evidence->protocols++]=protocol;
+    for (unsigned int required=0;required<2;required++)
+        for (unsigned int instance=0;instance<2;instance++) {
+            unsigned int count=0;
+            struct objc_method_description *methods=protocol_copyMethodDescriptionList(protocol,required,instance,&count);
+            for (unsigned int i=0;i<count;i++) {
+                if (evidence->methods==256) { evidence->truncated=1; break; }
+                Method actual=adapter ? class_getInstanceMethod(instance ? adapter : object_getClass(adapter),methods[i].name) : NULL;
+                const char *types=actual ? method_getTypeEncoding(actual) : NULL;
+                const char *declared=methods[i].types;
+                const char *status=!actual ? "missing" : !types || !declared ? "encoding-unavailable" :
+                    strcmp(types,declared) ? "encoding-diff" : "encoding-equal";
+                evidence->methods++;
+                evidence->missing+=!actual;
+                evidence->encoding_differences+=types && declared && strcmp(types,declared)!=0;
+                fprintf(stderr,"IOS_LIFECYCLE_PROTOCOL protocol=%.96s required=%u kind=%c selector=%.160s types=%.256s adapter_types=%.256s status=%s\n",
+                    protocol_getName(protocol),required,instance ? '-' : '+',sel_getName(methods[i].name),
+                    declared ? declared : "<absent>",types ? types : "<absent>",status);
+            }
+            free(methods);
+        }
+    unsigned int count=0;
+    Protocol **parents=protocol_copyProtocolList(protocol,&count);
+    for (unsigned int i=0;i<count;i++) describe_protocol(parents[i],adapter,evidence);
+    free(parents);
+}
 static void window_sample(CFRunLoopTimerRef timer,void *context)
 {
     (void)context;
@@ -61,15 +97,12 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
     if (!enabled || strcmp(enabled,"1")) return;
     Protocol *protocol=objc_getProtocol("FBSSceneUpdater");
-    if (protocol) for (unsigned int required=0;required<2;required++) {
-        unsigned int count=0;
-        struct objc_method_description *methods=protocol_copyMethodDescriptionList(protocol,required,YES,&count);
-        for (unsigned int i=0;i<count && i<64;i++)
-            fprintf(stderr,"IOS_LIFECYCLE_PROTOCOL protocol=FBSSceneUpdater required=%u selector=%.160s types=%.256s\n",
-                required,sel_getName(methods[i].name),methods[i].types ? methods[i].types : "<absent>");
-        free(methods);
-    }
-    const char *classes[]={"FBSWorkspace","FBSScene","FBSSceneParameters","FBSMutableSceneParameters",
+    Class adapter=objc_getClass("ARLinuxSceneUpdater");
+    struct protocol_evidence evidence={0};
+    if (protocol) describe_protocol(protocol,adapter,&evidence);
+    fprintf(stderr,"IOS_LIFECYCLE_CONTRACT protocol=FBSSceneUpdater protocol_available=%d adapter_available=%d protocols=%u methods=%u missing=%u encoding_differences=%u truncated=%d app_acceptance=false\n",
+        protocol!=NULL,adapter!=Nil,evidence.protocols,evidence.methods,evidence.missing,evidence.encoding_differences,evidence.truncated);
+    const char *classes[]={"FBSWorkspace","FBSScene","FBSBasicSceneAgent","FBSSceneParameters","FBSMutableSceneParameters",
         "FBSSceneIdentity","FBSSceneIdentityToken","FBSSceneDefinition","FBSMutableSceneDefinition",
         "FBSSceneSpecification","FBSSceneSettings","FBSMutableSceneSettings",
         "FBSSceneClientSettings","FBSMutableSceneClientSettings","FBSSceneTransitionContext",

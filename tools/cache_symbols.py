@@ -279,7 +279,7 @@ class CacheSymbols:
                 'decoderDiagnostics':process.stderr,
                 'note':'Branch immediates are relative to their instruction; observation only'}
 
-    def fault_context(self,image,pc,symbols,preferred_name=None,end_bound=None):
+    def fault_context(self,image,pc,symbols,preferred_name=None,end_bound=None,context_bytes=None):
         """Original fault's bounded function and named direct callees, never replay."""
         base,length=next((base,length) for base,length in image['executable'] if base<=pc<base+length)
         nearest=nearest_symbol(symbols,pc) or (pc,None)
@@ -287,12 +287,14 @@ class CacheSymbols:
         start=max(nearest[0],pc-512,base)
         # Display::update inlines its MIG decoder. Keep its full bounded
         # descriptor/string validation rather than cutting it after a header.
-        maximum=4096 if nearest[1] and ('display' in nearest[1].lower() or 'ProcessSnapshot10Serializer' in nearest[1] or 'xpc_pipe_' in nearest[1] or 'bsxpc' in nearest[1].lower()) else 768
+        maximum=context_bytes if context_bytes is not None else (4096 if nearest[1] and ('display' in nearest[1].lower() or 'ProcessSnapshot10Serializer' in nearest[1] or 'xpc_pipe_' in nearest[1] or 'bsxpc' in nearest[1].lower()) else 768)
+        if maximum<=0 or maximum>4096 or maximum%4:raise ValueError('Invalid diagnostic context budget')
         end=min(start+maximum,base+length)
-        following=min((value for value,name in symbols if value>pc),default=end)
+        following=min((value for value,name in symbols if value>pc),default=base+length)
         end=min(end,following,end_bound if end_bound is not None else end)
         record=self.disassemble(start,end-start)
-        record.update(symbol=nearest[1],faultPC=hex(pc),symbolAliases=[name for value,name in symbols if value==nearest[0]])
+        record.update(symbol=nearest[1],faultPC=hex(pc),symbolAliases=[name for value,name in symbols if value==nearest[0]],
+                      byteLimit=maximum,limitedByByteBudget=end<min(base+length,following,end_bound if end_bound is not None else base+length))
         literals=[]
         member,offset=self.locate(start,end-start)
         for i in range(0,end-start-4,4):

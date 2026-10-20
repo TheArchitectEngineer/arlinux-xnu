@@ -13,10 +13,13 @@ parser.add_argument('cache',type=Path)
 parser.add_argument('trace',type=Path)
 parser.add_argument('output',type=Path)
 parser.add_argument('--lookup',action='append',nargs=2,default=[],metavar=('IMAGE','SYMBOL'))
+parser.add_argument('--lookup-bytes',type=int,help='Override instruction-byte budget per explicitly selected lookup/method (multiple of 4, at most 4096)')
 parser.add_argument('--bootstrap-context',action='store_true')
 parser.add_argument('--list-symbols',action='append',nargs=2,default=[],metavar=('IMAGE','FRAGMENT'))
 parser.add_argument('--objc-method',action='append',nargs=3,default=[],metavar=('IMAGE','CLASS','SELECTOR'))
 args=parser.parse_args()
+if args.lookup_bytes is not None and (not 4<=args.lookup_bytes<=4096 or args.lookup_bytes%4):
+    parser.error('--lookup-bytes must be a multiple of 4 between 4 and 4096')
 trace=args.trace.read_text(errors='replace')
 patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT)_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'NORMAL_RUNTIME_FAULT_PC (0x[0-9a-fA-F]+)',
@@ -74,7 +77,7 @@ with CacheSymbols(args.cache) as cache:
         symbols.sort()
         for value,name,record in requested_addresses:
             if any(base<=value<base+size for base,size in ranges):
-                record['protocolContext']=cache.fault_context(image,value,symbols,preferred_name=name)
+                record['protocolContext']=cache.fault_context(image,value,symbols,preferred_name=name,context_bytes=args.lookup_bytes)
         for cls,selector in methods:
             try:
                 method=cache.objc_method(image,cls,selector)
@@ -83,7 +86,7 @@ with CacheSymbols(args.cache) as cache:
                 declared=symbols+[(value,label)]
                 end=min((address for address in boundaries if address>value),default=None)
                 records.append({'image':image['name'],'objcMethod':method,
-                    'protocolContext':cache.fault_context(image,value,declared,preferred_name=label,end_bound=end)})
+                    'protocolContext':cache.fault_context(image,value,declared,preferred_name=label,end_bound=end,context_bytes=args.lookup_bytes)})
             except ValueError as error:
                 records.append({'image':image['name'],'objcMethod':{'class':cls,'selector':selector},
                                 'status':'metadata-unavailable','reason':str(error)})

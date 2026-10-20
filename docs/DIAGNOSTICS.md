@@ -16,7 +16,12 @@ For the current lifecycle boundary investigation, opt in with
 `./build.sh build --app counter --lifecycle-context`. The injected platform
 library reads actual loaded Objective-C method signatures and samples the real
 host window-state API for ten seconds on the genuine main run loop. Evidence is
-in the app's stderr (`IOS_LIFECYCLE_ABI`, `IOS_HOST_WINDOW`). It invokes no app
+in the app's stderr (`IOS_LIFECYCLE_ABI`, `IOS_HOST_WINDOW`). The same profile
+compares the loaded FBSSceneUpdater protocol (including inherited protocols,
+instance/class and optional/required methods) with the real adapter. It reports
+missing methods and raw encoding differences together, with explicit bounds and
+truncation. Equal encodings do not certify behavior; missing optional methods do
+not establish the cause of a failure. It invokes no app
 actions or private framework lifecycle methods. This flag defaults off and is
 not forwarded to the Apple-host reference. It is diagnosis, not launch success.
 
@@ -43,6 +48,14 @@ The step's effect wait and diagnostic collection time are recorded separately.
 These are observed facts, not an automatic root-cause verdict. Full logs and
 original-process stacks remain available. Compare dispatch-to-completion and
 job start offsets; compiler cache hits alone do not measure feedback latency.
+The failure summary includes the actual fault PC's nearest symbol, displacement
+and bounded referenced literals from the same cache, with the full symbolication
+file retained. These literals are context rather than an automatic diagnosis.
+Scene stages and exceptions are retained separately so a later marker cannot
+overwrite the exception reason. Explicit lifecycle symbol lookups now use a
+4096-byte budget and report when that budget cuts the context short. Other
+investigations can select `--lookup-bytes` on the existing runner-side
+symbolicator; this does not broaden the default diagnostic catalogue.
 
 Measured Counter lifecycle-diagnostic feedback: run
 [39503145757](https://github.com/taowen/arlinux-xnu/actions/runs/39503145757) took
@@ -75,7 +88,7 @@ hash-verified, and no Apple firmware/cache is uploaded for caching.
 
 Verify downloaded receipt.json against the exact run's published receipt SHA-256,
 then verify each relied-upon artifact against that receipt. Selected downloads
-are isolated under build/runs/RUN_ID/ARTIFACT_NAME to prevent receipt collisions.
+are isolated under build/runs/RUN_ID/attempt-N/ARTIFACT_NAME to prevent receipt collisions.
 Missing artifacts are
 unavailable, not passing. Apple firmware/cache/core/executables stay on the runner;
 retain only safe text, screenshots and open-source products.
