@@ -474,6 +474,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         return;
     }
     long result = -ENOSYS;
+    int bsd_error=0;
     switch (r[D_ARM64_SYSCALL_REGISTER]) {
     case D_SYS_BSDTHREAD_CREATE: case D_SYS_BSDTHREAD_REGISTER: {
         const char label[]="DARWIN_THREAD_REQUEST argument-index/pc/value follows\n";
@@ -490,6 +491,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         result=r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_REGISTER ? native_thread_register(r) : native_thread_create(r,&uc->uc_sigmask);
         break;
     }
+    case D_SYS_PSYNCH_RW_RDLOCK: case D_SYS_PSYNCH_RW_WRLOCK: case D_SYS_PSYNCH_RW_UNLOCK:
+        result=native_psynch_rw(r,&bsd_error); break;
     case D_SYS_KQUEUE: result=native_kqueue_create(); break;
     case D_SYS_KEVENT_QOS: case D_SYS_KEVENT_ID: case D_SYS_BSDTHREAD_CTL:
     case D_SYS_PSYNCH_MUTEXWAIT: case D_SYS_PSYNCH_MUTEXDROP:
@@ -703,8 +706,11 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         } else result = -ENOSYS;
         break;
     }
-    trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,result);
-    if ((unsigned long)result >= (unsigned long)-4095) {
+    trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,bsd_error ? -result : result);
+    if (bsd_error) {
+        r[0]=result;
+        uc->uc_mcontext.pstate |= CARRY;
+    } else if ((unsigned long)result >= (unsigned long)-4095) {
         r[0] = darwin_error(result);
         uc->uc_mcontext.pstate |= CARRY;
     } else {

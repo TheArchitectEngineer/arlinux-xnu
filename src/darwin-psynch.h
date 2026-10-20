@@ -43,3 +43,38 @@ static long native_psynch_mutex(const unsigned long long *r)
         if (result && result!=-EAGAIN) return result;
     }
 }
+
+/* The real iOS libpthread uses these generation-based operations (XNU
+ * syscalls.master). Reuse the pinned Darling/XNU queues and returned update
+ * bits; the native mutex credit protocol above is not a read/write lock. */
+static long native_psynch_rw(const unsigned long long *r,int *bsd_error)
+{
+#ifdef ARLINUX_DARLING
+    if (darling_active) {
+        uint32_t update=0;
+        int status;
+        switch (r[D_ARM64_SYSCALL_REGISTER]) {
+        case D_SYS_PSYNCH_RW_RDLOCK:
+            status=dserver_rpc_psynch_rw_rdlock(r[0],r[1],r[2],r[3],r[4],&update); break;
+        case D_SYS_PSYNCH_RW_WRLOCK:
+            status=dserver_rpc_psynch_rw_wrlock(r[0],r[1],r[2],r[3],r[4],&update); break;
+        case D_SYS_PSYNCH_RW_UNLOCK:
+            status=dserver_rpc_psynch_rw_unlock(r[0],r[1],r[2],r[3],r[4],&update); break;
+        default: return -ENOSYS;
+        }
+        static unsigned int traces;
+        if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
+            const char label[]="DARLING_PSYNCH_RW syscall/status/update/address/lgen/ugen/writers/flags follows\n";
+            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            trace_call(r[D_ARM64_SYSCALL_REGISTER],0,status);
+            trace_call(0,0,update);
+            for (unsigned int i=0;i<5;i++) trace_call(i+1,0,r[i]);
+        }
+        /* Positive server codes are already Darwin BSD errno values, unlike
+         * negative Linux transport failures. Preserve that distinction. */
+        if (status>0) { *bsd_error=1; return status; }
+        return status ? status : (long)update;
+    }
+#endif
+    (void)r; (void)bsd_error; return -ENOTSUP;
+}
