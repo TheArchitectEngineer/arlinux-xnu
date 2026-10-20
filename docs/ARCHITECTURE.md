@@ -54,7 +54,8 @@ Before guest entry the loader publishes the interpreter's actual
 TASK_DYLD_INFO is then a genuine MIG reply about storage maintained by dyld;
 returning zero metadata would not implement that loader contract. The scalar
 mach_msg2 adapter decodes Apple's packed arguments and uses those same Mach
-queues/kobjects. Vector/auxiliary messages and separate-header forms remain
+queues/kobjects. Vectors support normal messages and the genuine no-auxiliary
+EOF receive contract. Payload auxiliary sends and separate-header forms remain
 unsupported; Apple's CFI routing policy is not enforced by this trusted-input
 runtime. Registering metadata or translating a request alone is not IPC acceptance.
 

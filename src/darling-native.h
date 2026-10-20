@@ -158,17 +158,46 @@ static long darling_mach_msg2(const unsigned long long *r)
      * eight packed arguments, unlike legacy mach_msg_overwrite's flat ABI.
      * Ordinary canonical-buffer calls use the same real Darling queues and
      * MIG kobjects. This trusted-input runtime does not enforce Apple's CFI
-     * routing policy. Vectors/auxiliary messages remain unsupported. */
+     * routing policy. Vectors may carry a normal message and receive an empty
+     * aux EOF. Nonempty auxiliary sends and separate-header sends still fail;
+     * the legacy core cannot carry their data, so it must not discard it. */
     static unsigned int traces;
     int diagnostic=__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT;
     if(diagnostic) trace_record("DARLING_MSG2_BEGIN options=0x",r[1],r[4]>>32,r[2]>>32);
     uint64_t routing=r[1]&(D_MACH64_SEND_KOBJECT|D_MACH64_SEND_QUEUE|D_MACH64_SEND_ANY);
-    if ((r[1]&~(UINT64_C(0xffffffff)|D_MACH64_SEND_KOBJECT|D_MACH64_SEND_QUEUE|D_MACH64_SEND_ANY)) ||
+    int vector=(r[1]&D_MACH64_MSG_VECTOR)!=0;
+    if ((r[1]&~(UINT64_C(0xffffffff)|D_MACH64_MSG_VECTOR|D_MACH64_SEND_KOBJECT|D_MACH64_SEND_QUEUE|D_MACH64_SEND_ANY)) ||
+        (vector && (routing&D_MACH64_SEND_KOBJECT)) ||
         (routing && (routing&(routing-1)))) return D_MACH_SEND_INVALID_OPTIONS;
     uint32_t options=r[1],send_size=r[2]>>32,receive_size=r[6],receive_name=r[5]>>32;
+    uint64_t message=r[0],receive=0,auxiliary=0;long receive_error=0;
+    if(vector) {
+        uint32_t send_count=send_size,receive_count=receive_size;
+        uint32_t count=send_count>receive_count ? send_count : receive_count;
+        struct darwin_msg_vector vectors[2]={{0},{0}};
+        if(count>2 || !count) return options&D_MACH_SEND_MSG ?
+            (count ? D_MACH_SEND_INVALID_DATA : D_MACH_SEND_MSG_TOO_SMALL) : D_MACH_RCV_INVALID_ARGUMENTS;
+        if(guest_copy(vectors,r[0],count*sizeof(vectors[0]),0))
+            return options&D_MACH_SEND_MSG ? D_MACH_SEND_INVALID_DATA : D_MACH_RCV_INVALID_ARGUMENTS;
+        message=vectors[0].data;send_size=vectors[0].send_size;
+        receive=vectors[0].receive_address ? vectors[0].receive_address : vectors[0].data;
+        receive_size=vectors[0].receive_size;
+        if((options&D_MACH_SEND_MSG) && (!send_count || !message || send_size<24 || (send_size&3)))
+            return !message ? D_MACH_SEND_INVALID_DATA : D_MACH_SEND_MSG_TOO_SMALL;
+        if((options&D_MACH_SEND_MSG) && send_count==2 && vectors[1].send_size)
+            return D_MACH_SEND_INVALID_OPTIONS;
+        if(options&D_MACH_RCV_MSG) {
+            if(!receive_count)receive_error=D_MACH_RCV_INVALID_ARGUMENTS;
+            if(receive_count==2) {
+                auxiliary=vectors[1].receive_address ? vectors[1].receive_address : vectors[1].data;
+                if(!auxiliary || vectors[1].receive_size<sizeof(struct darwin_msg_aux_header))
+                    receive_error=D_MACH_RCV_INVALID_ARGUMENTS;
+            }
+        }
+    }
     if(options&D_MACH_SEND_MSG) {
         uint32_t header[6];
-        if(send_size<sizeof(header) || guest_copy(header,r[0],sizeof(header),0)) return D_MACH_SEND_INVALID_DATA;
+        if(send_size<sizeof(header) || guest_copy(header,message,sizeof(header),0)) return D_MACH_SEND_INVALID_DATA;
         /* The existing kernel reads its header from the buffer. Explicitly
          * reject the unimplemented separate-header form instead of sending a
          * different message than the packed arguments requested. */
@@ -177,12 +206,28 @@ static long darling_mach_msg2(const unsigned long long *r)
         uint32_t descriptors=0;
         if(header[0]&D_MACH_MSG_COMPLEX) {
             if(send_size<sizeof(header)+sizeof(descriptors) ||
-               guest_copy(&descriptors,r[0]+sizeof(header),sizeof(descriptors),0)) return D_MACH_SEND_INVALID_DATA;
+               guest_copy(&descriptors,message+sizeof(header),sizeof(descriptors),0)) return D_MACH_SEND_INVALID_DATA;
         }
         if(descriptors!=(uint32_t)r[5]) return D_MACH_SEND_INVALID_HEADER;
     }
-    long result=dserver_rpc_mach_msg_overwrite((void *)r[0],options,send_size,receive_size,
-        receive_name,(uint32_t)r[7],(uint32_t)(r[6]>>32),NULL);
+    /* Like XNU, invalid receive-vector arguments do not cancel a valid send.
+     * The real send/rights effect must happen before reporting receive error. */
+    uint32_t effective_options=receive_error ? options&~D_MACH_RCV_MSG : options;
+    long result=0;
+    if(!receive_error || (options&D_MACH_SEND_MSG))
+        result=dserver_rpc_mach_msg_overwrite((void *)message,effective_options,send_size,receive_size,
+            receive_name,(uint32_t)r[7],(uint32_t)(r[6]>>32),(void *)receive);
+    if(!result && receive_error)result=receive_error;
+    if(auxiliary && !receive_error && (options&D_MACH_RCV_MSG)) {
+        /* ipc_kmsg_put_vector_to_user: a scalar/no-aux message produces an
+         * actual zero-size EOF header in an offered auxiliary receive buffer.
+         * Every accepted send uses the legacy no-aux core; payload aux sends
+         * are rejected above, so no incoming auxiliary data can be lost here. */
+        struct darwin_msg_aux_header eof={0};
+        if(!result && guest_copy(&eof,auxiliary,sizeof(eof),1))result=D_MACH_RCV_INVALID_DATA;
+        else if(result==D_MACH_RCV_TOO_LARGE && (options&D_MACH_RCV_LARGE) &&
+                guest_copy(&eof.size,auxiliary,sizeof(eof.size),1))result=D_MACH_RCV_INVALID_DATA;
+    }
     if(diagnostic)
         trace_record("DARLING_MSG2 options=0x",r[1],r[4]>>32,result);
     return result;
