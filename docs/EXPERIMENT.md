@@ -4,188 +4,74 @@
 
 Target: a modifiable Darwin/iOS compatibility environment on Linux/Android,
 native ARM64, 16 KiB guest pages, one advertised/scheduled CPU, non-arm64e.
-Real display, input, normal exit and relaunch have not passed on Linux.
-Acceptance includes two concurrently interactive applications in one shared
-session, exit/relaunch without disrupting the other, and app-requested helper
-or XPC-service launch, communication and cleanup. Repeat through ARLinux;
-none of that complete multi-process/Android journey has passed.
-
 Current app: **ARHello 1.0** (`io.arlinux.ARHello`), source in guests/ARHello,
-using real pinned UIKit/frameworks. Activation milestone source:
-`57c4705f38e9a83889f6419eeaaa1acc79eddad8`,
-[run 39409669685](https://github.com/taowen/arlinux-xnu/actions/runs/39409669685).
-Use the sole build.sh entry, `build --mode app --ipc darling`.
+using real pinned dyld/UIKit/frameworks. The sole build/report entry is build.sh;
+see README for operations and docs/DIAGNOSTICS.md before runtime changes.
 
-Two genuine dyld/libSystem console journeys still pass: malloc, pthread join
-(value 37/shared memory 42), real input, normal return and independent relaunch.
-The independent session owns bootstrap, process-info and FrontBoard listeners;
-Darling/XNU owns actual cross-process Mach rights and messages. Kernel audit
-identities and Linux pidfds bind and retire connections. Submitted task rights
-are capabilities, not independently verified task-to-PID mappings. No PID 1/root
-identity is fabricated. System-app facilities and requested helpers remain
-incomplete.
+**No Linux pixel/input/complete GUI lifecycle or Android acceptance has passed.**
+Acceptance still includes two concurrently interactive independent applications,
+normal close/relaunch without disrupting the other, app-requested helpers/XPC
+services, audited identity/resource cleanup after crashes, then ARLinux/Android.
 
-Actual launch and create-scene messages reach UIKit. Separate Wayland backends
-register real geometry/refresh. The service validates sender incarnation and
-backend parentage, retains both pidfds and retires display records on exit.
-Initial scene changes provide class setting 1 and display configuration 2.
-Genuine FBSDisplayIdentity/Mode/Configuration decode and UIKit scene creation
-have been observed; no fallback geometry or display identity is fabricated.
+Latest runtime evidence: [39431342283](https://github.com/taowen/arlinux-xnu/actions/runs/39431342283),
+source **89b7f4f8010d7a950ccd627f315f843b301006ac**. Both genuine dyld/libSystem
+console journeys pass (malloc, pthread join 37/shared memory 42, input, normal
+return/relaunch). Both original UIKit app processes now exercise real workloop
+synchronous wait/wake/return, with no original-process BRK. The peer reaches
+ARHELLO_READY; the original does not. Both later exit 0 through a framework
+invalidation path, so the app journey correctly remains failed.
 
-The activation context now decodes correctly. The observed bug was an XPC
-uint64 NSNumber payload yielding lifecycle action 0. Using int64 causes a real
-setting-7 write, then _lifecycleActionType returns 1 at both the diff-action
-caller and canvas activation dispatcher. __UICanvasLifecycleMonitor_Compatability
-receives activateEventsOnly:NO, executes launch-option/action preparation and
-calls actual UIApplication._runWithMainScene:transitionContext:completion:.
-This is framework-driven activation, not an injected app delegate call.
+In the original process, waiter TID 5516/ident 0x703 sleeps on workloop
+0x30022aae0; TID 5595 wakes one futex waiter, then TID 5516 returns state 1/status
+0. The peer independently completes three matching wait/wake/return chains,
+including reciprocal waits between its main and worker threads. These are real
+process logs, not a diagnostic rerun or a source assertion. Dyld receipt SHA-256
+81943741391b7482ae36f522a8ca3a6935e567858a737c1d13f7bbfbe21c3679
+matches downloaded app outcomes, both runtime logs and peer stdout.
 
-The pthread read/write-lock gap is now exercised by real UIKit startup:
-[run 39411131655](https://github.com/taowen/arlinux-xnu/actions/runs/39411131655),
-source `1c90164f63f6a2807cd10f1d56464586f5c1d1e1`, sends actual read-lock
-and unlock operations to the pinned Darling/XNU queues. Both return status 0
-and update 0x100, accepted by real libpthread. This is actual queue behavior,
-not a zero-result stub. Write-lock routing is implemented but not independently
-observed in that trace. Server Darwin errors and Linux transport errors retain
-separate ABI handling. The local backend remains unsupported for these calls.
+Current functional blockers:
 
-[Run 39418764026](https://github.com/taowen/arlinux-xnu/actions/runs/39418764026),
-source `1e0fc46e8deedc5af8d821a3007f9fc3f628735c`, builds and starts the unified
-session. SESSION_MACH_CORE_STARTED and UNIFIED_SESSION_PID both identify PID
-3864; real Mach check-in and port setup precede SESSION_READY. Apps 4277 and
-4278 independently register real Wayland backends and audited process-info
-connections. Both genuine dyld/libSystem console journeys complete: pthread
-join value 37, shared memory 42, input and normal return. This establishes
-shared session startup and separate app processes, not interactive apps.
+- BackBoard HID focus: the actual NSXPC client requests
+  `com.apple.backboard.hid.focus`; the bootstrap rejects the missing service.
+  Exit caller 0x183822e34 belongs to its invalidation handler (literal:
+  "backboarrd must be going down, exiting"). Implement real focus/input behavior
+  backed by Wayland; suppressing exit or holding an empty endpoint is not a fix.
+- Window readiness is not pixel delivery. Genuine QuartzCore context creation
+  and input must reach the real Wayland backend, then support complete lifecycle
+  and two concurrent interactive apps. That end-to-end connection is unproven.
+- The new sync-wait path does not supply XNU turnstile priority inheritance or
+  the workloop control syscall. Continue diagnosing required scheduling behavior
+  from actual app contention. A wait registration alone is not a wake proof.
 
-Real ARHello passes trampoline remap and instruction-cache maintenance, then
-exits 125 at `unsupported display request rights/body`. The observed request
-on render port 0x503 has ID 0x9d0b (40203), 108 bytes, bits 0x80001112, voucher
-0 and five Mach descriptors. The simple display service rejects the complex
-body before decoding it. Preserve real rights, shared memory and rendering
-semantics when adding support; a successful registration reply alone is not
-rendering. No ARHELLO_READY, UIKit frame, real input or complete GUI lifecycle
-passes yet. Keep ordinary and debugger attempts separate.
+Verified substrate milestones:
 
-[Run 39420355213](https://github.com/taowen/arlinux-xnu/actions/runs/39420355213),
-source 4ea2cef5343fdfb33ef786694c6825e1233e2c55, decodes the actual failure:
-four port descriptors (first two NULL, two real send rights), then one 149-byte
-OOL mapping. The trailing NDR/scalars are at offsets 92, 96, 100 and 104 with
-values 0, 1, 0 and 149. The blocked guest stack is in QuartzCore's
-Context::connect_remote overloads. The OOL payload content is not decoded;
-do not guess that all five resources are shared memory or assign port roles.
+| Evidence | Established behavior | Limit |
+| --- | --- | --- |
+| [39418764026](https://github.com/taowen/arlinux-xnu/actions/runs/39418764026), source 1e0fc46e8deedc5af8d821a3007f9fc3f628735c | Unified session PID owns the linked Mach core plus bootstrap/FrontBoard; independent app processes exchange genuine Darling/XNU rights/messages | Helpers, task-right-to-PID verification and full crash isolation remain incomplete |
+| [39420355213](https://github.com/taowen/arlinux-xnu/actions/runs/39420355213), source 4ea2cef5343fdfb33ef786694c6825e1233e2c55 | CA request 40203 has four port descriptors, one 149-byte OOL mapping, original reply right | Old 40202 community examples do not define this wire protocol |
+| [39425899111](https://github.com/taowen/arlinux-xnu/actions/runs/39425899111), source 21d9a8e3b648e4847cbf57c29e0a321fa7e71567 | Real CARenderServerStart/GetPort, port-set move, framework receive and actual replies; peer reaches window callback | No screenshot/pixel/input proof |
+| [39431342283](https://github.com/taowen/arlinux-xnu/actions/runs/39431342283), source 89b7f4f8010d7a950ccd627f315f843b301006ac | Disabled per-waiter knotes, real sleep/wake and debounce/owner handling progress past the earlier libdispatch assertion | Framework service invalidation still exits the app |
 
-[Run 39421509125](https://github.com/taowen/arlinux-xnu/actions/runs/39421509125),
-source 97b00aeae004cfabb875a2ccdc22ef8255b2c14f, starts the actual framework
-service: CARenderServerStart returns true, GetPort returns a real Mach name,
-and retaining its send right succeeds. The 40203 request forwards successfully
-with its original reply right and resources. Wayland metadata queries stay in
-the adapter. No registration reply, context or rendered frame is fabricated.
-The ordinary app times out (124); its separate LLDB attempt instead stops at an
-earlier libdispatch BRK. Those are different attempts, not one causal trace.
+The independent session authenticates audit PID/incarnation and keeps Linux
+pidfds. Submitted task rights are capabilities, not independently verified
+PID mappings. No PID 1/root identity is fabricated. Runtime source is a hardfork
+under components/darling; ORIGINS.json preserves upstream identities/licenses.
+The standalone Darling main/executable is removed; internal host socket RPC and
+same-task guest VM routing remain. See docs/ARCHITECTURE.md for boundaries.
 
-[Run 39422532342](https://github.com/taowen/arlinux-xnu/actions/runs/39422532342),
-source 1d5a2fec1eb5c734cda89e92c94721164927dce4, captures the original live app
-4291/start-ticks 101156 before timeout. Attach and detach succeed (trace status
-0). Main is in UIApplicationMain/CFRunLoop, the actual CA render thread receives
-Mach messages, and two workers block in native_ulock. One is on the Objective-C
-method-lookup/CA layer-class path. The trace does not prove those locks' owner
-or a condition-variable cause. Syscalls 303/305 also return ENOSYS during real
-startup and are a genuine additional synchronization gap.
+S2C maps real low-address, 16 KiB storage with fixed overwrite/non-overwrite and
+requested permissions. Darling performs real copying; the client flushes copied
+executable ranges after the final RPC reply, without adapting code twice.
+General guest JIT remains unsupported; upstream VM protection limitations remain.
+The observed objc trampoline section needed no TLS rewrites, so its successful
+loading does not verify every dynamically loaded library's TLS adaptation.
 
-Mutex/CV/RW calls now share real XNU queues. Run 39423551547 still showed an
-ulock waiter asleep with actual word 0. libplatform uses XNU's remaining-waiter
-return value to preserve the contention bit; the old futex wrapper always
-returned zero. Source d408f7c21c9481678b7f8e45231c380613d6a835 tracks real
-waiters and preserves that return contract.
-
-[Run 39424630148](https://github.com/taowen/arlinux-xnu/actions/runs/39424630148)
-captures original app 4217/start-ticks 19047. Its ulock queue snapshot is empty;
-main now waits in CA::Context::connect_remote for the 108-byte request's reply.
-The genuine CA server thread waits on receive name 10243, while GetPort and
-forwarding use name 10499. Different names alone do not prove different kernel
-objects. The next diagnostic records actual receive headers and service port
-identities. The same startup log records trap -20 returning KERN_NOT_SUPPORTED;
-XNU syscall_sw.c identifies this as mach_port_move_member. The existing Darling
-RPC now routes this operation to XNU's real membership implementation. Verify
-actual membership and renderer receipt/reply before calling this a fix.
-Receipt SHA-256:
-4646e54db15925f01faec6ce40fd90dbab52a4cb2011856822a813c512cb3ffc.
-Original snapshot and runtime logs match that receipt.
-
-[Run 39425899111](https://github.com/taowen/arlinux-xnu/actions/runs/39425899111),
-source 21d9a8e3b648e4847cbf57c29e0a321fa7e71567, verifies actual port-set moves
-and delivery to the genuine CA server. The peer receives the 40303/40341/40309
-reply IDs and reaches ARHELLO_READY. It later exits 0 through a framework path;
-that is not an observed user-requested normal close. The original app instead
-exits 133 at libdispatch PC 0x1808c4878 after our workloop rejects fflags 0x84
-(SYNC_WAIT | DISCOVER_OWNER). Implement real synchronous wait/wake and ownership;
-do not return success as a hint. Receipt
-ebbee5a1188a663bc2afa67876833b671dde0e175dbd22c38cb5d95501a0cea2
-matches the downloaded outcomes and both runtime logs. No pixel capture, real
-input or complete GUI lifecycle has passed. Window readiness alone is weaker.
-
-Latest consolidated iteration:
-[39427461953](https://github.com/taowen/arlinux-xnu/actions/runs/39427461953),
-source 592dbf33e21a6949d176f37bf09024e93c9ff0d3. Core/native compilation and
-both genuine dyld console journeys pass in one runner. Both original apps exit
-0 before their window-ready callback; the app step correctly fails. Do not
-substitute the prior peer's readiness for this attempt. Its dyld receipt
-ec80488fbe1bf5642ab6a0702c52552572c027a4ff1c34dcc365f3070ade7603
-matches the downloaded outcomes and runtime logs. Inspect the existing exit
-frames/service disconnect alongside the separate LLDB evidence next.
-
-Primary ABI reference: WebKit's
-[QuartzCoreSPI.h](https://github.com/WebKit/WebKit/blob/ebaa3acb4ca036ced8011e8bfb2e951dd2199696/Source/WebCore/PAL/pal/spi/cocoa/QuartzCoreSPI.h#L287-L299)
-declares these entry points and a CoreGraphics rendering path. This is an
-implementation candidate, not evidence that the selected iOS runtime can render
-on Linux. Older community 40202/four-port examples do not define the observed
-40203/four-port-plus-OOL protocol.
-
-The runtime source now lives in components/darling, with native client and
-server-side support identified by the same enclosing Git commit. ORIGINS.json
-retains import history/licenses; no Darling submodule is fetched. The first
-import run 39415413747 failed building MIG due to missing original header
-forwarding paths. Those source symlinks are included at 4582c23; that run builds
-both server and client and reaches the real app failure above.
-
-The standalone Darling desktop main and executable are removed. A linked
-Mach-core library runs its event loop in the persistent native session process,
-which also owns bootstrap/FrontBoard. App address spaces stay independent.
-Internal host socket RPC and same-task guest VM routing are not simplified by
-this consolidation. Complete crash isolation, helpers and GUI remain unpassed.
-The first shared-library link retained unused exported XNU functions; limiting
-exports to the host entry point restores section GC without fake kernel stubs.
-Run 39418258026 compiled both components but did not start them due to an omitted
-native artifact download. Its dependency and pre-execution hash check are fixed
-in 39418764026; continue from the actual render request above.
-
-The S2C memory implementation maps real low-address, 16 KiB anonymous storage
-with actual fixed overwrite/non-overwrite and requested R/W/X permissions.
-Darling owns source reads and copying; after its final RPC reply the client
-flushes copied executable ranges. Already-adapted process code is not rewritten
-twice. General guest JIT remains unsupported. The core's upstream RWX/current
-protection limitations remain. The dynamically loaded trampoline library's one
-instruction section required zero TLS instruction changes, so its loading does
-not establish dynamic-library TLS rewriting on a library that needs it.
-
-References: Apple's [objc4 trampoline allocation](https://github.com/apple-oss-distributions/objc4/blob/objc4-750/runtime/objc-block-trampolines.mm#L287-L334)
-uses fixed overwrite with copy=TRUE. The imported memory.c implementation
-already performs a real copy. libffi's copy=FALSE sharing variant cannot replace
-that private-copy operation.
-
-Header-only MACH_NOTIFY_SEND_ONCE cancellation is accepted only on outstanding
-reply ports with the exact kernel notification and zero audit identity; it is
-never a successful scene reply. Client retirement is observed. Complete crash
-isolation, helpers, normal GUI exit/relaunch, concurrently interactive apps and
-the ARLinux/Android journey remain acceptance requirements.
-
-Useful research: [ios-rendering-docs](https://github.com/EthanArbuckle/ios-rendering-docs)
-explains scene/settings/context/render-server boundaries. The generated
-[iOS runtime interfaces](https://github.com/nst/iOS-Runtime-Headers/tree/master/PrivateFrameworks)
-help identify display and canvas methods; they are not codec implementations.
-Apple's [libpthread support source](https://github.com/apple-oss-distributions/libpthread/blob/libpthread-330.230.1/src/pthread_support.c)
-explains abort-reason/abort routing; compare it with the actual cache code.
+Useful source references: WebKit's pinned
+[QuartzCoreSPI.h](https://github.com/WebKit/WebKit/blob/ebaa3acb4ca036ced8011e8bfb2e951dd2199696/Source/WebCore/PAL/pal/spi/cocoa/QuartzCoreSPI.h#L287-L299),
+Apple's [objc trampoline allocator](https://github.com/apple-oss-distributions/objc4/blob/objc4-750/runtime/objc-block-trampolines.mm#L287-L334),
+and the imported XNU bsd/sys/event.h and kern_event.c for synchronous workloops.
+Historical investigation details remain in Git and exact run artifacts; keep
+this handoff limited to current behavior, decisive evidence and next blockers.
 
 ## Exact evidence and inputs
 
