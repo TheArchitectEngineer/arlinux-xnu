@@ -74,11 +74,20 @@ Image object: its saved base and mapped pointer both equal 0x300758000. The
 file record has a path pointer but no inode/device identity. Read that bounded
 path and VM allocation/release ranges next; no mapping-lifetime cause is proven.
 
-Apple dyld source explains the next question: an identity mapper dereferences
-Image's saved rebasedAddress. Determine that object's file identity and loader
-address from original-process metadata before changing mapping lifetime or
-loader behavior. The fault-time maps alone cannot establish which allocation
-or image became invalid.
+Run [39485947515](https://github.com/taowen/arlinux-xnu/actions/runs/39485947515),
+source **0c677e31551b5244a1c401a90bbf2d35176cbe01**, receipt SHA-256
+**336cf0cbf4a0a177c2370c4d6a2ddba5817ef9ae43a0373626c3d4532eeb1fe9**,
+verified all 43 retained file hashes. Original-process LLDB identifies the bad
+Image's path as Counter.app/libarlinux-ios.dylib (Swift independently identifies
+its own copy). Real VM reservation and file mappings place Counter's dylib at
+0x300984000; Atlas instead saves 0x300758000, inside a previously released
+ephemeral allocator region. No observed release removes the actual dylib mapping.
+This distinguishes bad address metadata from a proven early unload of the dylib.
+
+Next compare dyld's original library/segment diagnostics and the actual compact
+snapshot decoder to determine when the saved address diverges. Apple source's
+identity mapper dereferences that saved address; do not fix this by mapping
+arbitrary memory at the stale address or disabling snapshot notifications.
 
 The same-cache reader uses declared slide-v2 pointer metadata for constant
 CFStrings, bounded decoded instructions and actual call/branch observations.

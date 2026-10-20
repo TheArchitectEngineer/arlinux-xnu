@@ -69,7 +69,10 @@ class Processes:
         env = self.environment.copy()
         env['ARLINUX_WINDOW_MODE']='fullscreen'
         env['ARLINUX_TRACE_FD'] = str(trace.fileno())
-        if not self.reference:env['ARLINUX_STOP_ON_FAULT']='1'
+        if not self.reference:
+            env['ARLINUX_STOP_ON_FAULT']='1'
+            env['DYLD_PRINT_LIBRARIES']='1'
+            env['DYLD_PRINT_SEGMENTS']='1'
         capture = self.directory / f'{name}-{number}-renderer'
         capture.mkdir()
         env['ARLINUX_CAPTURE_DIR'] = str(capture)
@@ -115,6 +118,8 @@ class Processes:
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZN2CA7Display7Display6updateEv'])
             if 'unsupported bootstrap trust predicate layout' in Path(item['stdout']).with_suffix('.stderr').read_text(errors='replace'):
                 arguments.append('--bootstrap-context')
+            if 'DARWIN_FAULT signal=' in runtime.read_text(errors='replace'):
+                arguments.extend(['--lookup','/usr/lib/dyld','__ZN5dyld45Atlas15ProcessSnapshot10Serializer11deserializeENSt3__14spanISt4byteLm18446744073709551615EEE'])
             result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
             runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
             if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))

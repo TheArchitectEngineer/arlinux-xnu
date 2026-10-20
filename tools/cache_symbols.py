@@ -214,7 +214,7 @@ class CacheSymbols:
         start=max(nearest[0],pc-512,base)
         # Display::update inlines its MIG decoder. Keep its full bounded
         # descriptor/string validation rather than cutting it after a header.
-        maximum=4096 if nearest[1] and 'display' in nearest[1].lower() else 768
+        maximum=4096 if nearest[1] and ('display' in nearest[1].lower() or 'ProcessSnapshot10Serializer' in nearest[1]) else 768
         end=min(start+maximum,base+length)
         following=min((value for value,name in symbols if value>pc),default=end)
         end=min(end,following)
