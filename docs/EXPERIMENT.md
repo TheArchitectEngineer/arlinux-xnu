@@ -103,18 +103,29 @@ Counter/Swift instead fault with a genuine abort reason: dyld cannot load
 /usr/lib/libobjc-trampolines.dylib because F_ADDFILESIGS_RETURN is unsupported.
 Console and Foundation continue to pass. No GUI or launch success is claimed.
 
-The current change reads the real embedded CodeDirectory and returns its
-bounded, page-rounded code coverage for F_ADDFILESIGS_RETURN, as specified by
-XNU's fsignatures_t output and consumed by dyld Loader.cpp. Actual descriptor,
-file/blob/hash-table bounds and contiguous coverage remain checked. This trusted
-runtime does not authenticate Apple signatures or mark code CS_VALID/platform;
-it already permits library composition. Unknown formats/scatter remain errors.
-Runtime confirmation requires the actual trampoline dylib to load and the real
-app to advance, not just successful compilation.
+Source 1f76f14 reads the real embedded CodeDirectory and returns its bounded,
+page-rounded coverage for F_ADDFILESIGS_RETURN. It does not authenticate Apple
+signatures or mark code CS_VALID/platform; unknown formats/scatter still fail.
+Run [39494946848](https://github.com/taowen/arlinux-xnu/actions/runs/39494946848),
+source **1f76f14a7804fc478cf1d2efc40537e66987e8ae**, verified receipt
+**7103ca7759c43963f0cb015f1181ce72178754f4175df480989f255ac8b802ff**
+and all 39 retained files. Actual coverage is 0xd000 for signature offset 0xc110;
+dyld logs and kernel mappings prove the real libobjc-trampolines.dylib loaded.
+The previous abort is gone. Console/Foundation still pass; UIKit still fails.
 
-BSXPC's actual symbols are now known from the firmware. Targeted activation and
-message decoder contexts will establish the connection reply contract; method
-names alone do not establish behavior. No handshake success is fabricated.
+The original next fault is libdispatch's "Unexpected error from kevent".
+SYNC_WAKE|DISCOVER_OWNER (0x88) on an already-woken synchronous knote returns
+EALREADY from our early check. XNU filt_wltouch permits this update and still
+runs debounce/owner discovery; EALREADY is for a second THREAD_REQUEST attach.
+The current fix removes only that incorrect synchronous-wake rejection, retaining
+real owner updates and futex wake behavior. Runtime confirmation remains pending.
+
+BSXPC's genuine method names are available from the actual firmware. Diagnostic
+selection previously let a same-address <redacted> alias override the requested
+method name, cutting its intended 4K decoder window to 768 bytes. Prefer actual
+named aliases at the same address, retain the aliases and honor exact requested
+names. This is read-only collection, not proof of handshake success. Continue
+through real activation/message semantics after the synchronization failure.
 
 ## Evidence limits
 

@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 import re
-from cache_symbols import CacheSymbols
+from cache_symbols import CacheSymbols,nearest_symbol
 
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('cache',type=Path)
@@ -72,11 +72,11 @@ with CacheSymbols(args.cache) as cache:
         symbols.sort()
         for value,name,record in requested_addresses:
             if any(base<=value<base+size for base,size in ranges):
-                record['protocolContext']=cache.fault_context(image,value,symbols)
+                record['protocolContext']=cache.fault_context(image,value,symbols,preferred_name=name)
         for pc in matches:
             matched.add(pc)
             address=lookup_pc(pc)
-            nearest=max(((value,name) for value,name in symbols if value<=address),default=None)
+            nearest=nearest_symbol(symbols,address)
             record={'pc':hex(pc),'image':image['name'],'imageAddress':hex(image['address'])}
             if address!=pc:record.update(lookupAddress=hex(address),note='Saved return address; symbolize its actual ARM64 call instruction')
             if nearest:record.update(nearestSymbol=nearest[1],symbolAddress=hex(nearest[0]),displacement=address-nearest[0])

@@ -6,6 +6,15 @@ import mmap
 import struct
 import subprocess
 
+def symbol_preference(item):
+    value,name=item
+    return value,bool(name and name!='<redacted>'),name or ''
+
+def nearest_symbol(symbols,address):
+    # Prefer a real declared alias over <redacted> at the SAME address only.
+    # This does not make a nearest symbol an exact function/call attribution.
+    return max((item for item in symbols if item[0]<=address),key=symbol_preference,default=None)
+
 class Binary:
     def __init__(self,path,stack):
         stream=stack.enter_context(path.open('rb'))
@@ -207,10 +216,11 @@ class CacheSymbols:
                 'decoderDiagnostics':process.stderr,
                 'note':'Branch immediates are relative to their instruction; observation only'}
 
-    def fault_context(self,image,pc,symbols):
+    def fault_context(self,image,pc,symbols,preferred_name=None):
         """Original fault's bounded function and named direct callees, never replay."""
         base,length=next((base,length) for base,length in image['executable'] if base<=pc<base+length)
-        nearest=max(((value,name) for value,name in symbols if value<=pc),default=(pc,None))
+        nearest=nearest_symbol(symbols,pc) or (pc,None)
+        if preferred_name and (pc,preferred_name) in symbols:nearest=(pc,preferred_name)
         start=max(nearest[0],pc-512,base)
         # Display::update inlines its MIG decoder. Keep its full bounded
         # descriptor/string validation rather than cutting it after a header.
@@ -219,7 +229,7 @@ class CacheSymbols:
         following=min((value for value,name in symbols if value>pc),default=end)
         end=min(end,following)
         record=self.disassemble(start,end-start)
-        record.update(symbol=nearest[1],faultPC=hex(pc))
+        record.update(symbol=nearest[1],faultPC=hex(pc),symbolAliases=[name for value,name in symbols if value==nearest[0]])
         literals=[]
         member,offset=self.locate(start,end-start)
         for i in range(0,end-start-4,4):
@@ -243,7 +253,10 @@ class CacheSymbols:
                 literals.append({'instruction':hex(start+i),'address':hex(address),
                     'literal':data.split(b'\0',1)[0].decode('utf-8',errors='replace'),'truncated':b'\0' not in data})
         record['referencedLiterals']=literals
-        names=dict(symbols)
+        names={}
+        for value,name in symbols:
+            if value not in names or symbol_preference((value,name))>symbol_preference((value,names[value])):
+                names[value]=name
         def direct_calls(begin,size):
             calls={};member,offset=self.locate(begin,size)
             for i in range(0,size,4):
@@ -310,7 +323,7 @@ class CacheSymbols:
         if len(unique)>32:raise ValueError('Ambiguous bootstrap diagnostic scope exceeds 32 windows')
         result=[]
         for address,reason in sorted(unique.items()):
-            nearest=max(((value,name) for value,name in symbols if value<=address),default=None)
+            nearest=nearest_symbol(symbols,address)
             result.append({**self.disassemble(address,192),'reason':reason,'image':image['name'],
                 'nearestSymbol':nearest[1] if nearest else None,
                 'symbolDisplacement':address-nearest[0] if nearest else None})

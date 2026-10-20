@@ -1,7 +1,7 @@
 /* Darwin kevent_qos backed by Linux epoll, eventfd and timerfd. Real readiness
  * drives registered libpthread kevent callbacks; unsupported filters fail.
- * This is the process workqueue/basic descriptor event path, not workloops,
- * arbitrary Mach message transfer or a complete XNU event implementation. */
+ * This owns descriptor/workqueue readiness and the supported workloop owner
+ * and synchronous-wait protocol, not a complete XNU event implementation. */
 #pragma once
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
@@ -143,8 +143,9 @@ static long native_workloop_sync_change(struct native_kqueue *queue,struct darwi
     if (!note && (event->flags&(D_EV_ADD|D_EV_DELETE))==(D_EV_ADD|D_EV_DELETE)) return 0;
     if (note && !(note->event.fflags&(D_NOTE_WL_SYNC_WAIT|D_NOTE_WL_SYNC_WAKE))) return -EINVAL;
     if (note && note->sync_state==2) return -ENOENT;
-    if (note && note->sync_state==1 && command==D_NOTE_WL_SYNC_WAKE &&
-        !(event->flags&D_EV_DELETE)) return -EALREADY;
+    /* XNU filt_wltouch permits repeated SYNC_WAKE, including owner discovery.
+     * A latched wake must still debounce/update ownership below. EALREADY
+     * belongs to a second THREAD_REQUEST attach, not this synchronous note. */
     if (!note && (!(event->flags&D_EV_ADD) || (event->flags&D_EV_DELETE))) return -ENOENT;
     if (!note && !(event->flags&D_EV_DISABLE)) return -EINVAL;
     if (command==D_NOTE_WL_SYNC_WAIT && !waiter) return -ENOTSUP;

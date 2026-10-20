@@ -135,6 +135,8 @@ class Processes:
                 '-[BSXPCServiceConnection _lock_activateNowOrWhenReady:]',
                 '-[BSXPCServiceConnection _connection_consumeLock_didActivateWithPeer:]',
                 '-[BSXPCServiceConnection _connection_handleMessage:fromPeer:withHandoff:]',
+                '-[BSXPCServiceConnection _connection_handleActivationMessage:fromPeer:]',
+                '-[BSXPCServiceConnectionMessage _sendSynchronously:]',
                 '___71-[BSXPCServiceConnection _connection_handleActivationMessage:fromPeer:]_block_invoke']:
                 arguments.extend(['--lookup','/System/Library/PrivateFrameworks/BoardServices.framework/BoardServices',symbol])
             result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
