@@ -1050,6 +1050,17 @@ def capture_ipc_waits(process):
     objects = GuestObjects(process)
     backend = target.FindFirstGlobalVariable('darling_active')
     darling = backend.IsValid() and backend.GetValueAsUnsigned() != 0
+    ulocks = target.FindFirstGlobalVariable('native_ulock_queues')
+    if ulocks.IsValid():
+        records = []
+        for index in range(min(ulocks.GetNumChildren(), 64)):
+            entry = ulocks.GetChildAtIndex(index)
+            address = entry.GetChildMemberWithName('address')
+            if not address.IsValid() or not address.GetValueAsUnsigned():
+                continue
+            records.append({name: entry.GetChildMemberWithName(name).GetValue()
+                            for name in ('address', 'operation', 'waiters')})
+        print('NATIVE_ULOCK_QUEUES ' + json.dumps(records), flush=True)
     native_threads = target.FindFirstGlobalVariable('native_threads')
     if native_threads.IsValid():
         records = []

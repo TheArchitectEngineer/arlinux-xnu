@@ -198,17 +198,62 @@ static long native_thread_terminate(const unsigned long long *r)
     RAW(SYS_exit,0,0,0,0,0,0); /* thread exit; never exit_group */
     __builtin_unreachable();
 }
+/* XNU ulock_wait returns the remaining waiter count after cleanup. libplatform
+ * uses a positive result to preserve its lock word's waiter bit. Returning
+ * zero after every Linux futex wake loses later wakeups under contention.
+ * At most one wait per native guest thread can be active at a time. */
+static struct native_ulock_queue {
+    uint64_t address; unsigned int operation; int waiters;
+} native_ulock_queues[NATIVE_THREADS];
+static int native_ulock_guard;
+static void native_ulock_lock(void)
+{
+    while (__atomic_exchange_n(&native_ulock_guard,1,__ATOMIC_ACQUIRE))
+        RAW(SYS_futex,&native_ulock_guard,FUTEX_WAIT_PRIVATE,1,0,0,0);
+}
+static void native_ulock_unlock(void)
+{
+    __atomic_store_n(&native_ulock_guard,0,__ATOMIC_RELEASE);
+    RAW(SYS_futex,&native_ulock_guard,FUTEX_WAKE_PRIVATE,1,0,0,0);
+}
 static long native_ulock(const unsigned long long *r)
 {
     unsigned int operation=r[0]&D_UL_OPERATION_MASK;
     if ((operation!=D_UL_COMPARE_AND_WAIT && operation!=D_UL_UNFAIR_LOCK) || (r[1]&3)) return -EINVAL;
-    if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_ULOCK_WAIT) {
-        if (r[0]&~(unsigned long)(D_UL_NO_ERRNO|D_UL_WAIT_WORKQ_DATA_CONTENTION|D_UL_WAIT_CANCEL_POINT|D_UL_OPERATION_MASK)) return -ENOTSUP;
-        struct timespec timeout={r[3]/1000000,(r[3]%1000000)*1000};
-        long result=RAW(SYS_futex,r[1],FUTEX_WAIT_PRIVATE,(uint32_t)r[2],r[3] ? &timeout : NULL,0,0);
-        return result==-EAGAIN ? 0 : result; /* changed value is a successful retry */
+    if (!r[1]) return -EFAULT;
+    int wait=r[D_ARM64_SYSCALL_REGISTER]==D_SYS_ULOCK_WAIT;
+    unsigned long flags=wait ? D_UL_WAIT_WORKQ_DATA_CONTENTION|D_UL_WAIT_CANCEL_POINT :
+        D_UL_WAKE_ALLOW_NON_OWNER|D_UL_WAKE_ALL;
+    if (r[0]&~(unsigned long)(D_UL_NO_ERRNO|D_UL_OPERATION_MASK|flags)) return -ENOTSUP;
+    native_ulock_lock();
+    struct native_ulock_queue *queue=NULL,*empty=NULL;
+    for (unsigned int i=0;i<NATIVE_THREADS;i++) {
+        if (native_ulock_queues[i].address==r[1]) { queue=native_ulock_queues+i; break; }
+        if (!native_ulock_queues[i].address && !empty) empty=native_ulock_queues+i;
     }
-    if (r[0]&~(unsigned long)(D_UL_NO_ERRNO|D_UL_WAKE_ALLOW_NON_OWNER|D_UL_WAKE_ALL|D_UL_OPERATION_MASK)) return -ENOTSUP;
-    long result=RAW(SYS_futex,r[1],FUTEX_WAKE_PRIVATE,(r[0]&D_UL_WAKE_ALL) ? INT32_MAX : 1,0,0,0);
-    return result<0 ? result : 0;
+    if (queue && queue->operation!=operation) { native_ulock_unlock(); return -EDOM; }
+    if (!wait) {
+        /* A wake holds the registry interlock through the nonblocking futex
+         * operation, so the queue cannot be retired/rebound beneath it. */
+        long result=queue ? RAW(SYS_futex,r[1],FUTEX_WAKE_PRIVATE,
+                               (r[0]&D_UL_WAKE_ALL) ? INT32_MAX : 1,0,0,0) : -ENOENT;
+        native_ulock_unlock();
+        return result<0 ? result : 0;
+    }
+    if (!queue) {
+        if (!empty) { native_ulock_unlock(); return -ENOMEM; }
+        queue=empty; queue->address=r[1]; queue->operation=operation; queue->waiters=0;
+    }
+    if (queue->waiters==INT32_MAX) { native_ulock_unlock(); return -EOVERFLOW; }
+    queue->waiters++;
+    native_ulock_unlock();
+    struct timespec timeout={r[3]/1000000,(r[3]%1000000)*1000};
+    long result=RAW(SYS_futex,r[1],FUTEX_WAIT_PRIVATE,(uint32_t)r[2],r[3] ? &timeout : NULL,0,0);
+    native_ulock_lock();
+    int remaining=--queue->waiters;
+    if (!remaining) { queue->address=0; queue->operation=0; }
+    native_ulock_unlock();
+    /* Linux checks value/queues atomically: an unlock before parking produces
+     * EAGAIN. XNU still performs waiter cleanup and returns the live count. */
+    return !result || result==-EAGAIN ? remaining : result;
 }
