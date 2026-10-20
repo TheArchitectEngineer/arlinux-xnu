@@ -24,12 +24,10 @@
     "role": "Community libspc codec and checked check-in adoption for host services; Mach rights use Darling"
   },
   "darlingIpc": {
-    "repository": "taowen/darling",
-    "commit": "60f5ef3fdc6a560edb11820f6f0154d396d8ebc7",
-    "upstreamRepository": "VibeDarling/darling",
-    "upstreamCommit": "47cd6dc7aa0e16596777ad189dddc6e75c3de4ba",
-    "path": "third_party/darling",
-    "role": "Community ARM64 darlingserver with embedding launcher, 16 KiB VM and single CPU; opt-in native RPC integration"
+    "path": "components/darling",
+    "ownership": "in-tree hard fork; runtime source identity is the enclosing repository commit",
+    "origins": "components/darling/ORIGINS.json",
+    "role": "Integrated ARM64 Darwin IPC server, XNU support, MIG generator and native RPC client; no external Darling checkout or patch application"
   },
   "guestArchitecture": "arm64",
   "virtualCpus": 1,

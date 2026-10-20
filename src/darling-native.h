@@ -34,7 +34,7 @@ static void darling_abort(const char *operation)
 static long darling_receive(int fd,struct msghdr *message)
 {
     struct msghdr original=*message;
-    struct darling_memory_updates updates={0};
+    struct darling_memory_updates updates; updates.count=0;
     for (;;) {
         *message=original;
         long result=RAW(SYS_recvmsg,fd,message,0,0,0,0);

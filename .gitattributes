@@ -1,1 +1,4 @@
 * text=auto eol=lf
+
+# Preserve imported source bytes; symlink and executable modes are tracked by Git.
+components/darling/source/** -text

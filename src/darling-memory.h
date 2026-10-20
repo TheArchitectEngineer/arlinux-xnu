@@ -19,7 +19,7 @@ struct darling_memory_updates {
 static int darling_memory_replace(struct darling_memory_updates *updates,
                                   uint64_t address,uint64_t length,int executable)
 {
-    struct darling_memory_updates next={0};
+    struct darling_memory_updates next; next.count=0;
     uint64_t end=address+length;
     for (unsigned int i=0;i<updates->count;i++) {
         uint64_t start=updates->code[i].address,finish=start+updates->code[i].length;
@@ -44,7 +44,7 @@ static int darling_memory_replace(struct darling_memory_updates *updates,
         next.code[next.count].address=address;
         next.code[next.count++].length=length;
     }
-    *updates=next;
+    darling_copy(updates,&next,sizeof(next));
     return 0;
 }
 static void darling_memory_complete(const struct darling_memory_updates *updates)
@@ -77,7 +77,7 @@ static long darling_memory_mmap(const dserver_s2c_call_t *call,
         if ((unsigned long)allocated>=(unsigned long)-4095) return allocated;
         address=allocated;
     }
-    struct darling_memory_updates next=*updates;
+    struct darling_memory_updates next; darling_copy(&next,updates,sizeof(next));
     long result=darling_memory_replace(&next,address,length,protection&PROT_EXEC);
     if (!result) result=RAW(SYS_mmap,address,length,protection,
                             fixed ? flags : MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0);
@@ -85,7 +85,7 @@ static long darling_memory_mmap(const dserver_s2c_call_t *call,
         if (!fixed) RAW(SYS_munmap,address,length,0,0,0,0);
         return result;
     }
-    *updates=next;
+    darling_copy(updates,&next,sizeof(next));
     return result;
 }
 static void darling_memory_reply(int fd,const dserver_s2c_call_t *call,long count,
@@ -114,10 +114,10 @@ static void darling_memory_reply(int fd,const dserver_s2c_call_t *call,long coun
         result=-EINVAL;
         if (darling_memory_range(call->munmap.address,call->munmap.length)) {
             uint64_t length=(call->munmap.length+PAGE16-1)&~(PAGE16-1);
-            struct darling_memory_updates next=*updates;
+            struct darling_memory_updates next; darling_copy(&next,updates,sizeof(next));
             result=darling_memory_replace(&next,call->munmap.address,length,0);
             if (!result) result=RAW(SYS_munmap,call->munmap.address,length,0,0,0,0);
-            if (!result) *updates=next;
+            if (!result) darling_copy(updates,&next,sizeof(next));
         }
         reply.munmap.return_value=result<0 ? -1 : result;
         reply.munmap.errno_result=result<0 ? -result : 0;
@@ -128,10 +128,10 @@ static void darling_memory_reply(int fd,const dserver_s2c_call_t *call,long coun
         if (darling_memory_range(call->mprotect.address,call->mprotect.length) &&
             !(call->mprotect.protection&~(PROT_READ|PROT_WRITE|PROT_EXEC))) {
             uint64_t length=(call->mprotect.length+PAGE16-1)&~(PAGE16-1);
-            struct darling_memory_updates next=*updates;
+            struct darling_memory_updates next; darling_copy(&next,updates,sizeof(next));
             result=darling_memory_replace(&next,call->mprotect.address,length,call->mprotect.protection&PROT_EXEC);
             if (!result) result=RAW(SYS_mprotect,call->mprotect.address,length,call->mprotect.protection,0,0,0);
-            if (!result) *updates=next;
+            if (!result) darling_copy(updates,&next,sizeof(next));
         }
         reply.mprotect.return_value=result<0 ? -1 : result;
         reply.mprotect.errno_result=result<0 ? -result : 0;

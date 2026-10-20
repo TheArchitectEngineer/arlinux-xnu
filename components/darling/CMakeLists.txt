@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 project(arlinux_darling_ipc LANGUAGES C CXX ASM)
 
 # Supply the parent-build context required by the selected upstream targets.
-# Source lists, XNU definitions, MIG interfaces and RPC generation stay upstream.
-get_filename_component(DARLING_SOURCE "${CMAKE_CURRENT_LIST_DIR}/../../third_party/darling" ABSOLUTE)
+# Source lists, XNU definitions, MIG interfaces and RPC generation live here.
+get_filename_component(DARLING_SOURCE "${CMAKE_CURRENT_LIST_DIR}/source" ABSOLUTE)
 include(GNUInstallDirs)
 set(TARGET_ARM64 ON)
 set(TARGET_X86_64 OFF)
@@ -12,7 +12,7 @@ set(DSERVER_GUEST_PAGE_SHIFT 14 CACHE STRING "ARLinux guest page shift")
 set(DSERVER_SINGLE_CPU ON CACHE BOOL "ARLinux single guest CPU")
 set(APPLE_ARCH_PRIMARY arm64)
 set(APPLE_TARGET_TRIPLET_PRIMARY aarch64-apple-darwin20)
-set(GIT_BRANCH pinned-community-arm64)
+set(GIT_BRANCH arlinux-integrated-runtime)
 execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY "${DARLING_SOURCE}"
     OUTPUT_VARIABLE GIT_COMMIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE
     COMMAND_ERROR_IS_FATAL ANY)

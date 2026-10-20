@@ -19,23 +19,22 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare pinned community server sources
+      - name: Record integrated runtime sources
         shell: bash
         run: |
           set -euo pipefail
-          git submodule update --init third_party/darling
-          git -C third_party/darling submodule update --init src/external/darlingserver src/external/bootstrap_cmds src/external/xnu src/external/libpthread
           mkdir -p build/darling-evidence
           cp sources.lock.json build/darling-evidence/
-          git submodule status > build/darling-evidence/sources.txt
-          git -C third_party/darling submodule status src/external/darlingserver src/external/bootstrap_cmds src/external/xnu src/external/libpthread >> build/darling-evidence/sources.txt
+          git rev-parse HEAD > build/darling-evidence/sources.txt
+          git rev-parse HEAD:components/darling >> build/darling-evidence/sources.txt
+          cp components/darling/ORIGINS.json build/darling-evidence/
           uname -a > build/darling-evidence/environment.txt
           getconf PAGE_SIZE >> build/darling-evidence/environment.txt
       - name: Install native ARM64 server toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 cmake ninja-build bison flex libbsd-dev
-      - name: Build upstream Darling IPC server
+      - name: Build integrated Darling IPC server
         shell: bash
         run: |
           set -euo pipefail
@@ -46,7 +45,7 @@ jobs:
           cp build/darling-compilation/darlingserver/darlingserver build/darling-evidence/
           mkdir -p build/darling-evidence/include/darlingserver build/darling-evidence/src
           cp build/darling-compilation/darlingserver/include/darlingserver/rpc.h build/darling-evidence/include/darlingserver/
-          cp third_party/darling/src/external/darlingserver/include/darlingserver/rpc-supplement.h build/darling-evidence/include/darlingserver/
+          cp components/darling/source/src/external/darlingserver/include/darlingserver/rpc-supplement.h build/darling-evidence/include/darlingserver/
           cp build/darling-compilation/darlingserver/src/rpc.c build/darling-evidence/src/
           file build/darling-evidence/darlingserver | tee build/darling-evidence/file.txt
       - name: Record experiment receipt

@@ -284,12 +284,14 @@ See the exact app run in docs/EXPERIMENT.md before claiming callback delivery.
 
 An implementation reference is [Darlingserver's reuse of XNU](https://docs.darlinghq.org/internals/darlingserver/index.html)
 and its [Mach-port kqueue channels](https://docs.darlinghq.org/internals/darlingserver/kqchannels.html).
-`--ipc darling` selects the pinned [community ARM64 implementation](https://github.com/VibeDarling/darlingserver).
-Our taowen/darling parent gitlink fixes its server, MIG and header dependencies;
-the lock records the upstream base. The component adapter consumes upstream
-CMake targets. XNU ipc_space, ipc_right, ipc_kmsg and ipc_notify execute in the
+`--ipc darling` selects the integrated ARM64 runtime in components/darling.
+The server, required XNU support, MIG generator and headers are an in-tree hard
+fork maintained with the native client in this repository. The enclosing Git
+commit identifies the full runtime source; ORIGINS.json records historical
+upstream revisions for attribution, not remote build inputs. The component
+adapter consumes the in-tree CMake targets. XNU ipc_space, ipc_right, ipc_kmsg and ipc_notify execute in the
 server, with upstream dtape scheduling, timers and process_vm memory hooks.
-Our server fork adds an explicit `--rpc-only` lifecycle and guest configuration,
+The integrated server includes an explicit `--rpc-only` lifecycle and guest configuration,
 without setting up a second full Darling userland or launchd.
 
 The generated RPC client uses per-thread Linux sockets, actual thread checkin

@@ -1,0 +1,896 @@
+#define ioctl __real_ioctl
+#include <mach/mach_traps.h>
+#include <mach/vm_statistics.h>
+#include <mach/kern_return.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <mach/mach_init.h>
+#include <mach/vm_page_size.h>
+
+#include <darling/emulation/common/base.h>
+#include <darling/emulation/xnu_syscall/mach/impl/mach_traps.h>
+#include <darling/emulation/linux_premigration/ext/mremap.h>
+#include <darling/emulation/common/simple.h>
+#include <darling/emulation/conversion/duct_errno.h>
+
+#include <darlingserver/rpc.h>
+
+#define UNIMPLEMENTED_TRAP() { char msg[] = "Called unimplemented Mach trap: "; write(2, msg, sizeof(msg)-1); write(2, __FUNCTION__, sizeof(__FUNCTION__)-1); write(2, "\n", 1); }
+
+mach_port_name_t mach_reply_port_impl(void)
+{
+	unsigned int port_name;
+	if (dserver_rpc_mach_reply_port(&port_name) != 0) {
+		port_name = MACH_PORT_NULL;
+	}
+	return port_name;
+}
+
+mach_port_name_t thread_self_trap_impl(void)
+{
+	unsigned int port_name;
+	if (dserver_rpc_thread_self_trap(&port_name) != 0) {
+		port_name = MACH_PORT_NULL;
+	}
+	return port_name;
+}
+
+mach_port_name_t host_self_trap_impl(void)
+{
+	unsigned int port_name;
+	if (dserver_rpc_host_self_trap(&port_name) != 0) {
+		port_name = MACH_PORT_NULL;
+	}
+	return port_name;
+}
+
+mach_msg_return_t mach_msg_trap_impl(
+				mach_msg_header_t *msg,
+				mach_msg_option_t option,
+				mach_msg_size_t send_size,
+				mach_msg_size_t rcv_size,
+				mach_port_name_t rcv_name,
+				mach_msg_timeout_t timeout,
+				mach_port_name_t notify)
+{
+	return mach_msg_overwrite_trap_impl(msg,
+			option, send_size, rcv_size,
+			rcv_name, timeout, notify,
+			msg, 0);
+}
+
+mach_msg_return_t mach_msg_overwrite_trap_impl(
+				mach_msg_header_t *msg,
+				mach_msg_option_t option,
+				mach_msg_size_t send_size,
+				mach_msg_size_t rcv_size,
+				mach_port_name_t rcv_name,
+				mach_msg_timeout_t timeout,
+				mach_port_name_t notify,
+				mach_msg_header_t *rcv_msg,
+				mach_msg_size_t rcv_limit)
+{
+	int code;
+
+retry:
+	code = dserver_rpc_mach_msg_overwrite(msg, option, send_size, rcv_size, rcv_name, timeout, notify, rcv_msg);
+
+	if (code < 0) {
+		if (code == -LINUX_EINTR) {
+			// when the RPC call returns EINTR, it means we didn't manage to send the RPC message to the server;
+			// when the RPC receive operation receives EINTR, it retries the call, meaning we should never see EINTR from an RPC receive.
+			// therefore, if we wanted to both send and receive a message, this means the send (which is performed first) was interrupted.
+			//
+			// we also need to check if the caller wants to know about interrupts. if they want send interrupts, we tell them.
+			// if they want receive interrupts, we tell them. otherwise, we retry the call.
+			if ((option & MACH_SEND_MSG) != 0 && (option & MACH_SEND_INTERRUPT) != 0) {
+				return MACH_SEND_INTERRUPTED;
+			} else if ((option & MACH_RCV_MSG) != 0 && (option & MACH_RCV_INTERRUPT) != 0) {
+				return MACH_RCV_INTERRUPTED;
+			} else {
+				goto retry;
+			}
+		}
+		__simple_printf("mach_msg_overwrite failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t semaphore_signal_trap_impl(
+				mach_port_name_t signal_name)
+{
+	int code = dserver_rpc_semaphore_signal(signal_name);
+
+	if (code < 0) {
+		__simple_printf("semaphore_signal failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+					      
+kern_return_t semaphore_signal_all_trap_impl(
+				mach_port_name_t signal_name)
+{
+	int code = dserver_rpc_semaphore_signal_all(signal_name);
+
+	if (code < 0) {
+		__simple_printf("semaphore_signal_all failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t semaphore_signal_thread_trap_impl(
+				mach_port_name_t signal_name,
+				mach_port_name_t thread_name)
+{
+	UNIMPLEMENTED_TRAP();
+	return KERN_FAILURE;
+}
+
+kern_return_t semaphore_wait_trap_impl(
+				mach_port_name_t wait_name)
+{
+	int code = dserver_rpc_semaphore_wait(wait_name);
+
+	if (code < 0) {
+		if (code == -LINUX_EINTR) {
+			return KERN_ABORTED;
+		}
+		__simple_printf("semaphore_wait failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t semaphore_wait_signal_trap_impl(
+				mach_port_name_t wait_name,
+				mach_port_name_t signal_name)
+{
+	int code = dserver_rpc_semaphore_wait_signal(wait_name, signal_name);
+
+	if (code < 0) {
+		if (code == -LINUX_EINTR) {
+			return KERN_ABORTED;
+		}
+		__simple_printf("semaphore_wait_signal failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t semaphore_timedwait_trap_impl(
+				mach_port_name_t wait_name,
+				unsigned int sec,
+				clock_res_t nsec)
+{
+	int code = dserver_rpc_semaphore_timedwait(wait_name, sec, nsec);
+
+	if (code < 0) {
+		if (code == -LINUX_EINTR) {
+			return KERN_ABORTED;
+		}
+		__simple_printf("semaphore_timedwait failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t semaphore_timedwait_signal_trap_impl(
+				mach_port_name_t wait_name,
+				mach_port_name_t signal_name,
+				unsigned int sec,
+				clock_res_t nsec)
+{
+	int code = dserver_rpc_semaphore_timedwait_signal(wait_name, signal_name, sec, nsec);
+
+	if (code < 0) {
+		if (code == -LINUX_EINTR) {
+			return KERN_ABORTED;
+		}
+		__simple_printf("semaphore_timedwait_signal failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t clock_sleep_trap_impl(
+				mach_port_name_t clock_name,
+				sleep_type_t sleep_type,
+				int sleep_sec,
+				int sleep_nsec,
+				mach_timespec_t	*wakeup_time)
+{
+	UNIMPLEMENTED_TRAP();
+	return KERN_FAILURE;
+}
+
+kern_return_t _kernelrpc_mach_vm_allocate_trap_impl(
+				mach_port_name_t target,
+				mach_vm_offset_t *addr,
+				mach_vm_size_t size,
+				int flags)
+{
+	if (target != 0 && target != mach_task_self())
+	{
+		int code = dserver_rpc_mach_vm_allocate(target, addr, size, flags);
+
+		if (code < 0) {
+			__simple_printf("mach_vm_allocate failed (internally): %d\n", code);
+			__simple_abort();
+		}
+
+		return code;
+	}
+	else
+	{
+		return _kernelrpc_mach_vm_map_trap_impl(target, addr,
+				size, 0, flags, VM_PROT_READ | VM_PROT_WRITE);
+	}
+}
+
+kern_return_t _kernelrpc_mach_vm_deallocate_trap_impl(
+				mach_port_name_t target,
+				mach_vm_address_t address,
+				mach_vm_size_t size
+)
+{
+	int ret;
+
+	if (target != 0 && target != mach_task_self())
+	{
+		int code = dserver_rpc_mach_vm_deallocate(target, address, size);
+
+		if (code < 0) {
+			__simple_printf("mach_vm_deallocate failed (internally): %d\n", code);
+			__simple_abort();
+		}
+
+		return code;
+	}
+	else
+	{
+		// XNU returns KERN_INVALID_ARGUMENT for address overflow, 
+		// and allows NULL address if size is 0.
+		if (address + size < address)
+		{
+			return KERN_INVALID_ARGUMENT;
+		}
+
+		if (size == (mach_vm_offset_t)0)
+		{
+			return KERN_SUCCESS;
+		}
+
+		ret = munmap((void*)address, size);
+
+		if (ret == -1)
+			return KERN_FAILURE;
+
+		return KERN_SUCCESS;
+	}
+}
+
+kern_return_t _kernelrpc_mach_vm_protect_trap_impl(
+				mach_port_name_t target,
+				mach_vm_address_t address,
+				mach_vm_size_t size,
+				boolean_t set_maximum,
+				vm_prot_t new_protection
+)
+{
+	int prot = 0;
+	int ret;
+
+	if (target != 0 && target != mach_task_self())
+		return MACH_SEND_INVALID_DEST;
+
+	if (new_protection & VM_PROT_READ)
+		prot |= PROT_READ;
+	if (new_protection & VM_PROT_WRITE)
+		prot |= PROT_WRITE;
+	if (new_protection & VM_PROT_EXECUTE)
+		prot |= PROT_EXEC;
+
+	ret = mprotect((void*)address, size, prot);
+	if (ret == -1)
+		return KERN_FAILURE;
+
+	return KERN_SUCCESS;
+}
+
+kern_return_t _kernelrpc_mach_vm_map_trap_impl(
+				mach_port_name_t target,
+				mach_vm_offset_t *address,
+				mach_vm_size_t size,
+				mach_vm_offset_t mask,
+				int flags,
+				vm_prot_t cur_protection
+)
+{
+	// We cannot allocate memory in other processes
+	if (target != 0 && target != mach_task_self())
+		return KERN_FAILURE;
+
+	void* addr;
+	int prot = 0;
+	int posix_flags = MAP_ANON | MAP_PRIVATE;
+
+	if (cur_protection & VM_PROT_READ)
+		prot |= PROT_READ;
+	if (cur_protection & VM_PROT_WRITE)
+		prot |= PROT_WRITE;
+	if (cur_protection & VM_PROT_EXECUTE)
+		prot |= PROT_EXEC;
+
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0x100000
+#endif
+	// XNU fails a fixed request over existing mappings (KERN_NO_SPACE) unless
+	// VM_FLAGS_OVERWRITE is given; callers such as libmalloc's nano region probe rely on that.
+	const int fixed_no_overwrite =!(flags & VM_FLAGS_ANYWHERE) && !(flags & VM_FLAGS_OVERWRITE);
+	if (!(flags & VM_FLAGS_ANYWHERE))
+		posix_flags |= fixed_no_overwrite ? MAP_FIXED_NOREPLACE : MAP_FIXED;
+	if ((flags >> 24) == VM_MEMORY_REALLOC) {
+		// Grow the mapping ending at *address in place. Linux only expands in place
+		// when the old range ends at the vma end, and old_addr must be page-aligned.
+		addr = (void*)__linux_mremap(((char*)*address) - vm_page_size, vm_page_size, vm_page_size + size, 0, NULL);
+		if (addr == MAP_FAILED)
+			return KERN_FAILURE;
+		// Return here: mremap's result sits one page below *address, so the fixed
+		// mapping check below would munmap the grown region and report KERN_NO_SPACE.
+		return KERN_SUCCESS;
+	}
+	else {
+#if defined(__aarch64__) || defined(__arm64__)
+		// libobjc's class_data_bits_t stores class_rw_t* using FAST_DATA_MASK
+		// (0x00007ffffffffff8 — 47 bits). Linux ARM64 user space is up to 48-bit,
+		// so glibc mmap can return addresses with bit 47 set (e.g.
+		// 0xf8b170b00000) for any ANYWHERE allocation, regardless of hint.
+		// Those values get truncated by FAST_DATA_MASK into unmapped pointers.
+		// Solution: when the kernel hands us a >= 2^47 address for an ANYWHERE
+		// request, drop it and re-mmap with MAP_FIXED_NOREPLACE into a managed low-VA
+		// arena, advancing to avoid colliding with dyld, executables, or other allocations.
+		static uintptr_t next_low_vm_addr = 0x500000000ULL;
+		const uintptr_t LOW_VA_LIMIT = 0x800000000000ULL; /* 2^47 */
+		addr = mmap((void*)*address, size, prot, posix_flags, -1, 0);
+		if ((flags & VM_FLAGS_ANYWHERE) && addr != MAP_FAILED
+				&& (uintptr_t)addr >= LOW_VA_LIMIT) {
+			munmap(addr, size);
+			addr = MAP_FAILED;
+			while (1) {
+				uintptr_t cur_low = __atomic_load_n(&next_low_vm_addr, __ATOMIC_RELAXED);
+				if (cur_low >= LOW_VA_LIMIT)
+					break;
+				uintptr_t expected = cur_low;
+				uintptr_t try_addr = cur_low;
+				if (mask) {
+					uintptr_t boundary = mask + 1;
+					try_addr = (try_addr + (boundary - 1)) & ~(boundary - 1);
+				}
+				if (try_addr >= LOW_VA_LIMIT)
+					break;
+				addr = mmap((void*)try_addr, size, prot,
+						posix_flags | MAP_FIXED_NOREPLACE, -1, 0);
+				if (addr == (void*)try_addr) {
+					uintptr_t target_next = ((uintptr_t)addr + size + 0xffffff) & ~0xffffffULL;
+					while (target_next > expected && !__atomic_compare_exchange_n(&next_low_vm_addr, &expected, target_next, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+					}
+					break;
+				}
+				// sys_mmap doesn't pass MAP_FIXED_NOREPLACE on, so a taken slot comes back as a
+				// mapping elsewhere (often >= 2^47). Advancing the cursor from it ends the arena.
+				if (addr != MAP_FAILED) {
+					munmap(addr, size);
+					addr = MAP_FAILED;
+				} else if (errno != EEXIST) {
+					break;
+				}
+				uintptr_t step = mask ? (mask + 1) : 0x1000000ULL;
+				if (step < 0x1000000ULL)
+					step = 0x1000000ULL;
+				uintptr_t next_try = (try_addr + step) & ~0xffffffULL;
+				while (next_try > expected && !__atomic_compare_exchange_n(&next_low_vm_addr, &expected, next_try, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+				}
+			}
+		}
+#else
+		addr = mmap((void*)*address, size, prot, posix_flags, -1, 0);
+#endif
+	}
+
+	if (addr == MAP_FAILED)
+	{
+		return (fixed_no_overwrite && errno == EEXIST) ? KERN_NO_SPACE : KERN_FAILURE;
+	}
+	if (fixed_no_overwrite && (uintptr_t)addr != (uintptr_t)*address)
+	{
+		// Kernels without MAP_FIXED_NOREPLACE treat it as a hint.
+		munmap(addr, size);
+		return KERN_NO_SPACE;
+	}
+	
+	if (mask && ( ((uintptr_t)addr) & mask) != 0)
+	{
+		uintptr_t boundary, q, diff, iaddr;
+		
+		// Alignment was requested, but we couldn't get it the easy way
+		munmap(addr, size);
+		
+		// This may not work for some crazy masks. Consider using __builtin_clz().
+		boundary = mask + 1;
+		
+		iaddr = (uintptr_t)mmap((void*)*address, size + boundary, prot, posix_flags, -1, 0);
+		if (iaddr == (uintptr_t) MAP_FAILED)
+			return KERN_FAILURE;
+		
+		q = (iaddr + (boundary-1)) / boundary * boundary;
+		diff = q - iaddr;
+		
+		if (diff > 0)
+			munmap((void*)iaddr, diff);
+		if (boundary - diff > 0)
+			munmap((void*) (q + size), boundary - diff);
+		
+		addr = (void*) q;
+	}
+
+	*address = (uintptr_t)addr;
+	return KERN_SUCCESS;
+}
+
+kern_return_t _kernelrpc_mach_port_allocate_trap_impl(
+				mach_port_name_t target,
+				mach_port_right_t right,
+				mach_port_name_t *name
+)
+{
+	int code = dserver_rpc_mach_port_allocate(target, right, name);
+
+	if (code < 0) {
+		__simple_printf("mach_port_allocate failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+
+kern_return_t _kernelrpc_mach_port_destroy_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t name
+)
+{
+	int code = dserver_rpc_mach_port_destruct(target, name, 0, 0);
+
+	if (code < 0) {
+		__simple_printf("mach_port_destroy failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_deallocate_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t name
+)
+{
+	int code = dserver_rpc_mach_port_deallocate(target, name);
+
+	if (code < 0) {
+		__simple_printf("mach_port_deallocate failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_mod_refs_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t name,
+				mach_port_right_t right,
+				mach_port_delta_t delta
+)
+{
+	int code = dserver_rpc_mach_port_mod_refs(target, name, right, delta);
+
+	if (code < 0) {
+		__simple_printf("mach_port_deallocate failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_move_member_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t member,
+				mach_port_name_t after
+)
+{
+	int code = dserver_rpc_mach_port_move_member(target, member, after);
+
+	if (code < 0) {
+		__simple_printf("mach_port_move_member failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_insert_right_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t name,
+				mach_port_name_t poly,
+				mach_msg_type_name_t polyPoly
+)
+{
+	int code = dserver_rpc_mach_port_insert_right(target, name, poly, polyPoly);
+
+	if (code < 0) {
+		__simple_printf("mach_port_insert_right failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_insert_member_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t name,
+				mach_port_name_t pset
+)
+{
+	int code = dserver_rpc_mach_port_insert_member(target, name, pset);
+
+	if (code < 0) {
+		__simple_printf("mach_port_insert_member failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_extract_member_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t name,
+				mach_port_name_t pset
+)
+{
+	int code = dserver_rpc_mach_port_extract_member(target, name, pset);
+
+	if (code < 0) {
+		__simple_printf("mach_port_extract_member failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_construct_trap_impl(
+				mach_port_name_t target,
+				mach_port_options_t *options,
+				uint64_t context,
+				mach_port_name_t *name
+)
+{
+	int code = dserver_rpc_mach_port_construct(target, options, context, name);
+
+	if (code < 0) {
+		__simple_printf("mach_port_construct failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_destruct_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t name,
+				mach_port_delta_t srdelta,
+				uint64_t guard
+)
+{
+	int code = dserver_rpc_mach_port_destruct(target, name, srdelta, guard);
+
+	if (code < 0) {
+		__simple_printf("mach_port_destruct failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_guard_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t name,
+				uint64_t guard,
+				boolean_t strict
+)
+{
+	int code = dserver_rpc_mach_port_guard(target, name, guard, strict);
+
+	if (code < 0) {
+		__simple_printf("mach_port_guard failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t _kernelrpc_mach_port_unguard_trap_impl(
+				mach_port_name_t target,
+				mach_port_name_t name,
+				uint64_t guard
+)
+{
+	int code = dserver_rpc_mach_port_unguard(target, name, guard);
+
+	if (code < 0) {
+		__simple_printf("mach_port_unguard failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t thread_get_special_reply_port_impl(void)
+{
+	unsigned int port_name;
+	if (dserver_rpc_thread_get_special_reply_port(&port_name) != 0) {
+		port_name = MACH_PORT_NULL;
+	}
+	return port_name;
+};
+
+kern_return_t _kernelrpc_mach_port_request_notification_impl(
+	ipc_space_t task,
+	mach_port_name_t name,
+	mach_msg_id_t msgid,
+	mach_port_mscount_t sync,
+	mach_port_name_t notify,
+	mach_msg_type_name_t notifyPoly,
+	mach_port_name_t* previous
+)
+{
+	int code = dserver_rpc_mach_port_request_notification(task, name, msgid, sync, notify, notifyPoly, previous);
+
+	if (code < 0) {
+		__simple_printf("mach_port_request_notification failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+};
+
+kern_return_t _kernelrpc_mach_port_get_attributes_impl(
+	mach_port_name_t target,
+	mach_port_name_t name,
+	mach_port_flavor_t flavor,
+	mach_port_info_t port_info_out,
+	mach_msg_type_number_t* port_info_outCnt
+)
+{
+	int code = dserver_rpc_mach_port_get_attributes(target, name, flavor, port_info_out, port_info_outCnt);
+
+	if (code < 0) {
+		__simple_printf("mach_port_get_attributes failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+};
+
+kern_return_t _kernelrpc_mach_port_type_impl(
+	ipc_space_t task,
+	mach_port_name_t name,
+	mach_port_type_t* ptype
+)
+{
+	int code = dserver_rpc_mach_port_type(task, name, ptype);
+
+	if (code < 0) {
+		__simple_printf("mach_port_type failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+};
+
+kern_return_t macx_swapon_impl(
+				uint64_t filename,
+				int flags,
+				int size,
+				int priority)
+{
+	UNIMPLEMENTED_TRAP();
+	return KERN_FAILURE;
+}
+
+kern_return_t macx_swapoff_impl(
+				uint64_t filename,
+				int flags)
+{
+	UNIMPLEMENTED_TRAP();
+	return KERN_FAILURE;
+}
+
+kern_return_t macx_triggers_impl(
+				int hi_water,
+				int low_water,
+				int flags,
+				mach_port_t alert_port)
+{
+	UNIMPLEMENTED_TRAP();
+	return KERN_FAILURE;
+}
+
+kern_return_t macx_backing_store_suspend_impl(
+				boolean_t suspend)
+{
+	UNIMPLEMENTED_TRAP();
+	return KERN_FAILURE;
+}
+
+kern_return_t macx_backing_store_recovery_impl(
+				int pid)
+{
+	UNIMPLEMENTED_TRAP();
+	return KERN_FAILURE;
+}
+
+extern void __linux_sched_yield();
+boolean_t swtch_pri_impl(int pri)
+{
+	__linux_sched_yield();
+	return 0;
+}
+
+boolean_t swtch_impl(void)
+{
+	__linux_sched_yield();
+	return 0;
+}
+
+extern int __linux_nanosleep(struct timespec* tv, struct timespec* rem);
+kern_return_t syscall_thread_switch_impl(
+				mach_port_name_t thread_name,
+				int option,
+				mach_msg_timeout_t option_time)
+{
+	struct timespec tv = {
+		.tv_sec = 0,
+		.tv_nsec = 1000000
+	};
+	// Sleep for 1ms
+	__linux_nanosleep(&tv, &tv);
+
+	// TODO: we could implement this with yield_to() in LKM
+	return KERN_SUCCESS;
+}
+
+mach_port_name_t task_self_trap_impl(void)
+{
+	unsigned int port_name;
+	if (dserver_rpc_task_self_trap(&port_name) != 0) {
+		port_name = MACH_PORT_NULL;
+	}
+	return port_name;
+}
+
+/*
+ *	Obsolete interfaces.
+ */
+
+kern_return_t task_for_pid_impl(
+				mach_port_name_t target_tport,
+				int pid,
+				mach_port_name_t *t)
+{
+	int code = dserver_rpc_task_for_pid(target_tport, pid, t);
+
+	if (code < 0) {
+		__simple_printf("task_for_pid failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t task_name_for_pid_impl(
+				mach_port_name_t target_tport,
+				int pid,
+				mach_port_name_t *tn)
+{
+	int code = dserver_rpc_task_name_for_pid(target_tport, pid, tn);
+
+	if (code < 0) {
+		__simple_printf("task_name_for_pid failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t pid_for_task_impl(
+				mach_port_name_t t,
+				int *x)
+{
+	int code = dserver_rpc_pid_for_task(t, x);
+
+	if (code < 0) {
+		__simple_printf("pid_for_task failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t mach_generate_activity_id_impl(mach_port_name_t task, int i, uint64_t* id)
+{
+	// The server's XNU trap validates the count and copies the result to
+	// this task, like the other pointer-bearing Mach RPCs.
+	int code = dserver_rpc_mach_generate_activity_id(task, i, id);
+	if (code < 0) {
+		__simple_printf("mach_generate_activity_id failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+mach_port_name_t mk_timer_create_impl(void)
+{
+	unsigned int port_name;
+	if (dserver_rpc_mk_timer_create(&port_name) < 0) {
+		port_name = MACH_PORT_NULL;
+	}
+	return port_name;
+}
+
+kern_return_t mk_timer_destroy_impl(mach_port_name_t name)
+{
+	int code = dserver_rpc_mk_timer_destroy(name);
+
+	if (code < 0) {
+		__simple_printf("mk_timer_destroy failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t mk_timer_arm_impl(mach_port_name_t name, uint64_t expire_time)
+{
+	int code = dserver_rpc_mk_timer_arm(name, expire_time);
+
+	if (code < 0) {
+		__simple_printf("mk_timer_arm failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}
+
+kern_return_t mk_timer_cancel_impl(mach_port_name_t name, uint64_t *result_time)
+{
+	int code = dserver_rpc_mk_timer_cancel(name, result_time);
+
+	if (code < 0) {
+		__simple_printf("mk_timer_cancel failed (internally): %d\n", code);
+		__simple_abort();
+	}
+
+	return code;
+}

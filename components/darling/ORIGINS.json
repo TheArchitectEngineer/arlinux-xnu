@@ -1,0 +1,40 @@
+{
+  "purpose": "Historical import provenance, not remote build inputs. All imported source is maintained in this repository.",
+  "imports": [
+    {
+      "path": "source",
+      "repository": "taowen/darling",
+      "commit": "60f5ef3fdc6a560edb11820f6f0154d396d8ebc7",
+      "scope": [
+        "LICENSE",
+        "CONTRIBUTORS.md",
+        "basic-headers",
+        "cmake/mig.cmake",
+        "src/include/darling-config.h.in",
+        "src/libsimple",
+        "src/startup/rtsig.c"
+      ]
+    },
+    {
+      "path": "source/src/external/darlingserver",
+      "repository": "taowen/darlingserver",
+      "commit": "5d0ce49cde1fc7cf7a8953283120b00f27b6b493",
+      "upstreamRepository": "VibeDarling/darlingserver"
+    },
+    {
+      "path": "source/src/external/bootstrap_cmds",
+      "repository": "VibeDarling/darling-bootstrap_cmds",
+      "commit": "0f07c8af544e44b5271749979b3c0d4a47701e8f"
+    },
+    {
+      "path": "source/src/external/xnu",
+      "repository": "VibeDarling/darling-xnu",
+      "commit": "40bc7ec5b336861c99f7f38b73bcce76b7808ae2"
+    },
+    {
+      "path": "source/src/external/libpthread",
+      "repository": "VibeDarling/darling-libpthread",
+      "commit": "99902928259e2305bef1db61fa455db5c171cb1b"
+    }
+  ]
+}

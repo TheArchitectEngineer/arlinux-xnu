@@ -126,9 +126,11 @@ ARM64 code does not imply a Metal dependency.
   kqueue events with epoll.
   [VibeDarling's community fork](https://github.com/VibeDarling/darlingserver)
   supplies the ARM64 build/clock path used by the opt-in Darling backend.
-  [Our server fork](https://github.com/taowen/darlingserver/tree/codex/arlinux-rpc)
-  adds embedding and guest geometry configuration. Its generated RPC client
-  retains the upstream GPL license. A console journey passes on this backend;
+  The runtime is now an [in-tree hard fork](components/darling/README.md): server,
+  required XNU support, MIG and headers are maintained here together with our
+  native client. Import revisions live in components/darling/ORIGINS.json;
+  builds do not fetch a separate Darling fork. Embedding and guest geometry
+  changes are included. Copyright notices and GPL/source licenses are retained. A console journey passes on this backend;
   iOS UI and Android compatibility remain unverified.
 * [Apple Open Source](https://github.com/apple-oss-distributions): XNU and the
   matching libdispatch kernel firehose implementation; licenses remain upstream.

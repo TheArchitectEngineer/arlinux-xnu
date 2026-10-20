@@ -7,9 +7,6 @@
 [submodule "third_party/libdispatch"]
 	path = third_party/libdispatch
 	url = https://github.com/apple-oss-distributions/libdispatch.git
-[submodule "third_party/darling"]
-	path = third_party/darling
-	url = https://github.com/taowen/darling.git
 [submodule "third_party/libspc"]
 	path = third_party/libspc
 	url = https://github.com/taowen/arlinux-libspc.git
