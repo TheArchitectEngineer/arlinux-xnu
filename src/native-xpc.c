@@ -90,6 +90,7 @@ static struct processinfo_peer {
     spc_connection_t connection;
     uint32_t pid,incarnation,task,endpoint;
     int pidfd,service;
+    spc_message_t *workspace_registration;
     struct processinfo_peer *next;
 } *processinfo_peers;
 static const char *const session_service_names[D_SESSION_SERVICE_COUNT]={
@@ -102,6 +103,7 @@ static void session_peer_destroy(struct processinfo_peer *peer)
         darwin_native_host_port_deallocate(peer->connection.send_port) ||
         darwin_native_host_receive_destroy(peer->connection.receive_port)) abort();
     if (peer->pidfd>=0) close(peer->pidfd);
+    if (peer->workspace_registration) spc_message_destroy(peer->workspace_registration);
     free(peer);
 }
 
@@ -207,7 +209,29 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
         peer->task=new_task; peer->endpoint=new_endpoint; error=0;
         fprintf(stderr,"PROCESSINFO_WORKSPACE_REGISTERED pid=%u incarnation=%u task=%u endpoint=%u\n",
             peer->pid,peer->incarnation,peer->task,peer->endpoint);
-    } else fprintf(stderr,"SESSION_XPC_REQUEST_UNSUPPORTED service=%s fields=%zu\n",
+    } else if (peer->service==D_SESSION_WORKSPACE && kind &&
+        kind->value.type==SPC_TYPE_INT64 && !kind->value.value.i64) {
+        spc_dictionary_item_t *event=spc_dictionary_lookup(message->content,"event");
+        spc_dictionary_t *dictionary=event && event->value.type==SPC_TYPE_DICT ? event->value.value.dict : NULL;
+        const char *class_name=dictionary ? spc_dictionary_get_string(dictionary,"bs_encodedObjectClassName") : NULL;
+        spc_dictionary_item_t *handle=dictionary ? spc_dictionary_lookup(dictionary,"processHandle") : NULL;
+        spc_dictionary_t *process=handle && handle->value.type==SPC_TYPE_DICT ? handle->value.value.dict : NULL;
+        const char *handle_class=process ? spc_dictionary_get_string(process,"bs_encodedObjectClassName") : NULL;
+        spc_dictionary_item_t *pid=process ? spc_dictionary_lookup(process,"pid") : NULL;
+        /* The real connect event (run 39393138016) identifies this client.
+         * Retain its metadata under the kernel-audited connection identity;
+         * a supplied process handle cannot register a different process. */
+        if (class_name && !strcmp(class_name,"FBSWorkspaceConnectEvent") &&
+            handle_class && !strcmp(handle_class,"FBSProcessHandle") && pid &&
+            (pid->value.type==SPC_TYPE_INT64 || pid->value.type==SPC_TYPE_UINT64) &&
+            pid->value.value.u64==peer->pid &&
+            spc_dictionary_get_string(process,"bundleID") && spc_dictionary_get_string(process,"bundlePath")) {
+            if (peer->workspace_registration) spc_message_destroy(peer->workspace_registration);
+            peer->workspace_registration=message; error=0;
+            fprintf(stderr,"SESSION_WORKSPACE_ASSOCIATED pid=%u incarnation=%u\n",peer->pid,peer->incarnation);
+        }
+    }
+    if (error) fprintf(stderr,"SESSION_XPC_REQUEST_UNSUPPORTED service=%s fields=%zu\n",
         session_service_names[peer->service],message->content->num_items);
     fprintf(stdout,"SESSION_XPC_DICTIONARY service=%s pid=%u\n",session_service_names[peer->service],peer->pid);
     spc_dump(message->content); fflush(stdout);
@@ -226,6 +250,6 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
         memcpy(output,encoded,encoded->header.msgh_size);
         free(encoded); spc_dictionary_destroy(dictionary);
     }
-    spc_message_destroy(message);
+    if (peer->workspace_registration!=message) spc_message_destroy(message);
     return reply;
 }

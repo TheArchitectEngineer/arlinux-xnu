@@ -115,7 +115,7 @@ def report(run_id, job_name):
                    'DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DYNAMIC_MAIN ', 'DYNAMIC_THREAD ',
                    'DYNAMIC_CONSOLE ', 'EXPERIMENT_RECEIPT ', 'EXPERIMENT_EXECUTABLE ',
                    'BOOTSTRAP_XPC_REQUEST ', 'BOOTSTRAP_XPC_REPLY ', 'BOOTSTRAP_XPC_IDENTITY ',
-                   'PROCESSINFO_', 'SESSION_XPC_', 'SESSION_READY ', 'PEER_PROCESS_STATUS=',
+                   'PROCESSINFO_', 'SESSION_XPC_', 'SESSION_WORKSPACE_', 'SESSION_READY ', 'PEER_PROCESS_STATUS=',
                    'APP_LAUNCH_CALL ', 'APP_LAUNCH_METADATA_ERROR ')
         item['observations'] = []
         context_lengths = {'DARLING_NATIVE_CONNECTED ': 2,

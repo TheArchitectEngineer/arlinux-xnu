@@ -104,7 +104,9 @@ def install_launch_breakpoints(target):
             entries = [(name, int(symbol['address'], 16))]
         elif name in ('_OBJC_CLASS_$_UIApplication', '_OBJC_CLASS_$_BKSProcess',
                        '_OBJC_CLASS_$_BKSWorkspace', '_OBJC_CLASS_$_FBSWorkspace',
-                       '_OBJC_CLASS_$_FBSWorkspaceClient'):
+                       '_OBJC_CLASS_$_FBSWorkspaceClient',
+                       '_OBJC_CLASS_$_FBSUIApplicationWorkspaceClient',
+                       '_OBJC_CLASS_$_FBSWorkspaceEvent'):
             entries = []
             try:
                 cls = int(symbol['address'], 16)
@@ -115,6 +117,16 @@ def install_launch_breakpoints(target):
                 for index in range(count):
                     entry = methods+8+index*size
                     selector = objects.cstring(objects.u64(entry))
+                    if name in ('_OBJC_CLASS_$_FBSUIApplicationWorkspaceClient',
+                                '_OBJC_CLASS_$_FBSWorkspaceClient', '_OBJC_CLASS_$_FBSWorkspaceEvent') and selector in (
+                            '_queue_handleMessageWithType:message:', 'queue_handleMessageWithType:message:client:',
+                            '_queue_handleLaunch:', '_queue_handleCreateScene:',
+                            '_queue_workspaceEventFromMessage:ofType:', 'initWithXPCDictionary:', 'encodeWithXPCDictionary:'):
+                        address = objects.u64(entry+16)
+                        label = name+' '+selector
+                        print('APP_LAUNCH_PROTOCOL ' + json.dumps({'method': label, 'address': hex(address)}), flush=True)
+                        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 256')
+                        capture_code_references(target,address,256,'APP_LAUNCH_PROTOCOL_REFERENCE')
                     if name == '_OBJC_CLASS_$_BKSWorkspace' or any(part in selector.lower() for part in
                            ('launch', 'initializ', 'checkin', 'connect', 'scene', '_run', 'bootstrap')):
                         address = objects.u64(entry+16)

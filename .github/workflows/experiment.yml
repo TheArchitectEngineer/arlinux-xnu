@@ -365,6 +365,8 @@ jobs:
               --lookup /System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices '_OBJC_CLASS_$_BKSWorkspace' \
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspace' \
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspaceClient' \
+              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSUIApplicationWorkspaceClient' \
+              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspaceEvent' \
               --lookup /usr/lib/system/libxpc.dylib __xpc_connection_call_event_handler \
               --lookup /usr/lib/system/libxpc.dylib __xpc_mach_port_get_context \
               --lookup /usr/lib/system/libdispatch.dylib '_dispatch_mach_send_with_result_and_async_reply_4libxpc' \
