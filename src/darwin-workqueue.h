@@ -104,7 +104,10 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
         if (!workqueue_opened || r[1] || !r[2] || r[2]>=NATIVE_THREADS) return -EINVAL;
         uint32_t priority=r[3];
         int qos=native_priority_qos(priority);
-        if (!qos || (priority&~(D_PTHREAD_PRIORITY_MASK|D_PRIORITY_OVERCOMMIT))) return -ENOTSUP;
+        /* XNU extracts the requested QoS and overcommit independently of
+         * libdispatch's fallback marker. It still requests a real worker at
+         * that QoS; the marker does not create a separate kernel queue. */
+        if (!qos || (priority&~(D_PTHREAD_PRIORITY_MASK|D_PRIORITY_OVERCOMMIT|D_PRIORITY_FALLBACK))) return -ENOTSUP;
         for (unsigned int i=0;i<r[2];i++) {
             uint64_t size=D_GUEST_PAGE_SIZE+D_WORKQUEUE_STACK_SIZE+
                           ((registered_pthread_size+D_GUEST_PAGE_SIZE-1)&~(D_GUEST_PAGE_SIZE-1));
