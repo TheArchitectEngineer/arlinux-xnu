@@ -55,6 +55,8 @@ static int darwin_error(long result)
     case EFAULT: return D_EFAULT;
     case EBUSY: return D_EBUSY;
     case EEXIST: return D_EEXIST;
+    case EXDEV: return D_EXDEV;
+    case ESTALE: return D_ESTALE;
     case ENODEV: return D_ENODEV;
     case ENOTDIR: return D_ENOTDIR;
     case EISDIR: return D_EISDIR;

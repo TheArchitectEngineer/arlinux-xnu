@@ -93,6 +93,7 @@ enum darwin_errno {
     D_EFAULT = 14,
     D_EBUSY = 16,
     D_EEXIST = 17,
+    D_EXDEV = 18,
     D_ENODEV = 19,
     D_ENOTDIR = 20,
     D_EISDIR = 21,
@@ -111,6 +112,7 @@ enum darwin_errno {
     D_ENOTSUP = 45,
     D_ETIMEDOUT = 60,
     D_ENAMETOOLONG = 63,
+    D_ESTALE = 70,
     D_ENOSYS = 78,
     D_EOVERFLOW = 84,
 };
@@ -225,7 +227,7 @@ enum darwin_workqueue_abi {
 /* XNU bsd/sys/event.h, ARM64 kevent_qos wire layout. */
 enum darwin_kevent_abi {
     D_EVFILT_READ=-1, D_EVFILT_WRITE=-2, D_EVFILT_TIMER=-7, D_EVFILT_USER=-10,
-    D_EVFILT_MEMORYSTATUS=-14, D_EVFILT_MACHPORT=-8,
+    D_EVFILT_MEMORYSTATUS=-14, D_EVFILT_MACHPORT=-8, D_EVFILT_WORKLOOP=-17,
     D_EV_ADD=1, D_EV_DELETE=2, D_EV_ENABLE=4, D_EV_DISABLE=8,
     D_EV_ONESHOT=0x10, D_EV_CLEAR=0x20, D_EV_RECEIPT=0x40, D_EV_DISPATCH=0x80,
     D_EV_UDATA_SPECIFIC=0x100, D_EV_VANISHED=0x200, D_EV_ERROR=0x4000, D_EV_EOF=0x8000,
@@ -246,6 +248,11 @@ enum darwin_memory_event {
     D_MEMORY_NORMAL=1, D_MEMORY_WARN=2, D_MEMORY_CRITICAL=4,
     D_MEMORY_PROC_WARN=0x10, D_MEMORY_PROC_CRITICAL=0x20,
     D_MEMORY_MSL_STATUS=0xf0000000U
+};
+enum darwin_workloop_event {
+    D_NOTE_WL_THREAD_REQUEST=1, D_NOTE_WL_UPDATE_QOS=0x10,
+    D_NOTE_WL_IGNORE_ESTALE=0x100,
+    D_WL_ADDR=1, D_WL_MASK=2, D_WL_VALUE=3
 };
 
 /* libpthread-330 internal.h mutex options and XNU bank/bank_types.h. */

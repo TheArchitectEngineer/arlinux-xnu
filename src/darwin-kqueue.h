@@ -58,7 +58,7 @@ static long native_kqueue_create(void)
     native_kqueue_unlock();
     return result;
 }
-static long native_knote_change(struct native_kqueue *queue,const struct darwin_kevent_qos *event)
+static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent_qos *event)
 {
     if (event->xflags || (event->flags&~(D_EV_ADD|D_EV_DELETE|D_EV_ENABLE|D_EV_DISABLE|
         D_EV_ONESHOT|D_EV_CLEAR|D_EV_RECEIPT|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC|D_EV_VANISHED))) return -ENOTSUP;
@@ -74,6 +74,38 @@ static long native_knote_change(struct native_kqueue *queue,const struct darwin_
     if (event->filter==D_EVFILT_MEMORYSTATUS &&
         (event->ident || (event->fflags&~(D_MEMORY_NORMAL|D_MEMORY_WARN|D_MEMORY_CRITICAL|
             D_MEMORY_PROC_WARN|D_MEMORY_PROC_CRITICAL|D_MEMORY_MSL_STATUS)))) return -ENOTSUP;
+    if (event->filter==D_EVFILT_WORKLOOP) {
+        if (!queue->dynamic_id || event->ident!=queue->dynamic_id ||
+            !(event->fflags&D_NOTE_WL_THREAD_REQUEST) ||
+            (event->fflags&~(D_NOTE_WL_THREAD_REQUEST|D_NOTE_WL_UPDATE_QOS|D_NOTE_WL_IGNORE_ESTALE))) return -ENOTSUP;
+        /* Match XNU's debounce snapshot. A stale ignored request must not
+         * attach, modify or wake a source. Preserve the actual state in an
+         * error receipt when the caller asks to see ESTALE. */
+        if (event->ext[D_WL_ADDR]) {
+            uint64_t state;
+            if ((event->ext[D_WL_ADDR]&7) ||
+                guest_copy(&state,event->ext[D_WL_ADDR],sizeof(state),0)) return -EFAULT;
+            uint64_t expected=event->ext[D_WL_VALUE];
+            event->ext[D_WL_VALUE]=state;
+            if ((state&event->ext[D_WL_MASK])!=(expected&event->ext[D_WL_MASK]))
+                return (event->fflags&D_NOTE_WL_IGNORE_ESTALE) ? 0 : -ESTALE;
+        }
+        if ((event->flags&D_EV_ADD) && !(event->flags&D_EV_DELETE)) {
+            uint32_t priority=(uint32_t)event->qos&D_PTHREAD_PRIORITY_MASK;
+            unsigned int bits=(priority>>D_PTHREAD_QOS_SHIFT)&D_PTHREAD_QOS_MASK;
+            if (!bits || bits>32 || (bits&(bits-1))) return -ERANGE;
+            if (event->fflags&D_NOTE_WL_UPDATE_QOS) {
+                int tid=__atomic_load_n(&queue->owner_tid,__ATOMIC_ACQUIRE);
+                if (tid) {
+                    unsigned int qos=(unsigned int)__builtin_ctz(bits)+1;
+                    int nice=qos>=4 ? 0 : 20-(int)qos*4;
+                    long error=RAW(SYS_setpriority,0,tid,nice,0,0,0);
+                    if (error) return error;
+                }
+                __atomic_store_n(&queue->priority,priority,__ATOMIC_RELEASE);
+            }
+        }
+    }
     struct native_knote *note=NULL;
     unsigned int index=0;
     for (;index<D_KQUEUE_WATCHES;index++) {
@@ -100,7 +132,8 @@ static long native_knote_change(struct native_kqueue *queue,const struct darwin_
             if (!endpoint || endpoint->kind) return -ENOENT;
             fd=RAW(SYS_fcntl,endpoint->read_fd,F_DUPFD_CLOEXEC,0,0,0,0); break;
         }
-        case D_EVFILT_USER: fd=RAW(SYS_eventfd2,0,EFD_CLOEXEC|EFD_NONBLOCK,0,0,0,0); break;
+        case D_EVFILT_USER: case D_EVFILT_WORKLOOP:
+            fd=RAW(SYS_eventfd2,0,EFD_CLOEXEC|EFD_NONBLOCK,0,0,0,0); break;
         case D_EVFILT_TIMER: case D_EVFILT_MEMORYSTATUS:
             fd=RAW(SYS_timerfd_create,CLOCK_MONOTONIC,TFD_CLOEXEC|TFD_NONBLOCK,0,0,0,0); break;
         case D_EVFILT_READ: case D_EVFILT_WRITE:
@@ -115,7 +148,15 @@ static long native_knote_change(struct native_kqueue *queue,const struct darwin_
         fresh=1;
     }
     long error=0;
-    if (event->filter==D_EVFILT_MACHPORT && (event->flags&D_EV_ADD)) {
+    if (event->filter==D_EVFILT_WORKLOOP) {
+        note->event.fflags=event->fflags;
+        for (unsigned int i=0;i<4;i++) note->event.ext[i]=event->ext[i];
+        if (!(event->flags&D_EV_DISABLE)) {
+            uint64_t token=1;
+            long result=RAW(SYS_write,note->fd,&token,sizeof(token),0,0,0);
+            if (result!=(long)sizeof(token)) error=result<0 ? result : -EIO;
+        }
+    } else if (event->filter==D_EVFILT_MACHPORT && (event->flags&D_EV_ADD)) {
         note->event.fflags=event->fflags;
         for (unsigned int i=0;i<4;i++) note->event.ext[i]=event->ext[i];
     } else if (event->filter==D_EVFILT_MEMORYSTATUS && (event->flags&D_EV_ADD)) {
@@ -163,6 +204,7 @@ static long native_knote_change(struct native_kqueue *queue,const struct darwin_
     }
     if (event->flags&D_EV_ADD) {
         note->event.flags=event->flags;
+        if (event->filter==D_EVFILT_WORKLOOP) note->event.flags|=D_EV_CLEAR;
         note->event.udata=event->udata; note->event.qos=event->qos; note->event.data=event->data;
     }
     int enable=!(event->flags&D_EV_DISABLE) && (fresh || note->enabled || (event->flags&(D_EV_ENABLE|D_EV_ADD)));
@@ -196,7 +238,7 @@ static long native_kqueue_changes(struct native_kqueue *queue,uint64_t changes,u
         }
         if (result || (event.flags&D_EV_RECEIPT)) {
             if (emitted==capacity) return result ? result : -ENOBUFS;
-            event.flags=D_EV_ERROR; event.data=result ? darwin_error(result) : 0;
+            event.flags|=D_EV_ERROR; event.data=result ? darwin_error(result) : 0;
             if (guest_copy(&event,output+(uint64_t)emitted*sizeof(event),sizeof(event),1)) return -EFAULT;
             emitted++;
         }
@@ -253,7 +295,8 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
                     }
                     if (size<0) { native_kqueue_unlock(); return size; }
                 }
-            } else if (event.filter==D_EVFILT_TIMER || event.filter==D_EVFILT_MEMORYSTATUS || (event.filter==D_EVFILT_USER &&
+            } else if (event.filter==D_EVFILT_TIMER || event.filter==D_EVFILT_MEMORYSTATUS ||
+                event.filter==D_EVFILT_WORKLOOP || (event.filter==D_EVFILT_USER &&
                 (note->event.flags&(D_EV_CLEAR|D_EV_ONESHOT)))) {
                 uint64_t value;
                 long read=RAW(SYS_read,note->fd,&value,sizeof(value),0,0,0);
@@ -312,6 +355,9 @@ static __attribute__((noreturn)) void native_event_worker_start(struct native_th
     long count;
     do { count=queue ? native_kqueue_collect(queue,buffer,D_KQUEUE_BATCH,-1) : -EBADF; } while (count==-EINTR);
     if (count<=0) { RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0); __builtin_unreachable(); }
+    const char label[]="DARWIN_EVENT_DELIVERY queue-id/count/tid follows\n";
+    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+    trace_call(0,0,queue->dynamic_id); trace_call(1,0,count); trace_call(2,0,thread->tid);
     darwin_thread_enter(thread->guest_sp,workqueue_start_callback,thread->pthread,thread->port,
                         thread->stack_low,buffer,thread->flags|
                         (thread->workloop_id ? D_WQ_WORKLOOP : D_WQ_KEVENT|D_WQ_EVENT_MANAGER),count);
@@ -352,7 +398,7 @@ static long native_kqueue_start_worker(struct native_kqueue *queue,const sigset_
     long result=RAW(SYS_mprotect,memory,D_GUEST_PAGE_SIZE,PROT_NONE,0,0,0);
     uint64_t low=memory+D_GUEST_PAGE_SIZE,self=low+D_WORKQUEUE_STACK_SIZE;
     if (!result) {
-        unsigned int bits=(queue->priority>>D_PTHREAD_QOS_SHIFT)&D_PTHREAD_QOS_MASK;
+        unsigned int bits=(__atomic_load_n(&queue->priority,__ATOMIC_ACQUIRE)>>D_PTHREAD_QOS_SHIFT)&D_PTHREAD_QOS_MASK;
         unsigned int qos=(bits && bits<=32 && !(bits&(bits-1))) ? (unsigned int)__builtin_ctz(bits)+1 : 4;
         unsigned long long arguments[6]={(unsigned int)queue->fd,queue->dynamic_id,
             self-D_GUEST_PAGE_SIZE,self,D_WQ_PRIO_QOS|D_WQ_NEWSPI|qos,0};
@@ -429,7 +475,7 @@ static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
     if (r[2]) {
         struct darwin_kevent_qos event;
         if (guest_copy(&event,r[1],sizeof(event),0)) return -EFAULT;
-        queue->priority=(uint32_t)event.qos&D_PTHREAD_PRIORITY_MASK;
+        if (event.qos) __atomic_store_n(&queue->priority,(uint32_t)event.qos&D_PTHREAD_PRIORITY_MASK,__ATOMIC_RELEASE);
     }
     result=native_kqueue_start_worker(queue,mask);
     if (result) return result;
