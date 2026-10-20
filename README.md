@@ -21,6 +21,22 @@ Scope: ARM64, 16 KiB guest pages, one virtual CPU, non-arm64e binaries and a
 software framebuffer. No 32-bit apps or Metal support. Proprietary Apple
 frameworks and firmware are not included.
 
+## Required session model
+
+The target includes **multiple independent iOS application processes running
+concurrently in one session**, with separate address spaces and lifecycles.
+A shared session service must provide bootstrap, service registration and
+process-state management, reusing Darling/XNU cross-process Mach rights and
+messages. The current in-task bootstrap provider is an intermediate experiment;
+multi-process iOS application support is not implemented or validated yet.
+
+Acceptance requires at least two named/versioned application processes with
+real display and input: close and relaunch one while the other remains
+interactive, then verify the same journey through ARLinux on Linux/Android.
+A virtual PID 1 is an implementation option, not an acceptance criterion. If
+PID virtualization is needed, process queries, parentage, audit identity,
+signals and wait/exit behavior must use one consistent mapping.
+
 ## Run an experiment
 
 The sole workstation entry is `./build.sh`, requiring Bash, Python 3 and an
