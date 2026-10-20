@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <errno.h>
 #include "darwin-native.h"
+#include "darwin-machine.h"
 #include "datatypes.h"
 #include "dictionary.h"
 #include "array.h"
