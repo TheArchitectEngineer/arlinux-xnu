@@ -17,7 +17,7 @@ struct ipc_endpoint {
     int queue_mutex,special_tid; uint32_t queue_limit,queued,sequence,space_sequence;
 };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
-static uint32_t native_bootstrap_port,native_display_port;
+static uint32_t native_bootstrap_port,native_display_port,native_render_port;
 static uint32_t native_display_width,native_display_height;
 static int32_t native_display_pid;
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
@@ -172,8 +172,8 @@ static uint32_t ipc_reply_port(void)
 int darwin_native_display_register(uint32_t width,uint32_t height,int32_t backend_pid)
 {
     if (!width || !height || width>8192 || height>8192 || backend_pid<=0 || native_bootstrap_port) return -1;
-    native_bootstrap_port=ipc_reply_port(); native_display_port=ipc_reply_port();
-    if (!native_bootstrap_port || !native_display_port) return -1;
+    native_bootstrap_port=ipc_reply_port(); native_display_port=ipc_reply_port(); native_render_port=ipc_reply_port();
+    if (!native_bootstrap_port || !native_display_port || !native_render_port) return -1;
     ipc_find(native_bootstrap_port)->send_refs=1;
     native_display_width=width; native_display_height=height;
     native_display_pid=backend_pid;
@@ -205,10 +205,19 @@ uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t 
         if (!service[length]) break;
     }
     const char display[]="com.apple.backboard.display.services";
-    if (length!=sizeof(display)-1) return 1102; /* BOOTSTRAP_UNKNOWN_SERVICE */
-    for (unsigned int i=0;i<sizeof(display);i++) if (service[i]!=display[i]) return 1102;
-    if (guest_copy(&native_display_port,output,sizeof(native_display_port),1)) return D_KERN_INVALID_ADDRESS;
-    __atomic_fetch_add(&ipc_find(native_display_port)->send_refs,1,__ATOMIC_ACQ_REL);
+    const char render[]="com.apple.CARenderServer";
+    const struct { const char *name; unsigned int length; uint32_t port; } services[]={
+        {display,sizeof(display)-1,native_display_port}, {render,sizeof(render)-1,native_render_port}
+    };
+    uint32_t port=0;
+    for (unsigned int i=0;i<sizeof(services)/sizeof(services[0]);i++) {
+        if (length!=services[i].length) continue;
+        unsigned int j=0; while (j<length && service[j]==services[i].name[j]) j++;
+        if (j==length) { port=services[i].port; break; }
+    }
+    if (!port) return 1102; /* BOOTSTRAP_UNKNOWN_SERVICE */
+    if (guest_copy(&port,output,sizeof(port),1)) return D_KERN_INVALID_ADDRESS;
+    __atomic_fetch_add(&ipc_find(port)->send_refs,1,__ATOMIC_ACQ_REL);
     return D_KERN_SUCCESS;
 }
 static unsigned long ipc_port_construct(const unsigned long long *r,unsigned long pc)
@@ -302,7 +311,8 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                   header->remote==CALENDAR_CLOCK_PORT ? 1 : -1;
         int task=header->remote==CURRENT_TASK_PORT;
         int display=native_display_port && header->remote==native_display_port;
-        if (header->remote!=CURRENT_HOST_PORT && clock<0 && !task && !display) {
+        int render=native_render_port && header->remote==native_render_port;
+        if (header->remote!=CURRENT_HOST_PORT && clock<0 && !task && !display && !render) {
             struct ipc_endpoint *destination=ipc_find(header->remote);
             if (!destination || destination->kind || !__atomic_load_n(&destination->send_refs,__ATOMIC_ACQUIRE)) return D_MACH_SEND_INVALID_DEST;
             /* First inline process-local transport. No port descriptors,
@@ -320,8 +330,8 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             }
             goto receive_message;
         }
-        if ((!task && !display && clock<0 && !host_send_refs) || (clock>=0 && !clock_send_refs[clock]) ||
-            (display && !__atomic_load_n(&ipc_find(native_display_port)->send_refs,__ATOMIC_ACQUIRE))) return D_MACH_SEND_INVALID_DEST;
+        if ((!task && !display && !render && clock<0 && !host_send_refs) || (clock>=0 && !clock_send_refs[clock]) ||
+            ((display || render) && !__atomic_load_n(&ipc_find(header->remote)->send_refs,__ATOMIC_ACQUIRE))) return D_MACH_SEND_INVALID_DEST;
         struct ipc_endpoint *reply=ipc_find(header->local);
         if (!reply || reply->kind) return D_MACH_SEND_INVALID_REPLY;
         if (header->bits!=(D_MACH_TYPE_COPY_SEND|(D_MACH_TYPE_MAKE_SEND_ONCE<<D_MACH_MSG_LOCAL_BITS_SHIFT)) || header->voucher ||
@@ -353,7 +363,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 trace_call(0,pc,native_display_width); trace_call(1,pc,native_display_height);
             }
         }
-        if (!task && !display && clock<0 && header->id==D_MIG_HOST_INFO && r[2]==40) {
+        if (!task && !display && !render && clock<0 && header->id==D_MIG_HOST_INFO && r[2]==40) {
             uint32_t flavor,count; __builtin_memcpy(&flavor,request+32,4);
             __builtin_memcpy(&count,request+36,4);
             response[8]=D_KERN_INVALID_ARGUMENT; /* KERN_INVALID_ARGUMENT */
@@ -366,7 +376,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 for (unsigned int i=0;i<8;i++) response[10+i]=policy[i];
             }
         }
-        if (!task && !display && clock<0 && header->id==D_MIG_HOST_GET_CLOCK && r[2]==36) {
+        if (!task && !display && !render && clock<0 && header->id==D_MIG_HOST_GET_CLOCK && r[2]==36) {
             uint32_t clock_id; __builtin_memcpy(&clock_id,request+32,4);
             response[8]=D_KERN_INVALID_ARGUMENT; /* KERN_INVALID_ARGUMENT */
             if (clock_id<=D_CLOCK_CALENDAR) {

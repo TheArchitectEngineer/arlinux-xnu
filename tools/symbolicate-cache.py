@@ -23,6 +23,7 @@ trace = log_path.read_text()
 frames = sorted({int(item, 16) for item in
                  re.findall(r'frame #\d+: (0x[0-9a-fA-F]+)', trace) +
                  re.findall(r'DISPLAY_(?:CONFIGURATION|QUERY_CALLEE)_CODE (0x[0-9a-fA-F]+)', trace) +
+                 re.findall(r'DISPLAY_METHOD(?:_CALLEE)?_CODE (0x[0-9a-fA-F]+)', trace) +
                  re.findall(r'NORMAL_RUNTIME_FAULT_PC (0x[0-9a-fA-F]+)', trace)})
 
 with cache_path.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:
@@ -107,15 +108,15 @@ with cache_path.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.
                 index, stype, section, desc, value = unpack('<IBBHQ', offset+n*16)
                 if stype & 0xe0 or stype & 0x0e != 0x0e or not section or index >= string_bytes:
                     continue
+                name = string(strings+index, min(8192, string_bytes-index))
+                if name in requested:
+                    record = {'image': image_path, 'symbol': name, 'address': hex(value)}
+                    if record not in records:
+                        records.append(record)
+                        print('CACHE_SYMBOL '+json.dumps(record), flush=True)
                 if any(base <= value < base+length for base, length in executable):
-                    name = string(strings+index, min(8192, string_bytes-index))
                     symbols.append((value, name))
         symbols.sort()
-        for value, name in sorted(set(symbols)):
-            if name in requested:
-                record = {'image': image_path, 'symbol': name, 'address': hex(value)}
-                records.append(record)
-                print('CACHE_SYMBOL '+json.dumps(record), flush=True)
         for pc in matches:
             candidates = [(value, name) for value, name in symbols if value <= pc]
             nearest = max(candidates, default=None)

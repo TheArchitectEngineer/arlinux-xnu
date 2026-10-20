@@ -70,6 +70,28 @@ def capture_display_code(target):
                     disassemble('DISPLAY_QUERY_CALLEE_CODE', child, 180)
         elif symbol.get('symbol') == '_bootstrap_look_up3':
             disassemble('BOOTSTRAP_LOOKUP_CODE', int(symbol['address'], 16), 160)
+        elif symbol.get('symbol') == '_OBJC_CLASS_$_CADisplay':
+            objects = GuestObjects(target.GetProcess())
+            address = int(symbol['address'], 16)
+            try:
+                for cls, kind in ((address, 'instance'), (objects.object_class(address), 'class')):
+                    methods = objects.u64(objects.class_ro(cls)+32)
+                    if not methods:
+                        continue
+                    entry_size, count = objects.u32(methods) & 0xffff, objects.u32(methods+4)
+                    if entry_size != 24 or count > 256:
+                        raise ValueError('Unsupported CADisplay method metadata')
+                    for index in range(count):
+                        entry = methods+8+index*entry_size
+                        name = objects.cstring(objects.u64(entry))
+                        implementation = objects.u64(entry+16)
+                        print('OBJC_DISPLAY_METHOD ' + json.dumps({'kind': kind, 'selector': name, 'address': hex(implementation)}), flush=True)
+                        if name in ('mainDisplay', 'displays') or name.startswith('initWith'):
+                            disassemble('DISPLAY_METHOD_CODE', implementation, 96)
+                            for child in list(dict.fromkeys(calls(implementation, 48)))[:3]:
+                                disassemble('DISPLAY_METHOD_CALLEE_CODE', child, 96)
+            except (ValueError, UnicodeError) as error:
+                print('OBJC_DISPLAY_DECODE_ERROR', str(error), flush=True)
 
 
 def install_exception_breakpoint(target):
