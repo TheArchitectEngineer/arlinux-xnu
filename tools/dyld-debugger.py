@@ -519,7 +519,7 @@ def capture_switch_tables(target, address, count):
             continue
         add=instructions[index-1]; adrp=instructions[index-2]
         pattern=re.fullmatch(base+r', '+base+r', #(0x[0-9a-f]+|[0-9]+)',add.GetOperands(target))
-        page=re.fullmatch(base+r', (0x[0-9a-f]+)',adrp.GetOperands(target))
+        page=re.fullmatch(base+r', (-?0x[0-9a-f]+|-?[0-9]+)',adrp.GetOperands(target))
         if add.GetMnemonic(target)!='add' or adrp.GetMnemonic(target)!='adrp' or not pattern or not page:
             continue
         bound=None
@@ -529,7 +529,11 @@ def capture_switch_tables(target, address, count):
                 bound=int(limit.group(1),0)+1
         if not bound or bound>32:
             continue
-        table=int(page.group(1),16)+int(pattern.group(1),0)
+        pc=adrp.GetAddress().GetLoadAddress(target)
+        word=objects.u32(pc)
+        immediate=((word>>29)&3)|(((word>>5)&0x7ffff)<<2)
+        if immediate&(1<<20): immediate-=1<<21
+        table=(pc&~4095)+(immediate<<12)+int(pattern.group(1),0)
         targets=[table+delta for delta in struct.unpack('<'+'i'*bound,objects.read(table,bound*4))]
         print('APP_SETTINGS_SWITCH '+json.dumps({'pc':hex(instruction.GetAddress().GetLoadAddress(target)),
               'table':hex(table),'targets':[hex(value) for value in targets]}),flush=True)
