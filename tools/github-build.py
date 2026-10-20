@@ -72,6 +72,7 @@ def report(run_id, job_name):
         markers = ('APP_INPUT ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                    'GUEST_EXIT_STATUS ', 'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
                    'SERVICE_LOOKUP ', 'SERVICE_LOOKUP_LIMIT ',
+                   'WAYLAND_BACKEND_READY ', 'NATIVE_SERVICE_ADAPTER ', 'DARWIN_DISPLAY_QUERY ',
                    'NORMAL_RUNTIME_FAULT_PC ', 'DIAGNOSTIC_WAIT_INTERRUPTED ',
                    'DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DYNAMIC_MAIN ', 'DYNAMIC_THREAD ',
                    'DYNAMIC_CONSOLE ', 'EXPERIMENT_RECEIPT ', 'EXPERIMENT_EXECUTABLE ')
@@ -80,7 +81,7 @@ def report(run_id, job_name):
             if not line.startswith(markers):
                 continue
             item['observations'].append(line)
-            if line.startswith(('DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ')):
+            if line.startswith(('DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DARWIN_DISPLAY_QUERY ')):
                 # Preserve bounded context verbatim: separate worker writes may
                 # interleave, so do not infer a synthetic causal event from it.
                 item['observations'].extend('  context: ' + text for text in lines[index+1:index+4])

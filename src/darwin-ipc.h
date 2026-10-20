@@ -19,6 +19,7 @@ struct ipc_endpoint {
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 static uint32_t native_bootstrap_port,native_display_port;
 static uint32_t native_display_width,native_display_height;
+static int32_t native_display_pid;
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
 struct ipc_packet { struct darwin_audit_token sender; unsigned char message[IPC_BYTES]; };
 static void native_reply_wait(uint32_t);
@@ -168,20 +169,35 @@ static uint32_t ipc_reply_port(void)
 /* A registry for this standalone compatibility machine, not launchd/XPC.
  * The public lookup API is redirected here by name in the private cache map.
  * Only an actually created Linux display is registered. Other names fail. */
-int darwin_native_display_register(uint32_t width,uint32_t height)
+int darwin_native_display_register(uint32_t width,uint32_t height,int32_t backend_pid)
 {
-    if (!width || !height || native_bootstrap_port) return -1;
+    if (!width || !height || width>8192 || height>8192 || backend_pid<=0 || native_bootstrap_port) return -1;
     native_bootstrap_port=ipc_reply_port(); native_display_port=ipc_reply_port();
     if (!native_bootstrap_port || !native_display_port) return -1;
     ipc_find(native_bootstrap_port)->send_refs=1;
     native_display_width=width; native_display_height=height;
+    native_display_pid=backend_pid;
     return 0;
+}
+static int ipc_display_live(void)
+{
+    siginfo_t status={0};
+    return native_display_pid>0 &&
+        !RAW(SYS_waitid,P_PID,native_display_pid,&status,WEXITED|WNOHANG|WNOWAIT,0,0) && !status.si_pid;
+}
+/* Exactly represent a bounded positive pixel count in IEEE binary32 without
+ * floating-point instructions in the guest's TLS-independent runtime. */
+static uint32_t ipc_display_float(uint32_t value)
+{
+    unsigned int exponent=31-__builtin_clz(value);
+    return ((exponent+127)<<23)|((value<<(23-exponent))&0x7fffffU);
 }
 uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t output,
                                     int32_t target,uint64_t instance,uint64_t flags)
 {
     (void)instance; /* Default lookup has no instance-selection flag. */
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
+    if (!ipc_display_live()) return D_KERN_FAILURE;
     if (target || flags) return D_KERN_NOT_SUPPORTED;
     char service[256]; unsigned int length=0;
     for (;length<sizeof(service);length++) {
@@ -319,6 +335,24 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         out->id=header->id+D_MIG_REPLY_ID_OFFSET;
         response[7]=1; /* NDR little-endian integer representation */
         response[8]=(uint32_t)D_MIG_BAD_ID; /* MIG_BAD_ID */
+        if (display && header->id==D_MIG_BKS_GET_MAIN_SCREEN_INFO && r[2]==sizeof(struct ipc_header)) {
+            response[8]=ipc_display_live() ? D_KERN_SUCCESS : D_KERN_FAILURE;
+            if (!response[8]) {
+                /* Actual iOS 12 client: 24-byte request, 52-byte reply; four
+                 * binary32 values. GSSetMainScreenInfo converts width/height,
+                 * uses scale for pixel-to-point conversion and the last float
+                 * as a rotation angle. Our wl_surface uses default scale 1
+                 * and normal transform; dimensions came from xdg configure. */
+                out->size=52;
+                response[9]=ipc_display_float(native_display_width);
+                response[10]=ipc_display_float(native_display_height);
+                response[11]=0x3f800000U; /* 1.0: unscaled buffer pixels */
+                response[12]=0; /* 0.0: normal, unrotated surface */
+                const char label[]="DARWIN_DISPLAY_QUERY width/height follows\n";
+                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                trace_call(0,pc,native_display_width); trace_call(1,pc,native_display_height);
+            }
+        }
         if (!task && !display && clock<0 && header->id==D_MIG_HOST_INFO && r[2]==40) {
             uint32_t flavor,count; __builtin_memcpy(&flavor,request+32,4);
             __builtin_memcpy(&count,request+36,4);
