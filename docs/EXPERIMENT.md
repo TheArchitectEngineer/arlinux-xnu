@@ -49,23 +49,29 @@ not a zero-result stub. Write-lock routing is implemented but not independently
 observed in that trace. Server Darwin errors and Linux transport errors retain
 separate ABI handling. The local backend remains unsupported for these calls.
 
-Current traced failure: dyld rejects /usr/lib/libobjc-trampolines.dylib with
-Library Validation failure. This occurs after the observed locking operations
-and genuine _runWithMainScene; the objc abort reason is explicit in the runtime
-log. fcntl (syscall 92) is unimplemented, including F_CHECK_LV. The standalone
-loader does not yet support general file/executable mmap, so more loading work
-can remain after this policy error is fixed. No ARHELLO_READY, UIKit frame,
-real input or normal GUI lifecycle passes.
+[Run 39411849622](https://github.com/taowen/arlinux-xnu/actions/runs/39411849622),
+source `9d7a01962dbc7c3db3856dae227677a70abd8759`, passes the F_CHECK_LV
+composition policy and reaches the next explicit dyld error:
+`mmap() errno=45 validating first page of /usr/lib/libobjc-trampolines.dylib`.
+This confirms the file-mapping gap after Library Validation, not successful
+loading. Runtime log SHA-256 `643737f7621cff45b77b91340b5c7ad859f5e02dccf34db85759f86607e66c65`
+was receipt verified. The trusted-input runtime does not enforce Apple Library
+Validation or claim to register/authenticate signatures; descriptor/argument and
+actual file/mapping errors remain real.
 
-Exact pending run: [39411849622](https://github.com/taowen/arlinux-xnu/actions/runs/39411849622),
-source `9d7a01962dbc7c3db3856dae227677a70abd8759`, implements the declared
-trusted-input policy at F_CHECK_LV: this compatibility runtime does not enforce
-Apple Library Validation. It checks the real descriptor and fchecklv argument,
-clears the optional error string and permits composition; it does not claim to
-register or authenticate a signature. Other fcntl operations remain unsupported,
-with command/argument/result evidence. Verify actual dyld loading and its next
-real error before extending mapping behavior. Continue this exact run; local
-observation timeouts do not justify restarting it.
+Exact pending run: [39412764242](https://github.com/taowen/arlinux-xnu/actions/runs/39412764242),
+source `52ef647fe61d838b00165c52f2b0328665babb93`, implements real low-address
+16 KiB file mappings, shared/private data and fixed placement. Private executable
+mappings are parsed as bounded non-arm64e ARM64 Mach-O (thin or FAT32); only
+explicit instruction-section intersections are adapted before cache flush and
+requested protection. The same instruction adapter is shared with the initial
+loader. Source files and data sections are not rewritten. Shared executable
+maps, anonymous executable/JIT allocation and general executable mprotect remain
+unsupported. Check actual DARWIN_FILE_MMAP arguments/results and
+NATIVE_DYNAMIC_TLS_REWRITE, dyld's next error and real app progress. Bounds or
+mapping failures stay visible; no address is returned without actual storage.
+Continue this exact run; observation timeouts do not justify restarting it.
+No ARHELLO_READY, UIKit frame, real input or complete GUI lifecycle passes yet.
 
 The prior diagnostic run 39410444685 stopped earlier in libdispatch at
 0x1808c4878 and did not reproduce the pthread abort; preserve that distinct
