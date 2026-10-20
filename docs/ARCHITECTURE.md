@@ -64,8 +64,13 @@ platform API currently exposes an actual window snapshot: agreed buffer
 geometry, refresh, compositor activation, explicit close request, backend
 liveness and audited app PID/incarnation. A bounded sequence-checked read
 avoids torn host updates; kernel child status overrides stale liveness after
-an abrupt backend exit. These facts are not yet converted into UIKit
-scene/lifecycle transitions.
+an abrupt backend exit. The guest ios-lifecycle.m now attempts real scene construction on its main
+loop using the specification's actual settings/client/transition classes and
+host-derived process/geometry identity. It supplies a local updater and delivers
+the scene through UIKit's workspace callback, never the app delegate directly.
+This first integration is unvalidated: session scene registration, complete
+workspace enumeration, focus updates, host-process/remote endpoint support,
+input and normal close remain unfinished. Unsupported operations fail visibly.
 
 Use the existing injected platform library as the adaptation seam. Inspect the
 real UIKit/FrontBoard startup path to choose the narrowest framework-facing
@@ -92,6 +97,7 @@ app-specific exception is evidence to revisit the boundary, not a new policy.
 | darwin-native runtime | Darwin carry/errno, memory, threads, synchronization, raw Linux transport | Host libc calls after guest TLS takes over |
 | components/darling | Shared Mach core and genuine cross-task ports/messages/VM operations | A second competing port-ownership implementation |
 | native-xpc.c | Audited peer identity/incarnation, registered displays, bootstrap and required service transport | UIKit policy or legacy FrontBoard lifecycle emulation |
+| ios-lifecycle.m | Guest main-loop scene construction and framework-facing lifecycle adaptation | App delegate/control callbacks or acceptance decisions |
 | ios-platform.c / ios-platform-abi.h | Real dyld library constructor and versioned private platform attachment | Bootstrap lookup side effects or calling frameworks from syscall signals |
 | darwin-ui.h | Per-process UIKit/CG state; real main-loop layer rendering | Replacing app views or synthesizing control callbacks |
 | native-display.h | Host-TLS Wayland child; surface, shared buffers and release events | Guest UIKit/libc calls |

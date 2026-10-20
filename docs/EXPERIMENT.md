@@ -64,7 +64,12 @@ FBSSceneIdentity, FBSSceneSpecification and matching settings/client-settings
 classes. The UIKit callback also validates the transition-context class.
 FBSSceneSpecification exposes settingsClass, clientSettingsClass and
 transitionContextClass. These contracts define the next host-backed scene
-implementation; no scene construction or UIKit lifecycle delivery is implemented.
+implementation. The current integration attempts scene construction with a real
+FBSScene, updater queue/definition and specification-owned settings, then calls
+UIKit's workspace scene callback. It also exposes the owned scene through
+workspace lookup/collection getters. This code is not yet runner-validated;
+complete session registration, enumeration, focus, input and normal close remain
+required. No launch readiness or app success is assigned by this adapter.
 
 The subsequent window-state correction consults real Linux child status when
 reading backend liveness, so an ungraceful backend exit cannot leave a stale

@@ -119,6 +119,7 @@ class Processes:
             if self.environment.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1':
                 for image,symbol in [
                     ('FrontBoardServices','-[FBSScene _initWithUpdater:identityToken:identity:specification:settings:initialClientSettings:]'),
+                    ('FrontBoardServices','-[FBSSceneIdentityToken initWithIdentifier:workspace:endpoint:]'),
                     ('UIKitCore','-[UIApplication workspace:didCreateScene:withTransitionContext:completion:]')]:
                     arguments.extend(['--lookup',f'/System/Library/PrivateFrameworks/{image}.framework/{image}',symbol])
             if 'DARLING_UNHANDLED_SERVICE_INLINE' in runtime.read_text(errors='replace'):
