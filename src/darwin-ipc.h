@@ -407,7 +407,7 @@ static unsigned long ipc_port_construct(const unsigned long long *r,unsigned lon
     RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
     trace_call(0,pc,options.flags); trace_call(1,pc,options.queue_limit); trace_call(2,pc,r[2]);
     if (options.flags&~(D_MPO_CONTEXT_AS_GUARD|D_MPO_INSERT_SEND_RIGHT|D_MPO_STRICT|
-                       D_MPO_QLIMIT|D_MPO_IMPORTANCE_RECEIVER) ||
+                       D_MPO_QLIMIT|D_MPO_IMPORTANCE_RECEIVER|D_MPO_TEMPOWNER) ||
         options.reserved[0] || options.reserved[1]) return D_KERN_NOT_SUPPORTED;
     if ((options.flags&D_MPO_QLIMIT) && options.queue_limit>D_PORT_QLIMIT_MAX)
         return D_KERN_INVALID_ARGUMENT;
@@ -419,9 +419,10 @@ static unsigned long ipc_port_construct(const unsigned long long *r,unsigned lon
     endpoint->context=r[2]; endpoint->options=options.flags;
     endpoint->send_refs=(options.flags&D_MPO_INSERT_SEND_RIGHT) ? 1 : 0;
     if (options.flags&D_MPO_QLIMIT) endpoint->queue_limit=options.queue_limit;
-    /* IMPORTANCE_RECEIVER records eligibility under the standalone ordinary
-     * Linux scheduling policy. There is no App Nap or cross-task importance
-     * propagation here. Message delivery/queue limits remain real effects. */
+    /* TEMPOWNER marks the creating task as initial importance owner;
+     * IMPORTANCE_RECEIVER records eligibility. All queues here remain in the
+     * same task under ordinary Linux scheduling: no App Nap or cross-task
+     * importance propagation is claimed. Delivery/queue limits remain real. */
     /* The name owns a genuine Linux message queue and receive right. Inline
      * sends without transferred rights can use it; construction never
      * impersonates a remote XPC service. */
