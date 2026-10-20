@@ -20,11 +20,11 @@ jobs:
         run: |
           set -euo pipefail
           git submodule update --init third_party/darling
-          git -C third_party/darling submodule update --init src/external/darlingserver src/external/bootstrap_cmds src/external/xnu
+          git -C third_party/darling submodule update --init src/external/darlingserver src/external/bootstrap_cmds src/external/xnu src/external/libpthread
           mkdir -p build/darling-evidence
           cp sources.lock.json build/darling-evidence/
           git submodule status > build/darling-evidence/sources.txt
-          git -C third_party/darling submodule status src/external/darlingserver src/external/bootstrap_cmds src/external/xnu >> build/darling-evidence/sources.txt
+          git -C third_party/darling submodule status src/external/darlingserver src/external/bootstrap_cmds src/external/xnu src/external/libpthread >> build/darling-evidence/sources.txt
           uname -a > build/darling-evidence/environment.txt
           getconf PAGE_SIZE >> build/darling-evidence/environment.txt
       - name: Install native ARM64 server toolchain
