@@ -19,9 +19,9 @@ and two cross-app scenarios; selected runs never certify the whole collection.
 
 ## Current failed GUI effect
 
-Run [39508490188](https://github.com/taowen/arlinux-xnu/actions/runs/39508490188),
-source **bc5983872d0ed52cca3dd17d1426d67157c63eec**, selected Counter. Receipt
-**51d80c1fb6ac0f107bf7db4ed424e05212c93435f2d7a96bc766919dd026e695**
+Run [39509111323](https://github.com/taowen/arlinux-xnu/actions/runs/39509111323),
+source **9872f7dd13b0b8ca53eea5769df5c43a1eb7a7ca**, selected Counter. Receipt
+**d427fe5e26f446f91cedb00794b893710c5beadec2f4cb0fc9e9c93193de8a6b**
 and all 20 files were verified by the single build --wait --evidence command.
 The run fails; no Counter launch delegate, useful content or input is accepted.
 
@@ -40,10 +40,13 @@ The run fails; no Counter launch delegate, useful content or input is accepted.
   Same-cache code compares the agent's scene against the supplied scene;
   the referenced assertion is `_scene == scene`. Investigate genuine agent
   initialization/binding rather than bypassing that invariant.
-- The opt-in loaded FBSSceneUpdater protocol exposes six required methods.
-  The next diagnostic revision compares inherited protocols and adapter type
-  encodings together, preserves fault context in the failure summary, and widens
-  the selected scene-function context to 4096 bytes. It awaits hosted validation.
+- The opt-in loaded FBSSceneUpdater comparison traversed two protocols and 26
+  methods: no missing methods, no raw encoding differences, no truncation.
+  The report preserves fault context and separate scene stages. The selected
+  scene initializer now retains 2908 instruction bytes rather than stopping at
+  768; all selected contexts ended before the 4096-byte budget. These are
+  diagnostic facts, not app acceptance. Total feedback took 146 seconds and
+  original-process diagnosis 12.815 seconds; timing varies between runners.
   Session scene registration, complete enumeration,
   focus updates, input, host-process/remote endpoint support and normal close
   remain unfinished.

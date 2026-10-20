@@ -56,6 +56,14 @@ overwrite the exception reason. Explicit lifecycle symbol lookups now use a
 4096-byte budget and report when that budget cuts the context short. Other
 investigations can select `--lookup-bytes` on the existing runner-side
 symbolicator; this does not broaden the default diagnostic catalogue.
+Validated in run
+[39509111323](https://github.com/taowen/arlinux-xnu/actions/runs/39509111323):
+146 seconds overall, 12.815 seconds of diagnosis, 20 evidence files verified.
+The same failed Counter effect remained red. Two loaded protocols/26 methods
+had no missing methods or raw encoding differences; the actual fault summary
+identified FBSBasicSceneAgent and the `_scene == scene` referenced assertion.
+The selected FBSScene initializer retained 2908 bytes without budget truncation.
+This demonstrates more useful evidence in one run, not proven sustained speedup.
 
 Measured Counter lifecycle-diagnostic feedback: run
 [39503145757](https://github.com/taowen/arlinux-xnu/actions/runs/39503145757) took
