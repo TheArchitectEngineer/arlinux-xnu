@@ -26,7 +26,9 @@ struct ipc_endpoint {
 };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 static uint32_t native_bootstrap_port,native_display_port,native_render_port;
-static uint32_t native_processinfo_port;
+static uint32_t native_session_ports[D_SESSION_SERVICE_COUNT];
+static const char *const native_session_names[D_SESSION_SERVICE_COUNT]={
+    D_SESSION_PROCESSINFO_NAME,D_SESSION_WORKSPACE_NAME,D_SESSION_SYSTEMAPP_NAME};
 static int native_session_manager;
 static uint32_t native_provider_pid,native_provider_incarnation;
 
@@ -471,8 +473,9 @@ int darwin_native_session_start(void)
 {
 #ifdef ARLINUX_DARLING
     if (!darling_active || native_bootstrap_port) return -1;
-    uint32_t *names[]={&native_bootstrap_port,&native_processinfo_port};
-    for (unsigned int i=0;i<2;i++)
+    uint32_t *names[]={&native_bootstrap_port,&native_session_ports[D_SESSION_PROCESSINFO],
+        &native_session_ports[D_SESSION_WORKSPACE],&native_session_ports[D_SESSION_SYSTEMAPP]};
+    for (unsigned int i=0;i<sizeof(names)/sizeof(names[0]);i++)
         if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,names[i]) ||
             dserver_rpc_mach_port_insert_right(CURRENT_TASK_PORT,*names[i],*names[i],D_MACH_TYPE_MAKE_SEND)) return -1;
     if (dserver_rpc_task_set_special_port(D_TASK_BOOTSTRAP_PORT,native_bootstrap_port)) return -1;
@@ -542,10 +545,12 @@ void *darwin_native_service_run(void *unused)
     if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_PORT_SET,&set) ||
         (native_display_port && dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_display_port,set)) ||
         (native_render_port && dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_render_port,set)) ||
-        (native_session_manager && (dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_processinfo_port,set) ||
-        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_bootstrap_port,set))))
+        (native_session_manager && dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_bootstrap_port,set)))
         darling_abort("create display service port set");
     if (native_session_manager) {
+        for (unsigned int i=0;i<D_SESSION_SERVICE_COUNT;i++)
+            if (dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_session_ports[i],set))
+                darling_abort("join session service port set");
         const char ready[]="SESSION_READY shared-bootstrap-process\n";
         RAW(SYS_write,2,ready,sizeof(ready)-1,0,0,0);
     }
@@ -565,7 +570,7 @@ void *darwin_native_service_run(void *unused)
         if (trailer->type || trailer->size<52 || trailer_offset+trailer->size>sizeof(request))
             darling_abort("missing service requester audit trailer");
         uint32_t requester[8]; __builtin_memcpy(requester,&trailer->audit,sizeof(requester));
-        int processinfo=arlinux_xpc_processinfo(request,header->size,response,sizeof(response),native_processinfo_port,set,requester);
+        int processinfo=arlinux_xpc_session(request,header->size,response,sizeof(response),native_session_ports,set,requester);
         if (!processinfo) continue;
         if (processinfo>0) {
             status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL);
@@ -631,6 +636,9 @@ static int native_service_equal(const char *left,const char *right)
 }
 static uint32_t native_service_static(const char *name)
 {
+    if (native_session_manager)
+        for (unsigned int i=D_SESSION_WORKSPACE;i<D_SESSION_SERVICE_COUNT;i++)
+            if (native_service_equal(name,native_session_names[i])) return native_session_ports[i];
     return native_service_equal(name,"com.apple.backboard.display.services") ? native_display_port :
         native_service_equal(name,"com.apple.CARenderServer") ? native_render_port : 0;
 }
@@ -639,10 +647,11 @@ int darwin_native_system_lookup(const char *name,uint64_t type,uint64_t flags,ui
     /* The compatibility system namespace contains only our actual provider.
      * A privileged lookup selects this controlled namespace; it does not mint
      * a root audit token or authorize arbitrary application registrations. */
-    if (type!=1 || flags!=8 || !native_processinfo_port ||
-        !native_service_equal(name,"com.apple.assertiond.processinfoservice")) return D_ENOTSUP;
-    int status=darwin_native_host_port_refs(native_processinfo_port,1);
-    if (!status) *port=native_processinfo_port;
+    uint32_t listener=native_session_ports[D_SESSION_PROCESSINFO];
+    if (type!=1 || flags!=8 || !listener ||
+        !native_service_equal(name,D_SESSION_PROCESSINFO_NAME)) return D_ENOTSUP;
+    int status=darwin_native_host_port_refs(listener,1);
+    if (!status) *port=listener;
     return status;
 }
 uint32_t darwin_native_service_check_in(uint32_t bootstrap,uint64_t name,uint64_t output,uint64_t flags)

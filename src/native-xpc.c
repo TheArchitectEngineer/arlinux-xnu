@@ -1,4 +1,4 @@
-/* Host-TLS service thread only. Codec: pinned, unmodified MIT libspc.
+/* Host-TLS service thread only. Codec: pinned MIT libspc fork.
  * Connection/message rights remain in Darling/XNU. No guest libc is called. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <poll.h>
+#include <errno.h>
 #include "darwin-native.h"
 #include "datatypes.h"
 #include "dictionary.h"
@@ -88,9 +89,21 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
 static struct processinfo_peer {
     spc_connection_t connection;
     uint32_t pid,incarnation,task,endpoint;
-    int pidfd;
+    int pidfd,service;
     struct processinfo_peer *next;
 } *processinfo_peers;
+static const char *const session_service_names[D_SESSION_SERVICE_COUNT]={
+    D_SESSION_PROCESSINFO_NAME,D_SESSION_WORKSPACE_NAME,D_SESSION_SYSTEMAPP_NAME};
+
+static void session_peer_destroy(struct processinfo_peer *peer)
+{
+    if ((peer->task && darwin_native_host_port_deallocate(peer->task)) ||
+        (peer->endpoint && darwin_native_host_port_deallocate(peer->endpoint)) ||
+        darwin_native_host_port_deallocate(peer->connection.send_port) ||
+        darwin_native_host_receive_destroy(peer->connection.receive_port)) abort();
+    if (peer->pidfd>=0) close(peer->pidfd);
+    free(peer);
+}
 
 void arlinux_xpc_reap(void)
 {
@@ -99,40 +112,48 @@ void arlinux_xpc_reap(void)
         struct processinfo_peer *peer=*slot;
         struct pollfd fd={.fd=peer->pidfd,.events=POLLIN};
         int ready=poll(&fd,1,0);
+        if (ready<0 && errno==EINTR) continue;
         if (ready<0) { perror("poll session client pidfd"); abort(); }
         if (!ready) { slot=&peer->next; continue; }
         if (!(fd.revents&POLLIN)) { fprintf(stderr,"PROCESSINFO_PIDFD_ERROR events=%x\n",fd.revents); abort(); }
-        if ((peer->task && darwin_native_host_port_deallocate(peer->task)) ||
-            (peer->endpoint && darwin_native_host_port_deallocate(peer->endpoint)) ||
-            darwin_native_host_port_deallocate(peer->connection.send_port) ||
-            darwin_native_host_receive_destroy(peer->connection.receive_port)) abort();
-        fprintf(stderr,"PROCESSINFO_RETIRED pid=%u incarnation=%u\n",peer->pid,peer->incarnation);
-        close(peer->pidfd); *slot=peer->next; free(peer);
+        fprintf(stderr,"PROCESSINFO_RETIRED pid=%u incarnation=%u service=%s\n",peer->pid,peer->incarnation,session_service_names[peer->service]);
+        *slot=peer->next; session_peer_destroy(peer);
     }
 }
 
-int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capacity,uint32_t listener,uint32_t set,const uint32_t *audit)
+int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity,const uint32_t *listeners,uint32_t set,const uint32_t *audit)
 {
     mach_msg_header_t *header=request;
-    if (header->msgh_local_port==listener) {
+    unsigned int service=0;
+    while (service<D_SESSION_SERVICE_COUNT &&
+        (!listeners[service] || header->msgh_local_port!=listeners[service])) service++;
+    if (service<D_SESSION_SERVICE_COUNT) {
         struct processinfo_peer *peer=calloc(1,sizeof(*peer));
         if (!peer || !spc_accept_message(request,length,&peer->connection)) {
             fprintf(stderr,"PROCESSINFO_CHECKIN_REJECTED id=%x bits=%x bytes=%zu\n",header->msgh_id,header->msgh_bits,length);
             abort();
         }
         if (!audit) abort();
+        peer->service=service;
         peer->pid=audit[5]; peer->incarnation=audit[7];
         /* Hold a stable Linux process reference before checking its audit
          * incarnation. A recycled PID must not inherit this connection. */
         peer->pidfd=syscall(SYS_pidfd_open,peer->pid,0);
-        if (peer->pidfd<0 || !darwin_native_host_process_matches(peer->pid,peer->incarnation)) {
+        if (peer->pidfd<0 && errno!=ESRCH) {
             fprintf(stderr,"PROCESSINFO_PEER_IDENTITY_UNAVAILABLE pid=%u incarnation=%u\n",peer->pid,peer->incarnation);
             abort();
+        }
+        if (peer->pidfd<0 || !darwin_native_host_process_matches(peer->pid,peer->incarnation)) {
+            fprintf(stderr,"SESSION_XPC_STALE_CHECKIN pid=%u incarnation=%u service=%s\n",
+                peer->pid,peer->incarnation,session_service_names[service]);
+            session_peer_destroy(peer); return 0;
         }
         int error=darwin_native_host_join(peer->connection.receive_port,set);
         if (error) { fprintf(stderr,"PROCESSINFO_CHECKIN_JOIN_FAILED error=%d\n",error); abort(); }
         peer->next=processinfo_peers; processinfo_peers=peer;
         fprintf(stderr,"PROCESSINFO_CONNECTED receive=%u send=%u\n",peer->connection.receive_port,peer->connection.send_port);
+        fprintf(stderr,"SESSION_XPC_CONNECTED service=%s pid=%u incarnation=%u receive=%u send=%u\n",
+            session_service_names[service],peer->pid,peer->incarnation,peer->connection.receive_port,peer->connection.send_port);
         return 0;
     }
     struct processinfo_peer *peer=processinfo_peers;
@@ -142,6 +163,8 @@ int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capa
         fprintf(stderr,"PROCESSINFO_PEER_IDENTITY_MISMATCH\n"); abort();
     }
     fprintf(stderr,"PROCESSINFO_MESSAGE id=%x bits=%x bytes=%zu reply=%u\n",header->msgh_id,header->msgh_bits,length,header->msgh_remote_port);
+    fprintf(stderr,"SESSION_XPC_MESSAGE service=%s pid=%u incarnation=%u bytes=%zu\n",
+        session_service_names[peer->service],peer->pid,peer->incarnation,length);
     /* Do not let upstream silently discard OOL resources. Actual process-state
      * protocol behavior is still being diagnosed, not acknowledged as success. */
     if (length<32 || header->msgh_id!=0x10000000) {
@@ -173,7 +196,7 @@ int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capa
     spc_dictionary_item_t *kind=spc_dictionary_lookup(message->content,"message");
     spc_dictionary_item_t *task=spc_dictionary_lookup(message->content,"taskPort");
     spc_dictionary_item_t *endpoint=spc_dictionary_lookup(message->content,"endpoint");
-    if (kind && kind->value.type==SPC_TYPE_INT64 && kind->value.value.i64==11 &&
+    if (peer->service==D_SESSION_PROCESSINFO && kind && kind->value.type==SPC_TYPE_INT64 && kind->value.value.i64==11 &&
         message->content->num_items==3 && task && task->value.type==SPC_TYPE_SEND_PORT &&
         endpoint && endpoint->value.type==SPC_TYPE_ENDPOINT &&
         task->value.value.port.name && endpoint->value.value.port.name) {
@@ -184,7 +207,9 @@ int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capa
         peer->task=new_task; peer->endpoint=new_endpoint; error=0;
         fprintf(stderr,"PROCESSINFO_WORKSPACE_REGISTERED pid=%u incarnation=%u task=%u endpoint=%u\n",
             peer->pid,peer->incarnation,peer->task,peer->endpoint);
-    } else fprintf(stderr,"PROCESSINFO_REQUEST_UNSUPPORTED fields=%zu\n",message->content->num_items);
+    } else fprintf(stderr,"SESSION_XPC_REQUEST_UNSUPPORTED service=%s fields=%zu\n",
+        session_service_names[peer->service],message->content->num_items);
+    fprintf(stdout,"SESSION_XPC_DICTIONARY service=%s pid=%u\n",session_service_names[peer->service],peer->pid);
     spc_dump(message->content); fflush(stdout);
     int reply=header->msgh_remote_port!=MACH_PORT_NULL;
     if (reply && MACH_MSGH_BITS_REMOTE(header->msgh_bits)!=D_MACH_TYPE_MOVE_SEND_ONCE) {
