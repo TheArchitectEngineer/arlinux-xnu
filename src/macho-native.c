@@ -9,6 +9,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "darwin-native.h"
 
 static void die(const char *message)
@@ -102,7 +103,13 @@ int main(int argc,char **argv)
         fprintf(stderr,"NATIVE_DYLD_ENTRY entry=%#" PRIx64 " header=%#" PRIx64 " slide=%#" PRIx64 "\n",
                 dyld.entry,dyld.header_address,dyld.slide);
     }
+    darwin_native_connect();
     if (root) native_display_open();
+    if (darwin_native_services_enabled()) {
+        pthread_t service;
+        need(!pthread_create(&service,NULL,darwin_native_service_run,NULL),"native Mach service thread");
+        need(!pthread_detach(service),"detach native Mach service thread");
+    }
     uint64_t cache_base=root ? load_native_cache(root) : 0;
     long stack_address=darwin_native_memory(1024*1024,PROT_READ|PROT_WRITE);
     if ((unsigned long)stack_address>=(unsigned long)-4095) { errno=-stack_address; die("guest stack"); }

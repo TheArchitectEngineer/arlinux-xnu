@@ -122,6 +122,7 @@ static uint32_t darling_thread_self(void)
 }
 static void darling_prepare(void)
 {
+    if (darling_active) return;
     const char *prefix=getenv("ARLINUX_DARLING_PREFIX");
     if (!prefix) return;
     const char suffix[]="/.darlingserver.sock";

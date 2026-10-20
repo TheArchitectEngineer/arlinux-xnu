@@ -698,15 +698,20 @@ static void fault(int signal,siginfo_t *info,void *context)
     __builtin_unreachable();
 }
 
-void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base,const unsigned char uuid[16])
+void darwin_native_connect(void)
 {
-    /* One actual schedulable CPU, inherited by clone children. */
+    /* Select affinity before starting either native services or guest threads. */
     cpu_set_t available,one;
     if (sched_getaffinity(0,sizeof(available),&available)) { perror("guest CPU affinity"); exit(1); }
     CPU_ZERO(&one);
     for (int cpu=0;cpu<CPU_SETSIZE;cpu++) if (CPU_ISSET(cpu,&available)) { CPU_SET(cpu,&one); break; }
     if (sched_setaffinity(0,sizeof(one),&one)) { perror("single guest CPU"); exit(1); }
     darling_prepare();
+}
+
+void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base,const unsigned char uuid[16])
+{
+    darwin_native_connect();
     native_threads[0].tid=RAW(SYS_gettid,0,0,0,0,0,0);
     native_threads[0].state=2; native_threads[0].port=(D_THREAD_PORT_INDEX_BASE<<D_PORT_NAME_INDEX_SHIFT)|D_PORT_GENERATION_TAG; native_threads[0].refs=1;
 #ifdef ARLINUX_DARLING

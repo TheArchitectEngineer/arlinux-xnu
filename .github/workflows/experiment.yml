@@ -170,7 +170,7 @@ jobs:
           cc -c src/darwin-native.S -o build/native/entry.o
           wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-client-protocol.h
           wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
-          cc -Wall -Wextra -Werror -O2 -g -Ibuild/native src/macho-native.c build/native/xdg-shell-protocol.c build/native/runtime.o build/native/entry.o -ldl -lwayland-client -o build/native/macho-native
+          cc -Wall -Wextra -Werror -O2 -g -Ibuild/native src/macho-native.c build/native/xdg-shell-protocol.c build/native/runtime.o build/native/entry.o -ldl -lwayland-client -pthread -o build/native/macho-native
           # Two complete independent launches of the interactive program, not
           # a source assertion or isolated TLS probe. Runtime exit status is
           # the guest's real Linux-backed normal process exit status.
@@ -296,6 +296,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/dyld
+          if [[ '${{ inputs.ipc }}' == darling ]] && ! kill -0 "$ARLINUX_DARLING_PID" 2>/dev/null; then
+            echo 'DARLING_SERVER_UNAVAILABLE original service exited; preserve darling.log; no live IPC server for the LLDB retry'
+            exit 0
+          fi
           printf '+q' > build/dyld/debugger.stdin
           cache=build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64
           ordinary=build/dyld/app.runtime.log
@@ -334,7 +338,7 @@ jobs:
         shell: bash
         run: |
           if [[ -f build/dyld/darling.pid ]]; then
-            kill -- "$(cat build/dyld/darling.pid)" || true
+            kill -- "$(cat build/dyld/darling.pid)" 2>/dev/null || true
           fi
           if [[ -f build/dyld/darling.log ]]; then cat build/dyld/darling.log; fi
       - name: Record experiment receipt

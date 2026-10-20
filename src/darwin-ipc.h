@@ -406,9 +406,19 @@ int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refre
                                    uint64_t period_bits,int32_t backend_pid)
 {
     if (!width || !height || width>8192 || height>8192 || backend_pid<=0 || native_bootstrap_port) return -1;
-    native_bootstrap_port=ipc_reply_port(); native_display_port=ipc_reply_port(); native_render_port=ipc_reply_port();
+    #ifdef ARLINUX_DARLING
+    if (darling_active) {
+        uint32_t *names[]={&native_bootstrap_port,&native_display_port,&native_render_port};
+        for (unsigned int i=0;i<3;i++) {
+            if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,names[i]) ||
+                dserver_rpc_mach_port_insert_right(CURRENT_TASK_PORT,*names[i],*names[i],D_MACH_TYPE_MAKE_SEND)) return -1;
+        }
+        if (dserver_rpc_task_set_special_port(D_TASK_BOOTSTRAP_PORT,native_bootstrap_port)) return -1;
+    } else
+    #endif
+    { native_bootstrap_port=ipc_reply_port(); native_display_port=ipc_reply_port(); native_render_port=ipc_reply_port(); }
     if (!native_bootstrap_port || !native_display_port || !native_render_port) return -1;
-    ipc_find(native_bootstrap_port)->send_refs=1;
+    if (!darling_active) ipc_find(native_bootstrap_port)->send_refs=1;
     native_display_width=width; native_display_height=height;
     native_display_refresh=refresh_millihz; native_display_period_bits=period_bits;
     native_display_pid=backend_pid;
@@ -427,6 +437,56 @@ static uint32_t ipc_display_float(uint32_t value)
     unsigned int exponent=31-__builtin_clz(value);
     return ((exponent+127)<<23)|((value<<(23-exponent))&0x7fffffU);
 }
+#include "darwin-display-service.h"
+
+int darwin_native_services_enabled(void)
+{
+    return darling_active && native_display_port;
+}
+void *darwin_native_service_run(void *unused)
+{
+    (void)unused;
+#ifdef ARLINUX_DARLING
+    if (!darwin_native_services_enabled()) return NULL;
+    uint32_t set=0;
+    if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_PORT_SET,&set) ||
+        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_display_port,set) ||
+        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_render_port,set) ||
+        dserver_rpc_mach_port_insert_member(CURRENT_TASK_PORT,native_bootstrap_port,set))
+        darling_abort("create display service port set");
+    unsigned int traces=0;
+    for (;;) {
+        unsigned char request[IPC_BYTES+256]; uint32_t response[IPC_BYTES/4];
+        int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_RCV_MSG,0,sizeof(request),set,0,0,NULL);
+        if (status) { trace_call(0,0,status); darling_abort("receive display service request"); }
+        struct ipc_header *header=(void *)request,*out=(void *)response;
+        if (header->size<sizeof(*header) || header->size>IPC_BYTES ||
+            (header->bits&D_MACH_MSG_COMPLEX) || header->voucher ||
+            (header->bits&255)!=D_MACH_TYPE_MOVE_SEND_ONCE || header->id>INT32_MAX-D_MIG_REPLY_ID_OFFSET)
+            darling_abort("unsupported display request rights/body");
+        for (volatile uint32_t *word=response;word<response+IPC_BYTES/4;word++) *word=0;
+        out->bits=D_MACH_TYPE_MOVE_SEND_ONCE; out->remote=header->remote;
+        out->size=36; out->id=header->id+D_MIG_REPLY_ID_OFFSET;
+        response[7]=1; response[8]=(uint32_t)D_MIG_BAD_ID;
+        unsigned long ool=ipc_display_response(header->local==native_render_port,
+            header->local==native_display_port,request,header->size,response,0,0);
+        if (traces++<D_DIAGNOSTIC_REQUEST_LIMIT) {
+            const char label[]="DARLING_SERVICE_REPLY port/id/request/reply follows\n";
+            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            trace_call(0,0,header->local); trace_call(1,0,header->id);
+            trace_call(2,0,header->size); trace_call(3,0,out->size);
+        }
+        status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL);
+        /* The source mapping remains ours (deallocate=0); XNU owns its snapshot
+         * after successful send. No host mapping is exposed as a fake copyout. */
+        if (ool) RAW(SYS_munmap,ool,PAGE16,0,0,0,0);
+        if (status) { trace_call(0,0,status); darling_abort("send display service reply"); }
+    }
+#else
+    return NULL;
+#endif
+}
+
 static void native_registry_lock(void)
 {
     while (__atomic_exchange_n(&native_registry_mutex,1,__ATOMIC_ACQUIRE))
@@ -460,7 +520,6 @@ static uint32_t native_service_static(const char *name)
 }
 uint32_t darwin_native_service_check_in(uint32_t bootstrap,uint64_t name,uint64_t output,uint64_t flags)
 {
-    if (darling_active) return D_KERN_NOT_SUPPORTED;
     (void)output;
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
     if (flags&~(uint64_t)D_BOOTSTRAP_PER_PID_SERVICE) return D_KERN_NOT_SUPPORTED;
@@ -480,16 +539,26 @@ uint32_t darwin_native_service_check_in(uint32_t bootstrap,uint64_t name,uint64_
 }
 uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_t port,uint64_t flags)
 {
-    if (darling_active) return D_KERN_NOT_SUPPORTED;
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
     if (flags&~(uint64_t)D_BOOTSTRAP_PER_PID_SERVICE) return D_KERN_NOT_SUPPORTED;
     char service[D_BOOTSTRAP_NAME_MAX]; uint32_t error=native_service_name(name,service);
     if (error) return error;
     int32_t pid=flags ? RAW(SYS_getpid,0,0,0,0,0,0) : 0;
     if (!pid && native_service_static(service)) return D_BOOTSTRAP_NAME_IN_USE;
-    struct ipc_endpoint *endpoint=port ? ipc_find(port) : NULL;
-    if (port && (!endpoint || endpoint->kind || endpoint->timer_fd>=0 || endpoint->special_tid ||
-        !__atomic_load_n(&endpoint->send_refs,__ATOMIC_ACQUIRE))) return D_KERN_INVALID_RIGHT;
+    #ifdef ARLINUX_DARLING
+    if (darling_active && port) {
+        uint32_t type=0;
+        if (dserver_rpc_mach_port_type(CURRENT_TASK_PORT,port,&type) || !(type&D_PORT_TYPE_SEND))
+            return D_KERN_INVALID_RIGHT;
+        int error=dserver_rpc_mach_port_mod_refs(CURRENT_TASK_PORT,port,D_PORT_RIGHT_SEND,1);
+        if (error) return error;
+    } else
+    #endif
+    {
+        struct ipc_endpoint *endpoint=port ? ipc_find(port) : NULL;
+        if (port && (!endpoint || endpoint->kind || endpoint->timer_fd>=0 || endpoint->special_tid ||
+            !__atomic_load_n(&endpoint->send_refs,__ATOMIC_ACQUIRE))) return D_KERN_INVALID_RIGHT;
+    }
     native_registry_lock();
     struct native_service_binding *entry=NULL,*empty=NULL;
     for (unsigned int i=0;i<32;i++) {
@@ -499,7 +568,12 @@ uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_
     }
     uint32_t status=D_KERN_SUCCESS;
     if (!port) {
-        if (entry) entry->port=0;
+        if (entry) {
+            #ifdef ARLINUX_DARLING
+            if (darling_active) dserver_rpc_mach_port_deallocate(CURRENT_TASK_PORT,entry->port);
+            #endif
+            entry->port=0;
+        }
         else status=D_BOOTSTRAP_UNKNOWN_SERVICE;
     } else if (entry) status=D_BOOTSTRAP_NAME_IN_USE;
     else if (!empty) status=D_BOOTSTRAP_NO_MEMORY;
@@ -508,6 +582,9 @@ uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_
         empty->pid=pid; empty->port=port;
     }
     native_registry_unlock();
+    #ifdef ARLINUX_DARLING
+    if (darling_active && port && status) dserver_rpc_mach_port_deallocate(CURRENT_TASK_PORT,port);
+    #endif
     const char label[]="DARWIN_SERVICE_REGISTER name/port/status follows\n";
     RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
     unsigned int length=0; while (service[length]) length++;
@@ -518,7 +595,6 @@ uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_
 uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t output,
                                     int32_t target,uint64_t instance,uint64_t flags)
 {
-    if (darling_active) return D_KERN_NOT_SUPPORTED;
     (void)instance; /* Default lookup has no instance-selection flag. */
     if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
     if (!ipc_display_live()) return D_KERN_FAILURE;
@@ -532,10 +608,20 @@ uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t 
             native_service_equal(service,native_services[i].name)) port=native_services[i].port;
     uint32_t status=D_BOOTSTRAP_UNKNOWN_SERVICE;
     if (port) {
+        #ifdef ARLINUX_DARLING
+        if (darling_active) {
+            status=dserver_rpc_mach_port_mod_refs(CURRENT_TASK_PORT,port,D_PORT_RIGHT_SEND,1);
+            if (!status && guest_copy(&port,output,sizeof(port),1)) {
+                dserver_rpc_mach_port_deallocate(CURRENT_TASK_PORT,port); status=D_KERN_INVALID_ADDRESS;
+            }
+        } else
+        #endif
+        {
         struct ipc_endpoint *endpoint=ipc_find(port);
         if (endpoint && !endpoint->kind) {
             status=guest_copy(&port,output,sizeof(port),1) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
             if (!status) __atomic_fetch_add(&endpoint->send_refs,1,__ATOMIC_ACQ_REL);
+        }
         }
     }
     native_registry_unlock();
@@ -698,106 +784,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         out->id=header->id+D_MIG_REPLY_ID_OFFSET;
         response[7]=1; /* NDR little-endian integer representation */
         response[8]=(uint32_t)D_MIG_BAD_ID; /* MIG_BAD_ID */
-        if (render && header->id==D_MIG_CA_COPY_DISPLAY_PROPERTIES && r[2]==36) {
-            uint32_t display_id; __builtin_memcpy(&display_id,request+32,sizeof(display_id));
-            response[8]=D_KERN_INVALID_ARGUMENT;
-            if (display_id==D_WAYLAND_MAIN_DISPLAY_ID) {
-                uint64_t rate=((uint64_t)native_display_refresh*D_CA_MODE_RATE_SCALE+500)/1000;
-                uint64_t frame_ns=native_display_refresh ?
-                    (1000000000000ULL+native_display_refresh-1)/native_display_refresh : 0;
-                int live=ipc_display_live();
-                response[8]=live ? D_KERN_NOT_SUPPORTED : D_KERN_FAILURE;
-                if (live && native_display_refresh && rate<=0xffffff && frame_ns<=UINT32_MAX) {
-                    uint64_t mode=native_display_width|((uint64_t)native_display_height<<D_CA_MODE_HEIGHT_SHIFT)|(rate<<D_CA_MODE_RATE_SHIFT);
-                    long address=anonymous_aligned(PAGE16,PROT_READ|PROT_WRITE,0);
-                    response[8]=D_KERN_RESOURCE_SHORTAGE;
-                    if ((unsigned long)address<(unsigned long)-4095) {
-                        response_ool=address; __builtin_memcpy((void *)address,&mode,sizeof(mode));
-                        struct ipc_ool_descriptor descriptor={.address=address,.deallocate=1,
-                            .copy=D_MACH_MSG_VIRTUAL_COPY,.type=D_MACH_MSG_OOL_DESCRIPTOR,.size=sizeof(mode)};
-                        out->bits|=D_MACH_MSG_COMPLEX;
-                        struct darwin_display_properties_prefix *prefix=(void *)response;
-                        prefix->descriptor_count=2; prefix->modes=descriptor;
-                        /* No hardware shared-memory entry accompanies this
-                         * software display. A transferred NULL send right is
-                         * the actual absent resource, not a fake device port. */
-                        prefix->memory_entry=(struct darwin_display_port){.disposition=D_MACH_TYPE_MOVE_SEND};
-                        prefix->ndr[0]=0; prefix->ndr[1]=1;
-                        prefix->configuration_seed=1; prefix->connection_seed=1;
-                        unsigned char *buffer=(void *)response;
-                        unsigned int cursor=sizeof(*prefix);
-                        cursor=ipc_display_string(buffer,cursor,"arlinux-wayland-1",sizeof("arlinux-wayland-1"));
-                        cursor=ipc_display_string(buffer,cursor,"",sizeof(""));
-                        cursor=ipc_display_string(buffer,cursor,"ARLinux Wayland",sizeof("ARLinux Wayland"));
-                        struct darwin_display_properties properties={
-                            .mode_bytes=sizeof(mode),.current_mode=mode,.preferred_mode=mode,
-                            .bounds={0,0,native_display_width,native_display_height},
-                            .frame={0,0,native_display_width,native_display_height},
-                            .flags=D_CA_DISPLAY_SUPPORTED,.refresh_period_bits=native_display_period_bits,
-                            .heartbeat_period_bits=native_display_period_bits,
-                            .minimum_frame_duration=frame_ns
-                        };
-                        __builtin_memcpy(buffer+cursor,&properties,sizeof(properties));
-                        out->size=cursor+sizeof(properties);
-                        const char label[]="DARWIN_RENDER_PROPERTIES width/height/millihz/mode follows\n";
-                        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
-                        trace_call(0,pc,native_display_width); trace_call(1,pc,native_display_height);
-                        trace_call(2,pc,native_display_refresh); trace_call(3,pc,mode);
-                    }
-                }
-            }
-        }
-        if (render && header->id==D_MIG_CA_COPY_DISPLAY_LIST && r[2]==sizeof(struct ipc_header)) {
-            int live=ipc_display_live();
-            response[8]=live ? D_KERN_RESOURCE_SHORTAGE : D_KERN_FAILURE;
-            if (live) {
-                /* The real CADisplay initializer parses a property-list array
-                 * and constructs its own remote Display objects. Describe the
-                 * actual single Wayland resource, not an invented iPhone. */
-#define IPC_STRING_INNER(x) #x
-#define IPC_STRING(x) IPC_STRING_INNER(x)
-                static const char list[]="<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-                    "<plist version=\"1.0\"><array><dict>"
-                    "<key>kCADisplayName</key><string>ARLinux Wayland</string>"
-                    "<key>kCADisplayDeviceName</key><string>Wayland</string>"
-                    "<key>kCADisplayId</key><integer>" IPC_STRING(D_WAYLAND_MAIN_DISPLAY_ID) "</integer>"
-                    "</dict></array></plist>";
-#undef IPC_STRING
-#undef IPC_STRING_INNER
-                long address=anonymous_aligned(PAGE16,PROT_READ|PROT_WRITE,0);
-                if ((unsigned long)address<(unsigned long)-4095) {
-                    response_ool=address;
-                    for (unsigned int i=0;i<sizeof(list)-1;i++) ((volatile char *)address)[i]=list[i];
-                    struct ipc_ool_descriptor descriptor={.address=address,.deallocate=1,
-                        .copy=D_MACH_MSG_VIRTUAL_COPY,.type=D_MACH_MSG_OOL_DESCRIPTOR,.size=sizeof(list)-1};
-                    out->bits|=D_MACH_MSG_COMPLEX; out->size=56; response[6]=1;
-                    __builtin_memcpy(response+7,&descriptor,sizeof(descriptor));
-                    response[11]=0; response[12]=1; /* NDR */
-                    response[13]=sizeof(list)-1;
-                    const char label[]="DARWIN_RENDER_DISPLAY_LIST id/address/bytes follows\n";
-                    RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
-                    trace_call(0,pc,D_WAYLAND_MAIN_DISPLAY_ID); trace_call(1,pc,address); trace_call(2,pc,sizeof(list)-1);
-                }
-            }
-        }
-        if (display && header->id==D_MIG_BKS_GET_MAIN_SCREEN_INFO && r[2]==sizeof(struct ipc_header)) {
-            response[8]=ipc_display_live() ? D_KERN_SUCCESS : D_KERN_FAILURE;
-            if (!response[8]) {
-                /* Actual iOS 12 client: 24-byte request, 52-byte reply; four
-                 * binary32 values. GSSetMainScreenInfo converts width/height,
-                 * uses scale for pixel-to-point conversion and the last float
-                 * as a rotation angle. Our wl_surface uses default scale 1
-                 * and normal transform; dimensions came from xdg configure. */
-                out->size=52;
-                response[9]=ipc_display_float(native_display_width);
-                response[10]=ipc_display_float(native_display_height);
-                response[11]=0x3f800000U; /* 1.0: unscaled buffer pixels */
-                response[12]=0; /* 0.0: normal, unrotated surface */
-                const char label[]="DARWIN_DISPLAY_QUERY width/height follows\n";
-                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
-                trace_call(0,pc,native_display_width); trace_call(1,pc,native_display_height);
-            }
-        }
+        response_ool=ipc_display_response(render,display,request,r[2],response,pc,1);
         if (!task && !display && !render && clock<0 && header->id==D_MIG_HOST_INFO && r[2]==40) {
             uint32_t flavor,count; __builtin_memcpy(&flavor,request+32,4);
             __builtin_memcpy(&count,request+36,4);
