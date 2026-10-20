@@ -113,7 +113,9 @@ def report(run_id, job_name):
                    'IPC_WAIT ', 'IPC_WAIT_DECODE_ERROR ', 'IPC_QUEUE_SNAPSHOT ', 'DARWIN_KEVENT_ERROR ',
                    'NORMAL_RUNTIME_FAULT_PC ', 'DIAGNOSTIC_WAIT_INTERRUPTED ',
                    'DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DYNAMIC_MAIN ', 'DYNAMIC_THREAD ',
-                   'DYNAMIC_CONSOLE ', 'EXPERIMENT_RECEIPT ', 'EXPERIMENT_EXECUTABLE ')
+                   'DYNAMIC_CONSOLE ', 'EXPERIMENT_RECEIPT ', 'EXPERIMENT_EXECUTABLE ',
+                   'BOOTSTRAP_XPC_REQUEST ', 'BOOTSTRAP_XPC_REPLY ', 'BOOTSTRAP_XPC_IDENTITY ',
+                   'PROCESSINFO_')
         item['observations'] = []
         context_lengths = {'DARLING_NATIVE_CONNECTED ': 2,
                            'DARLING_KQCHAN_OPEN ': 3, 'DARLING_KQCHAN_EVENT ': 5,

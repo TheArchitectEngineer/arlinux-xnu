@@ -14,8 +14,8 @@ UIKit window, label and increment button. Source/TBD declarations are under
 guests/ARHello; real framework implementations come from the pinned firmware.
 
 Current integration attempt:
-[39385046397](https://github.com/taowen/arlinux-xnu/actions/runs/39385046397),
-source `7189375f0bc965d55131259f488d72eb61e0be91`.
+[39386480991](https://github.com/taowen/arlinux-xnu/actions/runs/39386480991),
+source `64cf2a2fa5bb190dd6f44b52c0669e2ae94367d2`.
 Use `build.sh build --mode app --ipc darling` through the sole root entry.
 The taowen/darling parent gitlink pins our community server fork and upstream
 MIG/header dependencies; sources.lock.json records the community base.
@@ -118,7 +118,7 @@ fatal behavior. No new Mach namespace or rights table is introduced.
 Current lldb.log SHA-256, verified against its receipt:
 `ec5fc84f14afd5d8b7da3620287c2b593fc7614b34b52be2d9cd2a73c364e282`.
 
-Final regression 39385046397 preserves both real console journeys and the
+Regression 39385046397 preserves both real console journeys and the
 startup failure. Bootstrap still receives actual routine 804 requests and
 sends 64-byte XPC replies: unsupported type 1 / privileged assertiond lookup
 now returns ENOTSUP (45); default type 7 FrontBoard lookup returns registry
@@ -128,6 +128,23 @@ and its observed messages, with an explicit compatibility privilege policy.
 The latest downloaded lldb.log and app.runtime.log match their receipt hashes:
 `79af2a1cfc65db7d2857236bf82e37c706020fd2bf279f11a1bef13e173a3dfd`
 and `886343d076396c0582a1f2d097c0f8e8914980b5c959c9d75c975c3744d6f446`.
+
+Current run 39386480991 adds an actual controlled process-info listener and
+the forked community check-in adoption helper. Type 1 / flags 8 lookup returns
+its actual send right (port 1539); it does not expose app-registered ports as
+privileged providers or change real audit credentials. **Check-in is not yet
+reached.** The ordinary and debugger attempts trap at 0x180b14bf4 in libxpc,
+referencing "Configuration error: bootstrap port must lead to PID 1".
+The real bootstrap reply now includes req_pid/rec_execcnt derived from the
+same Linux PID/start-tick identity as XNU (debugger: 4349/31077); that did not
+resolve the assertion. LR 0x180b14b58 points after the call to 0x180b21000,
+before the adjacent comparisons, so those comparisons alone do not identify
+the failing predicate. Next trace must inspect that active callee and actual
+reply audit/metadata. Do not claim an established connection or replace the
+identity with PID 1. Both real console journeys still pass; GUI remains failed.
+Latest lldb.log / app.runtime.log hashes, verified against the receipt:
+`0775c6aba2bdb049a2dd923909d844cafe559c8b33c94e92e958da3135b35079` /
+`7fd482727ce3672e67a1f022e0712c32e91a42307f3bf6ca1870dac0a33990e6`.
 
 The Wayland host child still supplies a real 1024x640@60Hz surface with a blank
 wl_shm buffer: **no application frame or input journey is validated**. The

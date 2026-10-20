@@ -367,6 +367,12 @@ stack alone does not identify a missing daemon or establish its protocol.
   Routine 0x324 queries the actual registry; absent services remain errors.
   Reply send references are retained until XNU completes the actual send.
   This is not yet a general peer-facing XPC implementation or an assertiond.
+  [Our pinned fork](https://github.com/taowen/arlinux-libspc/tree/5b6a39a0c117ffe63bf9339f322e27a1ea3e7270/libspc)
+  exposes validated adoption of an already received check-in. A controlled
+  system-domain process-info listener now owns actual XNU rights. Unknown
+  process-state messages remain unsupported and connection retirement remains
+  unfinished. Bootstrap identity verification currently stops the client before
+  check-in: publication/lookup is not proof of an established service connection.
 - [VibeDarling Wayland backend](https://github.com/VibeDarling/darling-cocotron/tree/f0e1b1b28c439af9fcd01f039d74fbfe958f3067/AppKit/Wayland.backend)
   supplies window/configure, shared buffers, input and EGL subwindows. Reviewed
   `WaylandWindow.m` is MIT-licensed. Reuse applicable host-side pieces; its

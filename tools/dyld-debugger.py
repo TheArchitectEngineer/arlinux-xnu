@@ -685,3 +685,19 @@ def capture_normal_fault(target):
         print('NORMAL_RUNTIME_FAULT_PC', hex(address), flush=True)
         capture_code_references(target, max(0, address-128), 40, 'FAULT_REFERENCE')
         target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(max(0, address-128)) + ' --count 64')
+        # A callee can tail-branch into a shared assertion body, leaving LR at
+        # its caller. Capture that actual return site's direct callee too;
+        # adjacent instructions alone do not prove which predicate failed.
+        if target.GetProcess().GetState() == lldb.eStateStopped:
+            thread = target.GetProcess().GetSelectedThread()
+            caller = thread.GetFrameAtIndex(0).FindRegister('lr').GetValueAsUnsigned()
+            if caller >= 4:
+                instructions = target.ReadInstructions(target.ResolveLoadAddress(caller-4), 1)
+                if instructions.GetSize():
+                    instruction = instructions.GetInstructionAtIndex(0)
+                    operand = instruction.GetOperands(target).split()[0]
+                    if instruction.GetMnemonic(target) == 'bl' and re.fullmatch('0x[0-9a-fA-F]+', operand):
+                        callee = int(operand, 16)
+                        print('FAULT_ACTIVE_CALLEE_CODE', hex(callee), 'caller', hex(caller), flush=True)
+                        target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(callee) + ' --count 160')
+                        capture_code_references(target, callee, 160, 'FAULT_CALLEE_REFERENCE')
