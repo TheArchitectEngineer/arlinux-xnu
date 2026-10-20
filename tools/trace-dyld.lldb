@@ -2,7 +2,7 @@
 # SIGSYS is the runtime's transport and must reach its installed handler.
 settings set auto-confirm true
 settings set target.disable-aslr false
-script import importlib.util; helper_spec = importlib.util.spec_from_file_location("dyld_debugger", "tools/dyld-debugger.py"); helper = importlib.util.module_from_spec(helper_spec); helper_spec.loader.exec_module(helper)
+script import importlib.util, sys; helper_spec = importlib.util.spec_from_file_location("dyld_debugger", "tools/dyld-debugger.py"); helper = importlib.util.module_from_spec(helper_spec); sys.modules[helper_spec.name] = helper; helper_spec.loader.exec_module(helper)
 target create build/native/macho-native
 breakpoint set --name darwin_native_enter
 script from pathlib import Path; import shlex; program_marker = Path("build/dyld/debugger.program"); program = program_marker.read_text().strip() if program_marker.exists() else "build/native/console-dynamic.macho"; lldb.debugger.HandleCommand("process launch -i build/dyld/debugger.stdin -o build/dyld/debugger.stdout -e build/dyld/debugger.runtime.log -- --dyld build/ios-input/dyld --root build/ios-input/filesystem/root " + shlex.quote(program))
@@ -13,6 +13,7 @@ process handle -s false -n false -p true SIGSYS
 script import os; target = lldb.debugger.GetSelectedTarget(); dyld_module = target.AddModule(os.path.abspath("build/ios-input/dyld"), "arm64-apple-ios", None); print("DYLD_SYMBOL_MODULE", dyld_module.IsValid()); assert dyld_module.IsValid(), "LLDB could not read the real Mach-O"
 script load_error = target.SetModuleLoadAddress(dyld_module, 0x200000000); print(load_error); assert load_error.Success(), "Cannot relocate dyld symbols"
 script exception_bp = helper.install_exception_breakpoint(target)
+script helper.install_service_breakpoints(target)
 image list
 register read pc sp x0 x1
 thread backtrace all
@@ -52,5 +53,6 @@ script lldb.debugger.HandleCommand("disassemble --frame --count 16") if stopped 
 # preceding instructions as well, so the branch/call that chose it is visible.
 script pc = thread.GetFrameAtIndex(0).GetPC() if stopped else 0; lldb.debugger.HandleCommand("disassemble --start-address " + hex(pc-320) + " --count 96") if stopped and pc >= 320 else None
 script helper.capture_normal_fault(target) if stopped else None
+script helper.capture_display_code(target) if stopped else None
 script lldb.debugger.HandleCommand("process kill") if stopped else None
 quit

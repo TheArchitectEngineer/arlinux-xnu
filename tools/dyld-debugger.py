@@ -7,6 +7,48 @@ import time
 import lldb
 
 
+def diagnostic_symbols():
+    path = Path('build/dyld/diagnostic-symbols.json')
+    return json.loads(path.read_text()) if path.exists() else []
+
+
+def service_lookup(frame, location, internal_dict):
+    """Observe the actual hit thread, without calling guest functions."""
+    process = frame.GetThread().GetProcess()
+    error = lldb.SBError()
+    name_address = frame.FindRegister('x1').GetValueAsUnsigned()
+    name = process.ReadCStringFromMemory(name_address, 256, error)
+    print('SERVICE_LOOKUP ' + json.dumps({
+        'tid': frame.GetThread().GetThreadID(), 'pc': hex(frame.GetPC()),
+        'caller': hex(frame.FindRegister('lr').GetValueAsUnsigned()),
+        'bootstrapPort': frame.FindRegister('x0').GetValueAsUnsigned(),
+        'name': name if error.Success() else None,
+        'nameReadError': None if error.Success() else str(error),
+        'outputAddress': hex(frame.FindRegister('x2').GetValueAsUnsigned()),
+    }), flush=True)
+    if location.GetBreakpoint().GetHitCount() >= 32:
+        location.GetBreakpoint().SetEnabled(False)
+        print('SERVICE_LOOKUP_LIMIT reached; further lookup tracing disabled', flush=True)
+    return False
+
+
+def install_service_breakpoints(target):
+    for symbol in diagnostic_symbols():
+        if symbol.get('symbol') in ('_bootstrap_look_up', '_bootstrap_look_up2', '_bootstrap_look_up3'):
+            breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))
+            error = breakpoint.SetScriptCallbackFunction('dyld_debugger.service_lookup')
+            if error.Fail():
+                raise RuntimeError(str(error))
+            print('SERVICE_LOOKUP_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
+
+
+def capture_display_code(target):
+    for symbol in diagnostic_symbols():
+        if symbol.get('symbol') == '_BKSDisplayServicesStart':
+            print('DISPLAY_START_CODE', symbol['address'], flush=True)
+            target.GetDebugger().HandleCommand('disassemble --start-address ' + symbol['address'] + ' --count 160')
+
+
 def install_exception_breakpoint(target):
     path = Path('build/dyld/diagnostic-symbols.json')
     if path.exists():
