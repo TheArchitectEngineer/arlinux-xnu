@@ -120,6 +120,9 @@ class Processes:
                 arguments.append('--bootstrap-context')
             if 'DARWIN_FAULT signal=' in runtime.read_text(errors='replace'):
                 arguments.extend(['--lookup','/usr/lib/dyld','__ZN5dyld45Atlas15ProcessSnapshot10Serializer11deserializeENSt3__14spanISt4byteLm18446744073709551615EEE'])
+            for symbol in ['_xpc_pipe_routine','_xpc_pipe_routine_with_flags',
+                           '_xpc_pipe_interface_routine','_xpc_pipe_routine_reply']:
+                arguments.extend(['--lookup','/usr/lib/system/libxpc.dylib',symbol])
             result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
             runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
             if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))

@@ -27,7 +27,8 @@ int fileport_makeport(int fd,mach_port_t *port)
 int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
 {
     mach_msg_header_t *header=request;
-    if (header->msgh_id!=0x10000000) return 0;
+    int packed_routine=((uint32_t)header->msgh_id&0xffff0000U)==0x40000000U;
+    if (header->msgh_id!=0x10000000 && !packed_routine) return 0;
     /* The selected upstream decoder ignores OOL descriptors. Do not silently
      * pass them through it. Its fatal malformed-input behavior remains visible
      * for this trusted-firmware experiment; arbitrary peers are unsupported. */
@@ -46,6 +47,13 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
         if (item->value.type==SPC_TYPE_UINT64 || item->value.type==SPC_TYPE_INT64)
             fprintf(stderr,"BOOTSTRAP_XPC_FIELD key=%s type=%x value=%llu\n",item->key,item->value.type,
                 (unsigned long long)item->value.value.u64);
+    }
+    if (packed_routine) {
+        /* Observe the genuine CPX5 dictionary before implementing its reply
+         * envelope. Preserve the existing MIG failure until the original
+         * client's encoding/validation has established that contract. */
+        fprintf(stderr,"BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=%x bytes=%u\n",header->msgh_id,header->msgh_size);
+        spc_message_destroy(message);return 0;
     }
     int error=D_ENOTSUP;
     uint32_t port=0;
