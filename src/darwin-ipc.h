@@ -762,7 +762,10 @@ int darwin_native_system_lookup(const char *name,uint64_t type,uint64_t flags,ui
     /* The compatibility system namespace contains only our actual provider.
      * A privileged lookup selects this controlled namespace; it does not mint
      * a root audit token or authorize arbitrary application registrations. */
-    if (type!=1 || flags!=8) return D_ENOTSUP;
+    /* The measured type-7/0x200 option is accepted only for the provider's
+     * registered endpoints. It never widens arbitrary dynamic registrations
+     * or fabricates root credentials; the original audit checks still run. */
+    if (!((type==1 && flags==8) || (type==7 && flags==0x200))) return D_ENOTSUP;
     uint32_t listener=0;
     for (unsigned int i=0;i<D_SESSION_SERVICE_COUNT;i++)
         if (native_service_equal(name,native_session_names[i])) listener=native_session_ports[i];

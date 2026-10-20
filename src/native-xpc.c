@@ -48,10 +48,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
             fprintf(stderr,"BOOTSTRAP_XPC_FIELD key=%s type=%x value=%llu\n",item->key,item->value.type,
                 (unsigned long long)item->value.value.u64);
     }
-    if (packed_routine) {
-        /* Observe the genuine CPX5 dictionary before implementing its reply
-         * envelope. Preserve the existing MIG failure until the original
-         * client's encoding/validation has established that contract. */
+    if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U) {
+        /* Unknown interface routines keep the actual unsupported response. */
         fprintf(stderr,"BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=%x bytes=%u\n",header->msgh_id,header->msgh_size);
         spc_message_destroy(message);return 0;
     }
@@ -59,12 +57,16 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     uint32_t port=0;
     /* libspc connection.c: spc_domain_routine / spc_look_up_endpoint.
      * Only this process's default namespace is currently implemented. */
-    if (subsystem==3 && routine==0x324 && name &&
+    /* Real __xpc_pipe_pack_message emits packed routine IDs but still uses
+     * 0x20000000 for dictionary replies (run 39491337714). The dictionary
+     * format and actual rights/audit ownership are the same as legacy XPC. */
+    if (((packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x324U) ||
+         (!packed_routine && subsystem==3 && routine==0x324)) && name &&
         !spc_dictionary_get_uint64(message->content,"handle") &&
         !spc_dictionary_get_uint64(message->content,"lookup-handle")) {
         uint64_t type=spc_dictionary_get_uint64(message->content,"type");
         uint64_t flags=spc_dictionary_get_uint64(message->content,"flags");
-        if (type==7) error=darwin_native_service_lookup(bootstrap,(uintptr_t)name,(uintptr_t)&port,0,0,flags);
+        if (type==7 && !flags) error=darwin_native_service_lookup(bootstrap,(uintptr_t)name,(uintptr_t)&port,0,0,0);
         else error=darwin_native_system_lookup(name,type,flags,&port);
     }
     spc_dictionary_t *reply=spc_dictionary_create();

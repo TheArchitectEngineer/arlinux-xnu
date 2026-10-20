@@ -248,10 +248,13 @@ class CacheSymbols:
             calls={};member,offset=self.locate(begin,size)
             for i in range(0,size,4):
                 word=member.unpack('<I',offset+i)[0]
-                if word&0xfc000000!=0x94000000:continue
+                if word&0xfc000000 not in (0x94000000,0x14000000):continue
                 immediate=word&0x3ffffff
                 if immediate&0x2000000:immediate-=0x4000000
                 target=begin+i+immediate*4
+                # Tail branches to named functions are part of the interface
+                # too; ordinary local loop/control-flow branches are not calls.
+                if word&0xfc000000==0x14000000 and begin<=target<begin+size:continue
                 if target in names:calls[target]=names[target]
             return calls
         calls=direct_calls(start,end-start)
@@ -267,11 +270,12 @@ class CacheSymbols:
             address,name,depth=pending.pop(0)
             if address in seen:continue
             seen.add(address)
-            if not any(part in name.lower() for part in ('bks','screen','display')):continue
+            if not any(part in name.lower() for part in ('bks','screen','display','xpc_pipe')):continue
             if len(callees)>=8:break
             region=next(((base,length) for base,length in image['executable'] if base<=address<base+length),None)
             if not region:continue
-            stop=min(address+768,region[0]+region[1],min((value for value,_ in symbols if value>address),default=address+768))
+            limit=4096 if 'xpc_pipe' in name.lower() else 768
+            stop=min(address+limit,region[0]+region[1],min((value for value,_ in symbols if value>address),default=address+limit))
             entry=self.disassemble(address,stop-address);entry['symbol']=name
             children=direct_calls(address,stop-address)
             entry['directCalls']=[{'address':hex(value),'symbol':label} for value,label in sorted(children.items())]
