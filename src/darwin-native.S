@@ -71,4 +71,22 @@ darwin_thread_enter:
     mov x30,xzr
     br x9
 .size darwin_thread_enter,.-darwin_thread_enter
+// CGRect is an ARM64 homogeneous floating-point aggregate (d0-d3), even
+// though the syscall runtime itself is compiled with general registers only.
+// Save its exact bits without using host TLS or converting its values.
+.global darwin_objc_rect
+.hidden darwin_objc_rect
+.type darwin_objc_rect,%function
+darwin_objc_rect:
+    stp x29,x30,[sp,#-32]!
+    mov x29,sp
+    str x19,[sp,#16]
+    mov x19,x3
+    blr x2
+    stp d0,d1,[x19]
+    stp d2,d3,[x19,#16]
+    ldr x19,[sp,#16]
+    ldp x29,x30,[sp],#32
+    ret
+.size darwin_objc_rect,.-darwin_objc_rect
 .section .note.GNU-stack,"",%progbits

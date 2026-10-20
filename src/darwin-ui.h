@@ -6,9 +6,10 @@ static struct darwin_ui_api native_ui_api;
 static void *native_ui_pixels,*native_ui_context[2],*native_ui_color_space;
 static struct darwin_frame_control *native_ui_control;
 static uint32_t native_ui_width,native_ui_height,native_ui_sequence;
-static int native_ui_notify=-1,native_ui_observer,native_ui_drawing,native_ui_captured;
+static int native_ui_notify=-1,native_ui_observer,native_ui_drawing;
 static char native_ui_capture_path[1024];
 enum { NATIVE_CG_ALPHA_NONE_SKIP_FIRST=6, NATIVE_CG_BYTE_ORDER_32_LITTLE=2U<<12 };
+extern void darwin_objc_rect(void *object,void *selector,uint64_t message,uint64_t output[4]);
 void darwin_native_ui_api(const struct darwin_ui_api *api) { native_ui_api=*api; }
 void darwin_native_ui_output(void *pixels,uint32_t width,uint32_t height,
                             struct darwin_frame_control *control,int notify)
@@ -24,13 +25,20 @@ void darwin_native_ui_output(void *pixels,uint32_t width,uint32_t height,
 }
 static void *native_ui_selector(const char *name)
 { return ((void *(*)(const char *))(uintptr_t)native_ui_api.selector)(name); }
+static void native_ui_geometry(void *object,const char *tag)
+{
+    uint64_t rect[4];
+    darwin_objc_rect(object,native_ui_selector("bounds"),native_ui_api.message,rect);
+    trace_record(tag,(uintptr_t)object,rect[0],rect[1]);
+    trace_record("UI_BOUNDS_SIZE width=0x",rect[2],rect[3],0);
+}
 static void *native_ui_object(void *object,const char *selector)
 { return ((void *(*)(void *,void *))(uintptr_t)native_ui_api.message)(object,native_ui_selector(selector)); }
 static void native_ui_capture(void *pixels,unsigned long bytes)
 {
-    if (native_ui_captured || !native_ui_capture_path[0]) return;
-    native_ui_captured=1;
-    long fd=RAW(SYS_openat,AT_FDCWD,native_ui_capture_path,O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC,0600,0,0);
+    if (!native_ui_capture_path[0]) return;
+    /* Retain the last completed render, not only a possibly empty first frame. */
+    long fd=RAW(SYS_openat,AT_FDCWD,native_ui_capture_path,O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC,0600,0,0);
     if (fd<0) { trace_record("UI_FRAME_CAPTURE_ERROR fd=0x",fd,0,0); return; }
     uint32_t header[3]={native_ui_width,native_ui_height,native_ui_width*4};
     unsigned long header_offset=0;
@@ -87,6 +95,13 @@ static void native_ui_frame(void *observer,uint64_t activity,void *info)
             if (((signed char (*)(void *,void *))(uintptr_t)native_ui_api.message)(window,native_ui_selector("isHidden"))) continue;
             void *layer=native_ui_object(window,"layer");
             if (!layer) continue;
+            if (native_ui_sequence<2) {
+                native_ui_geometry(window,"UI_WINDOW_BOUNDS object=0x");
+                native_ui_geometry(layer,"UI_LAYER_BOUNDS object=0x");
+                void *children=native_ui_object(layer,"sublayers");
+                uint64_t child_count=children ? ((uint64_t (*)(void *,void *))(uintptr_t)native_ui_api.message)(children,native_ui_selector("count")) : 0;
+                trace_record("UI_LAYER_CHILDREN count=0x",child_count,(uintptr_t)layer,(uintptr_t)children);
+            }
             ((void (*)(void *,void *,void *))(uintptr_t)native_ui_api.message)(layer,native_ui_selector("renderInContext:"),native_ui_context[slot]);
             rendered++;
         }
