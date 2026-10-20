@@ -61,6 +61,9 @@ run('xcrun', 'swiftc', '-parse-as-library', '-O', root / 'tools/playcover-ui.swi
 original = root / 'build/native/ARHello.app'
 app = out / 'ARHello.app'
 shutil.copytree(original, app, dirs_exist_ok=True)
+# Linux's constructor is injected only by macho-native's application role.
+# The Apple-host reference uses its own platform and never loads this library.
+(app / 'libarlinux-ios.dylib').unlink()
 binary = app / 'ARHello'
 record = {'name': 'ARHello', 'version': '1.0', 'source': source,
           'originalSHA256': digest(binary), 'platform': platform.platform(),

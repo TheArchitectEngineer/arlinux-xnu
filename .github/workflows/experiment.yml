@@ -370,66 +370,7 @@ jobs:
           if [[ ! -f "$ordinary" ]]; then ordinary=build/dyld/runtime-1.log; fi
           if [[ -f "$cache" && -f "$ordinary" ]]; then
             python3 tools/symbolicate-cache.py "$cache" "$ordinary" build/dyld/diagnostic-symbols.json \
-              --lookup /usr/lib/libobjc.A.dylib _objc_exception_throw \
-              --lookup /usr/lib/system/libsystem_kernel.dylib __exit \
-              --lookup /usr/lib/system/libxpc.dylib __xpc_connection_call_reply_async \
-              --lookup /usr/lib/system/libxpc.dylib _xpc_connection_create_mach_service \
-              --lookup /usr/lib/system/libxpc.dylib _xpc_connection_set_event_handler \
-              --lookup /usr/lib/system/libxpc.dylib _xpc_dictionary_set_uint64 \
-              --lookup /usr/lib/system/libxpc.dylib _xpc_dictionary_set_int64 \
-              --lookup /usr/lib/system/libxpc.dylib _xpc_array_create \
-              --lookup /usr/lib/system/libxpc.dylib _xpc_array_append_value \
-              --lookup /usr/lib/system/libxpc.dylib _xpc_uint64_create \
-              --lookup /usr/lib/system/libxpc.dylib _xpc_bool_get_value \
-              --lookup /usr/lib/system/libxpc.dylib _xpc_int64_get_value \
-              --lookup /usr/lib/system/libsystem_pthread.dylib ___pthread_abort_reason \
-              --lookup /System/Library/Frameworks/QuartzCore.framework/QuartzCore _CARenderServerStart \
-              --lookup /System/Library/Frameworks/QuartzCore.framework/QuartzCore _CARenderServerGetPort \
-              --lookup /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation __CFXPCCreateCFObjectFromXPCObject \
-              --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$_UIApplication' \
-              --lookup /System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices '_OBJC_CLASS_$_BKSProcess' \
-              --lookup /System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices '_OBJC_CLASS_$_BKSWorkspace' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspace' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspaceClient' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSUIApplicationWorkspaceClient' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspaceEvent' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspaceCreateSceneEvent' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspaceSceneUpdateEvent' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSWorkspaceSceneEvent' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSSceneSettingsDiff' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSSceneClientSettingsDiff' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSSettingsDiff' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSScene' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSSceneSettings' \
-              --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$__UICanvas' \
-              --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$__UIApplicationCanvas' \
-              --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$__UICanvasLifecycleMonitor' \
-              --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$_UIApplicationSceneSettings' \
-              --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$_UIApplicationSceneTransitionContext' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSDisplayIdentity' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSDisplayConfiguration' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSDisplayMode' \
-              --lookup /System/Library/PrivateFrameworks/BaseBoard.framework/BaseBoard '_OBJC_CLASS_$_BSSettings' \
-              --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSSceneTransitionContext' \
-              --lookup /usr/lib/system/libxpc.dylib __xpc_connection_call_event_handler \
-              --lookup /usr/lib/system/libxpc.dylib __xpc_mach_port_get_context \
-              --lookup /usr/lib/system/libdispatch.dylib '_dispatch_mach_send_with_result_and_async_reply_4libxpc' \
-              --lookup /usr/lib/system/libdispatch.dylib '__dispatch_mach_msg_async_reply_invoke$VARIANT$mp' \
-              --lookup /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation '_OBJC_CLASS_$_NSDictionary' \
-              --lookup /System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices ____getHIDEventSystemClient_block_invoke \
-              --lookup /System/Library/Frameworks/Security.framework/Security _SecTaskCreateFromSelf \
-              --lookup /System/Library/Frameworks/Security.framework/Security _SecTaskCopyValueForEntitlement \
-              --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore __UICopyValueForEntitlementUsingTaskCreationBlock \
-              --lookup /System/Library/Frameworks/QuartzCore.framework/QuartzCore '_OBJC_CLASS_$_CADisplay' \
-              --lookup /System/Library/Frameworks/QuartzCore.framework/QuartzCore '_OBJC_CLASS_$_CADisplayMode' \
-              --lookup /System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices _BKSDisplayServicesStart \
-              --lookup /System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices __GSRegisterPurpleNamedPortInPrivateNamespace \
-              --lookup /System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices __GSWriteStackshot \
-              --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up \
-              --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up2 \
-              --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up3 \
-              --lookup /usr/lib/system/libxpc.dylib _bootstrap_register \
-              --lookup /usr/lib/system/libxpc.dylib _bootstrap_register2
+              --lookup /usr/lib/libobjc.A.dylib _objc_exception_throw
           fi
           status=0
           timeout 45 lldb-18 --batch -o 'command source -e true -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?

@@ -12,5 +12,5 @@ __attribute__((constructor)) static void arlinux_ios_platform_start(void)
     __asm__ volatile("svc #0x80\n\tcset %w1, cs"
         : "+r"(version),"=r"(failed) : "r"(operation),"r"(number) : "cc","memory");
     if (failed || !version) __builtin_trap();
-    ((void (*)(void))version)();
+    if (((arlinux_ios_platform_attach_fn)version)()) __builtin_trap();
 }

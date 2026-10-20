@@ -287,6 +287,10 @@ def main():
         if not args.run_id or not args.run_id.isdecimal():
             parser.error('download requires --run-id NUMERIC_RUN_ID')
         output = Path(__file__).resolve().parents[1] / 'build' / 'runs' / args.run_id
+        if args.artifact:
+            if Path(args.artifact).name != args.artifact or args.artifact in ('.', '..'):
+                parser.error('artifact must be a single GitHub artifact name')
+            output = output / args.artifact
         command = ['run', 'download', args.run_id, '--dir', str(output)]
         if args.artifact:
             command += ['--name', args.artifact]

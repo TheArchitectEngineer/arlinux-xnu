@@ -98,21 +98,21 @@ static void native_ui_frame(void *observer,uint64_t activity,void *info)
     }
     ui.drawing=0;
 }
-static void native_ui_install_observer(void)
+static long native_ios_platform_attach(void)
 {
-    if (ui.observer || !ui.pixels || !ui.control ||
-        native_current_thread()!=native_threads) return;
+    if (ui.observer) return 0;
+    if (!ui.pixels || !ui.control || native_current_thread()!=native_threads) return -EINVAL;
     if (!darwin_ui_api_ready(&ui.api)) {
         trace_record("UI_PLATFORM_IMPORTS_UNAVAILABLE status=0x",D_RUNTIME_FATAL_EXIT,0,0);
-        RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0);
-        __builtin_unreachable();
+        return -ENOTSUP;
     }
-    ui.observer=1;
     void *loop=((void *(*)(void))(uintptr_t)ui.api.runloop_main)();
     void *observer=((void *(*)(void *,uint64_t,_Bool,int64_t,void (*)(void *,uint64_t,void *),void *))
         (uintptr_t)ui.api.observer_create)(NULL,1U<<5,1,1U<<30,native_ui_frame,NULL);
-    if (!loop || !observer) { trace_record("UI_RUNLOOP_OBSERVER_UNAVAILABLE loop=0x",(uintptr_t)loop,(uintptr_t)observer,0); return; }
+    if (!loop || !observer) { trace_record("UI_RUNLOOP_OBSERVER_UNAVAILABLE loop=0x",(uintptr_t)loop,(uintptr_t)observer,0); return -ENOTSUP; }
     ((void (*)(void *,void *,void *))(uintptr_t)ui.api.observer_add)(loop,observer,(void *)(uintptr_t)ui.api.common_modes);
+    ui.observer=1;
     const char marker[]="UI_RUNLOOP_OBSERVER_INSTALLED genuine main run loop, before waiting\n";
     RAW(SYS_write,2,marker,sizeof(marker)-1,0,0,0);
+    return 0;
 }

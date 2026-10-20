@@ -248,7 +248,6 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
     return guest_copy(&out,destination,sizeof(out),1);
 }
 
-static void native_ui_install_observer(void);
 #include "darling-native.h"
 #include "darwin-filesystem.h"
 #include "darwin-process.h"
@@ -557,7 +556,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         /* Confirmed from the actual 650.3.4 wrapper: two uint64_t words,
          * input flags and a POINTER to the uint64_t result, not inline output.
          * This environment permits @paths, path variables, custom caches,
-         * fallback paths, diagnostic variables and failed insertions. It does
+         * fallback paths and diagnostic variables. Required insertions fail
+         * closed instead of silently running without the platform library. It does
          * not claim to implement Apple's AMFI authentication or other calls. */
         uint64_t args[2];
         local=(struct iovec){args,sizeof(args)};
@@ -566,7 +566,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             result=-EFAULT; break;
         }
         uint64_t permissions=D_AMFI_ALLOW_AT_PATHS|D_AMFI_ALLOW_PATH_ENV|D_AMFI_ALLOW_CUSTOM_CACHE|
-                             D_AMFI_ALLOW_FALLBACK_PATHS|D_AMFI_ALLOW_PRINT_ENV|D_AMFI_ALLOW_FAILED_INSERT;
+                             D_AMFI_ALLOW_FALLBACK_PATHS|D_AMFI_ALLOW_PRINT_ENV;
         local=(struct iovec){&permissions,sizeof(permissions)};
         remote=(struct iovec){(void *)args[1],sizeof(permissions)};
         result=RAW(SYS_process_vm_writev,pid,&local,1,&remote,1,0)==(long)sizeof(permissions) ? 0 : -EFAULT;
@@ -696,10 +696,19 @@ static void dispatch(int signal, siginfo_t *info, void *context)
                      r[0],(r[1]+PAGE16-1)&~(PAGE16-1),r[2],0,0,0);
         break;
     case D_SYS_MMAP: result=native_mmap(r); break;
+    case D_SYS_MREMAP_ENCRYPTED:
+        /* XNU kern_mman.c: CRYPTID_NO_ENCRYPTION is an empty load command.
+         * Validate the guest-page/range contract, then leave real plaintext
+         * mappings unchanged. Encrypted images are not decrypted or accepted.
+         */
+        if ((r[0]&(D_GUEST_PAGE_SIZE-1)) || r[1]>UINT64_MAX-r[0]) result=-EINVAL;
+        else result=r[2]==0 ? 0 : -ENOTSUP;
+        trace_record("DARWIN_MREMAP_ENCRYPTED cryptid=0x",r[2],r[0],result);
+        break;
     case D_SYS_PLATFORM:
         if (r[3] == ARLINUX_IOS_PLATFORM_QUERY) {
             result=r[0]==ARLINUX_IOS_PLATFORM_ABI_VERSION && ui.pixels && ui.control ?
-                (long)(uintptr_t)native_ui_install_observer : -ENOTSUP;
+                (long)(uintptr_t)native_ios_platform_attach : -ENOTSUP;
         } else if (r[3] == D_PLATFORM_SET_TSD) {
             __asm__ volatile("msr tpidr_el0,%0" :: "r"(r[0]) : "memory");
             result = 0;
