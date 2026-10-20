@@ -29,8 +29,8 @@ A shared session service must provide bootstrap, service registration and
 process-state management, reusing Darling/XNU cross-process Mach rights and
 messages. The independent session now connects two concurrent app processes,
 delivers real FrontBoard launch events and receives each framework response;
-process exit releases its retained rights. Scene creation, interactive apps
-and the complete multi-process journey remain unimplemented or unverified.
+process exit releases its retained rights. Real UIKit scene creation and a framework reply are observed; interactive apps
+and the complete multi-process journey remain unverified.
 This includes auxiliary/XPC processes requested by a single app, not only
 separate foreground apps; their launch and lifetime belong to the session.
 

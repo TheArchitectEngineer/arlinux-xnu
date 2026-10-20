@@ -12,8 +12,8 @@ none of that complete multi-process/Android journey has passed.
 
 Current app: **ARHello 1.0** (`io.arlinux.ARHello`), source in guests/ARHello,
 using the real pinned UIKit/frameworks. Latest executed source:
-`b1df2cdb5a39e2627f05dc2caae23f614a50b56d`,
-[run 39403237349](https://github.com/taowen/arlinux-xnu/actions/runs/39403237349).
+`d9bf13a9f62e50b4e6835215a2ff1cc40843e386`,
+[run 39406168887](https://github.com/taowen/arlinux-xnu/actions/runs/39406168887).
 Use the sole build.sh entry, `build --mode app --ipc darling`.
 
 Two genuine dyld/libSystem console journeys still pass: malloc, pthread join
@@ -25,81 +25,61 @@ are capabilities, not independently verified task-to-PID mappings. No PID 1/root
 identity is fabricated. System-app facilities and app-requested helper spawning
 remain incomplete.
 
-Launch events and responses reach real UIKit. Workspace message 5 reaches the
-actual create-scene handler. Initial scene changes now decode correctly:
-BSSettings.objects contains arrays [uint64 key, value, bool format]; class key 1
-with true format uses CoreFoundation XPC conversion. LLDB observes both genuine
-class-name strings being written by BSSettings _setObject:forSetting:, then both
-scene settings diffs being applied. The prior `settings != nil` assertion is
-passed in this traced attempt.
+Actual launch and create-scene messages reach UIKit. Both ordinary apps register
+separate real Wayland backends at 1024x640/60 Hz; session records are keyed by
+kernel audit PID/incarnation and pinned by app/backend pidfds. Backend parentage
+is validated; either process exit retires its display record. No fallback
+geometry is invented. Scene identifiers are unique to the app incarnation.
 
-Current traced failure: NSInvalidArgumentException,
-`*** -[NSCountedSet addObject:]: attempt to insert nil`.
-The real caller obtains displayIdentity and immediately adds it to the set.
-The payload currently supplies only initial settings classes, without display
-configuration. Hypothesis: the scene needs a valid FBSDisplayConfiguration and
-identity, consistent with the Wayland geometry. Decode their actual codecs and
-scene-setting keys before changing the payload. Ordinary app exits 133 at
-0x1808c4878 (libdispatch); this is a separate execution from LLDB's exception.
-Neither attempt reaches ARHELLO_READY. No UIKit frame or interactive GUI passes.
+The initial scene payload now supplies class setting 1 and display configuration
+setting 2. Real BSSettings decoding writes a genuine FBSDisplayConfiguration;
+its identity and mode constructors run. Missing pixelSize/bounds are derived by
+the actual configuration decoder from currentMode. UIKit reaches
+workspace:didCreateScene:withTransitionContext:completion:; the ordinary app
+4218 and traced app 4330 send actual FBSWorkspaceCreateSceneResponseEvent replies.
+This passes the previous nil display identity exception in the traced journey.
+The other ordinary app 4219 sends a scene event but no reply is observed; do not
+claim all concurrent scene operations completed.
 
-Display codec evidence: [run 39404428141](https://github.com/taowen/arlinux-xnu/actions/runs/39404428141),
-source `c2bd4dbbd673a9fad641bc72b6df67413b285d23`, confirms that scene
-displayIdentity forwards to displayConfiguration.identity. Actual XPC codecs
-expose identity/currentMode, pixelSize/bounds and other display fields. It still
-throws the nil insertion exception; these are protocol observations, not a fix.
-LLDB log SHA-256: `dcfdc6c10dd52b3f8fd7a175620addcf2dcbc5b84a0f9b5f4459a22713a14d6a` (receipt verified).
+Current blocker: the ordinary attempt times out (124), while the traced process
+returns its create-scene response and waits in the main run loop. No exception
+is observed in that trace. It does not enter _runWithMainScene or ARHELLO_READY;
+no UIKit frame or real input passes. Scene creation is not app initialization or
+rendering acceptance. Next inspect canvas creation and lifecycle/activation
+before changing more scene fields. Do not invoke the app delegate directly,
+remove assertions or substitute a host-drawn app.
 
-[Run 39405060101](https://github.com/taowen/arlinux-xnu/actions/runs/39405060101),
-source `237e4e3cf6d78c709f7cd43168e42d8ce4fd8fe3`, captures both scene
-setting blocks. Actual object dispatch subtracts 2 from the setting key; its
-six signed offsets at 0x183841334 start with -0x304, reaching 0x183841030:
-class validation followed by setDisplayConfiguration:. Thus object setting 2
-is display configuration; no firmware-specific runtime address is introduced.
-LLDB log SHA-256: `f8fff0cf693c33b163e9b4f6a4827b637f7f75460919397e7cd6f156791ebd24` (receipt verified).
-It still fails on nil display identity; no GUI acceptance passes.
+Exact pending run: [39406917636](https://github.com/taowen/arlinux-xnu/actions/runs/39406917636),
+source `369fdf6dc5dcb59a27d4f27efd58db33a9b4e687`, adds read-only tracing
+of _UICanvas, _UIApplicationCanvas, lifecycle monitor and UIApplication scene
+settings, including real class methods. This is diagnosis of the same actual
+app journey, not an injected delegate call. Continue that exact run; local
+observation timeouts do not justify restarting it.
 
-Exact pending run: [39405811356](https://github.com/taowen/arlinux-xnu/actions/runs/39405811356),
-source `6155178ecca033e3f2c45904a896d44b94467bdf`, publishes actual Wayland
-geometry/refresh/backend PID to the independent session using native Mach IPC.
-The service uses kernel audit sender PID/incarnation, validates backend
-parentage and retains both pidfds; either process exit retires the record.
-Verify SESSION_DISPLAY_REGISTERED/RETIRED against each actual app/backend and
-check that the session remains alive. The data is not yet encoded into initial
-scene settings; the pending run is expected to retain the nil identity failure.
-It also includes the corrected read-only switch table page resolver.
-Continue this exact run; observation timeouts do not justify restarting it.
-Next implement setting 2's actual FBSDisplayConfiguration/identity/mode codecs
-using these live dimensions, then verify genuine UIKit scene progression.
-Do not bypass nil assertions, invoke the app delegate directly or substitute a
-host-drawn app.
-
-Header-only MACH_NOTIFY_SEND_ONCE cancellation is handled only on outstanding
+Header-only MACH_NOTIFY_SEND_ONCE cancellation is accepted only on outstanding
 reply ports with the exact kernel notification and zero audit identity; it is
-not a successful scene response. Client retirement is observed. Complete crash
-isolation, actual helper launches, normal GUI exit/relaunch, two simultaneously
-interactive apps and the ARLinux/Android journey remain acceptance requirements.
+never a successful scene response. Client retirement is observed. Complete
+crash isolation, helpers, normal GUI exit/relaunch, concurrently interactive
+apps and the ARLinux/Android journey remain acceptance requirements.
 
 Useful research: [ios-rendering-docs](https://github.com/EthanArbuckle/ios-rendering-docs)
-explains the scene/settings/context/render-server boundaries. Generated
-[FBSSceneSettings](https://github.com/nst/iOS-Runtime-Headers/blob/master/PrivateFrameworks/FrontBoardServices.framework/FBSSceneSettings.h),
-[FBSDisplayConfiguration](https://github.com/nst/iOS-Runtime-Headers/blob/master/PrivateFrameworks/FrontBoardServices.framework/FBSDisplayConfiguration.h)
-and [FBSDisplayIdentity](https://github.com/nst/iOS-Runtime-Headers/blob/master/PrivateFrameworks/FrontBoardServices.framework/FBSDisplayIdentity.h)
-headers identify interfaces, not the wire format or a ready implementation.
+explains scene/settings/context/render-server boundaries. The generated
+[iOS runtime interfaces](https://github.com/nst/iOS-Runtime-Headers/tree/master/PrivateFrameworks)
+help identify display and canvas methods; they are not codec implementations.
 
 ## Exact evidence and inputs
 
-Latest completed app job: `118563466255`. Downloaded app/peer/LLDB/session textual
-logs match the receipt SHA-256 entries. App evidence receipt SHA-256:
-`23c8a6d157bf095b1526b6257d8f749c8a1ab4e29b3668c11afbf7a34cd5a9fb`.
+Downloaded app/peer/LLDB/session textual logs match the latest app receipt.
+App evidence receipt SHA-256:
+`7fa101fe63bd8f9f3b534eb67e90aab715983984b34020311a24b81bddf90190`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| app.runtime.log | `1302dad9d05c41d8003a3b0456f80628fdac0c7c776967c5a993fe4b5c29665d` |
-| lldb.log | `064f80055c63292bbd5c7976112adaa2a42017212f42c697746e85d537abefc1` |
-| peer.runtime.log | `0baba9e7d46e819a64eb1124b76c95cc33a839a4c792a256ae84f4e7d1f8d95c` |
-| session.log | `3a9348b54cd39b7adaf983b36afb026e9ecd802e325fe020fa93af1565c931c5` |
-| session.stdout | `692f04815af26a5e7380ac1672d0ab44f6076eebbcee44cc480b538798034736` |
+| app.runtime.log | `25f34528919eb7e501bd8d619bd3d80f900f24f1a00014b4a3b246dce8b3553e` |
+| lldb.log | `01c72745c66d538a16ba08d46fef85ff095f05ccfe4598c095513ccd0f3e8f38` |
+| peer.runtime.log | `41e451af2d3d7018cc991b3f9461b99d07870f5c8b599a634a45e2414af155df` |
+| session.log | `c3fd42ea55856a2515e31b75dfd1453fbd990e56b4c6dbf2c6622f82f8825869` |
+| session.stdout | `9c88772b679928be5698ee0578f4fa12b264ce1923d294350adef8621c85fa84` |
 
 Firmware identity/URL/IPSW SHA-256 live in sources.lock.json: iPhone7,2 /
 iOS 12.5.7 / 16H81. Apple executables, firmware, cache and cores remain
