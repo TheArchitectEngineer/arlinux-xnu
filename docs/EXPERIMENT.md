@@ -69,14 +69,25 @@ branch table maps 1 to activateEventsOnly:NO, 2 to events-only activation, and
 LLDB log SHA-256 `3dba51aa1a104356c73af7034439529e41e8d926ff33f4ac0726763ee2147ada`
 was verified against its receipt.
 
-Exact pending run: [39408194802](https://github.com/taowen/arlinux-xnu/actions/runs/39408194802),
-source `62b41c913ca690dbf70e033ce417b082453be336`, sends an actual
-UIApplicationSceneTransitionContext with BSMutableSettings object key 7, NSNumber
-value 1 via Foundation-format XPC decoding, on the initial create-scene event.
-Verify genuine context decode, normal activation, _runWithMainScene and actual
-app delegate/window progress. This is a framework lifecycle request, not an
-injected delegate call. Continue this exact run; local observation timeouts do
-not justify restarting it. No GUI acceptance result is available yet.
+[Run 39408194802](https://github.com/taowen/arlinux-xnu/actions/runs/39408194802),
+source `62b41c913ca690dbf70e033ce417b082453be336`, delivers and decodes
+UIApplicationSceneTransitionContext in the genuine create-scene path. UIKit calls
+_lifecycleActionType and selects compatabilityLifecycleMonitorForCanvas:.
+It still waits without _runWithMainScene or ARHELLO_READY. Base-monitor
+activation breakpoints do not hit; this does not prove the subclass received no
+activation. The decoded action's actual return value is not yet observed.
+LLDB log SHA-256 `a7d6df168c54df764a94505c63f9dd39e65cf5cf24228b5734f296ee5393fa4a`
+was verified against its receipt.
+
+Exact pending run: [39408950013](https://github.com/taowen/arlinux-xnu/actions/runs/39408950013),
+source `ac9c62eb4c1d2fce898bd285085b645507a1d165`, resolves concrete monitor
+subclasses from actual factory class globals, captures their activation methods
+and reads _lifecycleActionType/_isMainSceneCanvas at real return instructions.
+It also records actual canvas/context argument classes. All breakpoints are
+installed before running; no callback installs another Python callback or
+executes guest methods. Verify actual action value and chosen monitor before
+changing activation or scene identity. Continue this exact run; local
+observation timeouts do not justify restarting it. No GUI acceptance passes.
 
 Header-only MACH_NOTIFY_SEND_ONCE cancellation is accepted only on outstanding
 reply ports with the exact kernel notification and zero audit identity; it is
