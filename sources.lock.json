@@ -14,6 +14,12 @@
     "commit": "663906528d1cd5ea8fde7de6f16de73db9511549"
   },
   "guestPageSize": 16384,
+  "darlingIpc": {
+    "repository": "VibeDarling/darling",
+    "commit": "47cd6dc7aa0e16596777ad189dddc6e75c3de4ba",
+    "path": "third_party/darling",
+    "role": "Community ARM64 darlingserver build candidate; not yet connected to the app runtime"
+  },
   "guestArchitecture": "arm64",
   "virtualCpus": 1,
   "xnuKernel": {

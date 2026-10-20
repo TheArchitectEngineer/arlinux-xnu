@@ -138,7 +138,7 @@ def report(run_id, job_name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['build', 'status', 'report', 'download'])
-    parser.add_argument('--mode', choices=['both', 'host', 'baseline', 'native', 'dyld', 'app', 'playcover'], default='native')
+    parser.add_argument('--mode', choices=['both', 'host', 'baseline', 'native', 'dyld', 'app', 'playcover', 'darling'], default='native')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--job', help='Exact job name for report; default: all jobs')

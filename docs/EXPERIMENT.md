@@ -7,6 +7,13 @@ Linux/Android. Native ARM64, 16 KiB guest pages and one advertised CPU remain
 fixed. Original XNU boot is a behavioral reference, not an application gate.
 No third-party iOS app, Linux UI or Android integration has passed.
 
+Current integration experiment: `build.sh build --mode darling` builds the
+community ARM64 darlingserver from the parent gitlink in sources.lock.json.
+The thin components/darling adapter consumes upstream CMake targets and their
+MIG/RPC generators. This mode does not run ARHello or replace its local IPC yet.
+Its artifact and receipt establish compiler results only; the next gates are
+real RPC integration, 16 KiB guest semantics and the same UIKit app journey.
+
 Current application: **ARHello 1.0** (`io.arlinux.ARHello`), a programmatic
 UIKit window, label and increment button. Its interfaces/TBD files contain only
 ABI declarations; real implementations come from the selected iOS firmware.

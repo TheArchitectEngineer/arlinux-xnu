@@ -5,10 +5,51 @@ on:
       mode:
         type: choice
         default: native
-        options: [both, host, baseline, native, dyld, app, playcover]
+        options: [both, host, baseline, native, dyld, app, playcover, darling]
 permissions:
   contents: read
 jobs:
+  darling-ipc:
+    if: inputs.mode == 'darling'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare pinned community server sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule update --init third_party/darling
+          git -C third_party/darling submodule update --init src/external/darlingserver src/external/bootstrap_cmds
+          mkdir -p build/darling-evidence
+          cp sources.lock.json build/darling-evidence/
+          git submodule status > build/darling-evidence/sources.txt
+          git -C third_party/darling submodule status src/external/darlingserver src/external/bootstrap_cmds >> build/darling-evidence/sources.txt
+          uname -a > build/darling-evidence/environment.txt
+          getconf PAGE_SIZE >> build/darling-evidence/environment.txt
+      - name: Install native ARM64 server toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 cmake ninja-build bison flex libbsd-dev
+      - name: Build upstream Darling IPC server
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang-18 --version >> build/darling-evidence/environment.txt
+          cmake --version >> build/darling-evidence/environment.txt
+          cmake -S components/darling -B build/darling-compilation -G Ninja -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=RelWithDebInfo 2>&1 | tee build/darling-evidence/configure.log
+          cmake --build build/darling-compilation --target darlingserver --parallel 4 2>&1 | tee build/darling-evidence/build.log
+          cp build/darling-compilation/darlingserver/darlingserver build/darling-evidence/
+          file build/darling-evidence/darlingserver | tee build/darling-evidence/file.txt
+      - name: Record experiment receipt
+        if: always()
+        run: python3 tools/experiment-receipt.py --directory build/darling-evidence --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-arm64-darling-ipc
+          path: build/darling-evidence/
+          retention-days: 30
   host-substrate:
     if: inputs.mode == 'both' || inputs.mode == 'host'
     runs-on: ubuntu-24.04-arm
