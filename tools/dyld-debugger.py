@@ -314,6 +314,54 @@ def resume_bounded(process, seconds=12):
         debugger.SetAsync(asynchronous)
 
 
+def capture_ipc_waits(process):
+    """Read saved Mach arguments and actual queues; never run guest methods."""
+    target = process.GetTarget()
+    endpoints = target.FindFirstGlobalVariable('ipc_endpoints')
+    queues = {}
+    if endpoints.IsValid():
+        fields = ('name', 'kind', 'read_fd', 'packet_fd', 'timer_fd', 'queued',
+                  'send_refs', 'context', 'special_tid', 'timer_deadline')
+        for index in range(min(endpoints.GetNumChildren(), 128)):
+            endpoint = endpoints.GetChildAtIndex(index)
+            if endpoint.GetChildMemberWithName('used').GetValueAsUnsigned() != 2:
+                continue
+            record = {}
+            for field in fields:
+                value = endpoint.GetChildMemberWithName(field)
+                if not value.IsValid() or value.GetError().Fail():
+                    record[field] = None
+                else:
+                    record[field] = value.GetValueAsSigned() if field.endswith('_fd') else value.GetValueAsUnsigned()
+            queues[record['name']] = record
+    objects = GuestObjects(process)
+    for thread in process:
+        for frame in thread:
+            if 'ipc_message' not in (frame.GetFunctionName() or ''):
+                continue
+            record = {'tid': thread.GetThreadID(), 'framePC': hex(frame.GetPC())}
+            try:
+                pointer = frame.FindVariable('r')
+                if not pointer.IsValid() or pointer.GetError().Fail() or not pointer.GetValue():
+                    raise ValueError('Saved Mach arguments unavailable in this optimized frame')
+                registers = struct.unpack('<7Q', objects.read(pointer.GetValueAsUnsigned(), 56))
+                record.update({'buffer': hex(registers[0]), 'options': hex(registers[1]),
+                               'sendBytes': registers[2], 'receiveBytes': registers[3],
+                               'receiveName': registers[4], 'timeoutMilliseconds': registers[5],
+                               'notify': registers[6], 'queue': queues.get(registers[4])})
+                try:
+                    header = struct.unpack('<5Ii', objects.read(registers[0], 24))
+                    record['bufferHeader'] = dict(zip(('bits', 'size', 'remote', 'local', 'voucher', 'id'), header))
+                except (ValueError, SystemError) as error:
+                    record['headerReadError'] = str(error)
+                print('IPC_WAIT ' + json.dumps(record), flush=True)
+            except (ValueError, SystemError) as error:
+                record['error'] = str(error)
+                print('IPC_WAIT_DECODE_ERROR ' + json.dumps(record), flush=True)
+            break
+    print('IPC_QUEUE_SNAPSHOT ' + json.dumps(list(queues.values())), flush=True)
+
+
 def capture_normal_fault(target):
     """The ordinary attempt and LLDB retry can fail on different threads."""
     path = Path('build/dyld/app.runtime.log')
