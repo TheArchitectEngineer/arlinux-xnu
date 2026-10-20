@@ -24,6 +24,26 @@ int mach_port_addref(mach_port_t port,mach_port_right_t right)
 int fileport_makeport(int fd,mach_port_t *port)
 { (void)fd; (void)port; return D_ENOTSUP; }
 
+static void session_validate_port_descriptors(const mach_msg_header_t *header,size_t length)
+{
+    if (!(header->msgh_bits&MACH_MSGH_BITS_COMPLEX)) return;
+    if (length<sizeof(*header)+sizeof(mach_msg_body_t)) abort();
+    uint32_t count;memcpy(&count,(const unsigned char *)header+sizeof(*header),sizeof(count));
+    size_t offset=sizeof(*header)+sizeof(mach_msg_body_t);
+    if (count>(length-offset)/sizeof(mach_msg_port_descriptor_t)) abort();
+    for (uint32_t i=0;i<count;i++,offset+=sizeof(mach_msg_port_descriptor_t)) {
+        mach_msg_port_descriptor_t descriptor;
+        memcpy(&descriptor,(const unsigned char *)header+offset,sizeof(descriptor));
+        fprintf(stderr,"XPC_PORT_DESCRIPTOR index=%u type=%u disposition=%u port=%u\n",
+            i,descriptor.type,descriptor.disposition,descriptor.name);
+        if (descriptor.type!=MACH_MSG_PORT_DESCRIPTOR ||
+            (descriptor.disposition!=D_MACH_TYPE_MOVE_SEND &&
+             descriptor.disposition!=D_MACH_TYPE_MOVE_SEND_ONCE)) {
+            fprintf(stderr,"XPC_DESCRIPTOR_UNSUPPORTED\n");abort();
+        }
+    }
+}
+
 int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
 {
     mach_msg_header_t *header=request;
@@ -32,10 +52,11 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     /* The selected upstream decoder ignores OOL descriptors. Do not silently
      * pass them through it. Its fatal malformed-input behavior remains visible
      * for this trusted-firmware experiment; arbitrary peers are unsupported. */
-    if ((header->msgh_bits&MACH_MSGH_BITS_COMPLEX) || header->msgh_size<32) {
+    if (header->msgh_size<32) {
         fprintf(stderr,"BOOTSTRAP_XPC_UNSUPPORTED bits=%x size=%u\n",header->msgh_bits,header->msgh_size);
         abort();
     }
+    session_validate_port_descriptors(header,header->msgh_size);
     spc_message_t *message=spc_deserialize(request);
     if (!message) { fprintf(stderr,"BOOTSTRAP_XPC_INVALID\n"); abort(); }
     uint64_t subsystem=spc_dictionary_get_uint64(message->content,"subsystem");
@@ -51,6 +72,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U) {
         /* Unknown interface routines keep the actual unsupported response. */
         fprintf(stderr,"BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=%x bytes=%u\n",header->msgh_id,header->msgh_size);
+        fprintf(stdout,"BOOTSTRAP_XPC_UNIMPLEMENTED_DICTIONARY id=%x\n",header->msgh_id);
+        spc_dump(message->content);fflush(stdout);
         spc_message_destroy(message);return 0;
     }
     int error=D_ENOTSUP;
@@ -316,22 +339,7 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
     if (length<32 || header->msgh_id!=((launch_reply || scene_reply) ? 0x20000000 : 0x10000000)) {
         fprintf(stderr,"PROCESSINFO_MESSAGE_UNSUPPORTED\n"); abort();
     }
-    if (header->msgh_bits&MACH_MSGH_BITS_COMPLEX) {
-        uint32_t count; memcpy(&count,(unsigned char *)request+sizeof(*header),sizeof(count));
-        size_t offset=sizeof(*header)+sizeof(mach_msg_body_t);
-        if (count>(length-offset)/sizeof(mach_msg_port_descriptor_t)) abort();
-        for (uint32_t i=0;i<count;i++,offset+=sizeof(mach_msg_port_descriptor_t)) {
-            mach_msg_port_descriptor_t descriptor;
-            memcpy(&descriptor,(unsigned char *)request+offset,sizeof(descriptor));
-            fprintf(stderr,"PROCESSINFO_DESCRIPTOR index=%u type=%u disposition=%u port=%u\n",
-                i,descriptor.type,descriptor.disposition,descriptor.name);
-            if (descriptor.type!=MACH_MSG_PORT_DESCRIPTOR ||
-                (descriptor.disposition!=D_MACH_TYPE_MOVE_SEND &&
-                 descriptor.disposition!=D_MACH_TYPE_MOVE_SEND_ONCE)) {
-                fprintf(stderr,"PROCESSINFO_DESCRIPTOR_UNSUPPORTED\n"); abort();
-            }
-        }
-    }
+    session_validate_port_descriptors(header,length);
     spc_message_t *message=spc_deserialize(request);
     if (!message) abort();
     if (peer->service==D_SESSION_HIDFOCUS) {

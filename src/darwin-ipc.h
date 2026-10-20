@@ -642,7 +642,7 @@ void *darwin_native_service_run(void *unused)
             continue;
         }
         if (
-            (header->bits&D_MACH_MSG_COMPLEX) || header->voucher ||
+            ((header->bits&D_MACH_MSG_COMPLEX) && header->local!=native_bootstrap_port) || header->voucher ||
             (header->bits&255)!=D_MACH_TYPE_MOVE_SEND_ONCE || header->id>INT32_MAX-D_MIG_REPLY_ID_OFFSET) {
             const char marker[]="DARLING_UNSUPPORTED_SERVICE port/id/bytes/bits/voucher/descriptors follows\n";
             RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);

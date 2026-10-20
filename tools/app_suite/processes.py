@@ -36,7 +36,10 @@ class Processes:
         return matches
 
     def guard(self):
-        if identity(self.session['pid']) != self.session:
+        try:session_identity=identity(self.session['pid'])
+        except OSError as error:
+            raise RuntimeError(f'Shared compatibility session {self.session["pid"]} exited; inspect its retained session.log') from error
+        if session_identity != self.session:
             raise RuntimeError('Shared compatibility session identity changed')
         for name, item in self.processes.items():
             if item.get('faultObserved'):
@@ -124,6 +127,10 @@ class Processes:
                            '__xpc_pipe_interface_routine','_xpc_pipe_routine_reply',
                            '__xpc_pipe_pack_message','__xpc_pipe_unpack_message']:
                 arguments.extend(['--lookup','/usr/lib/system/libxpc.dylib',symbol])
+            for framework in ['BaseBoard','BoardServices']:
+                arguments.extend(['--list-symbols',f'/System/Library/PrivateFrameworks/{framework}.framework/{framework}','BSXPC'])
+            arguments.extend(['--list-symbols','/usr/lib/system/libxpc.dylib','service_port'])
+            arguments.extend(['--lookup','/usr/lib/system/libxpc.dylib','_xpc_set_event_stream_handler'])
             result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
             runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
             if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))

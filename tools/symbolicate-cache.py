@@ -14,6 +14,7 @@ parser.add_argument('trace',type=Path)
 parser.add_argument('output',type=Path)
 parser.add_argument('--lookup',action='append',nargs=2,default=[],metavar=('IMAGE','SYMBOL'))
 parser.add_argument('--bootstrap-context',action='store_true')
+parser.add_argument('--list-symbols',action='append',nargs=2,default=[],metavar=('IMAGE','FRAGMENT'))
 args=parser.parse_args()
 trace=args.trace.read_text(errors='replace')
 patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT)_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
@@ -54,10 +55,15 @@ with CacheSymbols(args.cache) as cache:
         ranges=image['executable']
         matches=[pc for pc in frames if any(base<=lookup_pc(pc)<base+size for base,size in ranges)]
         requested={name for path,name in args.lookup if path==image['name']}
-        if not matches and not requested:continue
+        queries=[fragment for path,fragment in args.list_symbols if path==image['name']]
+        if not matches and not requested and not queries:continue
+        actual_symbols=list(cache.symbols(image))
+        for query in queries:
+            found=[{'address':hex(value),'symbol':name} for value,name in actual_symbols if query.lower() in name.lower()]
+            records.append({'image':image['name'],'symbolsMatching':query,'count':len(found),'truncated':len(found)>256,'matches':found[:256]})
         symbols=[]
         requested_addresses=[]
-        for value,name in cache.symbols(image):
+        for value,name in actual_symbols:
             if name in requested:
                 record={'image':image['name'],'symbol':name,'address':hex(value)}
                 if record not in records:records.append(record)

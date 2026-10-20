@@ -29,7 +29,7 @@ changed genuine UIKit text and the composed label-region hash; close/relaunch
 returned to the original hash. Its receipt and relied-upon screenshots/result
 hashes were verified. This is a behavior reference, not Linux acceptance.
 
-## Latest verified Linux result
+## Verified Linux baseline
 
 Run [39490481773](https://github.com/taowen/arlinux-xnu/actions/runs/39490481773),
 source **6d4073c499db534a2f08d49e1fa1777c42aadf44**, selected Console, Counter,
@@ -75,15 +75,34 @@ and all 43 retained files. The actual __xpc_pipe_pack_message selects packed
 dictionary. The private interface routine itself tail-branches to its next
 named implementation; diagnostics now follow bounded named tail calls too.
 
-The current change routes measured packed lookup 0x324 through existing real
-service/rights ownership, using that verified reply framing and the original
-requester audit echo. Type-7/0x200 lookups are limited to actual registered
-session-provider endpoints; arbitrary dynamic registrations and unknown flags
-remain unsupported. No extra credential or successful scene is invented.
-Runtime confirmation requires an actual accepted client connection and the
-subsequent launch/scene effects. The initial empty request 0x40000388 remains
-unsupported. Console/Foundation and failed UIKit journeys must be rerun on this
-exact source before the change can be considered effective.
+Source d91d76f routes measured packed lookup 0x324 through existing real
+service/rights ownership with verified reply framing and original requester
+audit echo. Type-7/0x200 lookups are limited to actual session-provider endpoints;
+arbitrary dynamic registrations and unknown flags remain unsupported.
+Run [39492462364](https://github.com/taowen/arlinux-xnu/actions/runs/39492462364),
+source **d91d76f0a2b449486de6b7141cd013feac3b5163**, verified receipt
+**6cf3676cbb6ee380ef0b68a683a98616d576bc7629ced55dbd134124a14b0b6e**
+and all 39 retained files. The actual client accepted the bootstrap reply,
+checked in and exchanged two real systemappservices requests. Console and
+Foundation still pass; UIKit fails and no GUI/lifecycle acceptance is claimed.
+
+Those requests use a BSXPC connect envelope, including client context for
+com.apple.uis.applicationSupportService. Existing plain-XPC service handling
+returns unsupported; connection semantics are still to be implemented from the
+actual decoder. A subsequent packed bootstrap request 0x400002c8 contains one
+received send right and a dictionary with service-port. The generic dispatch
+misclassifies that complex bootstrap message as an unsupported display request,
+then exits the provider. The app also records a worker BRK at _start_wqthread
+after __pthread_wqthread returns; do not assume causality from coincidence.
+
+The current fix routes CPX5 bootstrap port descriptors to the actual XPC decoder,
+sharing the existing port-only descriptor validation and retaining unsupported
+routine failures. Received dictionary rights are released normally. It does not
+invent service-port registration or BSXPC connect success. Bounded symbol-name
+collection from actual BaseBoard/BoardServices and libxpc will locate the real
+connect decoder/registration caller without repeated guessed selector lookups.
+The harness reports a dead provider explicitly rather than an opaque /proc/exe
+error. Rerun exact source and continue from the original process evidence.
 
 ## Evidence limits
 
