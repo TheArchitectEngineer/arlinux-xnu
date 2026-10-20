@@ -3,8 +3,9 @@
 The acceptance unit is a named, versioned, independently built app. Each directory
 under apps owns app.json, its real sources and journeys.json. The files declare
 build inputs and user effects, never implementation-presence checklists. All
-ordinary apps compile against Apple's actual SDK; implementation comes from the
-pinned firmware. apps/shared/Screen.h is fixture UI layout, never a runtime shim.
+ordinary apps compile against Apple's actual SDK. The runtime combines selected
+pinned Apple userland with production Linux-backed adapters and replacements.
+apps/shared/Screen.h is fixture UI layout, never a runtime shim.
 
 | App | Stack / actual behavior | Required end-to-end result |
 | --- | --- | --- |

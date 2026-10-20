@@ -21,6 +21,63 @@ remain an observable failure, and each replacement must run real app journeys.
 
 ## Ownership and interfaces
 
+### Selective userland reuse
+
+The compatibility boundary follows application effects, not the boundary of an
+unchanged Apple binary. Preserve complex shared semantics when that saves work;
+replace platform dependencies when reproducing their Apple implementation would
+cost more. A whole framework need not be retained or replaced as one unit.
+
+| Capability | Preferred implementation | Required observable effect |
+| --- | --- | --- |
+| Objective-C/Swift, Foundation objects and serialization | Original userland where usable | Real language/object behavior across independent apps |
+| UIKit controls, layout and text | Original UIKit and reusable text/graphics code | Actual views, hit testing, layout and changed app state |
+| QuartzCore/CoreGraphics output | Reuse usable drawing; adapt or replace platform/compositor parts | Real app content submitted to the host surface |
+| Window, focus, keyboard, pointer/touch | Wayland backend with a guest input bridge | Host input reaches the real UIKit event path |
+| Application launch, activation, scenes and termination | An owned Linux-backed lifecycle adapter | Coherent scene state and real normal close/relaunch |
+| Memory, threads, files, network and Mach transport | Linux operations plus shared Darling/XNU semantics | Actual storage, synchronization, communication and process isolation |
+| Private services and device/privilege policy | Only required behavior; replace expensive dependencies | App-visible effects; no requirement to recreate SpringBoard/launchd wholesale |
+| Web content | Evaluate original WebKit reuse and a host-backed engine boundary | Real navigation, scripting and embedding; neither path is implemented by this decision |
+
+Wayland does not implement UIKit scenes, event delivery, text layout, CoreGraphics
+or Metal. The adapter must bridge those responsibilities explicitly. Retaining
+original QuartzCore does not imply that its Apple GPU/compositor backend works.
+The present software layer renderer is a starting point, not completed graphics
+compatibility.
+
+### Lifecycle boundary and next implementation
+
+The previous implementation encoded legacy FrontBoard launch/scene events in
+native-xpc.c and ios-scene-codec.c. That path did not complete UIKit launch on
+the selected iOS 16 input and has been removed, including its reply state and
+workspace registration. The service endpoints still record authenticated
+requests and return unsupported operation errors. They are not a lifecycle API.
+
+Introduce a lifecycle contract owned by the session and consumed by the guest
+platform adapter: create/configure a scene using actual host geometry, activate
+or deactivate it on real focus changes, and request normal termination on host
+close. Each event belongs to a specific process incarnation and scene; queued
+events, acknowledgements and cleanup must agree across process exit/relaunch.
+Rendering and input remain separate consumers of the same scene identity and
+geometry. The contract is a design target, not an implemented API.
+
+Use the existing injected platform library as the adaptation seam. Inspect the
+real UIKit/FrontBoard startup path to choose the narrowest framework-facing
+lifecycle entry points. Adapting or replacing a dependency-heavy framework
+component at that seam is allowed. Do not drive the app delegate/control actions
+from the test harness, force a readiness flag, or suppress a wait without owning
+the state transition it represents. A direct delegate call alone would omit
+scene/event-loop setup and would not implement launch.
+
+Keep the existing Mach/bootstrap support for genuine consumers. Add private
+wire support only when it is a small, reusable part of this contract; do not
+build a parallel service hierarchy solely to preserve an internal wire format.
+The removed legacy path had no passing GUI journey. Preserve verified shared
+transport/runtime behavior while implementing the replacement.
+First prove launch, external input and close/relaunch with Counter, then run
+Swift/UIKit and the independent app collection against the same adapter. An
+app-specific exception is evidence to revisit the boundary, not a new policy.
+
 | Owner | Responsibility | Must not own |
 | --- | --- | --- |
 | macho-native / native-launch.h | Explicit console/application/service role; image loading, guest stack, session join | Guessing GUI role from inherited environment |
@@ -28,8 +85,7 @@ remain an observable failure, and each replacement must run real app journeys.
 | ios-framework-api.h / ios-framework-bindings.h | One linkage contract; function/data imports, actual mapping permissions | Capability claims based on found symbols |
 | darwin-native runtime | Darwin carry/errno, memory, threads, synchronization, raw Linux transport | Host libc calls after guest TLS takes over |
 | components/darling | Shared Mach core and genuine cross-task ports/messages/VM operations | A second competing port-ownership implementation |
-| native-xpc.c | Audited peer identity/incarnation, registered displays, service state and delivery | UIKit calls or encoding-dependent display defaults |
-| ios-scene-codec.c | Selected framework's wire serialization from supplied geometry | Registry lookup, process state, port ownership or IPC |
+| native-xpc.c | Audited peer identity/incarnation, registered displays, bootstrap and required service transport | UIKit policy or legacy FrontBoard lifecycle emulation |
 | ios-platform.c / ios-platform-abi.h | Real dyld library constructor and versioned private platform attachment | Bootstrap lookup side effects or calling frameworks from syscall signals |
 | darwin-ui.h | Per-process UIKit/CG state; real main-loop layer rendering | Replacing app views or synthesizing control callbacks |
 | native-display.h | Host-TLS Wayland child; surface, shared buffers and release events | Guest UIKit/libc calls |
@@ -44,7 +100,8 @@ actual PID/incarnation; display liveness is a separate concern. The application
 role requires a configured Wayland display. Console diagnostics remain explicit.
 
 The shared session links libarlinux_mach_core.so into its own process and owns
-bootstrap/FrontBoard state. Each app has its own Linux address space, guest TLS,
+bootstrap, peer and display-registration state. Lifecycle ownership will use
+this session, but its host-backed contract is not implemented yet. Each app has its own Linux address space, guest TLS,
 threads, renderer and Wayland child. Rights/messages use Darling/XNU across real
 processes. A virtual PID 1 is not invented. Full task-right/PID verification,
 helper launch policy and crash resource cleanup remain unfinished.
@@ -100,7 +157,8 @@ supported private ABI; no claim of arbitrary iOS version support is made.
 - Establish application data-container ownership and writable guest filesystem
   semantics. A fresh harness working directory alone does not implement a guest
   container; the persistence journey is currently blocked before exercising it.
-- Complete real Wayland input and normal close propagation through the guest main
+- Implement the host-backed lifecycle contract above, then complete real Wayland
+  input and normal close propagation through the guest main
   loop. The existing HID focus endpoint only supports discovery; actual operations
   fail explicitly. It is not implemented focus/input.
 - Finish and validate the software renderer on the current iOS 16 input. Earlier

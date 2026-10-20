@@ -1,5 +1,6 @@
 """Deterministic external input, structured UIKit state and composed pixel checks.
-No OCR, image matching model, injected action or replacement framework.
+No OCR, image matching model or injected app action.
+Production framework adaptation is allowed; the harness supplies no substitute.
 """
 import json
 import re

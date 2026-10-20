@@ -1,159 +1,96 @@
-# Current evidence and goal
+# Current evidence and next boundary
 
-Run a basic real UIKit app on Linux ARM64 with iPhone 8/A11 iOS 16.7.16:
-visible content, actual input, changed state and pixels, normal exit and fresh
-relaunch. Console, Foundation and Swift/UIKit are independent regression layers.
-No OCR, AI recognition, replacement framework or fabricated success is used.
+## Goal and fixed input
+
+Run a basic UIKit app on Linux ARM64 with visible content, external input,
+changed state and pixels, normal close and a fresh interactive relaunch.
+Console, Foundation and Swift/UIKit are independent regression layers. No OCR,
+AI recognition or fabricated success is used. Selective framework adaptation
+and replacement are allowed under the [architecture](ARCHITECTURE.md).
 No complete Linux GUI, third-party IPA or Android acceptance has passed.
 
-## Fixed input and acceptance
-
-sources.lock.json pins iPhone10,1, build 20H392, 6,035,280,776 bytes, SHA-256
+sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16, build 20H392,
+6,035,280,776 bytes, SHA-256
 601cb23e740dacf8b61271fe02ffd5b3c146b518abb5a6e6b286e5f0475fe43b.
-Runner validation checks actual download bytes, BuildManifest and mounted system
-version. Real OS and Cryptex1,SystemOS volumes form the read-only filesystem.
-Apple executable data stays runner-local; retained downloads are text,
-screenshots and owned products.
+Real OS and Cryptex1,SystemOS volumes form the read-only filesystem. Apple
+executable data stays runner-local. Compilation/execution use hosted runners
+through build.sh. The collection has 11 source-owned apps, 13 short journeys
+and two cross-app scenarios; a selected subset cannot certify the whole suite.
 
-The collection has 11 source-owned apps, 13 short journeys and two cross-app
-scenarios. Xcode 16.4's real SDK cross-compiles ARM64 apps on a hosted Intel Mac;
-Linux execution and optional Apple reference execution remain native ARM64.
-Input products use the exact producer receipt SHA-256 and per-file hashes.
-Read-only UIKit/DOM inspection never invokes actions; GUI acceptance additionally
-requires external input, actual composed pixels and normal lifecycle effects.
+## Latest verified Linux result
 
-Apple reference run [39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593),
-source 31cdc44086cf2acb681b396ec1ba6b06830d84dd, passed Console, Counter,
-Foundation and SwiftCards in 10 seconds (partial collection). Counter input
-changed genuine UIKit text and the composed label-region hash; close/relaunch
-returned to the original hash. Its receipt and relied-upon screenshots/result
-hashes were verified. This is a behavior reference, not Linux acceptance.
-
-## Verified Linux baseline
-
-Run [39490481773](https://github.com/taowen/arlinux-xnu/actions/runs/39490481773),
-source **6d4073c499db534a2f08d49e1fa1777c42aadf44**, selected Console, Counter,
+Run [39497491656](https://github.com/taowen/arlinux-xnu/actions/runs/39497491656),
+source **622442faca9e6c52e1af759a970b1c245ec890d9**, selected Console, Counter,
 Foundation and SwiftCards. Receipt SHA-256
-**9f11b1cf8a9076b21dc557ecb12ed77d213009ffbc023b12d2aa658cdd79f505**
-and all 43 retained file hashes were verified. This is partial Linux coverage.
+**e0d81a326be0b911b124582d6e413ba7a0e371ac611b79b62aef100adbeac3d5**
+and all 43 retained file hashes were verified. This is partial coverage and the
+run fails GUI acceptance.
 
-- Console passes real allocation, computing pthread, external input, normal
-  exit and a fresh relaunch. Foundation passes Unicode JSON, exception unwind,
+- Console passes allocation, a computing pthread, external input, normal exit
+  and fresh relaunch. Foundation passes Unicode JSON, exception unwind,
   NSTimer computation and normal exit.
-- Counter and Swift remain alive after UIApplicationMain but fail structured
-  UI state / actual composed pixels. Counter has no didFinishLaunching marker.
-  Its original main thread waits in GSEventRunModal / CFRunLoopRun. The genuine
-  before-waiting observer is installed; this is not successful GUI startup.
-- The original Atlas::Image::ml crash is repaired. Actual fsgetpath now recovers
-  the cache's guest path from kernel mappings, re-stats device/inode and never
-  fabricates paths for unknown identities. The stopped process's 672-byte
-  compact snapshot records the real shared-cache base, 2705 bitmap bits and
-  only two non-cache images. Both addresses match the real image-info table.
-  Previously the cache was unrecognized: individual image deltas lost low bits
-  in 16K units, saving 0x300758000 for a dylib actually mapped at 0x300984000.
-- Mach port-type/notification traps use the real Darling core. The display
-  service accepts measured message 40232 and returns the decoded complex reply
-  with real Wayland geometry/mode/timing. Receipt and IPC success alone do not
-  establish complete display-property consumption or visible UIKit frames.
+- Counter and Swift/UIKit stay alive but have no accepted UI state or composed
+  pixels. Counter has no didFinishLaunching marker. The original main thread
+  waits in GSEventRunModal / CFRunLoopRun. An installed main-loop observer and
+  live process do not establish launch.
+- Actual Mach/bootstrap traffic reaches com.apple.frontboard.systemappservices.
+  The measured BSXPC channels request com.apple.uis.applicationSupportService
+  with initializeClientWithParameters:completion: and
+  com.apple.frontboard.workspace-service with handshakeWithRemnants:.
+  Those service operations remain unsupported; channel IDs are dynamic.
+- Earlier Atlas/dyld, trampoline loading and libdispatch synchronous-wake faults
+  no longer stop this path. fsgetpath resolves real mapped file identities;
+  CodeDirectory inspection supplies actual coverage without signature trust;
+  repeated synchronous kevent wake preserves real owner updates and wakeups.
+  Actual receipt/rights ownership remains in Darling/XNU, not a mock IPC path.
 
-## Current failed effect and handoff
+## Direction and next implementation
 
-The measured lookup uses packed bootstrap message 0x40000324 for
-com.apple.frontboard.systemappservices: type 7, flags 512, handle and lookup-handle
-zero. Unlike the legacy request, its CPX5 dictionary omits subsystem/routine.
-Packed lookup is now supported as verified below. The initial empty-dictionary
-request 0x40000388 remains unsupported; no launch success is inferred from it.
+Preserve original Apple application semantics where useful; replace platform
+services with Linux-backed behavior. This changes the default next step from
+reconstructing every FrontBoard wire operation to choosing a lifecycle boundary
+in the existing injected platform adapter. No replacement is implemented or
+validated merely by changing this plan.
 
-Run [39491337714](https://github.com/taowen/arlinux-xnu/actions/runs/39491337714),
-source 5b8c67fe0b7d75e09341968af3f0b14a79b452ef, verified receipt
-**154e6d4188118fdcdfa0f69d15aba4392cf920526c6a3bf5ba828fa8309cef51**
-and all 43 retained files. The actual __xpc_pipe_pack_message selects packed
-0x40000000 request IDs and uses 0x20000000 for replies extracted from a reply
-dictionary. The private interface routine itself tail-branches to its next
-named implementation; diagnostics now follow bounded named tail calls too.
+1. Locate the framework-facing startup/scene entry points and their required
+   state using the original app stacks and bounded same-cache diagnostics.
+   Choose a shared lifecycle contract, rather than adding one app's bypass.
+2. Implement real scene creation/configuration, activation and normal close
+   against session-owned process/scene identity and host window state. Keep
+   original UIKit controls/layout; allow replacing dependency-heavy internals.
+3. Route actual Wayland input through the guest event path. Render genuine app
+   content, then prove Counter click/state/pixel change and close/relaunch.
+4. Regress Foundation and Swift/UIKit, then independent app and multi-process
+   journeys. Remove superseded service paths only after the replacement works.
 
-Source d91d76f routes measured packed lookup 0x324 through existing real
-service/rights ownership with verified reply framing and original requester
-audit echo. Type-7/0x200 lookups are limited to actual session-provider endpoints;
-arbitrary dynamic registrations and unknown flags remain unsupported.
-Run [39492462364](https://github.com/taowen/arlinux-xnu/actions/runs/39492462364),
-source **d91d76f0a2b449486de6b7141cd013feac3b5163**, verified receipt
-**6cf3676cbb6ee380ef0b68a683a98616d576bc7629ced55dbd134124a14b0b6e**
-and all 39 retained files. The actual client accepted the bootstrap reply,
-checked in and exchanged two real systemappservices requests. Console and
-Foundation still pass; UIKit fails and no GUI/lifecycle acceptance is claimed.
+Wayland supplies surfaces and host input, not UIKit or a GPU implementation.
+The current software renderer has not completed a UIKit journey on this input.
+Do not call delegate/control actions from the harness, force readiness, or
+report successful service operations without implementing their effects.
 
-Those requests use a BSXPC connect envelope, including client context for
-com.apple.uis.applicationSupportService. Existing plain-XPC service handling
-returns unsupported; connection semantics are still to be implemented from the
-actual decoder. A subsequent packed bootstrap request 0x400002c8 contains one
-received send right and a dictionary with service-port. The generic dispatch
-misclassifies that complex bootstrap message as an unsupported display request,
-then exits the provider. The app also records a worker BRK at _start_wqthread
-after __pthread_wqthread returns; do not assume causality from coincidence.
+## Cleanup after the baseline
 
-Source ad25af3 routes CPX5 bootstrap port descriptors through the real XPC
-decoder and shared port-only descriptor validation. Received dictionary rights
-are released normally; unsupported registration still fails. Run
-[39493707546](https://github.com/taowen/arlinux-xnu/actions/runs/39493707546),
-source ad25af35ddf22b0727f89566eaff7cc678414dfc, verified receipt
-**e2933607a5c6f6487a6dca6181da9de47e54e0c8eb38b68e32269af29119f8af**
-and all 39 retained files. The provider survives that registration request;
-Counter/Swift instead fault with a genuine abort reason: dyld cannot load
-/usr/lib/libobjc-trampolines.dylib because F_ADDFILESIGS_RETURN is unsupported.
-Console and Foundation continue to pass. No GUI or launch success is claimed.
+The legacy FrontBoard launch/scene serializer, workspace registration and
+launch/scene reply state have been deleted, together with their build inputs.
+Automatic BSXPC symbol enumeration and fixed protocol-disassembly requests were
+removed from every failed-app diagnosis. General same-cache symbolication and
+original-process stack collection remain available, including explicit targeted
+lookups when a diagnosis needs them. The runtime no longer emits the old codec
+class-export diagnostics. This cleanup does not implement host-backed lifecycle.
 
-Source 1f76f14 reads the real embedded CodeDirectory and returns its bounded,
-page-rounded coverage for F_ADDFILESIGS_RETURN. It does not authenticate Apple
-signatures or mark code CS_VALID/platform; unknown formats/scatter still fail.
-Run [39494946848](https://github.com/taowen/arlinux-xnu/actions/runs/39494946848),
-source **1f76f14a7804fc478cf1d2efc40537e66987e8ae**, verified receipt
-**7103ca7759c43963f0cb015f1181ce72178754f4175df480989f255ac8b802ff**
-and all 39 retained files. Actual coverage is 0xd000 for signature offset 0xc110;
-dyld logs and kernel mappings prove the real libobjc-trampolines.dylib loaded.
-The previous abort is gone. Console/Foundation still pass; UIKit still fails.
+The run above precedes this cleanup; it is not validation of the modified code.
 
-The original next fault is libdispatch's "Unexpected error from kevent".
-SYNC_WAKE|DISCOVER_OWNER (0x88) on an already-woken synchronous knote returns
-EALREADY from our early check. XNU filt_wltouch permits this update and still
-runs debounce/owner discovery; EALREADY is for a second THREAD_REQUEST attach.
-Source ac090af removes only that incorrect synchronous-wake rejection,
-retaining real owner updates and futex wake behavior. Run
-[39496003883](https://github.com/taowen/arlinux-xnu/actions/runs/39496003883),
-source ac090af0e9d0bc85c8689e6d9e564d5d9e53a97d, verified receipt
-**0bf27e59dcecd9a669eddb843955caa97860e0e2fc887dce5a742c042ddbb642**
-and all 39 retained files. The original EALREADY/libdispatch failure no longer
-stops this path. The client sends another real systemappservices request with
-ID 0x40000000; the peer entry rejects it and aborts the provider. Console and
-Foundation still pass; UIKit acceptance remains failed.
+## Evidence and reference limits
 
-The current change accepts that measured routine-0 CPX5 request envelope on an
-established authenticated connection. It retains operation errors and actual
-reply/rights ownership; no BSXPC connect success is fabricated. Decode the next
-actual dictionary to establish the service operation.
+Apple reference run
+[39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593),
+source 31cdc44086cf2acb681b396ec1ba6b06830d84dd, passed Console, Counter,
+Foundation and SwiftCards (partial collection). Counter's genuine UIKit text
+and composed label-region hash changed after external input; close/relaunch
+restored the initial hash. The relied-upon receipt and file hashes were verified.
+This is an Apple-host behavior reference, not Linux or Android acceptance.
 
-BSXPC diagnostics now preserve the requested real method instead of a
-same-address <redacted> alias, exposing the real activation encoder. The activation
-receiver's method symbol is stripped, though its block helper is named. A bounded
-read-only class_ro.baseMethods reader now resolves the exact instance IMP using
-Apple's declared absolute/relative method lists and selector-base metadata.
-Unknown layouts produce a diagnostic limitation. Only requested names/addresses
-and bounded decoded instructions are retained; no guest call is injected.
-
-## Evidence limits
-
-Same-cache diagnostics read declared slide metadata, bounded decoded
-instructions, original heap metadata and actual Mach requests. They do not
-execute injected guest calls or export Apple executable bytes. A collected stack,
-received message or running process cannot replace app-visible effects.
-
-Earlier removal of bootstrap lookup's in-app QuartzCore server-start side
-effect simplified ownership but did not fix the abort. The later port-type
-repair has actual runtime evidence. Nearest symbols beside stripped functions
-are context, not proof of call ownership. The cfprefsd assertion is not disabled;
-its causal role remains unproven. Historical runs and receipts remain in Git
-and Actions rather than an accumulating experiment diary.
-
-Completion still requires visible Counter pixels, external click/state/pixel
-change, normal close and a fresh interactive relaunch, with Foundation and Swift
-regressions. No complete Linux GUI or Android acceptance has passed.
+Original-process stacks, bounded metadata/instruction diagnostics and actual
+Mach traffic explain failures; they do not constitute working app effects.
+Historical protocol investigations and receipts remain in Git/Actions instead
+of an accumulating diary.

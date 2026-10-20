@@ -26,7 +26,7 @@ enum darwin_session_service { D_SESSION_PROCESSINFO, D_SESSION_WORKSPACE,
 #define D_SESSION_SYSTEMAPP_NAME "com.apple.frontboard.systemappservices"
 #define D_SESSION_HIDFOCUS_NAME "com.apple.backboard.hid.focus"
 int arlinux_xpc_session(void *request,unsigned long length,void *response,unsigned long capacity,const uint32_t *listeners,uint32_t set,const uint32_t *audit);
-void arlinux_xpc_session_tick(uint32_t set);
+void arlinux_xpc_session_tick(void);
 /* Private native display registration, delivered over real audited Mach IPC. */
 /* One registered virtual Wayland display, independent of device model. */
 #define D_WAYLAND_MAIN_DISPLAY_ID 1

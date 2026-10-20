@@ -6,6 +6,13 @@ has passed on Linux/Android yet.** XNU, dyld and iOS userland may be
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.
 
+The implementation boundary is selective reuse: retain Apple's complex app
+semantics in UIKit, Foundation and reusable graphics/language runtimes; replace
+platform dependencies with Linux-backed lifecycle, storage, display and input.
+Wayland is the window/input backend, not a replacement for UIKit controls.
+Dependency-heavy framework internals may be adapted or replaced behind explicit
+interfaces; reproducing the entire Apple service ecosystem is not the goal.
+
 The source-owned [app collection](docs/APPS.md) drives development. Each small app
 owns its sources, build declaration and short journeys. There is no all-purpose
 workbench, freestanding syscall probe, alternate IPC backend selector or separate

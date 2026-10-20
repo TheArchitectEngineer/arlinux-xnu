@@ -618,7 +618,7 @@ void *darwin_native_service_run(void *unused)
     }
     unsigned int traces=0;
     for (;;) {
-        if (native_session_manager) arlinux_xpc_session_tick(set);
+        if (native_session_manager) arlinux_xpc_session_tick();
         unsigned char request[IPC_BYTES+256]; uint32_t response[IPC_BYTES/4];
         int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_RCV_MSG|(3U<<24)|
             (native_session_manager ? D_MACH_RCV_TIMEOUT : 0),0,sizeof(request),set,100,0,NULL);

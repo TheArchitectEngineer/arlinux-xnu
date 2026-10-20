@@ -6,6 +6,12 @@ See README for commands and APPS.md for acceptance. The default build runs the
 independent app collection, not a timeout/readiness check. Compilation and guest execution
 remain on hosted runners, never WSL or the workstation.
 
+The default failure collection symbolizes original stacks and records the live
+process. Do not attach a standing catalogue of private-service symbol dumps to
+every failure. Use explicit targeted cache lookups only for the current failed
+effect. Production framework adaptation is allowed; the diagnostic harness must
+remain read-only with respect to app/framework behavior.
+
 ## Start with the effect that failed
 
 | Question | Authoritative evidence | Limit |

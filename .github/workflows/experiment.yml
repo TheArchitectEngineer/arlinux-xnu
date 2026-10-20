@@ -122,7 +122,6 @@ jobs:
           spc_objects+=("build/native/spc-$source.o")
         done
         ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/native-xpc.c -o build/native/native-xpc.o
-        ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/ios-scene-codec.c -o build/native/ios-scene-codec.o
         cp third_party/libspc/LICENSE build/native/libspc-LICENSE
         rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include)
         cp build/darling-ipc/libarlinux_mach_core.so build/native/
@@ -133,7 +132,7 @@ jobs:
         wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
         ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native "${rpc_flags[@]}" -c src/macho-native.c -o build/native/macho-native.o
         ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native -c build/native/xdg-shell-protocol.c -o build/native/xdg-shell-protocol.o
-        cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o build/native/ios-scene-codec.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
+        cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
     - uses: actions/download-artifact@v4
       with:
         name: ios-app-inputs
