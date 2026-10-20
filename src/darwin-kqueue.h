@@ -317,7 +317,29 @@ static long native_kqueue_changes(struct native_kqueue *queue,uint64_t changes,u
     }
     return emitted;
 }
-static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,unsigned int capacity,int timeout)
+struct native_kevent_data {
+    uint64_t address,remaining,initial,available; int stack;
+};
+/* XNU kevent_get/put_data_size: both pointers enable the LP64 input capacity;
+ * write back the residual only when a filter actually used some space. */
+static long native_kevent_data_init(struct native_kevent_data *data,
+                                    const unsigned long long *r,unsigned long flags)
+{
+    *data=(struct native_kevent_data){.stack=!!(flags&D_KEVENT_STACK_DATA)};
+    if (!r[5] || !r[6]) return 0;
+    if (guest_copy(&data->remaining,r[6],sizeof(data->remaining),0)) return -EFAULT;
+    if (data->remaining>UINT64_MAX-r[5]) return -EINVAL;
+    data->initial=data->remaining; data->address=r[5]; data->available=r[6];
+    return 0;
+}
+static long native_kevent_data_finish(struct native_kevent_data *data,long result)
+{
+    if (data->available && data->remaining!=data->initial &&
+        guest_copy(&data->remaining,data->available,sizeof(data->remaining),1)) return -EFAULT;
+    return result;
+}
+static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,unsigned int capacity,int timeout,
+                                  struct native_kevent_data *data)
 {
     if (!capacity) return 0;
     if (capacity>D_KQUEUE_BATCH) capacity=D_KQUEUE_BATCH;
@@ -359,12 +381,37 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
                     unsigned long message_size=0,total_size=0;
                     unsigned long status=D_KERN_SUCCESS;
                     if (size>=0 && (event.fflags&D_MACH_RCV_MSG)) {
-                        status=ipc_receive_locked(endpoint,event.ext[0],event.ext[1],event.fflags,
-                                                   &message_size,&total_size);
+                        unsigned long options=event.fflags;
+                        uint64_t address=event.ext[0],bytes=event.ext[1];
+                        int carved=!bytes;
+                        if (carved) {
+                            options|=D_MACH_RCV_LARGE|D_MACH_RCV_LARGE_IDENTITY;
+                            /* Probe under the same queue lock to obtain the
+                             * real message+trailer size without consuming it. */
+                            status=ipc_receive_locked(endpoint,0,0,options,&message_size,&total_size);
+                            address=data ? data->address+(data->stack ? data->remaining : 0) : 0;
+                            if (status==D_MACH_RCV_TOO_LARGE && data && data->address && total_size<=data->remaining) {
+                                address=data->address+(data->stack ? data->remaining-total_size : 0);
+                                bytes=data->remaining>UINT32_MAX ? UINT32_MAX : data->remaining;
+                            }
+                        }
+                        if (!carved || bytes) status=ipc_receive_locked(endpoint,address,bytes,options,
+                            &message_size,&total_size);
+                        if (carved) {
+                            event.ext[0]=address;
+                            if (!status) {
+                                data->remaining-=total_size;
+                                if (!data->stack) data->address+=total_size;
+                                const char label[]="DARWIN_KEVENT_BUFFER_DELIVERY port/address/bytes/remaining follows\n";
+                                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                                trace_call(0,0,endpoint->name); trace_call(1,0,address);
+                                trace_call(2,0,total_size); trace_call(3,0,data->remaining);
+                            }
+                        }
                         event.ext[1]=status==D_MACH_RCV_TOO_LARGE ? message_size :
                             status ? 0 : total_size;
                         event.data=(status==D_MACH_RCV_TOO_LARGE &&
-                            (event.fflags&D_MACH_RCV_LARGE_IDENTITY)) ? endpoint->name : 0;
+                            (options&D_MACH_RCV_LARGE_IDENTITY)) ? endpoint->name : 0;
                         event.fflags=status;
                     } else if (size>=0) { event.fflags=0; event.data=endpoint->name; }
                     ipc_queue_unlock(endpoint);
@@ -426,6 +473,15 @@ static uint64_t native_event_buffer(struct native_thread *thread)
 {
     return thread->pthread-D_GUEST_PAGE_SIZE+D_KQUEUE_BUFFER_OFFSET;
 }
+static long native_event_collect(struct native_kqueue *queue,struct native_thread *thread,uint64_t buffer)
+{
+    /* The allocated page below pthread contains the event array followed by
+     * actual Mach message storage. It stays alive until this worker returns. */
+    uint64_t address=native_event_buffer(thread)+D_KQUEUE_BATCH*sizeof(struct darwin_kevent_qos);
+    if (address>thread->pthread) return -EINVAL;
+    struct native_kevent_data data={.address=address,.remaining=thread->pthread-address,.stack=1};
+    return native_kqueue_collect(queue,buffer,D_KQUEUE_BATCH,-1,&data);
+}
 static __attribute__((noreturn)) void native_event_worker_start(struct native_thread *thread)
 {
     struct native_kqueue *queue=native_kqueue_find(thread->event_queue);
@@ -437,7 +493,7 @@ static __attribute__((noreturn)) void native_event_worker_start(struct native_th
         __atomic_store_n(&queue->owner_tid,thread->tid,__ATOMIC_RELEASE);
     }
     long count;
-    do { count=queue ? native_kqueue_collect(queue,buffer,D_KQUEUE_BATCH,-1) : -EBADF; } while (count==-EINTR);
+    do { count=queue ? native_event_collect(queue,thread,buffer) : -EBADF; } while (count==-EINTR);
     if (count<=0) { RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0); __builtin_unreachable(); }
     const char label[]="DARWIN_EVENT_DELIVERY queue-id/count/tid follows\n";
     RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
@@ -460,7 +516,7 @@ static long native_event_worker_return(const unsigned long long *r)
     uint64_t buffer=r[1] ? r[1] : native_event_buffer(thread);
     long result=native_kqueue_changes(queue,r[1],r[2],buffer,D_KQUEUE_BATCH);
     if (result) return result;
-    do { result=native_kqueue_collect(queue,buffer,D_KQUEUE_BATCH,-1); } while (result==-EINTR);
+    do { result=native_event_collect(queue,thread,buffer); } while (result==-EINTR);
     return result;
 }
 static long native_kqueue_start_worker(struct native_kqueue *queue,const sigset_t *mask)
@@ -502,6 +558,9 @@ static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
 {
     if (r[7]&~(D_KEVENT_IMMEDIATE|D_KEVENT_ERROR_EVENTS|D_KEVENT_STACK_DATA|D_KEVENT_WORKQ)) return -ENOTSUP;
     if (r[4]>D_KQUEUE_WATCHES) return -EINVAL;
+    struct native_kevent_data data;
+    long error=native_kevent_data_init(&data,r,r[7]);
+    if (error) return error;
     int fd=r[0];
     if (r[7]&D_KEVENT_WORKQ) {
         if (!workqueue_opened || !workqueue_has_kevents) return -EINVAL;
@@ -523,7 +582,8 @@ static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
         if (result) return result;
     }
     if (r[7]&D_KEVENT_ERROR_EVENTS) return 0;
-    return native_kqueue_collect(queue,r[3],r[4],(r[7]&D_KEVENT_IMMEDIATE) ? 0 : -1);
+    result=native_kqueue_collect(queue,r[3],r[4],(r[7]&D_KEVENT_IMMEDIATE) ? 0 : -1,&data);
+    return native_kevent_data_finish(&data,result);
 }
 /* Dynamic queues are distinct objects. One bound Linux worker serializes
  * delivery for each queue; this does not implement EVFILT_WORKLOOP owner
@@ -532,12 +592,14 @@ static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
 {
     unsigned long flags=r[7];
     if (!(flags&D_KEVENT_WORKLOOP) ||
-        (flags&~(unsigned long)(D_KEVENT_WORKLOOP|D_KEVENT_IMMEDIATE|D_KEVENT_ERROR_EVENTS|
+        (flags&~(unsigned long)(D_KEVENT_WORKLOOP|D_KEVENT_IMMEDIATE|D_KEVENT_ERROR_EVENTS|D_KEVENT_STACK_DATA|
             D_KEVENT_MUST_EXIST|D_KEVENT_MUST_NOT_EXIST)) || !r[0] || r[0]==UINT64_MAX) return -ENOTSUP;
     if (r[2]>D_KQUEUE_WATCHES || r[4]>D_KQUEUE_WATCHES ||
         ((flags&(D_KEVENT_MUST_EXIST|D_KEVENT_MUST_NOT_EXIST))==
          (D_KEVENT_MUST_EXIST|D_KEVENT_MUST_NOT_EXIST))) return -EINVAL;
-    if (r[5] || r[6]) return -ENOTSUP; /* explicit direct buffers live in ext[] */
+    struct native_kevent_data data;
+    long error=native_kevent_data_init(&data,r,flags);
+    if (error) return error;
     if (!workqueue_opened || !workqueue_has_kevents) return -EINVAL;
     struct native_kqueue *queue=NULL;
     native_kqueue_lock();
@@ -567,5 +629,6 @@ static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
     result=native_kqueue_start_worker(queue,mask);
     if (result) return result;
     if (flags&D_KEVENT_ERROR_EVENTS) return 0;
-    return native_kqueue_collect(queue,r[3],r[4],(flags&D_KEVENT_IMMEDIATE) ? 0 : -1);
+    result=native_kqueue_collect(queue,r[3],r[4],(flags&D_KEVENT_IMMEDIATE) ? 0 : -1,&data);
+    return native_kevent_data_finish(&data,result);
 }
