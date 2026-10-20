@@ -621,6 +621,38 @@ void *darwin_native_service_run(void *unused)
             if ((header->bits&D_MACH_MSG_COMPLEX) && header->size>=sizeof(*header)+sizeof(descriptors))
                 __builtin_memcpy(&descriptors,request+sizeof(*header),sizeof(descriptors));
             trace_call(5,0,descriptors);
+            /* XNU message.h: descriptor type is byte 11 in both LP64 port
+             * (12-byte) and OOL (16-byte) descriptors. Inspect wire metadata,
+             * never dereference transferred pointers or consume rights here. */
+            size_t cursor=sizeof(*header)+sizeof(descriptors);
+            unsigned int decoded=0;
+            for (; decoded<descriptors && decoded<D_DIAGNOSTIC_REQUEST_LIMIT;decoded++) {
+                if (cursor>header->size || header->size-cursor<12) break;
+                unsigned int type=request[cursor+11];
+                size_t bytes=type==D_MACH_MSG_PORT_DESCRIPTOR ? 12 : 16;
+                if (type>D_MACH_MSG_OOL_VOLATILE_DESCRIPTOR || bytes>header->size-cursor) break;
+                uint32_t name_or_size=0; uint64_t address=0;
+                if (type==D_MACH_MSG_PORT_DESCRIPTOR) __builtin_memcpy(&name_or_size,request+cursor,4);
+                else {
+                    __builtin_memcpy(&address,request+cursor,8);
+                    __builtin_memcpy(&name_or_size,request+cursor+12,4);
+                }
+                const char descriptor_marker[]="DARLING_SERVICE_DESCRIPTOR index/type/flags/name-or-size/address follows\n";
+                RAW(SYS_write,2,descriptor_marker,sizeof(descriptor_marker)-1,0,0,0);
+                trace_call(0,0,decoded); trace_call(1,0,type);
+                trace_call(2,0,request[cursor+10]); trace_call(3,0,name_or_size); trace_call(4,0,address);
+                cursor+=bytes;
+            }
+            /* Bound the trailing inline scalars (including the NDR record),
+             * retaining exact offsets instead of guessing a method layout. */
+            if (decoded==descriptors) {
+                const char scalar_marker[]="DARLING_SERVICE_INLINE offset/value pairs follow\n";
+                RAW(SYS_write,2,scalar_marker,sizeof(scalar_marker)-1,0,0,0);
+                for (unsigned int i=0;i<8 && cursor<=header->size && header->size-cursor>=4;i++,cursor+=4) {
+                    uint32_t value; __builtin_memcpy(&value,request+cursor,4);
+                    trace_call(cursor,0,value);
+                }
+            }
             darling_abort("unsupported display request rights/body");
         }
         for (volatile uint32_t *word=response;word<response+IPC_BYTES/4;word++) *word=0;

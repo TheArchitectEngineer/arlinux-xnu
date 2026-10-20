@@ -510,7 +510,26 @@ def dictionary_inputs(frame, location, internal_dict):
     return False
 
 
+def runtime_failure(frame, location, internal_dict):
+    """Capture our actual transport rejection and blocked guest callers."""
+    process = frame.GetThread().GetProcess()
+    error = lldb.SBError()
+    operation = process.ReadCStringFromMemory(frame.FindRegister('x0').GetValueAsUnsigned(), 160, error)
+    print('NATIVE_SERVICE_FAILURE ' + json.dumps({
+        'tid': frame.GetThread().GetThreadID(),
+        'operation': operation if error.Success() else None,
+        'readError': None if error.Success() else str(error),
+    }), flush=True)
+    process.GetTarget().GetDebugger().HandleCommand('thread backtrace all --count 16')
+    location.GetBreakpoint().SetEnabled(False)
+    return False
+
+
 def install_service_breakpoints(target):
+    rejection = target.BreakpointCreateByName('darling_abort')
+    rejection.SetScriptCallbackFunction('dyld_debugger.runtime_failure')
+    rejection.SetAutoContinue(True)
+    print('NATIVE_SERVICE_FAILURE_BREAKPOINT locations=' + str(rejection.GetNumLocations()), flush=True)
     for symbol in diagnostic_symbols():
         if symbol.get('symbol') in ('__exit', '__xpc_connection_call_reply_async', '__xpc_mach_port_get_context',
                 '_xpc_connection_create_mach_service', '_xpc_connection_set_event_handler',
