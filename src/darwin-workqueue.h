@@ -68,7 +68,7 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
         workqueue_has_kevents=r[3]&1;
         workqueue_registered=1;
         return 0;
-    case D_WQ_KEVENT_RETURN: return native_event_worker_return(r);
+    case D_WQ_KEVENT_RETURN: case D_WQ_WORKLOOP_RETURN: return native_event_worker_return(r);
     case D_WQ_RETURN: {
         struct native_thread *thread=native_current_thread();
         if (!thread || !thread->workqueue || r[1] || r[2] || r[3]) return -EINVAL;

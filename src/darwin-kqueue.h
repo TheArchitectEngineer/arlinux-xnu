@@ -12,7 +12,8 @@ struct native_knote {
     int used,fd,enabled; uint32_t generation,memory_state;
 };
 struct native_kqueue {
-    int used,fd,worker;
+    int used,fd,worker,owner_tid;
+    uint64_t dynamic_id; uint32_t priority;
     struct native_knote watches[D_KQUEUE_WATCHES];
 };
 static struct native_kqueue native_kqueues[D_KQUEUE_COUNT];
@@ -42,6 +43,8 @@ static long native_kqueue_create_locked(void)
         long fd=RAW(SYS_epoll_create1,EPOLL_CLOEXEC,0,0,0,0,0);
         if (fd>=0) {
             native_kqueues[i].fd=fd;
+            native_kqueues[i].dynamic_id=0; native_kqueues[i].owner_tid=0;
+            native_kqueues[i].priority=0;
             __atomic_store_n(&native_kqueues[i].used,1,__ATOMIC_RELEASE);
         }
         return fd;
@@ -58,11 +61,16 @@ static long native_kqueue_create(void)
 static long native_knote_change(struct native_kqueue *queue,const struct darwin_kevent_qos *event)
 {
     if (event->xflags || (event->flags&~(D_EV_ADD|D_EV_DELETE|D_EV_ENABLE|D_EV_DISABLE|
-        D_EV_ONESHOT|D_EV_CLEAR|D_EV_RECEIPT|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC))) return -ENOTSUP;
+        D_EV_ONESHOT|D_EV_CLEAR|D_EV_RECEIPT|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC|D_EV_VANISHED))) return -ENOTSUP;
     /* UDATA-specific memory sources have separate subscriptions and ordinary
      * DISPATCH rearm/delete semantics. Deferred deletion for arbitrary other
      * source kinds is still unsupported. */
-    if ((event->flags&D_EV_UDATA_SPECIFIC) && event->filter!=D_EVFILT_MEMORYSTATUS) return -ENOTSUP;
+    if ((event->flags&D_EV_UDATA_SPECIFIC) && event->filter!=D_EVFILT_MEMORYSTATUS &&
+        event->filter!=D_EVFILT_MACHPORT) return -ENOTSUP;
+    if ((event->flags&D_EV_VANISHED) && (event->filter!=D_EVFILT_MACHPORT ||
+        (event->flags&(D_EV_UDATA_SPECIFIC|D_EV_DISPATCH))!=(D_EV_UDATA_SPECIFIC|D_EV_DISPATCH))) return -ENOTSUP;
+    if (event->filter==D_EVFILT_MACHPORT &&
+        (!ipc_receive_options(event->fflags) || event->ext[2] || event->ext[3])) return -ENOTSUP;
     if (event->filter==D_EVFILT_MEMORYSTATUS &&
         (event->ident || (event->fflags&~(D_MEMORY_NORMAL|D_MEMORY_WARN|D_MEMORY_CRITICAL|
             D_MEMORY_PROC_WARN|D_MEMORY_PROC_CRITICAL|D_MEMORY_MSL_STATUS)))) return -ENOTSUP;
@@ -87,6 +95,11 @@ static long native_knote_change(struct native_kqueue *queue,const struct darwin_
         note=queue->watches+index;
         long fd;
         switch (event->filter) {
+        case D_EVFILT_MACHPORT: {
+            struct ipc_endpoint *endpoint=ipc_find(event->ident);
+            if (!endpoint || endpoint->kind) return -ENOENT;
+            fd=RAW(SYS_fcntl,endpoint->read_fd,F_DUPFD_CLOEXEC,0,0,0,0); break;
+        }
         case D_EVFILT_USER: fd=RAW(SYS_eventfd2,0,EFD_CLOEXEC|EFD_NONBLOCK,0,0,0,0); break;
         case D_EVFILT_TIMER: case D_EVFILT_MEMORYSTATUS:
             fd=RAW(SYS_timerfd_create,CLOCK_MONOTONIC,TFD_CLOEXEC|TFD_NONBLOCK,0,0,0,0); break;
@@ -102,7 +115,10 @@ static long native_knote_change(struct native_kqueue *queue,const struct darwin_
         fresh=1;
     }
     long error=0;
-    if (event->filter==D_EVFILT_MEMORYSTATUS && (event->flags&D_EV_ADD)) {
+    if (event->filter==D_EVFILT_MACHPORT && (event->flags&D_EV_ADD)) {
+        note->event.fflags=event->fflags;
+        for (unsigned int i=0;i<4;i++) note->event.ext[i]=event->ext[i];
+    } else if (event->filter==D_EVFILT_MEMORYSTATUS && (event->flags&D_EV_ADD)) {
         /* Validate real access before accepting a monitor. MSL/Jetsam status
          * is a standalone no-cap policy, not a fabricated limit notification. */
         long state=native_memory_pressure();
@@ -205,7 +221,39 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
             struct darwin_kevent_qos event=note->event;
             event.flags&=D_EV_ONESHOT|D_EV_CLEAR|D_EV_DISPATCH|D_EV_UDATA_SPECIFIC;
             if (events[i].events&(EPOLLHUP|EPOLLRDHUP)) event.flags|=D_EV_EOF;
-            if (event.filter==D_EVFILT_TIMER || event.filter==D_EVFILT_MEMORYSTATUS || (event.filter==D_EVFILT_USER &&
+            if (event.filter==D_EVFILT_MACHPORT) {
+                struct ipc_endpoint *endpoint=ipc_find(event.ident);
+                if (!endpoint || endpoint->kind) {
+                    event.flags|=D_EV_VANISHED|D_EV_ONESHOT;
+                    event.fflags=0; event.data=0;
+                } else {
+                    ipc_queue_lock(endpoint);
+                    struct ipc_packet packet;
+                    long size=ipc_peek(endpoint,&packet);
+                    unsigned long message_size=0,total_size=0;
+                    unsigned long status=D_KERN_SUCCESS;
+                    if (size>=0 && (event.fflags&D_MACH_RCV_MSG)) {
+                        status=ipc_receive_locked(endpoint,event.ext[0],event.ext[1],event.fflags,
+                                                   &message_size,&total_size);
+                        event.ext[1]=status==D_MACH_RCV_TOO_LARGE ? message_size :
+                            status ? 0 : total_size;
+                        event.data=(status==D_MACH_RCV_TOO_LARGE &&
+                            (event.fflags&D_MACH_RCV_LARGE_IDENTITY)) ? endpoint->name : 0;
+                        event.fflags=status;
+                    } else if (size>=0) { event.fflags=0; event.data=endpoint->name; }
+                    ipc_queue_unlock(endpoint);
+                    if (size==-EAGAIN || status==D_MACH_RCV_TIMED_OUT) {
+                        struct epoll_event ep={.events=EPOLLIN};
+                        if (note->event.flags&D_EV_CLEAR) ep.events|=EPOLLET;
+                        if (note->event.flags&(D_EV_ONESHOT|D_EV_DISPATCH)) ep.events|=EPOLLONESHOT;
+                        ep.data.u64=((uint64_t)note->generation<<32)|index;
+                        long rearm=RAW(SYS_epoll_ctl,queue->fd,EPOLL_CTL_MOD,note->fd,&ep,0,0);
+                        if (rearm) { native_kqueue_unlock(); return rearm; }
+                        continue;
+                    }
+                    if (size<0) { native_kqueue_unlock(); return size; }
+                }
+            } else if (event.filter==D_EVFILT_TIMER || event.filter==D_EVFILT_MEMORYSTATUS || (event.filter==D_EVFILT_USER &&
                 (note->event.flags&(D_EV_CLEAR|D_EV_ONESHOT)))) {
                 uint64_t value;
                 long read=RAW(SYS_read,note->fd,&value,sizeof(value),0,0,0);
@@ -238,7 +286,7 @@ static long native_kqueue_collect(struct native_kqueue *queue,uint64_t output,un
             }
             if (guest_copy(&event,output+(uint64_t)emitted*sizeof(event),sizeof(event),1)) { native_kqueue_unlock(); return -EFAULT; }
             emitted++;
-            if (note->event.flags&D_EV_ONESHOT) {
+            if ((note->event.flags&D_EV_ONESHOT) || (event.flags&D_EV_VANISHED)) {
                 RAW(SYS_epoll_ctl,queue->fd,EPOLL_CTL_DEL,note->fd,0,0,0);
                 RAW(SYS_close,note->fd,0,0,0,0,0); note->used=0;
             } else if (note->event.flags&D_EV_DISPATCH) note->enabled=0;
@@ -253,19 +301,32 @@ static uint64_t native_event_buffer(struct native_thread *thread)
 }
 static __attribute__((noreturn)) void native_event_worker_start(struct native_thread *thread)
 {
-    struct native_kqueue *queue=native_kqueue_find(workqueue_kqueue);
+    struct native_kqueue *queue=native_kqueue_find(thread->event_queue);
     uint64_t buffer=native_event_buffer(thread);
+    if (queue && queue->dynamic_id) {
+        if (guest_copy(&queue->dynamic_id,buffer-sizeof(uint64_t),sizeof(uint64_t),1)) {
+            RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0); __builtin_unreachable();
+        }
+        __atomic_store_n(&queue->owner_tid,thread->tid,__ATOMIC_RELEASE);
+    }
     long count;
     do { count=queue ? native_kqueue_collect(queue,buffer,D_KQUEUE_BATCH,-1) : -EBADF; } while (count==-EINTR);
     if (count<=0) { RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0); __builtin_unreachable(); }
     darwin_thread_enter(thread->guest_sp,workqueue_start_callback,thread->pthread,thread->port,
-                        thread->stack_low,buffer,thread->flags|D_WQ_KEVENT|D_WQ_EVENT_MANAGER,count);
+                        thread->stack_low,buffer,thread->flags|
+                        (thread->workloop_id ? D_WQ_WORKLOOP : D_WQ_KEVENT|D_WQ_EVENT_MANAGER),count);
 }
 static long native_event_worker_return(const unsigned long long *r)
 {
     struct native_thread *thread=native_current_thread();
-    struct native_kqueue *queue=native_kqueue_find(workqueue_kqueue);
-    if (!thread || thread->workqueue!=2 || !queue || r[3]) return -EINVAL;
+    struct native_kqueue *queue=thread ? native_kqueue_find(thread->event_queue) : NULL;
+    if (!thread || thread->workqueue<2 || !queue || r[3]) return -EINVAL;
+    if ((r[0]==D_WQ_WORKLOOP_RETURN)!=(thread->workloop_id!=0)) return -EINVAL;
+    if (thread->workloop_id) {
+        uint64_t id;
+        if (guest_copy(&id,native_event_buffer(thread)-sizeof(id),sizeof(id),0)) return -EFAULT;
+        if (id!=thread->workloop_id || queue->owner_tid!=thread->tid) return -ENOTSUP;
+    }
     uint64_t buffer=r[1] ? r[1] : native_event_buffer(thread);
     long result=native_kqueue_changes(queue,r[1],r[2],buffer,D_KQUEUE_BATCH);
     if (result) return result;
@@ -291,8 +352,11 @@ static long native_kqueue_start_worker(struct native_kqueue *queue,const sigset_
     long result=RAW(SYS_mprotect,memory,D_GUEST_PAGE_SIZE,PROT_NONE,0,0,0);
     uint64_t low=memory+D_GUEST_PAGE_SIZE,self=low+D_WORKQUEUE_STACK_SIZE;
     if (!result) {
-        unsigned long long arguments[6]={0,0,self-D_GUEST_PAGE_SIZE,self,D_WQ_PRIO_QOS|D_WQ_NEWSPI|4,0};
-        result=native_thread_create_impl(arguments,mask,2,low);
+        unsigned int bits=(queue->priority>>D_PTHREAD_QOS_SHIFT)&D_PTHREAD_QOS_MASK;
+        unsigned int qos=(bits && bits<=32 && !(bits&(bits-1))) ? (unsigned int)__builtin_ctz(bits)+1 : 4;
+        unsigned long long arguments[6]={(unsigned int)queue->fd,queue->dynamic_id,
+            self-D_GUEST_PAGE_SIZE,self,D_WQ_PRIO_QOS|D_WQ_NEWSPI|qos,0};
+        result=native_thread_create_impl(arguments,mask,queue->dynamic_id ? 3 : 2,low);
         if ((unsigned long)result<(unsigned long)-4095) {
             __atomic_store_n(&queue->worker,2,__ATOMIC_RELEASE);
             RAW(SYS_futex,&queue->worker,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
@@ -330,4 +394,45 @@ static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
     }
     if (r[7]&D_KEVENT_ERROR_EVENTS) return 0;
     return native_kqueue_collect(queue,r[3],r[4],(r[7]&D_KEVENT_IMMEDIATE) ? 0 : -1);
+}
+/* Dynamic queues are distinct objects. One bound Linux worker serializes
+ * delivery for each queue; this does not implement EVFILT_WORKLOOP owner
+ * transfer, synchronous-wait commands, or the workloop control syscall. */
+static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
+{
+    unsigned long flags=r[7];
+    if (!(flags&D_KEVENT_WORKLOOP) ||
+        (flags&~(unsigned long)(D_KEVENT_WORKLOOP|D_KEVENT_IMMEDIATE|D_KEVENT_ERROR_EVENTS|
+            D_KEVENT_MUST_EXIST|D_KEVENT_MUST_NOT_EXIST)) || !r[0] || r[0]==UINT64_MAX) return -ENOTSUP;
+    if (r[2]>D_KQUEUE_WATCHES || r[4]>D_KQUEUE_WATCHES ||
+        ((flags&(D_KEVENT_MUST_EXIST|D_KEVENT_MUST_NOT_EXIST))==
+         (D_KEVENT_MUST_EXIST|D_KEVENT_MUST_NOT_EXIST))) return -EINVAL;
+    if (r[5] || r[6]) return -ENOTSUP; /* explicit direct buffers live in ext[] */
+    if (!workqueue_opened || !workqueue_has_kevents) return -EINVAL;
+    struct native_kqueue *queue=NULL;
+    native_kqueue_lock();
+    for (unsigned int i=0;i<D_KQUEUE_COUNT;i++)
+        if (native_kqueues[i].used && native_kqueues[i].dynamic_id==r[0]) { queue=native_kqueues+i; break; }
+    if (queue && (flags&D_KEVENT_MUST_NOT_EXIST)) { native_kqueue_unlock(); return -EEXIST; }
+    if (!queue && (flags&D_KEVENT_MUST_EXIST)) { native_kqueue_unlock(); return -ENOENT; }
+    if (!queue) {
+        long fd=native_kqueue_create_locked();
+        if (fd<0) { native_kqueue_unlock(); return fd; }
+        queue=native_kqueue_find(fd); queue->dynamic_id=r[0];
+    }
+    native_kqueue_unlock();
+    /* Polling a bound workloop belongs to its actual servicer. Registration
+     * with ERROR_EVENTS is allowed from the client that owns its sources. */
+    if (!(flags&D_KEVENT_ERROR_EVENTS) && queue->owner_tid!=RAW(SYS_gettid,0,0,0,0,0,0)) return -EXDEV;
+    long result=native_kqueue_changes(queue,r[1],r[2],r[3],r[4]);
+    if (result) return result;
+    if (r[2]) {
+        struct darwin_kevent_qos event;
+        if (guest_copy(&event,r[1],sizeof(event),0)) return -EFAULT;
+        queue->priority=(uint32_t)event.qos&D_PTHREAD_PRIORITY_MASK;
+    }
+    result=native_kqueue_start_worker(queue,mask);
+    if (result) return result;
+    if (flags&D_KEVENT_ERROR_EVENTS) return 0;
+    return native_kqueue_collect(queue,r[3],r[4],(flags&D_KEVENT_IMMEDIATE) ? 0 : -1);
 }

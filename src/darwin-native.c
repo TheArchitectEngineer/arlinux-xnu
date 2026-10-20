@@ -447,7 +447,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             }
         }
         if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_QOS) result=native_kevent_qos(r,&uc->uc_sigmask);
-        else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_ID) result=-ENOTSUP;
+        else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_KEVENT_ID) result=native_kevent_id(r,&uc->uc_sigmask);
         else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_BSDTHREAD_CTL) result=native_thread_ctl(r);
         else if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXWAIT ||
                  r[D_ARM64_SYSCALL_REGISTER]==D_SYS_PSYNCH_MUTEXDROP) result=native_psynch_mutex(r);

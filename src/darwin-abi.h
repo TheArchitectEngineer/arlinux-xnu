@@ -207,12 +207,14 @@ _Static_assert(sizeof(struct darwin_pthread_registration)==48,"Darwin pthread re
 enum darwin_workqueue_abi {
     D_PTHREAD_FEATURE_DISPATCH = 0x01, D_PTHREAD_FEATURE_FINEPRIO = 0x02,
     D_PTHREAD_FEATURE_CTL = 0x04, D_PTHREAD_FEATURE_SETSELF = 0x08,
-    D_PTHREAD_FEATURE_MAINTENANCE = 0x10, D_PTHREAD_FEATURE_KEVENT = 0x40, D_PTHREAD_FEATURE_DEFAULT = 0x40000000,
-    D_WQ_RETURN = 0x004, D_WQ_KEVENT_RETURN = 0x040, D_WQ_NEWSPISUPP = 0x010, D_WQ_REQTHREADS = 0x020,
+    D_PTHREAD_FEATURE_MAINTENANCE = 0x10, D_PTHREAD_FEATURE_KEVENT = 0x40,
+    D_PTHREAD_FEATURE_WORKLOOP = 0x80, D_PTHREAD_FEATURE_DEFAULT = 0x40000000,
+    D_WQ_RETURN = 0x004, D_WQ_KEVENT_RETURN = 0x040, D_WQ_WORKLOOP_RETURN = 0x100,
+    D_WQ_NEWSPISUPP = 0x010, D_WQ_REQTHREADS = 0x020,
     D_WQ_EVENT_MANAGER_PRIORITY = 0x080, D_WQ_SHOULD_NARROW = 0x200,
     D_WQ_PRIO_QOS = 0x4000, D_WQ_OVERCOMMIT = 0x10000,
     D_WQ_NEWSPI = 0x40000, D_WQ_KEVENT = 0x80000, D_WQ_EVENT_MANAGER = 0x100000,
-    D_WQ_TSD_SET = 0x200000,
+    D_WQ_TSD_SET = 0x200000, D_WQ_WORKLOOP = 0x400000,
     D_PRIORITY_OVERCOMMIT = 0x80000000U,
     D_CTL_SET_QOS = 0x10, D_CTL_GET_QOS = 0x20, D_CTL_SET_SELF = 0x100,
     D_CTL_MAX_PARALLELISM = 0x800,
@@ -223,12 +225,13 @@ enum darwin_workqueue_abi {
 /* XNU bsd/sys/event.h, ARM64 kevent_qos wire layout. */
 enum darwin_kevent_abi {
     D_EVFILT_READ=-1, D_EVFILT_WRITE=-2, D_EVFILT_TIMER=-7, D_EVFILT_USER=-10,
-    D_EVFILT_MEMORYSTATUS=-14,
+    D_EVFILT_MEMORYSTATUS=-14, D_EVFILT_MACHPORT=-8,
     D_EV_ADD=1, D_EV_DELETE=2, D_EV_ENABLE=4, D_EV_DISABLE=8,
     D_EV_ONESHOT=0x10, D_EV_CLEAR=0x20, D_EV_RECEIPT=0x40, D_EV_DISPATCH=0x80,
-    D_EV_UDATA_SPECIFIC=0x100, D_EV_ERROR=0x4000, D_EV_EOF=0x8000,
+    D_EV_UDATA_SPECIFIC=0x100, D_EV_VANISHED=0x200, D_EV_ERROR=0x4000, D_EV_EOF=0x8000,
     D_KEVENT_IMMEDIATE=1, D_KEVENT_ERROR_EVENTS=2,
-    D_KEVENT_STACK_DATA=8, D_KEVENT_WORKQ=0x20,
+    D_KEVENT_STACK_DATA=8, D_KEVENT_WORKQ=0x20, D_KEVENT_WORKLOOP=0x400,
+    D_KEVENT_MUST_EXIST=0x20000, D_KEVENT_MUST_NOT_EXIST=0x40000,
     D_NOTE_TRIGGER=0x01000000, D_NOTE_FFAND=0x40000000,
     D_NOTE_FFOR=0x80000000U, D_NOTE_FFCOPY=0xc0000000U,
     D_NOTE_FFCTRLMASK=0xc0000000U, D_NOTE_FFLAGSMASK=0x00ffffff,
@@ -273,6 +276,17 @@ struct darwin_audit_token {
     uint32_t audit_uid,euid,egid,ruid,rgid,pid,session,idversion;
 };
 _Static_assert(sizeof(struct darwin_audit_token)==32,"Darwin audit token wire layout");
+/* Mach messages/trailers are packed to four bytes, including on ARM64. */
+struct darwin_context_trailer {
+    uint32_t type,size,sequence,sender[2]; struct darwin_audit_token audit;
+    uint64_t context;
+} __attribute__((packed,aligned(4)));
+_Static_assert(sizeof(struct darwin_context_trailer)==60,"Darwin context trailer wire layout");
+enum darwin_receive_options {
+    D_MACH_RCV_LARGE_IDENTITY=8, D_MACH_RCV_VOUCHER=0x800,
+    D_MACH_RCV_TRAILER_MASK=0x0f000000, D_MACH_RCV_TRAILER_SHIFT=24,
+    D_MACH_RCV_TRAILER_MAX=4
+};
 
 /* XNU mach/port.h, LP64 mach_port_construct options. */
 enum darwin_port_option_flags {

@@ -12,6 +12,7 @@ struct native_thread {
     uint64_t workqueue,stack_low;
     uint32_t priority;
     int launch_state;
+    int event_queue; uint64_t workloop_id;
 };
 _Static_assert(offsetof(struct native_thread,tid)==56,"native clone ABI");
 static struct native_thread native_threads[NATIVE_THREADS];
@@ -74,7 +75,7 @@ void darwin_thread_boot(struct native_thread *thread)
     if (thread->launch_state<0) {
         RAW(SYS_exit,0,0,0,0,0,0); __builtin_unreachable();
     }
-    if (thread->workqueue==2) native_event_worker_start(thread);
+    if (thread->workqueue>=2) native_event_worker_start(thread);
     if (thread->workqueue) {
         darwin_thread_enter(thread->guest_sp,workqueue_start_callback,thread->pthread,thread->port,
                             thread->stack_low,0,thread->flags,0);
@@ -101,7 +102,7 @@ static long native_thread_register(const unsigned long long *r)
     thread_start_callback=r[0]; workqueue_start_callback=r[1];
     return D_PTHREAD_FEATURE_DISPATCH|D_PTHREAD_FEATURE_FINEPRIO|D_PTHREAD_FEATURE_CTL|
            D_PTHREAD_FEATURE_SETSELF|D_PTHREAD_FEATURE_MAINTENANCE|D_PTHREAD_FEATURE_DEFAULT|
-           D_PTHREAD_FEATURE_KEVENT;
+           D_PTHREAD_FEATURE_KEVENT|D_PTHREAD_FEATURE_WORKLOOP;
 }
 static long native_thread_create_impl(const unsigned long long *r,const sigset_t *original_mask,
                                       int workqueue,uint64_t stack_low)
@@ -131,6 +132,8 @@ static long native_thread_create_impl(const unsigned long long *r,const sigset_t
         thread->signal_memory=alternate; thread->guest_sp=r[2]; thread->pthread=r[3];
         thread->function=r[0]; thread->argument=r[1]; thread->flags=r[4];
         thread->workqueue=workqueue; thread->stack_low=stack_low;
+        thread->event_queue=workqueue>=2 ? (int)r[0] : -1;
+        thread->workloop_id=workqueue>=2 ? r[1] : 0;
         thread->priority=workqueue ? ((1U<<((flags&0xff)-1+8))|255) : (flags&D_PTHREAD_PRIORITY_MASK);
         __builtin_memcpy(&thread->initial_signal_mask,original_mask,8);
         if (registered_tsd) thread->flags|=workqueue ? D_WQ_TSD_SET : D_PTHREAD_START_TSD_SET;

@@ -14,10 +14,11 @@ static unsigned long host_send_refs,clock_send_refs[2];
 struct ipc_endpoint {
     uint32_t name,generation; int used,kind,read_fd,write_fd;
     unsigned long send_refs; uint64_t context; uint32_t options;
-    int queue_mutex; uint32_t queue_limit,queued;
+    int queue_mutex; uint32_t queue_limit,queued,sequence,space_sequence;
 };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
+struct ipc_packet { struct darwin_audit_token sender; unsigned char message[IPC_BYTES]; };
 static void ipc_queue_lock(struct ipc_endpoint *endpoint)
 {
     while (__atomic_exchange_n(&endpoint->queue_mutex,1,__ATOMIC_ACQUIRE))
@@ -30,14 +31,99 @@ static void ipc_queue_unlock(struct ipc_endpoint *endpoint)
 }
 static long ipc_enqueue(struct ipc_endpoint *endpoint,const void *message,unsigned long size)
 {
+    if (size>IPC_BYTES) return -EMSGSIZE;
+    struct ipc_packet packet;
+    long error=native_current_audit_token(&packet.sender);
+    if (error) return error;
+    __builtin_memcpy(packet.message,message,size);
     ipc_queue_lock(endpoint);
     long result=-EAGAIN;
     if (endpoint->queued<endpoint->queue_limit) {
-        result=RAW(SYS_sendto,endpoint->write_fd,message,size,MSG_DONTWAIT|MSG_NOSIGNAL,0,0);
-        if (result==(long)size) endpoint->queued++;
+        unsigned long bytes=size+sizeof(packet.sender);
+        result=RAW(SYS_sendto,endpoint->write_fd,&packet,bytes,MSG_DONTWAIT|MSG_NOSIGNAL,0,0);
+        if (result==(long)bytes) { endpoint->queued++; result=size; }
+        else if (result>=0) result=-EIO;
     }
     ipc_queue_unlock(endpoint);
     return result;
+}
+static long ipc_enqueue_wait(struct ipc_endpoint *endpoint,const void *message,unsigned long size,
+                             unsigned long options,unsigned long milliseconds)
+{
+    struct timespec now; uint64_t deadline=0;
+    if (options&D_MACH_SEND_TIMEOUT) {
+        long error=RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0);
+        if (error) return error;
+        deadline=(uint64_t)now.tv_sec*1000000000+now.tv_nsec+(uint64_t)(uint32_t)milliseconds*1000000;
+    }
+    for (;;) {
+        uint32_t epoch=__atomic_load_n(&endpoint->space_sequence,__ATOMIC_ACQUIRE);
+        long result=ipc_enqueue(endpoint,message,size);
+        if (result!=-EAGAIN) return result;
+        struct timespec remaining,*timeout=NULL;
+        if (options&D_MACH_SEND_TIMEOUT) {
+            long error=RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0);
+            if (error) return error;
+            uint64_t time=(uint64_t)now.tv_sec*1000000000+now.tv_nsec;
+            if (time>=deadline) return -EAGAIN;
+            uint64_t duration=deadline-time;
+            remaining=(struct timespec){duration/1000000000,duration%1000000000}; timeout=&remaining;
+        }
+        result=RAW(SYS_futex,&endpoint->space_sequence,FUTEX_WAIT_PRIVATE,epoch,timeout,0,0);
+        if (result && result!=-EAGAIN && result!=-EINTR) return result;
+    }
+}
+/* Caller owns queue_mutex. Packet metadata is captured at the actual send,
+ * not reconstructed from the receiving thread's credentials. */
+static long ipc_peek(struct ipc_endpoint *endpoint,struct ipc_packet *packet)
+{
+    long bytes=RAW(SYS_recvfrom,endpoint->read_fd,packet,sizeof(*packet),MSG_PEEK|MSG_DONTWAIT,0,0);
+    if (bytes<0) return bytes;
+    if (bytes<(long)(sizeof(packet->sender)+sizeof(struct ipc_header))) return -EIO;
+    return bytes-sizeof(packet->sender);
+}
+static long ipc_consume(struct ipc_endpoint *endpoint,struct ipc_packet *packet,long size)
+{
+    long bytes=RAW(SYS_recvfrom,endpoint->read_fd,packet,sizeof(*packet),MSG_DONTWAIT,0,0);
+    if (bytes!=size+(long)sizeof(packet->sender)) return bytes<0 ? bytes : -EIO;
+    endpoint->queued--; endpoint->sequence++;
+    __atomic_fetch_add(&endpoint->space_sequence,1,__ATOMIC_RELEASE);
+    RAW(SYS_futex,&endpoint->space_sequence,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
+    return 0;
+}
+static int ipc_receive_options(unsigned long options)
+{
+    unsigned long allowed=D_MACH_RCV_MSG|D_MACH_RCV_LARGE|D_MACH_RCV_LARGE_IDENTITY|
+        D_MACH_RCV_VOUCHER|D_MACH_RCV_TRAILER_MASK|D_MACH_RCV_TIMEOUT;
+    return !(options&~allowed) &&
+        ((options&D_MACH_RCV_TRAILER_MASK)>>D_MACH_RCV_TRAILER_SHIFT)<=D_MACH_RCV_TRAILER_MAX;
+}
+static unsigned long ipc_receive_locked(struct ipc_endpoint *endpoint,uint64_t address,
+                                        unsigned long capacity,unsigned long options,
+                                        unsigned long *message_size,unsigned long *total_size)
+{
+    struct ipc_packet packet;
+    long size=ipc_peek(endpoint,&packet);
+    if (size==-EAGAIN) return D_MACH_RCV_TIMED_OUT;
+    if (size<0) return D_MACH_RCV_INTERRUPTED;
+    const unsigned int trailer_sizes[5]={8,12,20,52,60};
+    unsigned int trailer_kind=(options&D_MACH_RCV_TRAILER_MASK)>>D_MACH_RCV_TRAILER_SHIFT;
+    if (!ipc_receive_options(options)) return D_MACH_SEND_INVALID_OPTIONS;
+    unsigned int trailer_size=trailer_sizes[trailer_kind];
+    unsigned int aligned=((unsigned int)size+3)&~3U;
+    *message_size=size; *total_size=aligned+trailer_size;
+    if (capacity<*total_size) {
+        if (!(options&D_MACH_RCV_LARGE) && ipc_consume(endpoint,&packet,size)) return D_MACH_RCV_INTERRUPTED;
+        return D_MACH_RCV_TOO_LARGE;
+    }
+    unsigned char output[IPC_BYTES+sizeof(struct darwin_context_trailer)];
+    __builtin_memcpy(output,packet.message,size);
+    for (unsigned int i=size;i<aligned;i++) output[i]=0;
+    struct darwin_context_trailer trailer={.size=trailer_size,.sequence=endpoint->sequence,
+        .sender={packet.sender.euid,packet.sender.egid},.audit=packet.sender,.context=endpoint->context};
+    __builtin_memcpy(output+aligned,&trailer,trailer_size);
+    if (guest_copy(output,address,*total_size,1)) return D_MACH_RCV_INVALID_DATA;
+    return ipc_consume(endpoint,&packet,size) ? D_MACH_RCV_INTERRUPTED : D_KERN_SUCCESS;
 }
 static struct ipc_endpoint *ipc_find(uint32_t name)
 {
@@ -60,7 +146,8 @@ static uint32_t ipc_reply_port(void)
         endpoint->name=((i+D_REPLY_PORT_INDEX_BASE)<<D_PORT_NAME_INDEX_SHIFT)|endpoint->generation;
         endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0;
         endpoint->send_refs=0; endpoint->context=0; endpoint->options=0;
-        endpoint->queue_mutex=0; endpoint->queued=0; endpoint->queue_limit=D_PORT_QLIMIT_DEFAULT;
+        endpoint->queue_mutex=0; endpoint->queued=0; endpoint->sequence=0;
+        endpoint->space_sequence=0; endpoint->queue_limit=D_PORT_QLIMIT_DEFAULT;
         __atomic_store_n(&endpoint->used,2,__ATOMIC_RELEASE);
         return endpoint->name;
     }
@@ -140,7 +227,8 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
     unsigned long options=r[1];
     /* Supported options: send, receive, receive-large, send/receive timeout.
      * No unsupported complex-message ownership or trailer policy is hidden. */
-    if (!(options&(D_MACH_SEND_MSG|D_MACH_RCV_MSG)) || (options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_RCV_MSG|D_MACH_RCV_LARGE|D_MACH_SEND_TIMEOUT|D_MACH_RCV_TIMEOUT)) || r[6]) return D_MACH_SEND_INVALID_OPTIONS;
+    if (!(options&(D_MACH_SEND_MSG|D_MACH_RCV_MSG)) ||
+        !ipc_receive_options(options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT)) || r[6]) return D_MACH_SEND_INVALID_OPTIONS;
     if (options&D_MACH_SEND_MSG) {
         unsigned char request[IPC_BYTES];
         if (r[2]<sizeof(struct ipc_header) || r[2]>sizeof(request) ||
@@ -155,7 +243,18 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         int clock=header->remote==SYSTEM_CLOCK_PORT ? 0 :
                   header->remote==CALENDAR_CLOCK_PORT ? 1 : -1;
         int task=header->remote==CURRENT_TASK_PORT;
-        if (header->remote!=CURRENT_HOST_PORT && clock<0 && !task) return D_MACH_SEND_INVALID_DEST;
+        if (header->remote!=CURRENT_HOST_PORT && clock<0 && !task) {
+            struct ipc_endpoint *destination=ipc_find(header->remote);
+            if (!destination || destination->kind || !destination->send_refs) return D_MACH_SEND_INVALID_DEST;
+            /* First inline process-local transport. No port descriptors,
+             * voucher or reply-right transfer is silently discarded. */
+            if (header->bits!=D_MACH_TYPE_COPY_SEND || header->local || header->voucher)
+                return D_MACH_SEND_INVALID_HEADER;
+            header->size=r[2]; header->local=header->remote; header->remote=0;
+            header->bits=D_MACH_TYPE_MOVE_SEND<<D_MACH_MSG_LOCAL_BITS_SHIFT;
+            if (ipc_enqueue_wait(destination,request,r[2],options,r[5])!=(long)r[2]) return D_MACH_SEND_TIMED_OUT;
+            goto receive_message;
+        }
         if ((!task && clock<0 && !host_send_refs) || (clock>=0 && !clock_send_refs[clock])) return D_MACH_SEND_INVALID_DEST;
         struct ipc_endpoint *reply=ipc_find(header->local);
         if (!reply || reply->kind) return D_MACH_SEND_INVALID_REPLY;
@@ -240,13 +339,13 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             response[8]=status ? D_KERN_FAILURE : D_KERN_SUCCESS; /* real clock, otherwise KERN_FAILURE */
             if (!status) { out->size=44; response[9]=now.tv_sec; response[10]=now.tv_nsec; }
         }
-        long sent=ipc_enqueue(reply,response,out->size);
+        long sent=ipc_enqueue_wait(reply,response,out->size,options,r[5]);
         if (sent!=(long)out->size) return D_MACH_SEND_TIMED_OUT; /* MACH_SEND_TIMED_OUT */
     }
+receive_message:
     if (options&D_MACH_RCV_MSG) {
         struct ipc_endpoint *endpoint=ipc_find(r[4]);
         if (!endpoint || endpoint->kind) return D_MACH_RCV_INVALID_NAME;
-        unsigned char response[IPC_BYTES+8];
         if (options&D_MACH_RCV_TIMEOUT) {
             struct pollfd descriptor={.fd=endpoint->read_fd,.events=POLLIN};
             struct timespec timeout={r[5]/1000,(r[5]%1000)*1000000};
@@ -254,31 +353,21 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             if (!ready) return D_MACH_RCV_TIMED_OUT;
             if (ready<0) return D_MACH_RCV_INTERRUPTED; /* MACH_RCV_INTERRUPTED */
         }
-        long length=RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,MSG_PEEK,0,0);
+        struct ipc_packet packet;
+        long length=RAW(SYS_recvfrom,endpoint->read_fd,&packet,sizeof(packet),MSG_PEEK,0,0);
         if (length<0) return D_MACH_RCV_INTERRUPTED;
         /* Another receiver may consume the packet after the blocking peek.
          * Recheck under the same lock used for enqueue/count updates. Never
          * block a sender while holding this lock. */
         ipc_queue_lock(endpoint);
-        length=RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,MSG_PEEK|MSG_DONTWAIT,0,0);
-        unsigned long status=D_KERN_SUCCESS;
-        if (length<0) { status=D_MACH_RCV_INTERRUPTED; goto receive_done; }
-        if (r[3]<(unsigned long)length) {
-            if (options&D_MACH_RCV_LARGE) {
-                uint32_t size=length;
-                if (guest_copy(&size,r[0]+4,4,1)) { status=D_MACH_RCV_INVALID_DATA; goto receive_done; }
-            } else if (RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,MSG_DONTWAIT,0,0)==length) endpoint->queued--;
-            status=D_MACH_RCV_TOO_LARGE; goto receive_done;
+        unsigned long message_size=0,total_size=0;
+        unsigned long status=ipc_receive_locked(endpoint,r[0],r[3],
+            options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT),&message_size,&total_size);
+        if (status==D_MACH_RCV_TOO_LARGE && (options&D_MACH_RCV_LARGE)) {
+            uint32_t size=message_size,identity=endpoint->name;
+            if (guest_copy(&size,r[0]+4,4,1) ||
+                ((options&D_MACH_RCV_LARGE_IDENTITY) && guest_copy(&identity,r[0]+12,4,1))) status=D_MACH_RCV_INVALID_DATA;
         }
-        /* Probe destination before consuming its queued message. */
-        if (guest_copy(response,r[0],length,1)) { status=D_MACH_RCV_INVALID_DATA; goto receive_done; }
-        long consumed=RAW(SYS_recvfrom,endpoint->read_fd,response,IPC_BYTES,MSG_DONTWAIT,0,0);
-        if (consumed!=length) { status=D_MACH_RCV_INTERRUPTED; goto receive_done; }
-        endpoint->queued--;
-        uint32_t trailer[2]={0,8};
-        if (r[3]>=(unsigned long)length+sizeof(trailer) &&
-            guest_copy(trailer,r[0]+length,sizeof(trailer),1)) status=D_MACH_RCV_INVALID_DATA;
-receive_done:
         ipc_queue_unlock(endpoint);
         return status;
     }
