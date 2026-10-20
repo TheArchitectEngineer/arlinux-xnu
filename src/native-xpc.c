@@ -10,6 +10,7 @@
 #include "darwin-native.h"
 #include "datatypes.h"
 #include "dictionary.h"
+#include "array.h"
 #include "serialization.h"
 #include "accept.h"
 
@@ -153,28 +154,31 @@ static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
     spc_dictionary_set_string(event,"bs_encodedObjectClassName","FBSWorkspaceCreateSceneEvent");
     spc_dictionary_set_string(event,"sceneID",identifier);
     spc_dictionary_set_string(event,"specClass","UIApplicationSceneSpecification");
-    /* Run 39397655202 requires non-null settings; FBSSettingsDiff's actual
-     * codec decodes changes + settingsClass. Let the real framework create
-     * its typed defaults from an empty BSSettings change set. */
+    /* The real codecs require an initial class setting, not just outer diff
+     * metadata. Run 39400670557 shows BSSettingsEncodeAppendSettingArrayEntry:
+     * objects is [[uint64 setting, value, int64 format]], with nonzero format
+     * decoded by CoreFoundation's XPC bridge. */
+    enum { BS_SETTINGS_CLASS=1, BS_SETTINGS_FOUNDATION_FORMAT=1 };
     const char *keys[]={"settings","clientSettings"};
     const char *diffs[]={"FBSSceneSettingsDiff","FBSSceneClientSettingsDiff"};
     const char *classes[]={"UIApplicationSceneSettings","UIApplicationSceneClientSettings"};
     for (unsigned int i=0;i<2;i++) {
-        spc_dictionary_t *diff=spc_dictionary_create(),*changes=spc_dictionary_create(),*objects=spc_dictionary_create();
+        spc_dictionary_t *diff=spc_dictionary_create(),*changes=spc_dictionary_create();
+        spc_array_t *objects=spc_array_create(),*entry=spc_array_create();
         spc_dictionary_set_string(diff,"bs_encodedObjectClassName",diffs[i]);
         spc_dictionary_set_string(diff,"settingsClass",classes[i]);
         spc_dictionary_set_string(changes,"bs_encodedObjectClassName","BSSettings");
-        /* The real settingsByApplying... implementation reads class setting
-         * 1 from changes before allocating a first settings instance; outer
-         * settingsClass metadata alone does not supply that class change. */
-        spc_dictionary_set_string(objects,"1",classes[i]);
-        spc_dictionary_set_value(changes,"objects",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=objects});
+        spc_array_set_value(entry,0,(spc_value_t){.type=SPC_TYPE_UINT64,.value.u64=BS_SETTINGS_CLASS});
+        spc_array_set_value(entry,1,(spc_value_t){.type=SPC_TYPE_STRING,.value.str=strdup(classes[i])});
+        spc_array_set_value(entry,2,(spc_value_t){.type=SPC_TYPE_INT64,.value.i64=BS_SETTINGS_FOUNDATION_FORMAT});
+        spc_array_set_value(objects,0,(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=entry});
+        spc_dictionary_set_value(changes,"objects",(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=objects});
         spc_dictionary_set_value(diff,"changes",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=changes});
         spc_dictionary_set_value(event,keys[i],(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=diff});
     }
     spc_dictionary_set_value(dictionary,"event",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=event});
     spc_dictionary_set_int64(dictionary,"message",FBS_WORKSPACE_CREATE_SCENE);
-    fprintf(stderr,"SESSION_SCENE_CONFIGURATION pid=%u scene=%s settings=framework-defaults geometry-established=false\n",peer->pid,identifier);
+    fprintf(stderr,"SESSION_SCENE_CONFIGURATION pid=%u scene=%s settings=initial-class-diffs geometry-established=false\n",peer->pid,identifier);
     session_send_event(peer,set,dictionary,&peer->scene_reply,&peer->scene_state,"SESSION_SCENE_SEND");
 }
 

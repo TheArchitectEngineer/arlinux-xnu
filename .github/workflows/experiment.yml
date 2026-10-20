@@ -360,6 +360,10 @@ jobs:
               --lookup /usr/lib/system/libxpc.dylib _xpc_connection_set_event_handler \
               --lookup /usr/lib/system/libxpc.dylib _xpc_dictionary_set_uint64 \
               --lookup /usr/lib/system/libxpc.dylib _xpc_dictionary_set_int64 \
+              --lookup /usr/lib/system/libxpc.dylib _xpc_array_create \
+              --lookup /usr/lib/system/libxpc.dylib _xpc_array_append_value \
+              --lookup /usr/lib/system/libxpc.dylib _xpc_uint64_create \
+              --lookup /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation __CFXPCCreateCFObjectFromXPCObject \
               --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$_UIApplication' \
               --lookup /System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices '_OBJC_CLASS_$_BKSProcess' \
               --lookup /System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices '_OBJC_CLASS_$_BKSWorkspace' \
