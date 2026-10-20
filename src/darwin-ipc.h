@@ -452,6 +452,17 @@ int darwin_native_host_identity(uint32_t *pid,uint32_t *incarnation)
     if (error) return D_KERN_FAILURE;
     *pid=token.pid; *incarnation=token.idversion; return 0;
 }
+uint32_t darwin_native_bootstrap_peer(uint64_t token_address)
+{
+    struct darwin_audit_token peer,self;
+    if (!native_bootstrap_port || guest_copy(&peer,token_address,sizeof(peer),0) ||
+        native_current_audit_token(&self)) return D_KERN_FAILURE;
+    /* Our bootstrap provider is this task's controlled host thread, not a
+     * machine launchd. Keep actual audit credentials; accept only that task
+     * and its real process incarnation. Original requester-echo checks follow. */
+    return peer.pid==self.pid && peer.euid==self.euid && peer.idversion==self.idversion ?
+        D_KERN_SUCCESS : D_KERN_FAILURE;
+}
 int darwin_native_host_join(uint32_t port,uint32_t set)
 {
 #ifdef ARLINUX_DARLING
