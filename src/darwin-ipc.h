@@ -1,12 +1,14 @@
 /* Initial process-local Mach service transport, with real kernel queues.
  * Implements observed Host/Clock queries and semaphore creation.
  * Queued replies remain observable by later receive calls; send success never
- * stands in for a fabricated receive. General descriptor/port transfer, port
- * sets, notifications and cross-process namespace semantics are not provided. */
+ * stands in for a fabricated receive. Port sets aggregate actual receive queues
+ * using epoll. General descriptor/port transfer, notifications and cross-process
+ * namespace semantics are not provided. */
 #pragma once
 #include <sys/socket.h>
 #include <poll.h>
 #include <sys/eventfd.h>
+#include <sys/epoll.h>
 #include <linux/futex.h>
 static unsigned long host_send_refs,clock_send_refs[2];
 #define IPC_ENDPOINTS 64
@@ -151,20 +153,26 @@ static int ipc_drop_send(struct ipc_endpoint *endpoint)
     }
     return 0;
 }
-static uint32_t ipc_reply_port(void)
+/* kind 0 owns a receive queue; kind 2 owns an epoll-backed port set. */
+static uint32_t ipc_port_create(int kind)
 {
     for (unsigned int i=0;i<IPC_ENDPOINTS;i++) {
         struct ipc_endpoint *endpoint=ipc_endpoints+i;
         int unused=0;
         if (!__atomic_compare_exchange_n(&endpoint->used,&unused,1,0,__ATOMIC_ACQ_REL,__ATOMIC_RELAXED)) continue;
-        int pair[2];
-        if (RAW(SYS_socketpair,AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC,0,pair,0,0)) {
+        int pair[2]; long error=0;
+        if (kind==2) {
+            long fd=RAW(SYS_epoll_create1,EPOLL_CLOEXEC,0,0,0,0,0);
+            if (fd<0) error=fd;
+            else pair[0]=pair[1]=fd;
+        } else error=RAW(SYS_socketpair,AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC,0,pair,0,0);
+        if (error) {
             __atomic_store_n(&endpoint->used,0,__ATOMIC_RELEASE); return 0;
         }
         endpoint->generation=endpoint->generation ?
             (endpoint->generation+D_PORT_GENERATION_STEP)&D_PORT_GENERATION_MASK : D_PORT_GENERATION_TAG;
         endpoint->name=((i+D_REPLY_PORT_INDEX_BASE)<<D_PORT_NAME_INDEX_SHIFT)|endpoint->generation;
-        endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=0;
+        endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=kind;
         endpoint->send_refs=0; endpoint->context=0; endpoint->options=0;
         endpoint->queue_mutex=0; endpoint->queued=0; endpoint->sequence=0;
         endpoint->special_tid=0;
@@ -173,6 +181,45 @@ static uint32_t ipc_reply_port(void)
         return endpoint->name;
     }
     return 0;
+}
+static uint32_t ipc_reply_port(void) { return ipc_port_create(0); }
+static unsigned long ipc_port_allocate(const unsigned long long *r)
+{
+    if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
+    if (r[1]!=D_PORT_RIGHT_RECEIVE && r[1]!=D_PORT_RIGHT_PORT_SET) return D_KERN_NOT_SUPPORTED;
+    uint32_t name=ipc_port_create(r[1]==D_PORT_RIGHT_PORT_SET ? 2 : 0);
+    if (!name) return D_KERN_RESOURCE_SHORTAGE;
+    if (!guest_copy(&name,r[2],sizeof(name),1)) return D_KERN_SUCCESS;
+    struct ipc_endpoint *endpoint=ipc_find(name);
+    RAW(SYS_close,endpoint->read_fd,0,0,0,0,0);
+    if (endpoint->write_fd!=endpoint->read_fd) RAW(SYS_close,endpoint->write_fd,0,0,0,0,0);
+    __atomic_store_n(&endpoint->used,0,__ATOMIC_RELEASE);
+    return D_KERN_INVALID_ADDRESS;
+}
+static unsigned long ipc_port_member(const unsigned long long *r,int insert)
+{
+    if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
+    struct ipc_endpoint *port=ipc_find(r[1]),*set=ipc_find(r[2]);
+    if (!port || !set) return D_KERN_INVALID_NAME;
+    if (port->kind!=0 || set->kind!=2) return D_KERN_INVALID_RIGHT;
+    struct epoll_event event={.events=EPOLLIN,.data.u64=port->name};
+    long status=RAW(SYS_epoll_ctl,set->read_fd,insert ? EPOLL_CTL_ADD : EPOLL_CTL_DEL,
+                    port->read_fd,&event,0,0);
+    if (status==-EEXIST) return D_KERN_ALREADY_IN_SET;
+    if (status==-ENOENT) return D_KERN_NOT_IN_SET;
+    return status ? D_KERN_RESOURCE_SHORTAGE : D_KERN_SUCCESS;
+}
+static unsigned long ipc_port_insert_right(const unsigned long long *r)
+{
+    if (r[0]!=CURRENT_TASK_PORT) return D_KERN_INVALID_TASK;
+    struct ipc_endpoint *port=ipc_find(r[1]);
+    if (!port) return D_KERN_INVALID_NAME;
+    if (port->kind) return D_KERN_INVALID_RIGHT;
+    /* Only making a send right from this task's own receive right is supported.
+     * A rename, cross-task transfer or send-once right needs different ownership. */
+    if (r[1]!=r[2] || r[3]!=D_MACH_TYPE_MAKE_SEND) return D_KERN_NOT_SUPPORTED;
+    __atomic_fetch_add(&port->send_refs,1,__ATOMIC_ACQ_REL);
+    return D_KERN_SUCCESS;
 }
 /* A registry for this standalone compatibility machine, not launchd/XPC.
  * The public lookup API is redirected here by name in the private cache map.
@@ -535,23 +582,34 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
 receive_message:
     if (options&D_MACH_RCV_MSG) {
         struct ipc_endpoint *endpoint=ipc_find(r[4]);
-        if (!endpoint || endpoint->kind) return D_MACH_RCV_INVALID_NAME;
+        if (!endpoint || (endpoint->kind!=0 && endpoint->kind!=2)) return D_MACH_RCV_INVALID_NAME;
         struct timespec now; uint64_t deadline=0;
         if (options&D_MACH_RCV_TIMEOUT) {
             if (RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0)) return D_MACH_RCV_INTERRUPTED;
             deadline=(uint64_t)now.tv_sec*1000000000+now.tv_nsec+(uint64_t)(uint32_t)r[5]*1000000;
         }
         for (;;) {
-            ipc_queue_lock(endpoint);
+            struct ipc_endpoint *member=endpoint;
+            if (endpoint->kind==2) {
+                struct epoll_event event;
+                long count=RAW(SYS_epoll_pwait,endpoint->read_fd,&event,1,0,0,sizeof(uint64_t));
+                if (count<0) return D_MACH_RCV_INTERRUPTED;
+                member=count ? ipc_find((uint32_t)event.data.u64) : NULL;
+                if (member && member->kind) return D_MACH_RCV_INVALID_NAME;
+            }
             unsigned long message_size=0,total_size=0;
-            unsigned long status=ipc_receive_locked(endpoint,r[0],r[3],
-                options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT),&message_size,&total_size);
+            unsigned long status=D_MACH_RCV_TIMED_OUT;
+            if (member) {
+                ipc_queue_lock(member);
+                status=ipc_receive_locked(member,r[0],r[3],
+                    options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT),&message_size,&total_size);
+            }
             if (status==D_MACH_RCV_TOO_LARGE && (options&D_MACH_RCV_LARGE)) {
-                uint32_t size=message_size,identity=endpoint->name;
+                uint32_t size=message_size,identity=member->name;
                 if (guest_copy(&size,r[0]+4,4,1) ||
                     ((options&D_MACH_RCV_LARGE_IDENTITY) && guest_copy(&identity,r[0]+12,4,1))) status=D_MACH_RCV_INVALID_DATA;
             }
-            ipc_queue_unlock(endpoint);
+            if (member) ipc_queue_unlock(member);
             if (status!=D_MACH_RCV_TIMED_OUT) return status;
             struct timespec remaining,*timeout=NULL;
             if (options&D_MACH_RCV_TIMEOUT) {
