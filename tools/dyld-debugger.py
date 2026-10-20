@@ -68,6 +68,7 @@ _security_entries = {}
 _ipc_callback_entries = {}
 _launch_entries = {}
 _settings_entries = {}
+_lifecycle_returns = {}
 
 
 def settings_callback(frame, location, internal_dict):
@@ -110,6 +111,16 @@ def launch_callback(frame, location, internal_dict):
     print('APP_LAUNCH_CALL ' + json.dumps({'method': name,
           'tid': frame.GetThread().GetThreadID(), 'pc': hex(frame.GetPC()),
           'caller': hex(frame.FindRegister('lr').GetValueAsUnsigned())}), flush=True)
+    if 'Canvas' in name or 'SceneTransitionContext' in name:
+        arguments=[]
+        for index in (0,2,3,4):
+            value=frame.FindRegister('x'+str(index)).GetValueAsUnsigned()
+            item={'register':'x'+str(index),'value':hex(value)}
+            if value>=4096:
+                try: item['class']=objects.class_name(value)
+                except (ValueError,UnicodeError,SystemError): pass
+            arguments.append(item)
+        print('APP_CANVAS_ARGUMENTS '+json.dumps({'method':name,'arguments':arguments}),flush=True)
     target = frame.GetThread().GetProcess().GetTarget()
     target.GetDebugger().HandleCommand('thread backtrace --count 12')
     target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(frame.GetPC()) + ' --count 128')
@@ -212,6 +223,37 @@ def install_launch_breakpoints(target):
             breakpoint.SetAutoContinue(True)
 
 
+def lifecycle_return(frame, location, internal_dict):
+    breakpoint=location.GetBreakpoint()
+    print('APP_LIFECYCLE_RETURN '+json.dumps({'method':_lifecycle_returns[breakpoint.GetID()],
+        'tid':frame.GetThread().GetThreadID(),'value':frame.FindRegister('x0').GetValueAsUnsigned(),
+        'caller':hex(frame.FindRegister('lr').GetValueAsUnsigned())}),flush=True)
+    if breakpoint.GetHitCount()>=8:
+        breakpoint.SetEnabled(False)
+    return False
+
+
+def canvas_factory_classes(target,address,count):
+    """Read class globals actually referenced by the monitor factories."""
+    objects=GuestObjects(target.GetProcess())
+    words=struct.unpack('<'+'I'*count,objects.read(address,count*4))
+    for index,word in enumerate(words[:-1]):
+        following=words[index+1]
+        if word&0x9f000000!=0x90000000 or following&0xffc00000!=0xf9400000 or word&31!=(following>>5)&31:
+            continue
+        immediate=((word>>29)&3)|(((word>>5)&0x7ffff)<<2)
+        if immediate&(1<<20): immediate-=1<<21
+        pointer=((address+index*4)&~4095)+(immediate<<12)+((following>>10)&4095)*8
+        try:
+            cls=objects.u64(pointer)
+            if objects.u32(objects.class_ro(objects.object_class(cls)))&1:
+                name=objects.class_name(cls)
+                if 'LifecycleMonitor' in name:
+                    yield cls,name
+        except (ValueError,UnicodeError,SystemError):
+            continue
+
+
 def install_canvas_breakpoints(target):
     """Follow the real scene-to-application lifecycle, including class methods."""
     objects=GuestObjects(target.GetProcess())
@@ -225,10 +267,13 @@ def install_canvas_breakpoints(target):
            'lifecycleMonitorForCanvas:','compatabilityLifecycleMonitorForCanvas:','initWithCanvas:',
            'activateEventsOnly:withContext:completion:',
            'deactivateEventsOnly:withContext:forceExit:completion:'}
-    for symbol in diagnostic_symbols():
+    symbols=list(diagnostic_symbols())
+    seen=set()
+    for symbol in symbols:
         name=symbol.get('symbol','')
-        if name not in names:
+        if name not in names or name in seen:
             continue
+        seen.add(name)
         cls=int(symbol['address'],16)
         for kind,metadata in (('instance',cls),('class',objects.u64(cls))):
             methods=objects.u64(objects.class_ro(metadata)+32)
@@ -245,6 +290,21 @@ def install_canvas_breakpoints(target):
                     continue
                 address=objects.u64(entry+16)
                 label=name+' '+kind+' '+selector
+                if selector in ('_lifecycleActionType','_isMainSceneCanvas'):
+                    for instruction in target.ReadInstructions(target.ResolveLoadAddress(address),64):
+                        if instruction.GetMnemonic(target)=='ret':
+                            result=target.BreakpointCreateByAddress(instruction.GetAddress().GetLoadAddress(target))
+                            _lifecycle_returns[result.GetID()]=label
+                            result.SetScriptCallbackFunction('dyld_debugger.lifecycle_return')
+                            result.SetAutoContinue(True)
+                            break
+                if selector in ('compatabilityLifecycleMonitorForCanvas:','lifecycleMonitorForCanvas:'):
+                    for referenced,class_name in canvas_factory_classes(target,address,32):
+                        symbol_name='_OBJC_CLASS_$_'+class_name
+                        if symbol_name not in names:
+                            print('APP_CANVAS_FACTORY_CLASS '+json.dumps({'factory':label,'class':class_name,'address':hex(referenced)}),flush=True)
+                            names.add(symbol_name)
+                            symbols.append({'symbol':symbol_name,'address':hex(referenced)})
                 print('APP_CANVAS_CODE '+json.dumps({'method':label,'address':hex(address)}),flush=True)
                 target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 256')
                 capture_code_references(target,address,256,'APP_CANVAS_REFERENCE')
