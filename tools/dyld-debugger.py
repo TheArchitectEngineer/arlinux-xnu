@@ -140,6 +140,8 @@ def install_launch_breakpoints(target):
                        '_OBJC_CLASS_$_FBSSceneClientSettingsDiff',
                        '_OBJC_CLASS_$_FBSSettingsDiff', '_OBJC_CLASS_$_FBSScene',
                        '_OBJC_CLASS_$_BSSettings', '_OBJC_CLASS_$_FBSSceneSettings',
+                       '_OBJC_CLASS_$_FBSDisplayIdentity', '_OBJC_CLASS_$_FBSDisplayConfiguration',
+                       '_OBJC_CLASS_$_FBSDisplayMode',
                        '_OBJC_CLASS_$_FBSSceneTransitionContext'):
             entries = []
             try:
@@ -172,16 +174,21 @@ def install_launch_breakpoints(target):
                         print('APP_LAUNCH_PROTOCOL ' + json.dumps({'method': label, 'address': hex(address)}), flush=True)
                         target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 256')
                         capture_code_references(target,address,256,'APP_LAUNCH_PROTOCOL_REFERENCE')
-                        if name=='_OBJC_CLASS_$_BSSettings':
+                        if name in ('_OBJC_CLASS_$_BSSettings','_OBJC_CLASS_$_FBSSceneSettingsDiff'):
                             capture_protocol_blocks(target,address,256)
                         if selector=='initWithXPCDictionary:' and name in (
                                 '_OBJC_CLASS_$_FBSSettingsDiff','_OBJC_CLASS_$_FBSWorkspaceSceneUpdateEvent'):
                             capture_protocol_callees(target,address,96)
-                    if name=='_OBJC_CLASS_$_FBSSceneSettings' and selector in ('init','frame','displayConfiguration','isBackgrounded'):
+                    if (name=='_OBJC_CLASS_$_FBSSceneSettings' and selector in (
+                            'init','initWithSettings:','frame','displayIdentity','displayConfiguration','isBackgrounded',
+                            '_setDisplayConfiguration:')) or (name.startswith('_OBJC_CLASS_$_FBSDisplay') and
+                            (selector in ('initWithXPCDictionary:','encodeWithXPCDictionary:') or selector.startswith('_initWith'))):
                         address=objects.u64(entry+16)
-                        print('APP_SCENE_SETTINGS_CODE '+json.dumps({'method':selector,'address':hex(address)}),flush=True)
+                        print('APP_SCENE_SETTINGS_CODE '+json.dumps({'class':name,'method':selector,'address':hex(address)}),flush=True)
                         target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 128')
                         capture_code_references(target,address,128,'APP_SCENE_SETTINGS_REFERENCE')
+                        if selector=='initWithXPCDictionary:':
+                            capture_protocol_callees(target,address,128)
                     if name == '_OBJC_CLASS_$_BKSWorkspace' or any(part in selector.lower() for part in
                            ('launch', 'initializ', 'checkin', 'connect', 'scene', '_run', 'bootstrap')):
                         address = objects.u64(entry+16)
