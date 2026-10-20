@@ -116,6 +116,7 @@ def report(run_id, job_name, verbose=False):
         markers = ('APP_INPUT ', 'APP_OUTCOME ', 'COMPILER_CACHE_STATS ', 'LLDB_RETRY_SKIPPED ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                    'DARLING_NATIVE_CONNECTED ', 'DARLING_RPC_ERROR ', 'DARLING_RPC_WAIT ',
                    'DARLING_RENDER_RECEIVED ', 'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_SERVICE_PORTS ',
+                   'HIDFOCUS_REQUEST_UNIMPLEMENTED ', 'SESSION_SERVICE_FAILED ',
                    'DARLINGSERVER_RPC_ONLY ',
                    'DARLING_KQCHAN_OPEN ', 'DARLING_KQCHAN_EVENT ',
                    'DARLING_SERVICE_REPLY ',
@@ -195,6 +196,7 @@ def report(run_id, job_name, verbose=False):
                        'NORMAL_RUNTIME_FAULT_PC ', 'DARWIN_NATIVE_FAULT ', 'DARWIN_KEVENT_ERROR ',
                        'OBJC_EXCEPTION ', 'OBJC_EXCEPTION_DECODE_ERROR ',
                        'NATIVE_SERVICE_FAILURE ', 'DARLING_RENDER_RECEIVED ',
+                       'HIDFOCUS_REQUEST_UNIMPLEMENTED ', 'SESSION_SERVICE_FAILED ',
                        'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_RENDER_FORWARD ',
                        'DARWIN_WORKLOOP_ERROR_STATE ', 'DARWIN_WORKLOOP_SYNC_', 'NATIVE_WORKLOOP_WAIT ',
                        'EXPERIMENT_RECEIPT ')

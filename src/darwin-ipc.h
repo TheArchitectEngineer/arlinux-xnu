@@ -28,7 +28,7 @@ static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 static uint32_t native_bootstrap_port,native_display_port,native_render_port;
 static uint32_t native_session_ports[D_SESSION_SERVICE_COUNT];
 static const char *const native_session_names[D_SESSION_SERVICE_COUNT]={
-    D_SESSION_PROCESSINFO_NAME,D_SESSION_WORKSPACE_NAME,D_SESSION_SYSTEMAPP_NAME};
+    D_SESSION_PROCESSINFO_NAME,D_SESSION_WORKSPACE_NAME,D_SESSION_SYSTEMAPP_NAME,D_SESSION_HIDFOCUS_NAME};
 static int native_session_manager;
 static uint32_t native_provider_pid,native_provider_incarnation;
 
@@ -520,7 +520,8 @@ int darwin_native_session_start(void)
 #ifdef ARLINUX_DARLING
     if (!darling_active || native_bootstrap_port) return -1;
     uint32_t *names[]={&native_bootstrap_port,&native_session_ports[D_SESSION_PROCESSINFO],
-        &native_session_ports[D_SESSION_WORKSPACE],&native_session_ports[D_SESSION_SYSTEMAPP]};
+        &native_session_ports[D_SESSION_WORKSPACE],&native_session_ports[D_SESSION_SYSTEMAPP],
+        &native_session_ports[D_SESSION_HIDFOCUS]};
     for (unsigned int i=0;i<sizeof(names)/sizeof(names[0]);i++)
         if (dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,names[i]) ||
             dserver_rpc_mach_port_insert_right(CURRENT_TASK_PORT,*names[i],*names[i],D_MACH_TYPE_MAKE_SEND)) return -1;
@@ -793,9 +794,11 @@ int darwin_native_system_lookup(const char *name,uint64_t type,uint64_t flags,ui
     /* The compatibility system namespace contains only our actual provider.
      * A privileged lookup selects this controlled namespace; it does not mint
      * a root audit token or authorize arbitrary application registrations. */
-    uint32_t listener=native_session_ports[D_SESSION_PROCESSINFO];
-    if (type!=1 || flags!=8 || !listener ||
-        !native_service_equal(name,D_SESSION_PROCESSINFO_NAME)) return D_ENOTSUP;
+    if (type!=1 || flags!=8) return D_ENOTSUP;
+    uint32_t listener=0;
+    for (unsigned int i=0;i<D_SESSION_SERVICE_COUNT;i++)
+        if (native_service_equal(name,native_session_names[i])) listener=native_session_ports[i];
+    if (!listener) return D_ENOTSUP;
     int status=darwin_native_host_port_refs(listener,1);
     if (!status) *port=listener;
     return status;

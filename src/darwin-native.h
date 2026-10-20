@@ -13,10 +13,11 @@ int darwin_native_host_identity(uint32_t *pid,uint32_t *incarnation);
 uint32_t darwin_native_bootstrap_peer(uint64_t token_address);
 int arlinux_xpc_bootstrap(void *request,void *response,unsigned long capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *requester);
 enum darwin_session_service { D_SESSION_PROCESSINFO, D_SESSION_WORKSPACE,
-    D_SESSION_SYSTEMAPP, D_SESSION_SERVICE_COUNT };
+    D_SESSION_SYSTEMAPP, D_SESSION_HIDFOCUS, D_SESSION_SERVICE_COUNT };
 #define D_SESSION_PROCESSINFO_NAME "com.apple.assertiond.processinfoservice"
 #define D_SESSION_WORKSPACE_NAME "com.apple.frontboard.workspace"
 #define D_SESSION_SYSTEMAPP_NAME "com.apple.frontboard.systemappservices"
+#define D_SESSION_HIDFOCUS_NAME "com.apple.backboard.hid.focus"
 int arlinux_xpc_session(void *request,unsigned long length,void *response,unsigned long capacity,const uint32_t *listeners,uint32_t set,const uint32_t *audit);
 void arlinux_xpc_session_tick(uint32_t set);
 /* Private native display registration, delivered over real audited Mach IPC. */

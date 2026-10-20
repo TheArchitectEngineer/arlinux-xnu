@@ -137,7 +137,7 @@ static struct processinfo_peer {
     struct processinfo_peer *next;
 } *processinfo_peers;
 static const char *const session_service_names[D_SESSION_SERVICE_COUNT]={
-    D_SESSION_PROCESSINFO_NAME,D_SESSION_WORKSPACE_NAME,D_SESSION_SYSTEMAPP_NAME};
+    D_SESSION_PROCESSINFO_NAME,D_SESSION_WORKSPACE_NAME,D_SESSION_SYSTEMAPP_NAME,D_SESSION_HIDFOCUS_NAME};
 
 static void session_peer_destroy(struct processinfo_peer *peer)
 {
@@ -414,6 +414,16 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
     }
     spc_message_t *message=spc_deserialize(request);
     if (!message) abort();
+    if (peer->service==D_SESSION_HIDFOCUS) {
+        /* Diagnostic transport only: retain the authentic NSXPC invocation
+         * before implementing focus behavior. Never reply with a fabricated
+         * subscription, focus owner or successful invocation. */
+        fprintf(stderr,"HIDFOCUS_REQUEST_UNIMPLEMENTED pid=%u incarnation=%u fields=%zu id=%x\n",
+                peer->pid,peer->incarnation,message->content->num_items,header->msgh_id);
+        fprintf(stdout,"HIDFOCUS_REQUEST_DICTIONARY pid=%u incarnation=%u\n",peer->pid,peer->incarnation);
+        spc_dump(message->content); fflush(stdout); fflush(stderr);
+        _exit(D_RUNTIME_FATAL_EXIT);
+    }
     if (launch_reply || scene_reply) {
         const char *label=scene_reply ? "SESSION_SCENE_REPLY" : "SESSION_LAUNCH_REPLY";
         fprintf(stderr,"%s pid=%u incarnation=%u fields=%zu\n",label,peer->pid,peer->incarnation,message->content->num_items);

@@ -348,6 +348,10 @@ jobs:
           fi
           cat build/dyld/app.stdout build/dyld/app.runtime.log
           echo "APP_PROCESS_STATUS=$app_status"
+          if [[ '${{ inputs.ipc }}' == darling ]] && ! kill -0 "$ARLINUX_SESSION_PID" 2>/dev/null; then
+            echo 'SESSION_SERVICE_FAILED original session provider exited during the app journey; inspect session.log'
+            status=1
+          fi
           python3 - "$app_status" "$peer" "$peer_status" <<'PY'
           import json, os, pathlib, re, sys
           root = pathlib.Path('build/dyld')
