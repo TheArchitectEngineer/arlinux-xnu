@@ -385,6 +385,7 @@ jobs:
               --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$__UIApplicationCanvas' \
               --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$__UICanvasLifecycleMonitor' \
               --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$_UIApplicationSceneSettings' \
+              --lookup /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore '_OBJC_CLASS_$_UIApplicationSceneTransitionContext' \
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSDisplayIdentity' \
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSDisplayConfiguration' \
               --lookup /System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices '_OBJC_CLASS_$_FBSDisplayMode' \

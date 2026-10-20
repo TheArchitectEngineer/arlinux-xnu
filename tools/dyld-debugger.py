@@ -215,11 +215,15 @@ def install_canvas_breakpoints(target):
     """Follow the real scene-to-application lifecycle, including class methods."""
     objects=GuestObjects(target.GetProcess())
     names={'_OBJC_CLASS_$__UICanvas','_OBJC_CLASS_$__UIApplicationCanvas',
-           '_OBJC_CLASS_$__UICanvasLifecycleMonitor','_OBJC_CLASS_$_UIApplicationSceneSettings'}
+           '_OBJC_CLASS_$__UICanvasLifecycleMonitor','_OBJC_CLASS_$_UIApplicationSceneSettings',
+           '_OBJC_CLASS_$_UIApplicationSceneTransitionContext'}
     exact={'initWithScene:','canvasForScene:','_canvasForScene:create:',
            'scene:didUpdateWithDiff:transitionContext:completion:',
            '_isMainSceneCanvas','isUISubclass','canvasClass','initWithSettings:',
-           '_hasLifecycle','isBackgrounded','isForeground'}
+           '_hasLifecycle','isBackgrounded','isForeground','_lifecycleActionType','_setLifecycleActionType:',
+           'lifecycleMonitorForCanvas:','compatabilityLifecycleMonitorForCanvas:','initWithCanvas:',
+           'activateEventsOnly:withContext:completion:',
+           'deactivateEventsOnly:withContext:forceExit:completion:'}
     for symbol in diagnostic_symbols():
         name=symbol.get('symbol','')
         if name not in names:
@@ -523,9 +527,9 @@ def capture_protocol_blocks(target, address, count):
             continue
         seen.add(pointer)
         print('APP_SETTINGS_CODEC_BLOCK '+json.dumps({'method':hex(address),'pc':hex(address+index*4),'block':hex(pointer)}),flush=True)
-        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(pointer)+' --count 256')
-        capture_code_references(target,pointer,256,'APP_SETTINGS_CODEC_REFERENCE')
-        capture_switch_tables(target,pointer,256)
+        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(pointer)+' --count 384')
+        capture_code_references(target,pointer,384,'APP_SETTINGS_CODEC_REFERENCE')
+        capture_switch_tables(target,pointer,384)
         callees=set()
         for offset,word in enumerate(struct.unpack('<'+'I'*128,objects.read(pointer,512))):
             if word&0xfc000000!=0x94000000:
@@ -556,9 +560,11 @@ def capture_switch_tables(target, address, count):
         if not match or index<2 or index+2>=len(instructions):
             continue
         dest,base,offset=match.groups()
-        if instructions[index+1].GetMnemonic(target)!='add' or instructions[index+1].GetOperands(target)!=f'{dest}, {dest}, {base}':
+        addition=instructions[index+1].GetOperands(target)
+        branch=dest if addition==f'{dest}, {dest}, {base}' else base if addition==f'{base}, {dest}, {base}' else None
+        if instructions[index+1].GetMnemonic(target)!='add' or branch is None:
             continue
-        if instructions[index+2].GetMnemonic(target)!='br' or instructions[index+2].GetOperands(target)!=dest:
+        if instructions[index+2].GetMnemonic(target)!='br' or instructions[index+2].GetOperands(target)!=branch:
             continue
         add=instructions[index-1]; adrp=instructions[index-2]
         pattern=re.fullmatch(base+r', '+base+r', #(0x[0-9a-f]+|[0-9]+)',add.GetOperands(target))
