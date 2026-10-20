@@ -26,7 +26,7 @@ GitHub CLI are required. Compilation and execution happen only on hosted runners
 
 One macOS ARM64 job uses Xcode 16.4's real iPhoneOS SDK to build C, Objective-C
 and Swift apps. Linux ARM64 builds the production runtime with ccache, verifies
-the exact same-run app products and prepares the pinned iOS 12.5.7 userland.
+the exact same-run app products and prepares the pinned iOS 16.7.16 userland.
 Each independent journey gets a fresh shared Mach session and fresh app state;
 relaunch keeps only that journey's state. Concurrency scenarios alone share
 multiple app processes within one journey. Failures do not block unrelated apps.
@@ -40,7 +40,7 @@ platform adapters are built from this repository's source. Downloaded products
 are checked against their same-source/run/attempt receipt and file hashes.
 
 Scope: ARM64, 16 KiB guest pages, one actual scheduled/advertised CPU, non-arm64e,
-selected iOS 12.5.7 frameworks, software framebuffer. Multiple independent apps,
+selected iOS 16.7.16 frameworks, software framebuffer. Multiple independent apps,
 real service lifetimes, input, persistence and Android acceptance remain required.
 See [architecture](docs/ARCHITECTURE.md), [diagnostics](docs/DIAGNOSTICS.md) and
 [current evidence](docs/EXPERIMENT.md). Unsupported behavior fails explicitly.

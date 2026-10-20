@@ -53,6 +53,8 @@ run('cmake', '--build', reader_build, '--target', 'apfs-fuse', '-j2')
 
 archive = output / 'firmware.ipsw'
 run('curl', '--fail', '--location', '--retry', '3', '--output', archive, source['url'])
+if source.get('bytes') and archive.stat().st_size!=source['bytes']:
+    raise SystemExit('Apple firmware byte size mismatch')
 actual = sha(archive)
 if actual != source['sha256']:
     raise SystemExit('Apple firmware SHA-256 mismatch: ' + actual)
@@ -62,8 +64,14 @@ if not unzip:
     raise SystemExit('7-Zip is required on the runner')
 run(unzip, 'e', '-y', '-o' + str(output), archive, 'BuildManifest.plist')
 manifest = plistlib.loads((output / 'BuildManifest.plist').read_bytes())
-identity = manifest['BuildIdentities'][0]
-member = identity['Manifest']['OS']['Info']['Path']
+if (manifest.get('ProductVersion'),manifest.get('ProductBuildVersion'))!=(source['version'],source['build']):
+    raise SystemExit('Firmware BuildManifest version/build mismatch')
+if source['device'] not in manifest.get('SupportedProductTypes',[]):
+    raise SystemExit('Requested device is not in this firmware BuildManifest')
+os_members={identity['Manifest']['OS']['Info']['Path'] for identity in manifest['BuildIdentities']}
+if len(os_members)!=1:
+    raise SystemExit('Firmware contains ambiguous OS images; select the requested board identity explicitly')
+member=os_members.pop()
 if Path(member).name != member or not member.endswith('.dmg'):
     raise SystemExit('Unexpected OS image path in Apple BuildManifest')
 run(unzip, 'e', '-y', '-o' + str(output), archive, member)
@@ -97,21 +105,14 @@ try:
     # apfs-fuse exposes APFS's root-parent inode at the mount point.
     # Like ios-sweet/tools/mkiosroot.sh, enter the real volume's root directory.
     shutil.copyfile(filesystem / 'root/usr/lib/dyld', loader)
-    cache = filesystem / 'root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64'
-    with cache.open('rb') as stream:
-        header = stream.read(16384)
-        mappings_offset, mappings_count, images_offset, images_count = struct.unpack_from('<IIII', header, 16)
-        slide_offset, slide_size = struct.unpack_from('<QQ', header, 56)
-        mappings = [dict(zip(['address', 'size', 'offset', 'maxProtection', 'protection'],
-                            struct.unpack_from('<QQQII', header, mappings_offset+i*32)))
-                    for i in range(mappings_count)]
-        stream.seek(slide_offset)
-        slide_header = stream.read(40)
-    cache_record = {'bytes': cache.stat().st_size, 'sha256': sha(cache),
-                    'magic': header[:16].decode('ascii', errors='replace'),
-                    'mappings': mappings, 'imagesOffset': images_offset,
-                    'imagesCount': images_count, 'slideOffset': slide_offset,
-                    'slideBytes': slide_size, 'slideHeaderWords': list(struct.unpack('<IIIIIIQQ', slide_header))}
+    candidates=[filesystem/'root'/directory/'dyld_shared_cache_arm64' for directory in
+        ('System/Library/Caches/com.apple.dyld','System/Library/dyld')]
+    caches=[path for path in candidates if path.is_file()]
+    if len(caches)!=1:
+        raise SystemExit('No unique ARM64 cache in actual OS layout: '+str(caches))
+    cache=caches[0]
+    from apple_cache import describe_cache
+    cache_record=describe_cache(cache,sha)
     (evidence / 'cache-input.json').write_text(json.dumps(cache_record, indent=2)+'\n')
     print('APPLE_CACHE_INPUT '+json.dumps(cache_record), flush=True)
 except BaseException:

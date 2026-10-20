@@ -26,12 +26,12 @@ do not certify UIKit. Sharing uses the actual public iOS extension APIs. The ret
 initWithServiceName/serviceListener fixture and its private declarations were
 removed after the real iOS SDK rejected them; no availability bypass is used.
 
-Current firmware uses UIApplicationDelegate, not iOS 13 scene delegates. Swift
-and SwiftUI are different axes: [Swift 5 runtime shipped with iOS 12.2](https://www.swift.org/blog/abi-stability-and-apple/),
-whereas SwiftUI is outside this selected framework set. A new Swift compiler may
-introduce compatibility-library dependencies; record actual imports/failures and
-never silently replace the firmware's runtime. Old Swift 4 binaries are a separate
-future input because they may bundle their own pre-stable runtime.
+The selected firmware is iPhone 8/A11 iOS 16.7.16 (20H392), with non-arm64e
+ARM64 binaries. Fixtures retain the ordinary UIApplicationDelegate lifecycle;
+scene-based lifecycle and SwiftUI require separate app journeys before support
+can be claimed. Swift/UIKit isolates language/runtime behavior from SwiftUI's
+additional framework dependencies. Legacy Swift 4 packages may bundle another
+runtime and remain a separate future input.
 
 ## Independent execution and shared mechanisms
 

@@ -1,7 +1,7 @@
 # Darwin/iOS compatibility architecture
 
 Native ARM64, 16 KiB guest pages, one actual CPU affinity, non-arm64e, selected
-iOS 12.5.7 userland. The goal is useful application behavior on Linux/Android,
+iOS 16.7.16 userland. The goal is useful application behavior on Linux/Android,
 not an unchanged XNU boot. Current compatibility is incomplete. All compilation
 and execution use GitHub runners through build.sh.
 

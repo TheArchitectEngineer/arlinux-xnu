@@ -21,7 +21,9 @@ def main():
         raise SystemExit('App compilation requires the macOS ARM64 runner through build.sh')
     OUT.mkdir(parents=True,exist_ok=False)
     sdk=command('xcrun','--sdk','iphoneos','--show-sdk-path').decode().strip()
-    target='arm64-apple-ios12.0'
+    firmware=json.loads((ROOT/'sources.lock.json').read_text())['iosUserland']
+    minimum=firmware['version'].split('.')[0]+'.0'
+    target='arm64-apple-ios'+minimum
     environment={'xcode':command('xcodebuild','-version').decode(),
                  'swift':command('xcrun','swiftc','--version').decode(),
                  'sdk':sdk,'target':target,'host':platform.platform()}
@@ -35,7 +37,7 @@ def main():
         app=json.loads(declaration.read_text()); name=app['name']; bundle=OUT/(name+'.app'); bundle.mkdir()
         info={'CFBundleExecutable':name,'CFBundleIdentifier':'io.arlinux.'+name,
               'CFBundleName':name,'CFBundleVersion':'1','CFBundleShortVersionString':app['version'],
-              'CFBundlePackageType':'APPL','MinimumOSVersion':'12.0','UIDeviceFamily':[1,2],
+              'CFBundlePackageType':'APPL','MinimumOSVersion':minimum,'UIDeviceFamily':[1,2],
               'NSAppTransportSecurity':{'NSAllowsLocalNetworking':True}}
         (bundle/'Info.plist').write_bytes(plistlib.dumps(info))
         if app['kind']=='application': shutil.copy2(OUT/'libarlinux-ios.dylib',bundle/'libarlinux-ios.dylib')
@@ -68,7 +70,7 @@ def main():
                 (folder/'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':helper['name'],
                     'CFBundleName':helper['name'],'CFBundleDisplayName':helper['name'],
                     'CFBundleIdentifier':'io.arlinux.'+name+'.'+helper['name'],'CFBundlePackageType':'XPC!',
-                    'CFBundleVersion':'1','CFBundleShortVersionString':'1.0','MinimumOSVersion':'12.0',
+                    'CFBundleVersion':'1','CFBundleShortVersionString':'1.0','MinimumOSVersion':minimum,
                     'NSExtension':{'NSExtensionPointIdentifier':helper['point'],
                         'NSExtensionPrincipalClass':helper['principalClass'],
                         'NSExtensionAttributes':{'NSExtensionActivationRule':{'NSExtensionActivationSupportsText':True}}}}))

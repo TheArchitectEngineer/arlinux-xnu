@@ -1,28 +1,38 @@
-# Current evidence
+# Current evidence and goal
 
-The app collection has replaced the historical host, freestanding, raw syscall,
-standalone kernel boot and combined workbench experiment modes. Sources and short
-journeys are owned independently under apps/. C/Objective-C/Swift apps compile
-with the real Apple SDK, then the same-run products execute on Linux. The optional
-Apple-host reference consumes those same binaries/manifests.
+Active goal: run a basic real UIKit app on Linux ARM64 using iPhone 8/A11 iOS
+16.7.16 (20H392): visible content, actual input, updated state/pixels, normal exit
+and fresh relaunch. Console, Foundation and Swift/UIKit are independent layers;
+none alone certifies that GUI goal. No OCR or AI recognizer is used.
 
-This restructuring is awaiting its first exact-source hosted run. No complete
-Linux GUI, third-party IPA or Android journey has passed. New app build success
-alone will not change that conclusion. APP_BUILD, APP_CASE and APP_SUITE describe
-separate build, effect and aggregate outcomes. Partial selections never certify
-the whole app collection.
+The fixed input is iPhone10,1, 6,035,280,776 bytes. Apple's actual CDN HEAD response
+and the independent firmware index both publish SHA-256
+601cb23e740dacf8b61271fe02ffd5b3c146b518abb5a6e6b286e5f0475fe43b.
+URL, exact version/build/bytes/hash live in sources.lock.json. Runner preparation
+must verify the downloaded bytes, BuildManifest version/device and actual mounted
+OS/cache layout. Firmware and extracted Apple executable data stay runner-local.
 
-Historical source 7296e4ce842dbb1f0d4f0a33cd8009c0a3bba7c7 at run
-[39448373812](https://github.com/taowen/arlinux-xnu/actions/runs/39448373812)
-failed all seven old cases on missing visible controls. The real UIKit view tree
-contained a button and label absent from composed pixels. Those old inputs are
-not acceptance for the replacement app collection. Platform constructor and
-plaintext cryptid 0 loading had reached real main-run-loop rendering.
+The source-owned collection has 11 independently built apps, 13 short owned
+journeys and two cross-app scenarios. C/Objective-C/Swift use Apple's real SDK.
+Inputs are authenticated across jobs by the producing job's receipt hash plus
+per-file SHA-256, exact source/run/attempt. App UI/accessibility or actual WebKit
+DOM data is read-only evidence; real external input and composed pixel checks
+are still required. No fixture action RPC or replacement framework is used.
 
-Next: inspect the new app-specific failures independently. Required implementation
-work includes real control rendering/input/close, writable app containers,
-application-requested service launch and independently audited crash cleanup.
-Do not restore retired probes to make a build green. Read APPS.md for effects,
-ARCHITECTURE.md for ownership and DIAGNOSTICS.md for original-process evidence.
-Apple firmware/cache/executables remain transient; preserve safe text/screenshots
-and source-built products only. Update this handoff with exact run/source/receipts.
+The obsolete iOS 12 runner 39454604689 was cancelled while queued when the input
+changed. Its unexecuted new observation path is not a pass. The preceding legacy
+source e99bf5e at run 39452517381 built all 11 apps, passed the Console lifecycle,
+and failed the remaining 14 cases. Its SDK-compiled Process app exposed a genuine
+mmap fd-width bug; narrowing the signed fd advanced from allocation failure to
+the later fork/COW stage, which remains failed. Old results do not certify iOS 16.
+
+The current cache mapper still assumes the old three-region/slide-v2 cache.
+Modern split-cache mapping, dyld bootstrap, framework imports/private service
+protocols and real input/normal close require actual iOS 16 evidence and fixes.
+Do not guess offsets from version numbers or relax required effects. Record the
+next exact run and its original-process failure before changing those mechanisms.
+
+Read APPS.md for independent effects, ARCHITECTURE.md for ownership, and
+DIAGNOSTICS.md for original-process evidence. No complete Linux GUI, third-party
+IPA or Android acceptance has passed. Keep history in Git/Actions rather than
+appending an unbounded experiment diary here.

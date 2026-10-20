@@ -18,11 +18,14 @@
   "guestArchitecture": "arm64",
   "virtualCpus": 1,
   "iosUserland": {
-    "device": "iPhone7,2",
-    "version": "12.5.7",
-    "build": "16H81",
-    "url": "https://updates.cdn-apple.com/2023FCSWinter/fullrestores/032-14159/3DCCA12B-087F-438C-B69D-B6316C46910F/iPhone_4.7_12.5.7_16H81_Restore.ipsw",
-    "sha256": "7c10ff0e4cdbe24f33012e47e8458a8ae8c858f2e3dbfce766c196f5d229cadb"
+    "device": "iPhone10,1",
+    "model": "iPhone 8",
+    "soc": "A11",
+    "version": "16.7.16",
+    "build": "20H392",
+    "bytes": 6035280776,
+    "url": "https://updates.cdn-apple.com/2025FallFCS/fullrestores/122-77002/0281BFC6-38ED-485A-A8BE-8871861174B1/iPhone_4.7_P3_16.7.16_20H392_Restore.ipsw",
+    "sha256": "601cb23e740dacf8b61271fe02ffd5b3c146b518abb5a6e6b286e5f0475fe43b"
   },
   "apfsReader": {
     "repository": "sgan81/apfs-fuse",
