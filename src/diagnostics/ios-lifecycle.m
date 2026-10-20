@@ -10,14 +10,16 @@
 
 static const struct arlinux_ios_platform_api *platform;
 static uint32_t last_generation=UINT32_MAX;
+static uint32_t last_flags=UINT32_MAX;
 static unsigned int samples;
 static void window_sample(CFRunLoopTimerRef timer,void *context)
 {
     (void)context;
     struct arlinux_ios_window_state window;
     long error=platform->read_window(&window,sizeof(window));
-    if (!error && window.generation!=last_generation) {
+    if (!error && (window.generation!=last_generation || window.flags!=last_flags)) {
         last_generation=window.generation;
+        last_flags=window.flags;
         fprintf(stderr,"IOS_HOST_WINDOW generation=%u pid=%u incarnation=%u width=%u height=%u refresh_millihz=%u flags=%u\n",
             window.generation,window.pid,window.incarnation,window.width,window.height,
             window.refresh_millihz,window.flags);

@@ -63,7 +63,8 @@ geometry. The lifecycle event contract is a design target. The version-2
 platform API currently exposes an actual window snapshot: agreed buffer
 geometry, refresh, compositor activation, explicit close request, backend
 liveness and audited app PID/incarnation. A bounded sequence-checked read
-avoids torn host updates. These facts are not yet converted into UIKit
+avoids torn host updates; kernel child status overrides stale liveness after
+an abrupt backend exit. These facts are not yet converted into UIKit
 scene/lifecycle transitions.
 
 Use the existing injected platform library as the adaptation seam. Inspect the

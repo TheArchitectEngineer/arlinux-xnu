@@ -55,8 +55,20 @@ FBSWorkspaceClient and FBSSceneImpl interfaces: those classes are absent.
 FBSScene instead declares
 _initWithUpdater:identityToken:identity:specification:settings:initialClientSettings:.
 UIApplication declares workspace:didCreateScene:withTransitionContext:completion:.
-The next focused diagnosis establishes the real scene identity/settings objects
-and initializer behavior before connecting that framework boundary.
+Focused run [39502256463](https://github.com/taowen/arlinux-xnu/actions/runs/39502256463),
+source b7314f882a94a5cf996c4afdf5b66715d64888df, verified all 20 files and receipt
+be629a20f35668b79fb1aae06a685ef995ce83f2d6ee5f4fc2e4b0f940e398fb.
+Counter still fails GUI acceptance. The actual initializer calls updater's
+callOutQueue and definition; it validates FBSSerialQueue, FBSSceneIdentityToken,
+FBSSceneIdentity, FBSSceneSpecification and matching settings/client-settings
+classes. The UIKit callback also validates the transition-context class.
+FBSSceneSpecification exposes settingsClass, clientSettingsClass and
+transitionContextClass. These contracts define the next host-backed scene
+implementation; no scene construction or UIKit lifecycle delivery is implemented.
+
+The subsequent window-state correction consults real Linux child status when
+reading backend liveness, so an ungraceful backend exit cannot leave a stale
+alive/active snapshot. Its hosted validation is pending.
 
 ## Direction and next implementation
 

@@ -232,7 +232,7 @@ static void native_wayland_run(int ready_fd,int pixels_fd,int notify,struct darw
         }
     }
     uint32_t final_flags=__atomic_load_n(&w.control->window_flags,__ATOMIC_RELAXED);
-    native_window_publish(&w,final_flags&~ARLINUX_IOS_WINDOW_BACKEND_ALIVE);
+    native_window_publish(&w,final_flags&~(ARLINUX_IOS_WINDOW_BACKEND_ALIVE|ARLINUX_IOS_WINDOW_ACTIVE));
     wl_display_disconnect(w.display); _exit(0);
 }
 static void native_display_open(void)
