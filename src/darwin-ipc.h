@@ -490,7 +490,9 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 if (!error) {
                     response[9]=D_AUDIT_TOKEN_WORDS;
                     __builtin_memcpy(response+10,&token,sizeof(token));
-                    out->size=sizeof(response);
+                    /* Wire size is Head + NDR + return/count + audit token,
+                     * independent of the shared reply buffer's capacity. */
+                    out->size=sizeof(struct ipc_header)+4*sizeof(uint32_t)+sizeof(token);
                 }
             }
         }

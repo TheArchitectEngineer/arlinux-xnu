@@ -86,7 +86,8 @@ def report(run_id, job_name):
             if line.startswith(('DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DARWIN_DISPLAY_QUERY ', 'DARWIN_RENDER_DISPLAY_LIST ', 'DARWIN_RENDER_PROPERTIES ')):
                 # Preserve bounded context verbatim: separate worker writes may
                 # interleave, so do not infer a synthetic causal event from it.
-                item['observations'].extend('  context: ' + text for text in lines[index+1:index+4])
+                count = 4 if line.startswith('DARWIN_RENDER_PROPERTIES ') else 3
+                item['observations'].extend('  context: ' + text for text in lines[index+1:index+1+count])
         for line in item['observations']:
             print('  ' + line)
         # An uncaught failure can have no application markers (e.g. compiler
