@@ -86,9 +86,22 @@ its guard/context and requested initial send right. Queue limits use synchronize
 packet counts, not an approximation based on socket byte capacity. The observed
 XPC options are 0x31 and 0x3b (the latter requests a 16-message limit). Importance
 receiver eligibility uses the standalone ordinary Linux scheduling policy;
-there is no App Nap or cross-process importance inheritance. Generic sends,
+there is no App Nap or cross-process importance inheritance. Inline local
+COPY_SEND/MOVE_SEND messages with no body rights use real queues and bounded waits;
 guard destruction and broader port ownership remain unsupported. A successful
 allocation is not evidence of an XPC server or a complete IPC journey.
+
+Queue packets capture the actual Linux sender audit identity at send time.
+Receives construct packed Darwin trailers from that identity, the port context
+and its actual receive sequence. Too-small LARGE receives retain the message
+for a real retry. Complex descriptors, reply/voucher transfers and external
+servers are not silently replaced by inline message success.
+
+Thread special-reply ports own real receive/send rights and are bound to actual
+Linux threads. A blocking special-reply receive yields that thread's workloop
+ownership and waits on real readiness; no completion is invented. Receive
+deadlines survive races with another consumer. Port allocation returns NULL on
+failure, never a kern_return value that userland could misinterpret as a name.
 
 The observed semaphore-create request allocates an actual Linux eventfd counter.
 Signal/wait traps are implemented, but have not passed a complete
@@ -115,10 +128,25 @@ There is no per-process Jetsam cap or Apple MSL status policy in the standalone
 runtime, and no process-limit notification is invented. Physical availability
 does not yet model cgroup memory ceilings; Android integration must address that
 where applicable. Successful registration alone does not verify pressure delivery.
-Mach-port event filters return unsupported errors; workloop capability is not
-advertised. Unsupported
-requests retain real errors. The observed UIKit workers have advanced past
-root-queue initialization; a complete kevent callback journey remains unproven.
+Mach-port filters watch real queue sockets and can receive into explicit guest
+buffers or report a genuine too-large message for libdispatch's allocation/retry.
+Dynamic queues have distinct IDs/epoll objects and a dedicated serial Linux
+worker. Real libpthread receives WORKLOOP flags and the ID immediately before
+the event list; its registered workloop callback executes the guest code.
+Servicer-side returns stay bound to that actual queue, while foreign synchronous
+polls fail. Queues currently live until process exit with bounded capacity.
+
+Asynchronous EVFILT_WORKLOOP thread requests check the actual guest state against
+the supplied mask/value before issuing a real eventfd wake. Ignored stale
+requests do not create/modify/wake sources; other stale failures preserve actual
+state and operation flags in the error receipt. QoS uses ordinary Linux niceness.
+DISCOVER_OWNER resolves a real live thread after restoring the reserved low two
+port-generation bits. The worker defers consumption while a client owns the
+drain session, using a futex that ownership end/thread exit actually wakes.
+Explicit SYNC_WAIT/SYNC_WAKE, full turnstiles, automatic queue retirement and
+the workloop control syscall remain unsupported. The capability bit selects real libpthread
+workloop registration; it is not a claim of full XNU workloop semantics.
+See the exact app run in docs/EXPERIMENT.md before claiming callback delivery.
 
 First-fit mutex slow waits consume real futex-backed wake credits; the genuine
 pthread library still owns its lock state and owner compare-and-swap. Other
@@ -130,6 +158,10 @@ Mach-O UUID. TASK_AUDIT_TOKEN uses the same process incarnation and Linux audit,
 real/effective UID/GID and process identity; it does not mint an Apple identity. Application bundle reads are resolved to its real bundle directory
 while firmware reads remain rooted separately; both paths retain read-only
 open policy. These are runtime services, not evidence of Android integration.
+
+Activity IDs reserve unique ranges from a MAP_SHARED atomic counter for this
+standalone machine and its fork children; they do not claim Apple host-wide
+tracing identity.
 
 ## Preserve behavior, permit implementation changes
 

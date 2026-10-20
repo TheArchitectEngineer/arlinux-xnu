@@ -13,20 +13,24 @@ ABI declarations; real implementations come from the selected iOS firmware.
 The app's code and bundle metadata are committed under guests/ARHello.
 
 Latest application attempt:
-[39344494727](https://github.com/taowen/arlinux-xnu/actions/runs/39344494727),
-source `4beb1634d4d1d124fba507b7055d5a3daebe5605`, dyld job `118373866198`.
+[39347374538](https://github.com/taowen/arlinux-xnu/actions/runs/39347374538),
+source `9ba56833f6f8bca0ce8e0b7284f23ae5c22f0410`, dyld job `118383295559`.
 UIKit submits actual background blocks to genuine libdispatch workers on Linux
 threads. LLDB sees _dispatch_root_queue_drain, _dispatch_worker_thread2 and
 _pthread_wqthread alongside CoreFoundation and QuartzCore initialization.
 The original workqueue assertion and base voucher failure are passed; proc_info
 returns the requested 56-byte current-process identity. XPC's audit-token query
-also passes, as do both observed guarded XPC port constructions. The current
-fatal assertion is libdispatch's kevent error path at 0x1808c3ce4. Debug-control
-query and memory-pressure registration pass; the next syscall is kevent_id
-(375), currently unsupported. This exact run captures a genuine Mach receive
-port registration on a dynamic workloop, detailed below.
+also passes, as do both observed guarded XPC port constructions, debug-control
+query, memory-pressure and dynamic Mach-port registration. A genuine workloop
+event is delivered; synchronous special-reply reception now actually blocks
+instead of returning INVALID_NAME for fake port 46. The previous stack-memory
+fault is absent in this run. The actual stop is an uncaught NSException from
+BKSDisplayServicesStart +436, through Foundation/CoreFoundation and
+UIApplicationMainPreparations, ending in libsystem_c abort at 0x1809bbf6c.
+The exception name/reason and the underlying display requirement still need
+to be captured; a missing display server must not be replaced by fake success.
 BackBoardServices display initialization is on the caller stack. No Linux
-window/display/input callback has passed. App status remains 133 (SIGTRAP).
+window/display/input callback has passed. App status is 133 (SIGTRAP in abort).
 
 The same run first completes both independent real-libSystem console launches:
 worker return 37, shared memory 42, input counter 1 and normal exit. Previous
@@ -78,67 +82,69 @@ standalone console regression is
 
 ### Current boundary and next action
 
-The release initializer instructions are now captured in
-[39339436734](https://github.com/taowen/arlinux-xnu/actions/runs/39339436734).
-It has no compiled manager-thread fallback: it checks real kevent support and
-calls the actual pthread workqueue initializer. The unsuccessful optional-data
-switch approach was removed. Native basic event support now uses epoll,
-eventfd and timerfd and reports its kevent capability; unknown filters and
-workloops return errors. Actual ordinary UIKit work dispatch is observed, but
-no successful kevent-callback/UI journey has yet established broader delivery.
+Dynamic Mach-port registration now passes on distinct Linux epoll queues:
+[39345466818](https://github.com/taowen/arlinux-xnu/actions/runs/39345466818),
+source `f684bcf10865f8607f431ac5a5474ea33394b662`. The next rejected request
+was EVFILT_WORKLOOP (-17), flags 5, fflags 0x111, with an actual guest-state
+address/mask/value. Current asynchronous requests use real debounce snapshots
+and eventfd readiness; ignored stale requests never synthesize a wake.
 
-The first contention observed was the real first-fit mutex protocol. Its new
-futex parking backend preserves one wake credit per unlock, including late
-waiters. Fair-share/shared mutexes and condition/RW-lock protocols remain
-unsupported. A standalone bank-voucher request yields an explicitly empty
-accounting context, consistent with libdispatch's empty-base-voucher mode;
-other recipes do not receive fabricated vouchers. UID/GID and time use Linux.
+[39345907904](https://github.com/taowen/arlinux-xnu/actions/runs/39345907904),
+source `2939723de31e41eb6245ab7d62cc059b46eb31b3`, passes the first asynchronous
+request. The ordinary app attempt stops at the unimplemented activity-ID trap
+(43), PC 0x1808c9bf4. Its LLDB retry takes another interleaving and stops at
+owner discovery (fflags 0x91), PC 0x1808c33d0. Both are retained; no first
+workloop event delivery/callback has yet been observed. Both real-libSystem
+console launches pass.
 
-Current-task proc_pidinfo uses actual Linux PID/start ticks and the original
-Mach-O LC_UUID. The app bundle is separately readable alongside the firmware.
-Enabling real file access also exposed an early libSystem re-entrant dispatch
-allocation through SystemVersion.plist/XPC parsing (39341299581). The production
-kern.osvariant_status read-only node now prevents this fallback; both complete
-dynamic consoles pass again. Firmware metadata confirms iPhone OS 12.5.7/16H81
-with no Internal/NonUI ReleaseType. Unknown sysctl nodes still return errors.
+Current source follows XNU's assigned-name rule: low two port generation bits
+remain set (3), with generation increments of four. Dispatch temporarily uses
+these bits for state tags, then restores them for actual owner lookup. Owner
+discovery resolves a real live thread, defers worker consumption while another
+thread owns the drain, and wakes waiters on ownership end/thread exit.
+Activity IDs reserve unique ranges from a MAP_SHARED atomic allocator for the
+standalone compatibility machine, including its fork/COW children. This is not
+an Apple host-wide tracing namespace. This app regression completed:
+[39346614222](https://github.com/taowen/arlinux-xnu/actions/runs/39346614222),
+source `debda62ef7eaefb442c8c6befb570100e75a068a`.
 
-TASK_AUDIT_TOKEN passes via real task-info MIG transport, populated
-from Linux IDs, /proc audit assignment and the same process incarnation used by
-proc_pidinfo. Run
-[39342992718](https://github.com/taowen/arlinux-xnu/actions/runs/39342992718),
-source `caf93b5ec22079df3504321339f7dcf03499c0fe`, passes the first real XPC
-port construction (flags 0x31), then rejects its second request (0x3b, qlimit 16).
-Run 39343338894 passes both constructions with synchronized packet-count limits
-and ordinary Linux scheduling for importance-receiver eligibility. The debug
-control query now returns its actual unregistered NULL slot, which both real
-XNU and libdispatch permit; 39343720831 confirms this path passes. Current source
-adds an actual Linux MemAvailable-backed memory-pressure subscription, with
-documented ordinary host thresholds and no configured process Jetsam cap.
-Sampling ticks do not substitute for pressure changes. 39344144830 confirms
-registration but not pressure callback delivery/rearm. The actual request from
-39343720831 was EVFILT_MEMORYSTATUS (-14), ident 0, flags 0x185, fflags
-0xf0000037. Current source retains bounded kevent_id arguments/first-event
-fields without reporting an unimplemented workloop as successful. Completed
-diagnostic regression:
-[39344494727](https://github.com/taowen/arlinux-xnu/actions/runs/39344494727),
-source `4beb1634d4d1d124fba507b7055d5a3daebe5605`:
+It passes activity-ID allocation and records DARWIN_EVENT_DELIVERY for queue
+0x3002167b0, one event, actual worker TID 0xd69. The ordinary run then faults
+in libdispatch; the LLDB retry takes another interleaving and stops earlier.
+Current source supplies real special-reply queues, yielding actual workloop
+ownership only when a receive must block, plus bounded waiting-process LLDB
+capture and disassembly/symbolication for the ordinary attempt's fault PC.
+Completed regression:
+[39347374538](https://github.com/taowen/arlinux-xnu/actions/runs/39347374538),
+source `9ba56833f6f8bca0ce8e0b7284f23ae5c22f0410`.
 
-- kevent_id queue ID 0x3002163e0, one change, capacity 16, no data buffer,
-  syscall flags 0x403 (WORKLOOP | IMMEDIATE | ERROR_EVENTS).
-- Change: ident 0xa01 (the newly allocated receive right), filter -8
-  (EVFILT_MACHPORT), flags 0x385, qos 0x840008ff, fflags 0x0400080e,
-  udata 0x300216470, data/ext zero.
-- Both real-libSystem console launches pass; the actual app returns 133 after
-  the unsupported operation. These IDs/addresses are observations, never fixed
-  configuration or a reason to special-case ARHello.
+This run repeats real workloop event delivery and both console journeys.
+LLDB shows the synchronous thread genuinely waiting in ipc_message/ppoll,
+while the main thread throws from BackBoardServices display initialization.
+The older 0x1808bf9d4 stack access is not seen in either attempt of this run;
+that is evidence for this journey, not proof against all lifetime races.
+The bounded LLDB helper and ordinary-fault PC capture run successfully
+(LLDB_COMMAND_STATUS=0); its forced-interruption branch has not yet been
+exercised by a genuinely hanging attempt. No job remains pending.
 
-Next implement actual dynamic queue identity/lifetime, Mach receive readiness,
-message/trailer ownership and the appropriate libpthread event delivery/owner
-binding. Inspect XNU and the actual libdispatch instructions for these flags;
-do not alias a workloop to the existing global workqueue or synthesize receives.
-Generic sends, port
-guard destruction, and broader Mach message/event delivery,
-display services, graphics and ARLinux integration remain incomplete.
+Actual Mach message receipt uses send-time Linux sender identity, packed
+trailers, receive sequence and queued-message size negotiation. Workloop entry
+uses the real libpthread callback with the actual queue ID before the event
+list. First event delivery is observed; successful completion of its callback
+and message round trips remain unproven. Explicit
+SYNC_WAIT/SYNC_WAKE commands, full turnstile/priority inheritance, dynamic queue
+retirement, the workloop control syscall, complex/right-transfer IPC, display
+services, graphics and ARLinux integration remain incomplete. Next capture
+the actual NSException name/reason at objc_exception_throw and inspect the
+BKSDisplayServicesStart caller before adapting the real display path. Keep extending
+the real ARHello journey; no isolated probe replaces UI acceptance.
+
+ABI sources: libpthread-330.250.2
+`b4b8795e1d4030f45efe04947773b265240ce03c`, XNU's pinned ipc_entry/event/voucher
+sources, and libdispatch-1173.100.2
+`007e3cc2e720293070b6e93b6541595f601cc1d3` for the workloop code absent from the
+older public source snapshot. These are references; the selected iOS binary's
+actual requests determine required wire behavior.
 
 The macOS reference now completes **two actual GUI journeys**:
 [39338697656](https://github.com/taowen/arlinux-xnu/actions/runs/39338697656),
@@ -158,8 +164,9 @@ Local text/screenshots: build/runs/39338697656. Earlier targeted mouse events
 never reached the button; the accepted run uses the actual macOS HID queue.
 
 Latest app failure receipt:
-`5a9d46e788023cfbb83bba4355b72ff5a2c263fee143621d504003c83165bcc1`.
-Local text: build/runs/39344494727/dyld-job.log. Both independent real-libSystem
+`b6b7303acee39c431a9021d20428c195eda0c1293d7a0c8578fb9064f79eeb81`.
+Native runtime SHA-256: `6ce03a2b827f783c8d63f8da01e4a195ce8354e8e7ec6fc82fc105152ac55459`.
+Local text: build/runs/39347374538/dyld-job.log and native-SHA256SUMS. Both independent real-libSystem
 console launches still complete. The earlier first worker run 39340039442
 reached the voucher assertion; its receipt is
 `71a285b07a8e6423117eaff487e91342f323db11930de04b66d431d6077c12e2`.
