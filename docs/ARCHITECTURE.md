@@ -262,12 +262,23 @@ See the exact app run in docs/EXPERIMENT.md before claiming callback delivery.
 
 An implementation reference is [Darlingserver's reuse of XNU](https://docs.darlinghq.org/internals/darlingserver/index.html)
 and its [Mach-port kqueue channels](https://docs.darlinghq.org/internals/darlingserver/kqchannels.html).
-Research checkout `89751e64bc6c2082f7725061824ee0e33395b0de` supplies actual
-IPC/right/message code plus host memory, thread, lock and timer hooks. It is
-not linked here. Its duct-tape target includes i386/rtclock.c and requires
-Darling's task/thread hooks and generated MIG/RPC wrappers; importing that
-target is not a demonstrated ARM64/16 KiB/Android solution. Evaluate reuse at
-the IPC boundary while preserving the native execution and Wayland path.
+The official research checkout is `89751e64bc6c2082f7725061824ee0e33395b0de`.
+The more relevant ARM64 candidate is [VibeDarling/darlingserver](https://github.com/VibeDarling/darlingserver/tree/91415406f46359c1fd78a8a5feadf0eefb18fb53),
+pinned by VibeDarling/darling `47cd6dc7aa0e16596777ad189dddc6e75c3de4ba`.
+Its duct-tape target selects rtclock_arm64.c on ARM64 and supplies real XNU
+ipc_space, ipc_right, ipc_kmsg and ipc_notify implementations. Generated RPC
+includes mach_msg_overwrite; dtape hooks cover current task/thread, blocking,
+timers and guest memory. Neither checkout is linked into this runtime yet.
+
+Prioritize adapting that existing IPC implementation rather than extending
+our socket shim with another independent right-name/notification model. Keep
+the native Mach-O/TLS execution and Wayland services; evaluate an isolated
+server/host bridge so Darling's host libc never runs under guest TLS.
+The community memory initializer derives PAGE_SHIFT_CONST from the host page
+size: this is not proof of fixed 16 KiB guests on a 4 KiB runner. Its CMake also
+needs parent-provided libsimple, MIG and generated RPC targets. ARM64 source
+support is verified by inspection; our iOS app journey and Android integration
+remain unverified. Any required component edits belong in a pinned fork.
 
 First-fit mutex slow waits consume real futex-backed wake credits; the genuine
 pthread library still owns its lock state and owner compare-and-swap. Other

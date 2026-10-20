@@ -101,6 +101,9 @@ ARM64 code does not imply a Metal dependency.
 * [Darlingserver](https://github.com/darlinghq/darlingserver): a reference for
   reusing XNU Mach IPC in a Linux userspace server and integrating Mach-port
   kqueue events with epoll. It is not currently a runtime dependency here.
+  [VibeDarling's community fork](https://github.com/VibeDarling/darlingserver)
+  adds an ARM64 build/clock path and is the next IPC integration candidate;
+  source inspection does not establish iOS app compatibility.
 * [Apple Open Source](https://github.com/apple-oss-distributions): XNU and the
   matching libdispatch kernel firehose implementation; licenses remain upstream.
 

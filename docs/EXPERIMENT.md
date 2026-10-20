@@ -127,12 +127,18 @@ integration journey remain incomplete.
 
 ### Current boundary and next action
 
-Implement real header reply-right transfer for the observed noncomplex
-COPY_SEND/MAKE_SEND_ONCE request. Mach send-once names require distinct rights
-and lifetime from the receive object; do not pretend an extra send reference
-on the same name is a send-once right. Keep queued ownership, receive-copyout
-failure, destruction and consumption coherent. Verify actual delivery and the
-peer's reply, then follow the next framework operation. Rendering, input,
+Use the community Darling implementation for the next IPC integration:
+VibeDarling/darlingserver `91415406f46359c1fd78a8a5feadf0eefb18fb53` already
+contains an ARM64 clock/build path and XNU right/message/notification machinery.
+The standalone socket shim remains the measured baseline; an unverified local
+send-once prototype is not part of the committed runtime. Evaluate the existing
+dtape/RPC boundary, its parent build dependencies and fixed 16 KiB guest-page
+adaptation through the sole root entry on runners. Preserve native ARM64/TLS
+and Wayland integration. See ARCHITECTURE.md for exact inspected sources.
+
+The acceptance case remains the observed noncomplex COPY_SEND/MAKE_SEND_ONCE
+request: verify actual right delivery and the peer's reply, not just a new
+library's compilation or a successful enqueue. Rendering, input,
 normal close, relaunch and ARLinux integration remain required; a blank backend
 surface never counts as application output.
 
