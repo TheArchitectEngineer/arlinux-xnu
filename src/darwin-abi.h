@@ -185,7 +185,7 @@ enum darwin_mach_message {
     D_MACH_SEND_INVALID_HEADER = 0x10000010, D_MACH_SEND_INVALID_OPTIONS = 0x10000013,
     D_MACH_RCV_INVALID_NAME = 0x10004002, D_MACH_RCV_TIMED_OUT = 0x10004003,
     D_MACH_RCV_TOO_LARGE = 0x10004004, D_MACH_RCV_INTERRUPTED = 0x10004005,
-    D_MACH_RCV_INVALID_DATA = 0x10004008
+    D_MACH_RCV_INVALID_NOTIFY = 0x10004007, D_MACH_RCV_INVALID_DATA = 0x10004008
 };
 enum darwin_service_abi {
     D_HOST_PRIORITY_INFO = 5, D_HOST_PRIORITY_INFO_COUNT = 8,
@@ -317,6 +317,7 @@ struct darwin_context_trailer {
 } __attribute__((packed,aligned(4)));
 _Static_assert(sizeof(struct darwin_context_trailer)==60,"Darwin context trailer wire layout");
 enum darwin_receive_options {
+    D_MACH_RCV_SYNC_WAIT=0x4000,
     D_MACH_RCV_LARGE_IDENTITY=8, D_MACH_RCV_VOUCHER=0x800,
     D_MACH_RCV_TRAILER_MASK=0x0f000000, D_MACH_RCV_TRAILER_SHIFT=24,
     D_MACH_RCV_TRAILER_MAX=4

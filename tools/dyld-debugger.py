@@ -343,7 +343,7 @@ def capture_ipc_waits(process):
     queues = {}
     if endpoints.IsValid():
         fields = ('name', 'kind', 'read_fd', 'packet_fd', 'timer_fd', 'queued',
-                  'send_refs', 'context', 'special_tid', 'timer_deadline')
+                  'send_refs', 'context', 'special_tid', 'sync_destination', 'timer_deadline')
         for index in range(min(endpoints.GetNumChildren(), 128)):
             endpoint = endpoints.GetChildAtIndex(index)
             if endpoint.GetChildMemberWithName('used').GetValueAsUnsigned() != 2:

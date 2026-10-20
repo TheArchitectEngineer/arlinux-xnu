@@ -19,6 +19,7 @@ struct ipc_endpoint {
     unsigned long send_refs; uint64_t context; uint32_t options;
     int queue_mutex,special_tid; uint32_t queue_limit,queued,sequence,space_sequence;
     int packet_fd,timer_fd,timer_pending; uint64_t timer_deadline;
+    uint32_t sync_destination;
 };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
 static uint32_t native_bootstrap_port,native_display_port,native_render_port;
@@ -146,7 +147,7 @@ static long ipc_consume(struct ipc_endpoint *endpoint,struct ipc_packet *packet,
 static int ipc_receive_options(unsigned long options)
 {
     unsigned long allowed=D_MACH_RCV_MSG|D_MACH_RCV_LARGE|D_MACH_RCV_LARGE_IDENTITY|
-        D_MACH_RCV_VOUCHER|D_MACH_RCV_TRAILER_MASK|D_MACH_RCV_TIMEOUT;
+        D_MACH_RCV_VOUCHER|D_MACH_RCV_TRAILER_MASK|D_MACH_RCV_TIMEOUT|D_MACH_RCV_SYNC_WAIT;
     return !(options&~allowed) &&
         ((options&D_MACH_RCV_TRAILER_MASK)>>D_MACH_RCV_TRAILER_SHIFT)<=D_MACH_RCV_TRAILER_MAX;
 }
@@ -213,7 +214,7 @@ static uint32_t ipc_port_create(int kind)
         endpoint->name=((i+D_REPLY_PORT_INDEX_BASE)<<D_PORT_NAME_INDEX_SHIFT)|endpoint->generation;
         endpoint->read_fd=pair[0]; endpoint->write_fd=pair[1]; endpoint->kind=kind;
         endpoint->packet_fd=pair[0]; endpoint->timer_fd=-1;
-        endpoint->timer_pending=0; endpoint->timer_deadline=0;
+        endpoint->timer_pending=0; endpoint->timer_deadline=0; endpoint->sync_destination=0;
         endpoint->send_refs=0; endpoint->context=0; endpoint->options=0;
         endpoint->queue_mutex=0; endpoint->queued=0; endpoint->sequence=0;
         endpoint->special_tid=0;
@@ -468,13 +469,21 @@ static long ipc_semaphore_wait(uint32_t name,const struct timespec *timeout)
     result=RAW(SYS_read,endpoint->read_fd,&token,8,0,0,0);
     return result==8 ? 0 : (result<0 ? result : -EIO);
 }
+static unsigned long ipc_receive_complete(struct ipc_endpoint *endpoint,unsigned long status)
+{
+    __atomic_store_n(&endpoint->sync_destination,0,__ATOMIC_RELEASE);
+    return status;
+}
 static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
 {
     unsigned long options=r[1];
     /* Supported options: send, receive, receive-large, send/receive timeout.
      * No unsupported complex-message ownership or trailer policy is hidden. */
     if (!(options&(D_MACH_SEND_MSG|D_MACH_RCV_MSG)) ||
-        !ipc_receive_options(options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT)) || r[6]) return D_MACH_SEND_INVALID_OPTIONS;
+        !ipc_receive_options(options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT)) ||
+        (r[6] && !(options&D_MACH_RCV_SYNC_WAIT)) ||
+        ((options&D_MACH_RCV_SYNC_WAIT) &&
+         (!(options&D_MACH_RCV_MSG) || (options&D_MACH_SEND_MSG)))) return D_MACH_SEND_INVALID_OPTIONS;
     if (options&D_MACH_SEND_MSG) {
         unsigned char request[IPC_BYTES];
         if (r[2]<sizeof(struct ipc_header) || r[2]>sizeof(request) ||
@@ -726,9 +735,20 @@ receive_message:
     if (options&D_MACH_RCV_MSG) {
         struct ipc_endpoint *endpoint=ipc_find(r[4]);
         if (!endpoint || (endpoint->kind!=0 && endpoint->kind!=2)) return D_MACH_RCV_INVALID_NAME;
+        if (options&D_MACH_RCV_SYNC_WAIT) {
+            if (endpoint->kind || endpoint->special_tid!=RAW(SYS_gettid,0,0,0,0,0,0) ||
+                !r[6] || (uint32_t)r[6]==UINT32_MAX) return D_MACH_RCV_INVALID_NOTIFY;
+            struct ipc_endpoint *destination=ipc_find(r[6]);
+            /* XNU permits a vanished destination: it must not fail the
+             * receive. Track a live linkage while waiting and clear it on
+             * completion. Our ordinary Linux scheduling policy performs no
+             * cross-task priority donation. The queue wait itself is real. */
+            uint32_t linked=destination && __atomic_load_n(&destination->send_refs,__ATOMIC_ACQUIRE) ? destination->name : 0;
+            __atomic_store_n(&endpoint->sync_destination,linked,__ATOMIC_RELEASE);
+        }
         struct timespec now; uint64_t deadline=0;
         if (options&D_MACH_RCV_TIMEOUT) {
-            if (RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0)) return D_MACH_RCV_INTERRUPTED;
+            if (RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0)) return ipc_receive_complete(endpoint,D_MACH_RCV_INTERRUPTED);
             deadline=(uint64_t)now.tv_sec*1000000000+now.tv_nsec+(uint64_t)(uint32_t)r[5]*1000000;
         }
         for (;;) {
@@ -736,9 +756,9 @@ receive_message:
             if (endpoint->kind==2) {
                 struct epoll_event event;
                 long count=RAW(SYS_epoll_pwait,endpoint->read_fd,&event,1,0,0,sizeof(uint64_t));
-                if (count<0) return D_MACH_RCV_INTERRUPTED;
+                if (count<0) return ipc_receive_complete(endpoint,D_MACH_RCV_INTERRUPTED);
                 member=count ? ipc_find((uint32_t)event.data.u64) : NULL;
-                if (member && member->kind) return D_MACH_RCV_INVALID_NAME;
+                if (member && member->kind) return ipc_receive_complete(endpoint,D_MACH_RCV_INVALID_NAME);
             }
             unsigned long message_size=0,total_size=0;
             unsigned long status=D_MACH_RCV_TIMED_OUT;
@@ -753,20 +773,20 @@ receive_message:
                     ((options&D_MACH_RCV_LARGE_IDENTITY) && guest_copy(&identity,r[0]+12,4,1))) status=D_MACH_RCV_INVALID_DATA;
             }
             if (member) ipc_queue_unlock(member);
-            if (status!=D_MACH_RCV_TIMED_OUT) return status;
+            if (status!=D_MACH_RCV_TIMED_OUT) return ipc_receive_complete(endpoint,status);
             struct timespec remaining,*timeout=NULL;
             if (options&D_MACH_RCV_TIMEOUT) {
-                if (RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0)) return D_MACH_RCV_INTERRUPTED;
+                if (RAW(SYS_clock_gettime,CLOCK_MONOTONIC,&now,0,0,0,0)) return ipc_receive_complete(endpoint,D_MACH_RCV_INTERRUPTED);
                 uint64_t time=(uint64_t)now.tv_sec*1000000000+now.tv_nsec;
-                if (time>=deadline) return D_MACH_RCV_TIMED_OUT;
+                if (time>=deadline) return ipc_receive_complete(endpoint,D_MACH_RCV_TIMED_OUT);
                 uint64_t duration=deadline-time;
                 remaining=(struct timespec){duration/1000000000,duration%1000000000}; timeout=&remaining;
             }
             native_reply_wait(endpoint->name);
             struct pollfd descriptor={.fd=endpoint->read_fd,.events=POLLIN};
             long ready=RAW(SYS_ppoll,&descriptor,1,timeout,0,0,0);
-            if (!ready) return D_MACH_RCV_TIMED_OUT;
-            if (ready<0) return D_MACH_RCV_INTERRUPTED;
+            if (!ready) return ipc_receive_complete(endpoint,D_MACH_RCV_TIMED_OUT);
+            if (ready<0) return ipc_receive_complete(endpoint,D_MACH_RCV_INTERRUPTED);
         }
     }
     return 0;
