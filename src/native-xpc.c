@@ -156,7 +156,7 @@ static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
     spc_dictionary_set_string(event,"specClass","UIApplicationSceneSpecification");
     /* The real codecs require an initial class setting, not just outer diff
      * metadata. Run 39400670557 shows BSSettingsEncodeAppendSettingArrayEntry:
-     * objects is [[uint64 setting, value, int64 format]], with nonzero format
+     * objects is [[uint64 setting, value, bool format]], with true format
      * decoded by CoreFoundation's XPC bridge. */
     enum { BS_SETTINGS_CLASS=1, BS_SETTINGS_FOUNDATION_FORMAT=1 };
     const char *keys[]={"settings","clientSettings"};
@@ -170,7 +170,7 @@ static void session_send_scene(struct processinfo_peer *peer,uint32_t set)
         spc_dictionary_set_string(changes,"bs_encodedObjectClassName","BSSettings");
         spc_array_set_value(entry,0,(spc_value_t){.type=SPC_TYPE_UINT64,.value.u64=BS_SETTINGS_CLASS});
         spc_array_set_value(entry,1,(spc_value_t){.type=SPC_TYPE_STRING,.value.str=strdup(classes[i])});
-        spc_array_set_value(entry,2,(spc_value_t){.type=SPC_TYPE_INT64,.value.i64=BS_SETTINGS_FOUNDATION_FORMAT});
+        spc_array_set_value(entry,2,(spc_value_t){.type=SPC_TYPE_BOOL,.value.u64=BS_SETTINGS_FOUNDATION_FORMAT});
         spc_array_set_value(objects,0,(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=entry});
         spc_dictionary_set_value(changes,"objects",(spc_value_t){.type=SPC_TYPE_ARRAY,.value.array=objects});
         spc_dictionary_set_value(diff,"changes",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=changes});
