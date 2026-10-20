@@ -82,7 +82,7 @@ jobs:
       - name: Install ARM64 Mach-O compiler
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 lld-18 llvm-18
+          sudo apt-get install -y clang-18 lld-18 llvm-18 libx11-dev
       - name: Build and run native Darwin console journey
         shell: bash
         run: |
@@ -106,9 +106,9 @@ jobs:
           clang-18 --target=arm64-apple-ios12.0 -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c guests/ARHello/main.m -o build/native/ARHello.o
           ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/ARHello.o -needed_library guests/libSystem.tbd -needed_library guests/ARHello/UIKit.tbd -needed_library guests/ARHello/Foundation.tbd -needed_library guests/ARHello/libobjc.tbd -o build/native/ARHello.app/ARHello
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
-          cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -mno-outline-atomics -c src/darwin-native.c -o build/native/runtime.o
+          cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics -c src/darwin-native.c -o build/native/runtime.o
           cc -c src/darwin-native.S -o build/native/entry.o
-          cc -Wall -Wextra -Werror -O2 -g src/macho-native.c build/native/runtime.o build/native/entry.o -ldl -o build/native/macho-native
+          cc -Wall -Wextra -Werror -O2 -g src/macho-native.c build/native/runtime.o build/native/entry.o -ldl -lX11 -o build/native/macho-native
           # Two complete independent launches of the interactive program, not
           # a source assertion or isolated TLS probe. Runtime exit status is
           # the guest's real Linux-backed normal process exit status.
@@ -142,7 +142,7 @@ jobs:
       - name: Install Apple filesystem reader
         run: |
           sudo apt-get update
-          sudo apt-get install -y 7zip llvm-18 lldb-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev
+          sudo apt-get install -y 7zip llvm-18 lldb-18 cmake fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev xvfb xauth
       - name: Prepare pinned Apple userland and execute its actual dyld
         shell: bash
         run: |
@@ -173,7 +173,7 @@ jobs:
           echo build/native/ARHello.app/ARHello > build/dyld/debugger.program
           python3 -c "import hashlib,json,pathlib; p=pathlib.Path('build/native/ARHello.app/ARHello'); print('APP_INPUT '+json.dumps({'name':'ARHello','version':'1.0','bundleId':'io.arlinux.ARHello','sha256':hashlib.sha256(p.read_bytes()).hexdigest()}))" | tee build/dyld/app-input.json
           status=0
-          timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log || status=$?
+          xvfb-run -a timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log || status=$?
           cat build/dyld/app.stdout build/dyld/app.runtime.log
           echo "APP_PROCESS_STATUS=$status"
           # Even reaching UIApplicationMain is only a startup milestone. The
@@ -197,7 +197,9 @@ jobs:
               --lookup /usr/lib/system/libxpc.dylib _bootstrap_look_up3
           fi
           status=0
-          timeout 45 lldb-18 --batch -o 'command source -e true -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?
+          display_runner=()
+          if [[ -f build/dyld/debugger.program ]]; then display_runner=(xvfb-run -a); fi
+          "${display_runner[@]}" timeout 45 lldb-18 --batch -o 'command source -e true -s false tools/trace-dyld.lldb' > build/dyld/lldb.log 2>&1 || status=$?
           cat build/dyld/lldb.log
           echo "LLDB_COMMAND_STATUS=$status"
           if [[ -f build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64 ]]; then

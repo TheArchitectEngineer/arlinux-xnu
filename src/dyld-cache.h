@@ -16,6 +16,7 @@ struct cache_slide2 {
     uint64_t delta_mask,value_add;
 };
 static struct cache_map cache_maps[3];
+static unsigned int cache_service_hooks;
 static int cache_contains(uint64_t address,uint64_t length,uint32_t protection)
 {
     for (unsigned int i=0;i<3;i++) {
@@ -151,12 +152,40 @@ static uint64_t load_native_cache(const char *root)
                     rewritten+=rewrite_instruction_words((void *)section.address,section.size/4);
                 }
             }
+            if (native_display_enabled && command.cmd==2) { /* LC_SYMTAB */
+                need(command.size==24 && image.path_offset<size &&
+                     memchr(file+image.path_offset,0,size-image.path_offset),"cache symbol/image path bounds");
+                if (!strcmp((const char *)file+image.path_offset,"/usr/lib/system/libxpc.dylib")) {
+                    uint32_t table[4]; memcpy(table,bytes+pos+8,sizeof(table));
+                    need(range(table[0],(uint64_t)table[1]*16,size) && range(table[2],table[3],size),
+                         "cache service symbol bounds");
+                    for (uint32_t k=0;k<table[1];k++) {
+                        const unsigned char *symbol=file+table[0]+(uint64_t)k*16;
+                        uint32_t name; uint64_t address;
+                        memcpy(&name,symbol,4); memcpy(&address,symbol+8,8);
+                        if (name>=table[3] || symbol[4]&0xe0 || (symbol[4]&0xe)!=0xe || !symbol[5]) continue;
+                        const char *text=(const char *)file+table[2]+name;
+                        need(memchr(text,0,table[3]-name)!=NULL,"cache symbol name termination");
+                        if (strcmp(text,"_bootstrap_look_up3")) continue;
+                        need(!(address&3) && cache_contains(address,16,4),"service adapter code bounds");
+                        /* LP64 ARM64 absolute tail jump; preserve the original
+                         * public API arguments and guest LR. Map is private. */
+                        uint32_t code[2]={0x58000050U,0xd61f0200U};
+                        uint64_t target=(uintptr_t)darwin_native_service_lookup;
+                        memcpy((void *)address,code,sizeof(code));
+                        memcpy((void *)(address+8),&target,sizeof(target));
+                        cache_service_hooks++;
+                        fprintf(stderr,"NATIVE_SERVICE_ADAPTER symbol=%s address=%#" PRIx64 "\n",text,address);
+                    }
+                }
+            }
             pos+=command.size;
         }
         need(pos==end,"cached command extent");
 
     }
     free(seen);
+    need(!native_display_enabled || cache_service_hooks==1,"exact service lookup adapter symbol unavailable");
     for (unsigned int i=0;i<3;i++) {
         struct cache_map *m=cache_maps+i;
         if (m->prot&4) __builtin___clear_cache((void *)m->address,(void *)(m->address+m->size));

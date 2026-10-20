@@ -59,6 +59,9 @@ def capture_display_code(target):
             address = int(symbol['address'], 16)
             disassemble('DISPLAY_START_CODE', address, 120)
             query = next(calls(address, 16), None)
+            startup_calls = list(calls(address, 24))
+            if len(startup_calls) > 1:
+                disassemble('DISPLAY_CONFIGURATION_CODE', startup_calls[1], 96)
             if query:
                 disassemble('DISPLAY_START_QUERY_CODE', query, 40)
                 # Inspect the actual port getter and MIG client called by the

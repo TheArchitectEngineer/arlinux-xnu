@@ -20,6 +20,7 @@ static void need(int ok,const char *message)
 {
     if (!ok) { errno=0; die(message); }
 }
+#include "native-display.h"
 #include "macho-image.h"
 
 /* Mach-O section_64. Rewrite only sections explicitly marked instructions,
@@ -101,6 +102,7 @@ int main(int argc,char **argv)
         fprintf(stderr,"NATIVE_DYLD_ENTRY entry=%#" PRIx64 " header=%#" PRIx64 " slide=%#" PRIx64 "\n",
                 dyld.entry,dyld.header_address,dyld.slide);
     }
+    if (root) native_display_open();
     uint64_t cache_base=root ? load_native_cache(root) : 0;
     long stack_address=darwin_native_memory(1024*1024,PROT_READ|PROT_WRITE);
     if ((unsigned long)stack_address>=(unsigned long)-4095) { errno=-stack_address; die("guest stack"); }

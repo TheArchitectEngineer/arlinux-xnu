@@ -17,6 +17,8 @@ struct ipc_endpoint {
     int queue_mutex,special_tid; uint32_t queue_limit,queued,sequence,space_sequence;
 };
 static struct ipc_endpoint ipc_endpoints[IPC_ENDPOINTS];
+static uint32_t native_bootstrap_port,native_display_port;
+static uint32_t native_display_width,native_display_height;
 struct ipc_header { uint32_t bits,size,remote,local,voucher; int32_t id; };
 struct ipc_packet { struct darwin_audit_token sender; unsigned char message[IPC_BYTES]; };
 static void native_reply_wait(uint32_t);
@@ -163,6 +165,36 @@ static uint32_t ipc_reply_port(void)
     }
     return 0;
 }
+/* A registry for this standalone compatibility machine, not launchd/XPC.
+ * The public lookup API is redirected here by name in the private cache map.
+ * Only an actually created Linux display is registered. Other names fail. */
+int darwin_native_display_register(uint32_t width,uint32_t height)
+{
+    if (!width || !height || native_bootstrap_port) return -1;
+    native_bootstrap_port=ipc_reply_port(); native_display_port=ipc_reply_port();
+    if (!native_bootstrap_port || !native_display_port) return -1;
+    ipc_find(native_bootstrap_port)->send_refs=1;
+    native_display_width=width; native_display_height=height;
+    return 0;
+}
+uint32_t darwin_native_service_lookup(uint32_t bootstrap,uint64_t name,uint64_t output,
+                                    int32_t target,uint64_t instance,uint64_t flags)
+{
+    (void)instance; /* Default lookup has no instance-selection flag. */
+    if (!native_bootstrap_port || bootstrap!=native_bootstrap_port) return D_MACH_SEND_INVALID_DEST;
+    if (target || flags) return D_KERN_NOT_SUPPORTED;
+    char service[256]; unsigned int length=0;
+    for (;length<sizeof(service);length++) {
+        if (guest_copy(service+length,name+length,1,0)) return D_KERN_INVALID_ADDRESS;
+        if (!service[length]) break;
+    }
+    const char display[]="com.apple.backboard.display.services";
+    if (length!=sizeof(display)-1) return 1102; /* BOOTSTRAP_UNKNOWN_SERVICE */
+    for (unsigned int i=0;i<sizeof(display);i++) if (service[i]!=display[i]) return 1102;
+    if (guest_copy(&native_display_port,output,sizeof(native_display_port),1)) return D_KERN_INVALID_ADDRESS;
+    __atomic_fetch_add(&ipc_find(native_display_port)->send_refs,1,__ATOMIC_ACQ_REL);
+    return D_KERN_SUCCESS;
+}
 static unsigned long ipc_port_construct(const unsigned long long *r,unsigned long pc)
 {
     struct darwin_port_options options;
@@ -253,7 +285,8 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         int clock=header->remote==SYSTEM_CLOCK_PORT ? 0 :
                   header->remote==CALENDAR_CLOCK_PORT ? 1 : -1;
         int task=header->remote==CURRENT_TASK_PORT;
-        if (header->remote!=CURRENT_HOST_PORT && clock<0 && !task) {
+        int display=native_display_port && header->remote==native_display_port;
+        if (header->remote!=CURRENT_HOST_PORT && clock<0 && !task && !display) {
             struct ipc_endpoint *destination=ipc_find(header->remote);
             if (!destination || destination->kind || !__atomic_load_n(&destination->send_refs,__ATOMIC_ACQUIRE)) return D_MACH_SEND_INVALID_DEST;
             /* First inline process-local transport. No port descriptors,
@@ -271,7 +304,8 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             }
             goto receive_message;
         }
-        if ((!task && clock<0 && !host_send_refs) || (clock>=0 && !clock_send_refs[clock])) return D_MACH_SEND_INVALID_DEST;
+        if ((!task && !display && clock<0 && !host_send_refs) || (clock>=0 && !clock_send_refs[clock]) ||
+            (display && !__atomic_load_n(&ipc_find(native_display_port)->send_refs,__ATOMIC_ACQUIRE))) return D_MACH_SEND_INVALID_DEST;
         struct ipc_endpoint *reply=ipc_find(header->local);
         if (!reply || reply->kind) return D_MACH_SEND_INVALID_REPLY;
         if (header->bits!=(D_MACH_TYPE_COPY_SEND|(D_MACH_TYPE_MAKE_SEND_ONCE<<D_MACH_MSG_LOCAL_BITS_SHIFT)) || header->voucher ||
@@ -285,7 +319,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         out->id=header->id+D_MIG_REPLY_ID_OFFSET;
         response[7]=1; /* NDR little-endian integer representation */
         response[8]=(uint32_t)D_MIG_BAD_ID; /* MIG_BAD_ID */
-        if (!task && clock<0 && header->id==D_MIG_HOST_INFO && r[2]==40) {
+        if (!task && !display && clock<0 && header->id==D_MIG_HOST_INFO && r[2]==40) {
             uint32_t flavor,count; __builtin_memcpy(&flavor,request+32,4);
             __builtin_memcpy(&count,request+36,4);
             response[8]=D_KERN_INVALID_ARGUMENT; /* KERN_INVALID_ARGUMENT */
@@ -298,7 +332,7 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
                 for (unsigned int i=0;i<8;i++) response[10+i]=policy[i];
             }
         }
-        if (!task && clock<0 && header->id==D_MIG_HOST_GET_CLOCK && r[2]==36) {
+        if (!task && !display && clock<0 && header->id==D_MIG_HOST_GET_CLOCK && r[2]==36) {
             uint32_t clock_id; __builtin_memcpy(&clock_id,request+32,4);
             response[8]=D_KERN_INVALID_ARGUMENT; /* KERN_INVALID_ARGUMENT */
             if (clock_id<=D_CLOCK_CALENDAR) {
@@ -328,11 +362,10 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
             uint32_t which; __builtin_memcpy(&which,request+32,4);
             response[8]=D_KERN_INVALID_ARGUMENT;
             if (which==D_TASK_BOOTSTRAP_PORT || which==D_TASK_DEBUG_CONTROL_PORT) {
-                /* No Bootstrap or debug-control server is registered for this
-                 * task. Return the actual empty slot, as XNU does. Real
-                 * libdispatch explicitly accepts a NULL debug channel. */
+                uint32_t port=which==D_TASK_BOOTSTRAP_PORT ? native_bootstrap_port : 0;
+                if (port) __atomic_fetch_add(&ipc_find(port)->send_refs,1,__ATOMIC_ACQ_REL);
                 out->bits|=D_MACH_MSG_COMPLEX; out->size=40;
-                response[6]=1; response[7]=0; response[8]=0; response[9]=D_MACH_TYPE_MOVE_SEND<<D_MACH_DESCRIPTOR_DISPOSITION_SHIFT;
+                response[6]=1; response[7]=port; response[8]=0; response[9]=D_MACH_TYPE_MOVE_SEND<<D_MACH_DESCRIPTOR_DISPOSITION_SHIFT;
             }
         }
         if (task && header->id==D_MIG_SEMAPHORE_CREATE && r[2]==40) {
