@@ -51,7 +51,7 @@ enum darwin_syscall {
     D_SYS_GETDIRENTRIES64 = 344, D_SYS_FSTATFS64 = 346,
     D_SYS_BSDTHREAD_CREATE = 360,
     D_SYS_BSDTHREAD_TERMINATE = 361,
-    D_SYS_BSDTHREAD_CTL = 364,
+    D_SYS_BSDTHREAD_CTL = 478, /* XNU syscalls.master; 364 is lchown. */
     D_SYS_KQUEUE = 362,
     D_SYS_KEVENT_QOS = 374,
     D_SYS_KEVENT_ID = 375,
