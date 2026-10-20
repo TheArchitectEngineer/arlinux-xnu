@@ -38,6 +38,14 @@ def report(run_id, job_name, verbose=False):
         raise SystemExit('No job with that exact name in this run attempt: ' + job_name)
     output = ROOT / 'build' / 'runs' / run_id / f'attempt-{attempt}'
     output.mkdir(parents=True, exist_ok=True)
+    path = output / ('report.json' if not job_name else f"report-job-{next(j['id'] for j in jobs if j['name'] == job_name)}.json")
+    cached_jobs = {}
+    try:
+        previous = json.loads(path.read_text(encoding='utf-8'))
+        if (previous['runId'], previous['attempt'], previous['commit']) == (run_id, attempt, run['head_sha']):
+            cached_jobs = {entry['id']: entry for entry in previous['jobs']}
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     result = {'runId': run_id, 'attempt': attempt, 'commit': run['head_sha'],
               'url': run['html_url'], 'status': run['status'],
               'conclusion': run['conclusion'], 'jobs': []}
@@ -67,8 +75,20 @@ def report(run_id, job_name, verbose=False):
             continue
         log_path = output / f"job-{job['id']}.log"
         log_format = 'actions-job-api'
+        data = None
+        cached = cached_jobs.get(job['id'], {})
+        if cached.get('status') == 'completed' and cached.get('conclusion') == job['conclusion']:
+            try:
+                candidate = log_path.read_bytes()
+                if (hashlib.sha256(candidate).hexdigest() == cached.get('logSHA256') and
+                        cached.get('logFormat') in ('actions-job-api', 'gh-run-view')):
+                    data = candidate
+                    log_format = cached['logFormat']
+            except OSError:
+                pass
         try:
-            data = api(f"actions/jobs/{job['id']}/logs")
+            if data is None:
+                data = api(f"actions/jobs/{job['id']}/logs")
         except SystemExit:
             # The individual-job endpoint can fail while the run ZIP remains
             # readable. Let gh use its run-log association for this exact job
@@ -178,7 +198,10 @@ def report(run_id, job_name, verbose=False):
                        'DARWIN_WORKLOOP_ERROR_STATE ',
                        'EXPERIMENT_RECEIPT ')
             shown = set()
-            for index, line in enumerate(item['observations']):
+            ordered = sorted(enumerate(item['observations']),
+                             key=lambda entry: 0 if entry[1].startswith('APP_OUTCOME ') else
+                             2 if entry[1].startswith('EXPERIMENT_RECEIPT ') else 1)
+            for index, line in ordered:
                 if line.startswith(concise) and line not in shown:
                     print('  ' + line)
                     shown.add(line)
@@ -195,7 +218,6 @@ def report(run_id, job_name, verbose=False):
         for line in item['errors'][-8:]:
             print('  ' + line)
         print('  Raw log: ' + str(log_path))
-    path = output / ('report.json' if not job_name else f"report-job-{next(j['id'] for j in jobs if j['name'] == job_name)}.json")
     path.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     print('\nReport: ' + str(path))
     print('LLDB command success describes evidence collection only. App status 0 alone does not certify a GUI journey.')

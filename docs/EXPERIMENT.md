@@ -125,6 +125,16 @@ ebbee5a1188a663bc2afa67876833b671dde0e175dbd22c38cb5d95501a0cea2
 matches the downloaded outcomes and both runtime logs. No pixel capture, real
 input or complete GUI lifecycle has passed. Window readiness alone is weaker.
 
+Latest consolidated iteration:
+[39427461953](https://github.com/taowen/arlinux-xnu/actions/runs/39427461953),
+source 592dbf33e21a6949d176f37bf09024e93c9ff0d3. Core/native compilation and
+both genuine dyld console journeys pass in one runner. Both original apps exit
+0 before their window-ready callback; the app step correctly fails. Do not
+substitute the prior peer's readiness for this attempt. Its dyld receipt
+ec80488fbe1bf5642ab6a0702c52552572c027a4ff1c34dcc365f3070ade7603
+matches the downloaded outcomes and runtime logs. Inspect the existing exit
+frames/service disconnect alongside the separate LLDB evidence next.
+
 Primary ABI reference: WebKit's
 [QuartzCoreSPI.h](https://github.com/WebKit/WebKit/blob/ebaa3acb4ca036ced8011e8bfb2e951dd2199696/Source/WebCore/PAL/pal/spi/cocoa/QuartzCoreSPI.h#L287-L299)
 declares these entry points and a CoreGraphics rendering path. This is an

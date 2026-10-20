@@ -14,6 +14,17 @@ and darling-ipc jobs. Default report output includes per-step timings, original
 and peer outcomes/window callbacks, and key fault/wait/delivery evidence. Full
 observations remain in the report JSON/raw log; use --verbose to print them.
 Window readiness is an app callback, not proof of pixels, input or lifecycle.
+Repeated reports recheck the run/attempt/job identity through GitHub, then reuse
+the completed job's local raw log only when its SHA-256 matches the prior report.
+A changed attempt, source, job outcome or missing/corrupt cache fetches logs again.
+
+Measured app iterations: run 39425899111 used three ARM runners and took 327s
+from dispatch to completion, reaching the app step after 288s. Consolidated run
+39427461953 used one runner, took 130s total and reached the app step after 101s.
+Both execute the real console prerequisites and preserve the app failure. This
+is one comparison, not a latency guarantee; queue time and app interleavings vary.
+The former report's 2,485 observations fit in 48 default output lines while all
+observations remain saved. A repeated hash-verified local-log report took 3.7s.
 
 These are observed outputs, not a second acceptance framework. Missing logs
 remain unavailable; compilation errors remain failures even without app
