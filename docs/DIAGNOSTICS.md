@@ -38,6 +38,18 @@ failure. Final linking, executable SHA-256 and all real journeys still run.
 Core/native/dyld receipts and artifacts are published together at the end;
 the old copied upstream-input receipt is unnecessary inside one source/job.
 
+Verified cold run 39428833863 recorded 171 misses and saved a 9.5 MB Actions
+cache despite the app failure. Run 39429304758 exposed a bad outer key: rolling
+runner images isolated otherwise reusable entries. After removing image-version
+isolation, run 39429851918 (source 473895e202e297a7b009bf9f86c5e40e54950ea5)
+restored the prior snapshot across commits: 138 direct hits, 33 preprocessed hits,
+zero misses. Core build took 11s versus 31s in the prior uncached run; native
+build/console took 2s. Cold/full iteration took 165s, verified warm/full 140s.
+Toolchain installation and Apple input preparation still cost 38s each; cache
+hits do not eliminate generation, linking, downloads or real app execution.
+Receipt a5422949c6768044623e938b1690378e306f47b259237e7e96bd4f38f9697c9a
+matches compiler-cache.json, outcomes and both original runtime/console logs.
+
 These are observed outputs, not a second acceptance framework. Missing logs
 remain unavailable; compilation errors remain failures even without app
 markers. Report prints only actual line-start markers, not echoed commands.
