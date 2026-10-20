@@ -196,14 +196,15 @@ static struct ipc_endpoint *ipc_find(uint32_t name)
         if (__atomic_load_n(&ipc_endpoints[i].used,__ATOMIC_ACQUIRE)==2 && ipc_endpoints[i].name==name) return ipc_endpoints+i;
     return NULL;
 }
-static int ipc_drop_send(struct ipc_endpoint *endpoint)
+static int ipc_drop_reference(unsigned long *references)
 {
-    unsigned long refs=__atomic_load_n(&endpoint->send_refs,__ATOMIC_ACQUIRE);
+    unsigned long refs=__atomic_load_n(references,__ATOMIC_ACQUIRE);
     while (refs) {
-        if (__atomic_compare_exchange_n(&endpoint->send_refs,&refs,refs-1,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) return 1;
+        if (__atomic_compare_exchange_n(references,&refs,refs-1,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) return 1;
     }
     return 0;
 }
+static int ipc_drop_send(struct ipc_endpoint *endpoint) { return ipc_drop_reference(&endpoint->send_refs); }
 /* kind 0 owns a receive queue; kind 2 owns an epoll-backed port set. */
 static uint32_t ipc_port_create(int kind)
 {
@@ -632,7 +633,15 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
     if (options&D_MACH_SEND_MSG) {
         unsigned char request[IPC_BYTES];
         if (r[2]<sizeof(struct ipc_header) || r[2]>sizeof(request) ||
-            guest_copy(request,r[0],r[2],0)) return D_MACH_SEND_INVALID_DATA;
+            guest_copy(request,r[0],r[2],0)) {
+            static unsigned int rejected;
+            if (__atomic_fetch_add(&rejected,1,__ATOMIC_RELAXED)<16) {
+                const char label[]="DARWIN_MACH_SEND_DATA_REJECTED argument-index/pc/value follows\n";
+                RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+                for (unsigned int i=0;i<7;i++) trace_call(i,pc,r[i]);
+            }
+            return D_MACH_SEND_INVALID_DATA;
+        }
         struct ipc_header *header=(void *)request;
         const char label[]="DARWIN_MACH_REQUEST word-index/pc/value follows\n";
         RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);

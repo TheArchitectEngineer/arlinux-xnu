@@ -94,6 +94,7 @@ def report(run_id, job_name):
                    'DARWIN_MACH_OPTIONS_REJECTED ',
                    'DARWIN_REPLY_PORT_DESTROYED ',
                    'DARWIN_REPLY_RECEIVE_DIED ',
+                   'DARWIN_MACH_SEND_DATA_REJECTED ', 'FAULT_REFERENCE ',
                    'IPC_WAIT ', 'IPC_WAIT_DECODE_ERROR ', 'IPC_QUEUE_SNAPSHOT ', 'DARWIN_KEVENT_ERROR ',
                    'NORMAL_RUNTIME_FAULT_PC ', 'DIAGNOSTIC_WAIT_INTERRUPTED ',
                    'DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DYNAMIC_MAIN ', 'DYNAMIC_THREAD ',
@@ -106,7 +107,8 @@ def report(run_id, job_name):
                            'DARWIN_KEVENT_ERROR ': 6, 'DARWIN_PORT_TYPE ': 3,
                            'DARWIN_KEVENT_BUFFER_DELIVERY ': 4,
                            'DARWIN_MACH_OPTIONS_REJECTED ': 7, 'DARWIN_SERVICE_REGISTER ': 3,
-                           'DARWIN_REPLY_PORT_DESTROYED ': 2, 'DARWIN_REPLY_RECEIVE_DIED ': 1}
+                           'DARWIN_REPLY_PORT_DESTROYED ': 2, 'DARWIN_REPLY_RECEIVE_DIED ': 1,
+                           'DARWIN_MACH_SEND_DATA_REJECTED ': 7}
         for index, line in enumerate(lines):
             if not line.startswith(markers):
                 continue

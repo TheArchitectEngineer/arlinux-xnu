@@ -182,8 +182,16 @@ see the current handoff for which operations the real app has exercised.
 Current-task mach_port_type reports actual local receive/set rights and tracked
 send references through MIG routine 3201. Unimplemented thread-right queries
 fail instead of inventing a type.
-mach_port_mod_refs retains/releases an existing send right using synchronized
-counts, rejecting underflow/overflow; receive-right destruction remains unsupported.
+mach_port_mod_refs retains/releases an existing send or dead-name right using
+synchronized counts, rejecting underflow/overflow. Destruction currently covers
+empty, unguarded thread special-reply receive rights: shutdown wakes actual
+socket/dup-fd pollers, the blocked receive returns MACH_RCV_PORT_DIED, and
+remaining send references become dead-name references. A racing Mach-port
+knote observes the vanished receive right. Endpoint/socket tombstones remain
+allocated until process exit to avoid recycling memory or descriptors held by
+a waiter. This consumes bounded endpoint capacity; concurrent right-reference
+mutation, general guarded ports, nonempty message cleanup and reclamation still
+need implementation/verification. Other destruct requests fail explicitly.
 
 Mach timer ports own a receive socket plus a monotonic timerfd, aggregated by
 epoll so a port set or kqueue can wait on either a pending notification or a

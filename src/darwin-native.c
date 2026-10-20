@@ -356,8 +356,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             else {
                 struct ipc_endpoint *endpoint=ipc_find(r[1]);
                 struct native_thread *thread=native_thread_port(r[1]);
-                if (endpoint && endpoint->kind==3 && __atomic_load_n(&endpoint->dead_refs,__ATOMIC_ACQUIRE)) {
-                    __atomic_fetch_sub(&endpoint->dead_refs,1,__ATOMIC_ACQ_REL); r[0]=0;
+                if (endpoint && endpoint->kind==3 && ipc_drop_reference(&endpoint->dead_refs)) {
+                    r[0]=0;
                 } else if (endpoint && ipc_drop_send(endpoint)) {
                     r[0]=0;
                 } else if (thread && __atomic_load_n(&thread->refs,__ATOMIC_ACQUIRE)) {

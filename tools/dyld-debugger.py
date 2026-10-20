@@ -83,6 +83,38 @@ def install_service_breakpoints(target):
             print('GRAPHICS_FAILURE_BREAKPOINT', symbol['symbol'], symbol['address'], flush=True)
 
 
+def capture_code_references(target, address, count, label):
+    objects = GuestObjects(target.GetProcess())
+    words = struct.unpack('<' + 'I'*count, objects.read(address, count*4))
+    for index, word in enumerate(words[:-1]):
+        following = words[index+1]
+        # Adjacent AArch64 ADRP + ADD (immediate), using the same base.
+        if word & 0x9f000000 != 0x90000000 or following & 0xff000000 != 0x91000000:
+            continue
+        if (word & 31) != ((following >> 5) & 31):
+            continue
+        immediate = ((word >> 29) & 3) | (((word >> 5) & 0x7ffff) << 2)
+        if immediate & (1 << 20):
+            immediate -= 1 << 21
+        pointer = ((address+index*4) & ~4095) + (immediate << 12)
+        pointer += ((following >> 10) & 4095) << (12 if following & (1 << 22) else 0)
+        text = None
+        try:
+            text = objects.cfstring(pointer)
+        except (ValueError, UnicodeError, SystemError):
+            try:
+                # Arbitrary references may be binary blocks, not strings.
+                # LLDB 18's CString SWIG binding can raise SystemError on
+                # such bytes; inspect bounded raw memory instead.
+                candidate = objects.read(pointer, 256).split(b'\0', 1)[0].decode('ascii')
+                if 3 <= len(candidate) <= 256 and all(32 <= ord(c) < 127 for c in candidate):
+                    text = candidate
+            except (ValueError, UnicodeError, SystemError):
+                pass
+        if text:
+            print(label + ' ' + json.dumps({'pc': hex(address+index*4), 'address': hex(pointer), 'text': text}), flush=True)
+
+
 def capture_display_code(target):
     captured = set()
 
@@ -102,35 +134,7 @@ def capture_display_code(target):
         target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(address) + ' --count ' + str(count))
 
     def references(address, count):
-        objects = GuestObjects(target.GetProcess())
-        words = struct.unpack('<' + 'I'*count, objects.read(address, count*4))
-        for index, word in enumerate(words[:-1]):
-            following = words[index+1]
-            # Adjacent AArch64 ADRP + ADD (immediate), using the same base.
-            if word & 0x9f000000 != 0x90000000 or following & 0xff000000 != 0x91000000:
-                continue
-            if (word & 31) != ((following >> 5) & 31):
-                continue
-            immediate = ((word >> 29) & 3) | (((word >> 5) & 0x7ffff) << 2)
-            if immediate & (1 << 20):
-                immediate -= 1 << 21
-            pointer = ((address+index*4) & ~4095) + (immediate << 12)
-            pointer += ((following >> 10) & 4095) << (12 if following & (1 << 22) else 0)
-            text = None
-            try:
-                text = objects.cfstring(pointer)
-            except (ValueError, UnicodeError, SystemError):
-                try:
-                    # Arbitrary references may be binary blocks, not strings.
-                    # LLDB 18's CString SWIG binding can raise SystemError on
-                    # such bytes; inspect bounded raw memory instead.
-                    candidate = objects.read(pointer, 256).split(b'\0', 1)[0].decode('ascii')
-                    if 3 <= len(candidate) <= 256 and all(32 <= ord(c) < 127 for c in candidate):
-                        text = candidate
-                except (ValueError, UnicodeError, SystemError):
-                    pass
-            if text:
-                print('DISPLAY_REFERENCE ' + json.dumps({'pc': hex(address+index*4), 'address': hex(pointer), 'text': text}), flush=True)
+        capture_code_references(target, address, count, 'DISPLAY_REFERENCE')
 
     def mode_constants(address):
         objects = GuestObjects(target.GetProcess())
@@ -368,7 +372,7 @@ def capture_ipc_waits(process):
     queues = {}
     if endpoints.IsValid():
         fields = ('name', 'kind', 'read_fd', 'packet_fd', 'timer_fd', 'queued',
-                  'send_refs', 'context', 'special_tid', 'sync_destination', 'timer_deadline')
+                  'send_refs', 'dead_refs', 'context', 'special_tid', 'sync_destination', 'timer_deadline')
         for index in range(min(endpoints.GetNumChildren(), 128)):
             endpoint = endpoints.GetChildAtIndex(index)
             if endpoint.GetChildMemberWithName('used').GetValueAsUnsigned() != 2:
@@ -425,4 +429,5 @@ def capture_normal_fault(target):
                 addresses.add(int(match[1], 16))
     for address in sorted(addresses):
         print('NORMAL_RUNTIME_FAULT_PC', hex(address), flush=True)
+        capture_code_references(target, max(0, address-128), 40, 'FAULT_REFERENCE')
         target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(max(0, address-128)) + ' --count 64')
