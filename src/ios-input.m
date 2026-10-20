@@ -11,24 +11,40 @@
 
 static UIWindow *key_window;
 UIWindow *arlinux_ios_input_key_window(void) { return key_window; }
-static void key_window_changed(id receiver,SEL selector,id notification)
+static void update_key_window(void)
 {
-    (void)receiver; (void)selector; (void)notification;
     UIWindow *current=[UIApplication sharedApplication].keyWindow;
     if (current==key_window) return;
     [current retain]; [key_window release]; key_window=current;
     fprintf(stderr,"IOS_INPUT_KEY_WINDOW present=%d class=%s input_delivery=false\n",
         current!=nil,current ? class_getName(object_getClass(current)) : "<absent>");
 }
+static void local_focus_update(id receiver,SEL selector,id window,id context)
+{
+    (void)receiver; (void)selector; (void)window; (void)context;
+    update_key_window();
+}
+static void local_keyboard_start(id receiver,SEL selector)
+{
+    (void)receiver; (void)selector;
+    update_key_window();
+    fprintf(stderr,"IOS_INPUT_KEYBOARD_BACKEND backend=linux remote_service=false input_delivery=false\n");
+}
 void arlinux_ios_input_start(void)
 {
     Class cls=objc_getClass("_UIRemoteKeyboards");
-    Method method=cls ? class_getInstanceMethod(cls,sel_registerName("applicationKeyWindowDidChange:")) : NULL;
-    const char *types=method ? method_getTypeEncoding(method) : NULL;
-    if (!types || strcmp(types,"v24@0:8@16")) {
-        fprintf(stderr,"IOS_INPUT_BINDING_FAILED selector=applicationKeyWindowDidChange: actual=%s\n",
-            types ? types : "<absent>");
-        abort();
+    const struct { const char *selector,*types; IMP implementation; } bindings[]={
+        {"_performRequiredSceneUpdateIfPermittedForWindow:withContext:","v32@0:8@16@24",(IMP)local_focus_update},
+        {"startConnection","v16@0:8",(IMP)local_keyboard_start}
+    };
+    for (unsigned int i=0;i<sizeof(bindings)/sizeof(*bindings);i++) {
+        Method method=cls ? class_getInstanceMethod(cls,sel_registerName(bindings[i].selector)) : NULL;
+        const char *types=method ? method_getTypeEncoding(method) : NULL;
+        if (!types || strcmp(types,bindings[i].types)) {
+            fprintf(stderr,"IOS_INPUT_BINDING_FAILED selector=%s actual=%s\n",
+                bindings[i].selector,types ? types : "<absent>");
+            abort();
+        }
+        method_setImplementation(method,bindings[i].implementation);
     }
-    method_setImplementation(method,(IMP)key_window_changed);
 }
