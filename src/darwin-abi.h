@@ -36,7 +36,7 @@ enum darwin_syscall {
     D_SYS_GETTIMEOFDAY = 116,
     D_SYS_MUNMAP = 73,
     D_SYS_MPROTECT = 74,
-    D_SYS_PREAD = 153,
+    D_SYS_PREAD = 153, D_SYS_FCNTL = 92,
     D_SYS_MMAP = 197,
     D_SYS_LSEEK = 199,
     D_SYS_SHARED_REGION_CHECK = 294,
@@ -374,3 +374,10 @@ enum darwin_port_option_flags {
 };
 struct darwin_port_options { uint32_t flags,queue_limit; uint64_t reserved[2]; };
 _Static_assert(sizeof(struct darwin_port_options)==24,"Darwin port options wire layout");
+
+/* XNU bsd/sys/fcntl.h, fchecklv_t LP64 wire layout. */
+enum darwin_fcntl { D_F_CHECK_LV=98 };
+struct darwin_fchecklv {
+    int64_t file_start;
+    uint64_t error_message_size,error_message;
+};

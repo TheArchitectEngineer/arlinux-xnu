@@ -616,6 +616,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         __builtin_unreachable();
     case D_SYS_READ: case D_SYS_READ_NOCANCEL: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
     case D_SYS_WRITE: case D_SYS_WRITE_NOCANCEL: result = RAW(SYS_write,r[0],r[1],r[2],0,0,0); break;
+    case D_SYS_FCNTL: result=native_fcntl(r); break;
     case D_SYS_ACCESS: {
         char buffer[4096],*path=buffer;
         result=guest_path(r[0],buffer);

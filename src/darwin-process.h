@@ -178,3 +178,31 @@ static long native_csops(const unsigned long long *r)
     }
     return result;
 }
+
+static long native_fcntl(const unsigned long long *r)
+{
+    long status=RAW(SYS_fcntl,r[0],F_GETFD,0,0,0,0);
+    if (status<0) return status;
+    status=-ENOTSUP;
+    if (r[1]==D_F_CHECK_LV) {
+        struct darwin_fchecklv request;
+        if (guest_copy(&request,r[2],sizeof(request),0)) return -EFAULT;
+        if (request.file_start<0) return -EINVAL;
+        /* This trusted-input compatibility runtime does not enforce Apple's
+         * Library Validation, just as its cache mapper does not authenticate
+         * Apple signatures. Allow composition, not a claim that a signature
+         * was verified or registered. File/mapping errors remain real. */
+        if (request.error_message_size && request.error_message) {
+            char empty=0;
+            if (guest_copy(&empty,request.error_message,1,1)) return -EFAULT;
+        }
+        status=0;
+    }
+    static unsigned int traces;
+    if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
+        const char label[]="DARWIN_FCNTL library_validation=disabled fd/command/argument/result follows\n";
+        RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+        trace_call(0,0,r[0]); trace_call(1,0,r[1]); trace_call(2,0,r[2]); trace_call(3,0,status);
+    }
+    return status;
+}
