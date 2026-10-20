@@ -26,6 +26,16 @@ is one comparison, not a latency guarantee; queue time and app interleavings var
 The former report's 2,485 observations fit in 48 default output lines while all
 observations remain saved. A repeated hash-verified local-log report took 3.7s.
 
+Compiler reuse is shared ccache, not a restored build directory or old binary.
+The runner image/compiler-content fingerprint selects the Actions cache bucket;
+ccache checks source/header/options/compiler inputs and cached-output checksums.
+No sloppiness is enabled. It has a 256 MiB limit and records actual hit/miss
+counters in compiler-cache.json and COMPILER_CACHE_STATS. Save runs after
+successful compilation even if the genuine app fails, without changing that
+failure. Final linking, executable SHA-256 and all real journeys still run.
+Core/native/dyld receipts and artifacts are published together at the end;
+the old copied upstream-input receipt is unnecessary inside one source/job.
+
 These are observed outputs, not a second acceptance framework. Missing logs
 remain unavailable; compilation errors remain failures even without app
 markers. Report prints only actual line-start markers, not echoed commands.

@@ -68,6 +68,12 @@ receipts remain separate for each product; Apple inputs stay transient on the
 runner. Reports default to outcomes and key evidence; `report --verbose` prints
 all observations. Older runs retain their original job names.
 
+The same content-checked ccache serves the Mach core, launcher, guest app and
+open-source APFS reader. Each run links and executes its own products, records
+cache hits/misses, then saves successful compilations even if the app journey
+fails. Firmware, extracted Apple frameworks and installed app state are never
+cached. Cache absence rebuilds normally.
+
 [Execution design and unresolved ABI constraints](docs/ARCHITECTURE.md) defines
 the host/kernel/guest boundary.
 

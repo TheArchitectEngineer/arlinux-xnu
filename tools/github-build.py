@@ -113,7 +113,7 @@ def report(run_id, job_name, verbose=False):
         if log_format == 'gh-run-view':
             lines = [re.sub(r'^[^\t]+\t[^\t]+\t', '', line) for line in lines]
         lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
-        markers = ('APP_INPUT ', 'APP_OUTCOME ', 'LLDB_RETRY_SKIPPED ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
+        markers = ('APP_INPUT ', 'APP_OUTCOME ', 'COMPILER_CACHE_STATS ', 'LLDB_RETRY_SKIPPED ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                    'DARLING_NATIVE_CONNECTED ', 'DARLING_RPC_ERROR ', 'DARLING_RPC_WAIT ',
                    'DARLING_RENDER_RECEIVED ', 'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_SERVICE_PORTS ',
                    'DARLINGSERVER_RPC_ONLY ',
@@ -187,7 +187,7 @@ def report(run_id, job_name, verbose=False):
             for line in item['observations']:
                 print('  ' + line)
         else:
-            concise = ('APP_OUTCOME ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
+            concise = ('APP_OUTCOME ', 'COMPILER_CACHE_STATS ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                        'LLDB_RETRY_SKIPPED ', 'APP_STARTUP_INCOMPLETE ',
                        'ORIGINAL_WAIT_PID=', 'ORIGINAL_WAIT_START_TICKS ', 'ORIGINAL_WAIT_TRACE_STATUS=',
                        'NATIVE_SERVICE_PORTS ', 'NATIVE_ULOCK_QUEUES ', 'NATIVE_ULOCK_WAIT ',

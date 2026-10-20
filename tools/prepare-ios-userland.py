@@ -47,7 +47,8 @@ for directory, expected in [(reader_source, reader['commit']),
     if actual_source != expected:
         raise SystemExit('APFS reader source mismatch: ' + actual_source)
 reader_build = output / 'apfs-build'
-run('cmake', '-S', reader_source, '-B', reader_build, '-DUSE_FUSE3=ON')
+run('cmake', '-S', reader_source, '-B', reader_build, '-DUSE_FUSE3=ON',
+    '-DCMAKE_C_COMPILER_LAUNCHER=ccache', '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache')
 run('cmake', '--build', reader_build, '--target', 'apfs-fuse', '-j2')
 
 archive = output / 'firmware.ipsw'

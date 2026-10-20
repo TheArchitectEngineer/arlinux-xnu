@@ -81,13 +81,19 @@ jobs:
     if: inputs.mode == 'both' || inputs.mode == 'native' || inputs.mode == 'dyld' || inputs.mode == 'app' || inputs.mode == 'playcover' || inputs.mode == 'darling'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/build/compiler-cache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 256M
     steps:
       - uses: actions/checkout@v4
       - name: Install experiment toolchain once
+        id: toolchain
         shell: bash
         run: |
           set -euo pipefail
-          packages=(clang-18 cmake)
+          packages=(clang-18 cmake ccache)
           if [[ '${{ inputs.mode }}' == darling || '${{ inputs.ipc }}' == darling ]]; then
             packages+=(ninja-build bison flex libbsd-dev)
           fi
@@ -99,6 +105,26 @@ jobs:
           fi
           sudo apt-get update
           sudo apt-get install -y "${packages[@]}"
+          python3 - <<'PY'
+          import hashlib, os, pathlib
+          digest = hashlib.sha256(os.environ.get('ImageVersion', '').encode())
+          for name in ('cc', 'clang-18', 'clang++-18', 'ccache'):
+              digest.update(name.encode())
+              digest.update(pathlib.Path('/usr/bin', name).read_bytes())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+              stream.write('fingerprint=' + digest.hexdigest() + '\n')
+          PY
+      - name: Restore compiler cache
+        id: compiler_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ github.sha }}
+          restore-keys: |
+            compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-
+      - name: Initialize compiler cache accounting
+        id: cache_accounting
+        run: ccache --zero-stats
       - name: Record integrated runtime sources
         if: inputs.mode == 'darling' || inputs.ipc == 'darling'
         shell: bash
@@ -112,13 +138,14 @@ jobs:
           uname -a > build/darling-ipc/environment.txt
           getconf PAGE_SIZE >> build/darling-ipc/environment.txt
       - name: Build integrated Darling IPC server
+        id: core_build
         if: inputs.mode == 'darling' || inputs.ipc == 'darling'
         shell: bash
         run: |
           set -euo pipefail
           clang-18 --version >> build/darling-ipc/environment.txt
           cmake --version >> build/darling-ipc/environment.txt
-          cmake -S components/darling -B build/darling-compilation -G Ninja -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=RelWithDebInfo 2>&1 | tee build/darling-ipc/configure.log
+          cmake -S components/darling -B build/darling-compilation -G Ninja -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_BUILD_TYPE=RelWithDebInfo 2>&1 | tee build/darling-ipc/configure.log
           cmake --build build/darling-compilation --target arlinux_mach_core --parallel 4 2>&1 | tee build/darling-ipc/build.log
           cp build/darling-compilation/darlingserver/libarlinux_mach_core.so build/darling-ipc/
           mkdir -p build/darling-ipc/include/darlingserver build/darling-ipc/src
@@ -126,16 +153,8 @@ jobs:
           cp components/darling/source/src/external/darlingserver/include/darlingserver/rpc-supplement.h build/darling-ipc/include/darlingserver/
           cp build/darling-compilation/darlingserver/src/rpc.c build/darling-ipc/src/
           file build/darling-ipc/libarlinux_mach_core.so | tee build/darling-ipc/file.txt
-      - name: Record experiment receipt
-        if: (always()) && (inputs.mode == 'darling' || inputs.ipc == 'darling')
-        run: python3 tools/experiment-receipt.py --directory build/darling-ipc --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: (always()) && (inputs.mode == 'darling' || inputs.ipc == 'darling')
-        with:
-          name: linux-arm64-mach-core
-          path: build/darling-ipc/
-          retention-days: 30
       - name: Build and run native Darwin console journey
+        id: native_build
         if: inputs.mode != 'darling'
         shell: bash
         run: |
@@ -146,17 +165,17 @@ jobs:
           cc --version >> build/native/environment.txt
           clang-18 --version >> build/native/environment.txt
           ld64.lld-18 --version >> build/native/environment.txt
-          clang-18 --target=arm64-apple-ios12.0 -c guests/console.S -o build/native/console.o
+          ccache clang-18 --target=arm64-apple-ios12.0 -c guests/console.S -o build/native/console.o
           ld64.lld-18 -arch arm64 -platform_version ios 13.0 13.0 -no_adhoc_codesign -e _start build/native/console.o -o build/native/console.macho
           # A standard link-time interface records a real runtime dependency.
           # It supplies no replacement implementation or fabricated exports.
-          clang-18 --target=arm64-apple-ios12.0 -ffreestanding -fno-stack-protector -O1 -g -c guests/dynamic-console.c -o build/native/console-dynamic.o
+          ccache clang-18 --target=arm64-apple-ios12.0 -ffreestanding -fno-stack-protector -O1 -g -c guests/dynamic-console.c -o build/native/console-dynamic.o
           ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/console-dynamic.o -needed_library guests/libSystem.tbd -o build/native/console-dynamic.macho
           # ARHello is a UIKit app, not a replacement framework. These TBDs only
           # describe link interfaces; all implementations come from real iOS.
           mkdir -p build/native/ARHello.app
           cp guests/ARHello/Info.plist build/native/ARHello.app/
-          clang-18 --target=arm64-apple-ios12.0 -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c guests/ARHello/main.m -o build/native/ARHello.o
+          ccache clang-18 --target=arm64-apple-ios12.0 -Wall -Wextra -Werror -fno-stack-protector -O1 -g -c guests/ARHello/main.m -o build/native/ARHello.o
           ld64.lld-18 -arch arm64 -platform_version ios 12.0 12.0 -no_adhoc_codesign -e _main build/native/ARHello.o -needed_library guests/libSystem.tbd -needed_library guests/ARHello/UIKit.tbd -needed_library guests/ARHello/Foundation.tbd -needed_library guests/ARHello/libobjc.tbd -o build/native/ARHello.app/ARHello
           llvm-objdump-18 --macho --disassemble --private-headers build/native/console.macho > build/native/image.txt
           rpc_flags=()
@@ -165,22 +184,23 @@ jobs:
           spc_flags=(-Isrc -Icomponents/libspc/include -Ithird_party/libspc/libspc -include string.h -fcommon)
           spc_objects=()
           for source in serialization datatypes dictionary array accept; do
-            cc -O2 -g "${spc_flags[@]}" -c "third_party/libspc/libspc/$source.c" -o "build/native/spc-$source.o"
+            ccache cc -O2 -g "${spc_flags[@]}" -c "third_party/libspc/libspc/$source.c" -o "build/native/spc-$source.o"
             spc_objects+=("build/native/spc-$source.o")
           done
-          cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/native-xpc.c -o build/native/native-xpc.o
+          ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/native-xpc.c -o build/native/native-xpc.o
           cp third_party/libspc/LICENSE build/native/libspc-LICENSE
           if [[ '${{ inputs.ipc }}' == darling ]]; then
             rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include)
-            cp build/darling-ipc/receipt.json build/native/darling-input-receipt.json
             cp build/darling-ipc/libarlinux_mach_core.so build/native/
-            core_flags=(-DARLINUX_DARLING=1 -Lbuild/native -larlinux_mach_core '-Wl,-rpath,$ORIGIN')
+            core_flags=(-Lbuild/native -larlinux_mach_core '-Wl,-rpath,$ORIGIN')
           fi
-          cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics "${rpc_flags[@]}" -c src/darwin-native.c -o build/native/runtime.o
-          cc -c src/darwin-native.S -o build/native/entry.o
+          ccache cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics "${rpc_flags[@]}" -c src/darwin-native.c -o build/native/runtime.o
+          ccache cc -c src/darwin-native.S -o build/native/entry.o
           wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-client-protocol.h
           wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/native/xdg-shell-protocol.c
-          cc -Wall -Wextra -Werror -O2 -g -Ibuild/native src/macho-native.c build/native/xdg-shell-protocol.c build/native/runtime.o build/native/entry.o build/native/native-xpc.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
+          ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native "${rpc_flags[@]}" -c src/macho-native.c -o build/native/macho-native.o
+          ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native -c build/native/xdg-shell-protocol.c -o build/native/xdg-shell-protocol.o
+          cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -pthread -o build/native/macho-native
           # Two complete independent launches of the interactive program, not
           # a source assertion or isolated TLS probe. Runtime exit status is
           # the guest's real Linux-backed normal process exit status.
@@ -194,15 +214,6 @@ jobs:
           if [[ '${{ inputs.ipc }}' == darling ]]; then
             (cd build/native && sha256sum libarlinux_mach_core.so >> SHA256SUMS)
           fi
-      - name: Record experiment receipt
-        if: (always()) && (inputs.mode != 'darling')
-        run: python3 tools/experiment-receipt.py --directory build/native --outcome '${{ job.status }}'
-      - uses: actions/upload-artifact@v4
-        if: (always()) && (inputs.mode != 'darling')
-        with:
-          name: linux-arm64-native-darwin
-          path: build/native/
-          retention-days: 30
       - name: Verify native runtime input
         if: inputs.mode == 'dyld' || inputs.mode == 'app'
         shell: bash
@@ -259,7 +270,7 @@ jobs:
             if [ "$status" -ne 0 ]; then exit "$status"; fi
           done
       - name: Start native Wayland compositor
-        if: (inputs.mode == 'app') && (inputs.mode == 'dyld' || inputs.mode == 'app')
+        if: inputs.mode == 'app'
         shell: bash
         run: |
           export XDG_RUNTIME_DIR="$PWD/build/dyld/wayland-runtime"
@@ -281,7 +292,7 @@ jobs:
           PY
       - name: Start ARHello 1.0 with real UIKit
         id: ios_app
-        if: (inputs.mode == 'app') && (inputs.mode == 'dyld' || inputs.mode == 'app')
+        if: inputs.mode == 'app'
         shell: bash
         run: |
           set -euo pipefail
@@ -490,6 +501,49 @@ jobs:
             kill -- "$(cat build/dyld/session.pid)" 2>/dev/null || true
             cat build/dyld/session.log build/dyld/session.stdout
           fi
+      - name: Record compiler cache results
+        if: always() && steps.cache_accounting.outcome == 'success'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          counters = dict((key, int(value)) for key, value in
+                          (line.split() for line in subprocess.check_output(['ccache', '--print-stats'], text=True).splitlines()))
+          summary = {'directHits': counters.get('direct_cache_hit', 0),
+                     'preprocessedHits': counters.get('preprocessed_cache_hit', 0),
+                     'misses': counters.get('cache_miss', 0),
+                     'counters': counters}
+          for name in ('build/darling-ipc', 'build/native', 'build/dyld'):
+              directory = pathlib.Path(name)
+              if directory.exists():
+                  (directory / 'compiler-cache.json').write_text(json.dumps(summary, indent=2) + '\n')
+          print('COMPILER_CACHE_STATS ' + json.dumps({key: value for key, value in summary.items() if key != 'counters'}))
+          PY
+          ccache --show-stats
+      - name: Save successful compilation cache
+        if: always() && steps.compiler_cache.outputs.cache-hit != 'true' && (steps.native_build.outcome == 'success' || (inputs.mode == 'darling' && steps.core_build.outcome == 'success'))
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.compiler_cache.outputs.cache-primary-key }}
+      - name: Record experiment receipt
+        if: (always()) && (inputs.mode == 'darling' || inputs.ipc == 'darling')
+        run: python3 tools/experiment-receipt.py --directory build/darling-ipc --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: (always()) && (inputs.mode == 'darling' || inputs.ipc == 'darling')
+        with:
+          name: linux-arm64-mach-core
+          path: build/darling-ipc/
+          retention-days: 30
+      - name: Record experiment receipt
+        if: (always()) && (inputs.mode != 'darling')
+        run: python3 tools/experiment-receipt.py --directory build/native --outcome '${{ job.status }}'
+      - uses: actions/upload-artifact@v4
+        if: (always()) && (inputs.mode != 'darling')
+        with:
+          name: linux-arm64-native-darwin
+          path: build/native/
+          retention-days: 30
       - name: Record experiment receipt
         if: (always()) && (inputs.mode == 'dyld' || inputs.mode == 'app')
         run: python3 tools/experiment-receipt.py --directory build/dyld --outcome '${{ job.status }}'
