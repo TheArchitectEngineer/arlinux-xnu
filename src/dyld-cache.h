@@ -167,7 +167,9 @@ static uint64_t load_native_cache(const char *root)
                 int cf_image=!strcmp((const char *)file+image.path_offset,"/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation");
                 int cg_image=!strcmp((const char *)file+image.path_offset,"/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics");
                 int objc_image=!strcmp((const char *)file+image.path_offset,"/usr/lib/libobjc.A.dylib");
-                if (xpc_image || render_image || cf_image || cg_image || objc_image) {
+                int scene_image=!strcmp((const char *)file+image.path_offset,"/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices");
+                int base_image=!strcmp((const char *)file+image.path_offset,"/System/Library/PrivateFrameworks/BaseBoard.framework/BaseBoard");
+                if (xpc_image || render_image || cf_image || cg_image || objc_image || scene_image || base_image) {
                     uint32_t table[4]; memcpy(table,bytes+pos+8,sizeof(table));
                     need(range(table[0],(uint64_t)table[1]*16,size) && range(table[2],table[3],size),
                          "cache service symbol bounds");
@@ -209,6 +211,9 @@ static uint64_t load_native_cache(const char *root)
                             if (!strcmp(text,"_CARenderServerGetPort")) render_get_port=address;
                             continue;
                         }
+                        if ((scene_image && !strcmp(text,"_OBJC_CLASS_$_FBSSceneSettingsDiff")) ||
+                            (base_image && strstr(text,"CGRect")))
+                            fprintf(stderr,"NATIVE_SCENE_EXPORT symbol=%s address=%#" PRIx64 "\n",text,address);
                         uint64_t target=!strcmp(text,"_bootstrap_look_up3") ? (uintptr_t)darwin_native_service_lookup :
                             !strcmp(text,"_bootstrap_register2") ? (uintptr_t)darwin_native_service_register :
                             !strcmp(text,"_bootstrap_check_in2") ? (uintptr_t)darwin_native_service_check_in : 0;

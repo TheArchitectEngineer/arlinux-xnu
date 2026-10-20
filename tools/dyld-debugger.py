@@ -606,7 +606,7 @@ def capture_protocol_callees(target,address,count):
             break
 
 
-def capture_protocol_blocks(target, address, count):
+def capture_protocol_blocks(target, address, count, callee_limit=2, callee_distance=0x100000):
     """Read actual executable ADRP/ADD block callbacks used by the codec."""
     objects=GuestObjects(target.GetProcess())
     words=struct.unpack('<'+'I'*count,objects.read(address,count*4))
@@ -647,13 +647,13 @@ def capture_protocol_blocks(target, address, count):
             displacement=word&0x03ffffff
             if displacement&(1<<25): displacement-=1<<26
             callee=pointer+offset*4+displacement*4
-            if callee in callees or abs(callee-pointer)>0x100000:
+            if callee in callees or abs(callee-pointer)>callee_distance:
                 continue
             callees.add(callee)
             print('APP_SETTINGS_CODEC_CALLEE '+json.dumps({'block':hex(pointer),'callee':hex(callee)}),flush=True)
             target.GetDebugger().HandleCommand('disassemble --start-address '+hex(callee)+' --count 128')
             capture_code_references(target,callee,128,'APP_SETTINGS_CODEC_CALLEE_REFERENCE')
-            if len(callees)>=2:
+            if len(callees)>=callee_limit:
                 break
         if len(seen)>=4:
             break
@@ -1049,6 +1049,35 @@ def capture_render_api_code(process):
         target.GetDebugger().HandleCommand('disassemble --start-address ' + hex(address) +
                                           ' --count ' + str(wanted[name]))
         capture_code_references(target, address, wanted[name], 'RENDER_API_REFERENCE')
+
+
+def capture_scene_geometry_code(process):
+    """Inspect the real frame decoder after observing zero-sized UIWindows."""
+    target = process.GetTarget()
+    objects = GuestObjects(process)
+    for line in Path('build/dyld/app.runtime.log').read_text(errors='replace').splitlines():
+        match = re.fullmatch(r'NATIVE_SCENE_EXPORT symbol=(\S+) address=(0x[0-9a-f]+)', line)
+        if not match:
+            continue
+        name, address = match[1], int(match[2], 16)
+        if name == '_OBJC_CLASS_$_FBSSceneSettingsDiff':
+            methods = objects.u64(objects.class_ro(address)+32)
+            size, count = objects.u32(methods)&~3, objects.u32(methods+4)
+            if size != 24 or count > 2048:
+                raise ValueError('Unsupported scene diff method metadata')
+            for index in range(count):
+                entry = methods+8+index*size
+                selector = objects.cstring(objects.u64(entry))
+                if selector == 'settingsByApplyingToMutableCopyOfSettings:':
+                    capture_protocol_blocks(target, objects.u64(entry+16), 256,
+                                            callee_limit=6, callee_distance=0x400000)
+        elif 'CGRect' in name:
+            region = lldb.SBMemoryRegionInfo()
+            if process.GetMemoryRegionInfo(address, region).Fail() or not region.IsExecutable():
+                continue
+            print('SCENE_GEOMETRY_CODE '+json.dumps({'symbol': name, 'address': hex(address)}), flush=True)
+            target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 96')
+            capture_code_references(target, address, 96, 'SCENE_GEOMETRY_REFERENCE')
 
 
 def capture_ipc_waits(process):
