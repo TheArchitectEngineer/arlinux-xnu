@@ -212,3 +212,16 @@ The pinned community IOKit reference (`darlinghq/darling-iokituser`,
 creates a CF runtime object but exposes empty devices/properties and no event
 delivery. It is not evidence of usable HID input. Preserve Darling's real Mach
 transport and implement required input behavior against actual Wayland events.
+
+## Original-process startup waits
+
+The existing app journey now records an attach snapshot after 12 seconds if the
+original app is still alive without its actual window-ready callback. It checks
+the child of the known timeout process and its exact ELF executable, records PID
+and process start ticks, then uses bounded runner-root LLDB attachment to read
+all-thread stacks and the existing capture_ipc_waits decoder. It detaches before
+the original 30-second app timeout. ordinary-wait.log and its same-cache symbol
+map belong to that original process; failure-only lldb.log remains a separate
+attempt. Attaching changes scheduling and is not deterministic replay or a pass.
+The trace status is retained independently from the actual app result. No guest
+function is invoked; no firmware, process memory image or core is downloaded.

@@ -306,7 +306,34 @@ jobs:
             timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/peer.stdout 2> build/dyld/peer.runtime.log &
             peer=$!
           fi
-          timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log || status=$?
+          timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log &
+          ordinary=$!
+          # Inspect the original hanging process before timeout destroys it.
+          # The separate LLDB replay may take a different thread interleaving.
+          sleep 12
+          if kill -0 "$ordinary" 2>/dev/null && ! grep -q '^ARHELLO_READY ' build/dyld/app.stdout; then
+            actual=$(pgrep -P "$ordinary" -x macho-native || true)
+            if [[ "$actual" =~ ^[0-9]+$ ]] && [[ "$(readlink -f "/proc/$actual/exe")" == "$PWD/build/native/macho-native" ]]; then
+              echo "ORIGINAL_WAIT_PID=$actual TIMEOUT_PID=$ordinary" > build/dyld/ordinary-wait.log
+              python3 - "$actual" >> build/dyld/ordinary-wait.log <<'PY'
+          import pathlib,sys
+          text=(pathlib.Path('/proc')/sys.argv[1]/'stat').read_text()
+          print('ORIGINAL_WAIT_START_TICKS '+text[text.rfind(')')+1:].split()[19])
+          PY
+              trace_status=0
+              sudo -n timeout --kill-after=2 10 lldb-18 --batch --attach-pid "$actual" \
+                -o 'settings set auto-confirm true' \
+                -o 'thread backtrace all --count 24' \
+                -o 'script import importlib.util,sys; spec=importlib.util.spec_from_file_location("dyld_debugger","tools/dyld-debugger.py"); helper=importlib.util.module_from_spec(spec); sys.modules[spec.name]=helper; spec.loader.exec_module(helper)' \
+                -o 'script helper.capture_ipc_waits(lldb.debugger.GetSelectedTarget().GetProcess())' \
+                -o 'register read pc sp x0 x1 x2 x3 x4 x5 x6 x7' \
+                -o 'process detach' >> build/dyld/ordinary-wait.log 2>&1 || trace_status=$?
+              echo "ORIGINAL_WAIT_TRACE_STATUS=$trace_status" >> build/dyld/ordinary-wait.log
+              cat build/dyld/ordinary-wait.log
+              python3 tools/symbolicate-cache.py build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64 build/dyld/ordinary-wait.log build/dyld/ordinary-wait-symbols.json
+            fi
+          fi
+          wait "$ordinary" || status=$?
           app_status=$status
           if [[ "$peer" != 0 ]]; then
             peer_status=0
