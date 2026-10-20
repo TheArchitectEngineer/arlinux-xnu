@@ -78,6 +78,7 @@ def report(run_id, job_name):
                    'DARWIN_TIMER_OPERATION ', 'DARWIN_TIMER_EXPIRED ', 'DARWIN_PORT_OPERATION ',
                    'DARWIN_PORT_TYPE ', 'SERVICE_REGISTER ',
                    'DARWIN_KEVENT_BUFFER_DELIVERY ',
+                   'DARWIN_MACH_OPTIONS_REJECTED ',
                    'IPC_WAIT ', 'IPC_WAIT_DECODE_ERROR ', 'IPC_QUEUE_SNAPSHOT ', 'DARWIN_KEVENT_ERROR ',
                    'NORMAL_RUNTIME_FAULT_PC ', 'DIAGNOSTIC_WAIT_INTERRUPTED ',
                    'DARWIN_EVENT_DELIVERY ', 'DARWIN_NATIVE_FAULT ', 'DYNAMIC_MAIN ', 'DYNAMIC_THREAD ',
@@ -88,7 +89,8 @@ def report(run_id, job_name):
                            'DARWIN_RENDER_PROPERTIES ': 4, 'DARWIN_TIMER_OPERATION ': 6,
                            'DARWIN_TIMER_EXPIRED ': 1, 'DARWIN_PORT_OPERATION ': 6,
                            'DARWIN_KEVENT_ERROR ': 6, 'DARWIN_PORT_TYPE ': 3,
-                           'DARWIN_KEVENT_BUFFER_DELIVERY ': 4}
+                           'DARWIN_KEVENT_BUFFER_DELIVERY ': 4,
+                           'DARWIN_MACH_OPTIONS_REJECTED ': 7}
         for index, line in enumerate(lines):
             if not line.startswith(markers):
                 continue

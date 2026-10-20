@@ -141,6 +141,11 @@ def capture_display_code(target):
                 # observed query. No firmware-specific addresses are assumed.
                 for child in list(dict.fromkeys(calls(query, 32)))[:4]:
                     disassemble('DISPLAY_QUERY_CALLEE_CODE', child, 180)
+        elif symbol.get('symbol') == '__GSRegisterPurpleNamedPortInPrivateNamespace':
+            address = int(symbol['address'], 16)
+            disassemble('EVENT_PORT_REGISTER_CODE', address, 200)
+            for child in list(dict.fromkeys(calls(address, 110)))[:8]:
+                disassemble('EVENT_PORT_REGISTER_CALLEE_CODE', child, 100)
         elif symbol.get('symbol') == '_bootstrap_look_up3':
             disassemble('BOOTSTRAP_LOOKUP_CODE', int(symbol['address'], 16), 160)
         elif symbol.get('symbol') in ('_OBJC_CLASS_$_CADisplay', '_OBJC_CLASS_$_CADisplayMode'):

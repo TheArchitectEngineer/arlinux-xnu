@@ -483,7 +483,15 @@ static unsigned long ipc_message(const unsigned long long *r,unsigned long pc)
         !ipc_receive_options(options&~(unsigned long)(D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT)) ||
         (r[6] && !(options&D_MACH_RCV_SYNC_WAIT)) ||
         ((options&D_MACH_RCV_SYNC_WAIT) &&
-         (!(options&D_MACH_RCV_MSG) || (options&D_MACH_SEND_MSG)))) return D_MACH_SEND_INVALID_OPTIONS;
+         (!(options&D_MACH_RCV_MSG) || (options&D_MACH_SEND_MSG)))) {
+        static unsigned int rejected;
+        if (__atomic_fetch_add(&rejected,1,__ATOMIC_RELAXED)<32) {
+            const char label[]="DARWIN_MACH_OPTIONS_REJECTED argument-index/pc/value follows\n";
+            RAW(SYS_write,2,label,sizeof(label)-1,0,0,0);
+            for (unsigned int i=0;i<7;i++) trace_call(i,pc,r[i]);
+        }
+        return D_MACH_SEND_INVALID_OPTIONS;
+    }
     if (options&D_MACH_SEND_MSG) {
         unsigned char request[IPC_BYTES];
         if (r[2]<sizeof(struct ipc_header) || r[2]>sizeof(request) ||
