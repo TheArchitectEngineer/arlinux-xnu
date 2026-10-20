@@ -48,8 +48,16 @@ static void software_layer_display(CALayer *layer,SEL selector)
         if (!image) { fprintf(stderr,"IOS_RENDER_CPU_BACKING_FAILED reason=image-snapshot\n"); abort(); }
         layer.contents=(id)image;
         static unsigned int logged;
-        if (logged++<8) fprintf(stderr,"IOS_RENDER_CPU_BACKING class=%s width=%zu height=%zu app_acceptance=false\n",
-            class_getName(object_getClass(layer)),CGImageGetWidth(image),CGImageGetHeight(image));
+        if (logged++<8) {
+            size_t nonzero=0;uint32_t first=0;
+            const uint32_t *pixels=CGBitmapContextGetData(context);
+            for (size_t i=0;i<(size_t)width*(size_t)height;i++) if (pixels[i]>>24) {
+                if (!nonzero) first=pixels[i];
+                nonzero++;
+            }
+            fprintf(stderr,"IOS_RENDER_CPU_BACKING class=%s width=%zu height=%zu alpha_pixels=%zu first_pixel=%08x app_acceptance=false\n",
+                class_getName(object_getClass(layer)),CGImageGetWidth(image),CGImageGetHeight(image),nonzero,first);
+        }
     } @finally {
         if (image) CGImageRelease(image);
         CGContextRelease(context);

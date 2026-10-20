@@ -1,4 +1,5 @@
 #import "Inspect.h"
+#import <QuartzCore/QuartzCore.h>
 #include <stdio.h>
 static NSMutableArray *elements;
 static NSMutableSet *visited;
@@ -17,7 +18,16 @@ static void inspect(id object,unsigned depth) {
     else if ([object isAccessibilityElement]) { text=[object accessibilityLabel]; interactive=([object accessibilityTraits]&UIAccessibilityTraitButton)!=0; }
     if (text.length) {
         CGRect frame=view ? [(UIView *)object convertRect:[(UIView *)object bounds] toView:current] : [current convertRect:[object accessibilityFrame] fromWindow:nil];
-        [elements addObject:@{@"text":text,@"interactive":@(interactive),@"rect":@[@(frame.origin.x),@(frame.origin.y),@(frame.size.width),@(frame.size.height)]}];
+        NSMutableDictionary *entry=[@{@"text":text,@"interactive":@(interactive),@"rect":@[@(frame.origin.x),@(frame.origin.y),@(frame.size.width),@(frame.size.height)]} mutableCopy];
+        if ([object isKindOfClass:UILabel.class]) {
+            UILabel *label=object;
+            entry[@"drawing"]=@{@"viewClass":NSStringFromClass(label.class),
+                @"font":label.font.fontName ?: @"<absent>",@"textColor":label.textColor.description ?: @"<absent>",
+                @"tintColor":label.tintColor.description ?: @"<absent>",
+                @"layerOpacity":@(label.layer.opacity),@"layerHidden":@(label.layer.hidden),
+                @"contentsClass":label.layer.contents ? NSStringFromClass([label.layer.contents class]) : @"<absent>"};
+        }
+        [elements addObject:entry];
     }
     if (view) for (UIView *child in [(UIView *)object subviews]) inspect(child,depth+1);
     for (id child in [object accessibilityElements]) inspect(child,depth+1);
