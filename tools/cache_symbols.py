@@ -150,6 +150,27 @@ class CacheSymbols:
         end=min(end,following)
         record=self.disassemble(start,end-start)
         record.update(symbol=nearest[1],faultPC=hex(pc))
+        literals=[]
+        member,offset=self.locate(start,end-start)
+        for i in range(0,end-start-4,4):
+            word=member.unpack('<I',offset+i)[0]
+            after=member.unpack('<I',offset+i+4)[0]
+            # ADRP Xn; ADD Xn,Xn,#imm: exact address, not a text search or
+            # speculative dereference. Only declared C-string sections count.
+            register=word&31
+            if word&0x9f000000!=0x90000000 or after&0xffc00000!=0x91000000:continue
+            if after&31!=register or (after>>5)&31!=register:continue
+            immediate=((word>>5)&0x7ffff)<<2 | ((word>>29)&3)
+            if immediate&0x100000:immediate-=0x200000
+            address=((start+i)&~4095)+(immediate<<12)+((after>>10)&4095)
+            for cbase,csize in image['cstring']:
+                if not cbase<=address<cbase+csize:continue
+                maximum=min(512,cbase+csize-address)
+                string_member,string_offset=self.locate(address,maximum)
+                data=string_member.data[string_offset:string_offset+maximum]
+                literals.append({'instruction':hex(start+i),'address':hex(address),
+                    'literal':data.split(b'\0',1)[0].decode('utf-8',errors='replace'),'truncated':b'\0' not in data})
+        record['referencedLiterals']=literals
         names=dict(symbols)
         def direct_calls(begin,size):
             calls={};member,offset=self.locate(begin,size)

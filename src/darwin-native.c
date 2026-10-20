@@ -231,6 +231,7 @@ static long guest_openat(int dirfd,unsigned long address,unsigned long flags)
     /* Absolute guest paths ignore dirfd and use the declared firmware/bundle
      * mapping. Relative paths retain an actual guest-opened directory fd;
      * Darwin AT_FDCWD follows the existing guest-root current-directory policy. */
+    if (buffer[0]!='/' && dirfd<0 && dirfd!=D_AT_FDCWD) return -EBADF;
     int directory=(buffer[0]=='/' || dirfd==D_AT_FDCWD) ? path_directory(&path) : dirfd;
     trace_record("DARWIN_OPEN_DIRECTORY fd=0x",(unsigned long)(long)directory,0,flags);
     int options=O_RDONLY;
