@@ -87,6 +87,8 @@ def ipc_callback(frame, location, internal_dict):
             item['readError'] = str(error)
         record['objects'].append(item)
     print('IPC_CALLBACK ' + json.dumps(record), flush=True)
+    if symbol == '__exit':
+        frame.GetThread().GetProcess().GetTarget().GetDebugger().HandleCommand('thread backtrace --count 12')
     if breakpoint.GetHitCount() == 1:
         address = frame.GetPC()
         print('IPC_CALLBACK_CODE', hex(address), symbol, flush=True)
@@ -147,7 +149,7 @@ def dictionary_inputs(frame, location, internal_dict):
 
 def install_service_breakpoints(target):
     for symbol in diagnostic_symbols():
-        if symbol.get('symbol') in ('__xpc_connection_call_reply_async',
+        if symbol.get('symbol') in ('__exit', '__xpc_connection_call_reply_async',
                 '_dispatch_mach_send_with_result_and_async_reply_4libxpc',
                 '__dispatch_mach_msg_async_reply_invoke$VARIANT$mp'):
             breakpoint = target.BreakpointCreateByAddress(int(symbol['address'], 16))

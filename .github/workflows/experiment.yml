@@ -288,6 +288,10 @@ jobs:
           timeout 30 build/native/macho-native --dyld build/ios-input/dyld --root build/ios-input/filesystem/root build/native/ARHello.app/ARHello > build/dyld/app.stdout 2> build/dyld/app.runtime.log || status=$?
           cat build/dyld/app.stdout build/dyld/app.runtime.log
           echo "APP_PROCESS_STATUS=$status"
+          if [[ "$status" == 0 ]] && ! grep -q '^ARHELLO_READY ' build/dyld/app.stdout; then
+            echo 'APP_STARTUP_INCOMPLETE process exited before the real UIKit window readiness callback'
+            status=1
+          fi
           # Even reaching UIApplicationMain is only a startup milestone. The
           # display, touch, normal close and relaunch journey is still required.
           exit "$status"
@@ -307,6 +311,7 @@ jobs:
           if [[ -f "$cache" && -f "$ordinary" ]]; then
             python3 tools/symbolicate-cache.py "$cache" "$ordinary" build/dyld/diagnostic-symbols.json \
               --lookup /usr/lib/libobjc.A.dylib _objc_exception_throw \
+              --lookup /usr/lib/system/libsystem_kernel.dylib __exit \
               --lookup /usr/lib/system/libxpc.dylib __xpc_connection_call_reply_async \
               --lookup /usr/lib/system/libdispatch.dylib '_dispatch_mach_send_with_result_and_async_reply_4libxpc' \
               --lookup /usr/lib/system/libdispatch.dylib '__dispatch_mach_msg_async_reply_invoke$VARIANT$mp' \

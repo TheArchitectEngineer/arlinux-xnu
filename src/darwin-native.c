@@ -84,11 +84,11 @@ static int darwin_error(long result)
     }
 }
 
-static void trace_call(unsigned long number,unsigned long pc,unsigned long result)
+static void trace_record(const char *tag,unsigned long number,unsigned long pc,unsigned long result)
 {
     /* Bounded, TLS/libc-free diagnosis. No guest buffers or credentials. */
     char line[140];
-    const char *labels[] = {"DARWIN_CALL nr=0x"," pc=0x"," result=0x"," tid=0x"};
+    const char *labels[] = {tag," pc=0x"," result=0x"," tid=0x"};
     unsigned long values[] = {number,pc,result,RAW(SYS_gettid,0,0,0,0,0,0)};
     const char hex[] = "0123456789abcdef";
     unsigned int n=0;
@@ -98,6 +98,10 @@ static void trace_call(unsigned long number,unsigned long pc,unsigned long resul
     }
     line[n++]='\n';
     RAW(SYS_write,2,line,n,0,0,0);
+}
+static void trace_call(unsigned long number,unsigned long pc,unsigned long result)
+{
+    trace_record("DARWIN_CALL nr=0x",number,pc,result);
 }
 
 /* Legacy ARM64 iOS packs class pointers into a 36-bit user address space.
@@ -592,6 +596,19 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     }
     case D_SYS_EXIT:
         trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]&255);
+        /* A framework can terminate the process with status zero before the
+         * app's ready callback. Preserve the actual caller chain, not a pass. */
+        {
+            unsigned long frame=r[29];
+            trace_record("DARWIN_EXIT_FRAME nr=0x",0,r[30],frame);
+            for(unsigned int i=1;i<16 && frame && !(frame&15);i++) {
+                unsigned long pair[2];
+                if(guest_copy(pair,frame,sizeof(pair),0) || !pair[1]) break;
+                trace_record("DARWIN_EXIT_FRAME nr=0x",i,pair[1],pair[0]);
+                if(pair[0]<=frame) break;
+                frame=pair[0];
+            }
+        }
         RAW(SYS_exit_group,r[0]&255,0,0,0,0,0);
         __builtin_unreachable();
     case D_SYS_READ: case D_SYS_READ_NOCANCEL: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
