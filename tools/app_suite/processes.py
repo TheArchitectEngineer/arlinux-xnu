@@ -137,6 +137,16 @@ class Processes:
                 for begin,end,permissions in re.findall(r'^([0-9a-f]+)-([0-9a-f]+) ([-rwxps]{4}) ',runtime,re.M):
                     if int(begin,16)<=address and address+192<=int(end,16) and permissions[:3]=='rw-':
                         commands.insert(-1,f'memory read --format x --size 8 --count 24 {address:#x}')
+                        # FileRecord::_path is the source-defined pointer at
+                        # Image+0x30. Read only a bounded C string inside the
+                        # original writable non-executable mappings.
+                        ranges=[(int(b,16),int(e,16)) for b,e,p in re.findall(
+                            r'^([0-9a-f]+)-([0-9a-f]+) ([-rwxps]{4}) ',runtime,re.M) if p[:3]=='rw-']
+                        commands.insert(-1,'script '+
+                            f't=lldb.debugger.GetSelectedTarget(); p=t.GetProcess(); e=lldb.SBError(); '+
+                            f'a=int.from_bytes(p.ReadMemory({address+0x30},8,e),"little"); '+
+                            f'n=next((min(1024,end-a) for begin,end in {ranges!r} if begin<=a<end),0); '+
+                            'print("ATLAS_IMAGE_PATH",p.ReadCStringFromMemory(a,n,e) if n else "outside writable metadata maps",e)')
                         break
         with (self.directory / 'original-process.lldb.log').open('wb') as log:
             args = ['sudo', '-n', 'timeout', '--kill-after=2', '10', 'lldb-18', '--batch', '--attach-pid', str(pid)]

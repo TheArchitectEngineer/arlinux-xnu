@@ -31,71 +31,67 @@ hashes were verified. This is a behavior reference, not Linux acceptance.
 
 ## Latest verified Linux result
 
-Run [39480445811](https://github.com/taowen/arlinux-xnu/actions/runs/39480445811),
-source **351fff6c0c55123e89a51a6bb7aae94a06441f53**, selected Console, Counter,
-Foundation and SwiftCards. Result receipt SHA-256
-**c9215eead1262826b74ba1427995c62a3106f6816f52f23714c4f7f2f6c77908** and
-retained text hashes were verified. This is partial Linux coverage, not device
-or UIKit GUI acceptance.
+Run [39483936422](https://github.com/taowen/arlinux-xnu/actions/runs/39483936422),
+source **89f45fa84fd18cfa97dc83f5bb9ec14ad3e03321**, selected Console, Counter,
+Foundation and SwiftCards. Receipt SHA-256
+**c4fb521cbef3f0f68eece9894587117f1fa95b18377ed16b2ca655d5618b01e5** and
+relied-upon retained text hashes were verified. This is partial Linux coverage.
 
-- Console's full interactive/relaunch journey continues to pass. Both actual
-  generations allocate memory, create/join a computing pthread, accept input
-  and exit normally with status 0.
-- Foundation's Unicode JSON, exception unwind and NSTimer journey continues to
-  pass. It computes 10, accepts q and exits normally with status 0.
-- Counter and Swift no longer abort at the previous service-port check. Their
-  real processes remain alive until the journey fails for missing structured
-  UI state / actual composed pixels. Counter has entered UIApplicationMain,
-  but its didFinishLaunching ready marker, visible content and interaction
-  remain unestablished. Forced cleanup is not successful normal exit.
-- The concrete repair is Mach trap 76 (port_type), delegated to the existing
-  Darling core together with trap 77 (port notifications). The actual service
-  port returns status 0 and its real right-type mask, rather than unsupported
-  status 46. This enables the next real client request instead of hiding checks.
-- Counter now sends display-info message 40232, length 40, to our actual display
-  service. Observed inline arguments are NDR 0/1, display ID 1, final value 0.
-  The old 36-byte/two-descriptor handler rejects this request with MIG_BAD_ID;
-  no unimplemented properties are reported as successful.
-- BackBoard's measured 60-byte screen reply and the 56-byte __CASGetDisplays
-  OOL reply use actual Wayland geometry and display storage. Real client parsing
-  and display-object construction have run; no useful UIKit frame has passed.
+- Console passes actual allocation, computing pthread, external input, normal
+  exit and an independent relaunch. Foundation passes Unicode JSON, Objective-C
+  exception unwind, NSTimer computation and normal exit.
+- Counter and Swift enter genuine UIApplicationMain but fault in dyld's
+  Atlas::Image::ml(). No didFinishLaunching marker, useful composed pixels,
+  external GUI interaction or normal GUI close/relaunch has passed.
+- The original fault loads the Mach-O sizeofcmds field at 0x300758014 from an
+  image address 0x300758000. Complete original-process kernel mappings show
+  that address is unmapped. This proves an invalid address, not its cause or
+  which image owns the stale metadata.
+- Mach traps 76/77 now use the actual Darling port-type/notification APIs.
+  Port-type succeeds with actual right masks, eliminating the earlier abort.
+- The display service accepts the observed 40-byte message 40232 and sends the
+  measured 476-byte complex reply with four descriptors, three strings and the
+  decoded fixed tail. Geometry, mode and timing describe the actual Wayland
+  surface; absent optional resources stay absent. Actual Mach receive succeeds;
+  complete display-property consumption and rendering remain unproven.
+- Anonymous mmap now accepts Darwin's VM-tag-only fd encoding and allocates
+  real private memory. The previously rejected 0x68000000 request succeeds,
+  but the identical Atlas fault remains. This was a real defect, not the
+  established cause of the current failure.
 
-## Corrected diagnosis and source handoff
+## Current diagnostic handoff
 
-Source e3d5b7d removed bootstrap lookup's in-app QuartzCore server-start side
-effect and mixed forwarding path. Run 39478502832 (receipt
-**de7652ee47d600d60b738c53b563245fcd9c1b2fea431195747e44529a90a6dc**) and
-run 39478733527 (receipt
-**5aefa3f07ada978c6c173bf36852329faa3861601d2544276a6269c9239573bd**) still
-failed at the earlier location. Those verified failures contradict treating that
-cleanup as the proven cause/fix of the abort. The cleanup remains an ownership
-simplification; the subsequent port-type repair has actual runtime evidence.
-Nearest cache symbols, especially beside stripped functions, are context only.
+Run [39484955937](https://github.com/taowen/arlinux-xnu/actions/runs/39484955937),
+source **1d417ea8599ab66dd5094364cb3b18f6511d3212**, adds original-fault retention.
+The harness records the fault as failure, then LLDB reads the stopped original
+process. An exact-symbol match and writable-map bounds check permit a bounded
+192-byte read of the Atlas Image object. Apple executable bytes stay runner-local.
+Receipt SHA-256
+**e310bc618ae73d0cde276f3af6bfae21252f8f338ac4627bf1a4ea339d36fc62**
+and all 43 retained file hashes were verified. Console/Foundation passed; both
+UIKit cases correctly failed at the original fault. LLDB collected the actual
+Image object: its saved base and mapped pointer both equal 0x300758000. The
+file record has a path pointer but no inode/device identity. Read that bounded
+path and VM allocation/release ranges next; no mapping-lifetime cause is proven.
 
-The same-cache reader now decodes declared constant CFStrings through their
-actual mapping's slide-v2 pointer metadata, and retains original ARM64 call
-instructions and bounded branch-stub observations. Run 39479884455, source
-cd353f28d86be001883296670050f4a9a70c69ef, receipt
-**700c39d33d3738c8c98e93afa75cd325ac68df059c869f78206760175d809c63**, verified
-that the display client uses kCADisplayName, kCADisplayDeviceName, kCADisplayId
-and compares names with LCD / TVOut / External. No Apple binaries are exported;
-only bounded decoded text is retained. All relied-upon receipt/text hashes were
-verified. The previously observed cfprefsd.m:171 context-validity assertion has
-not been disabled; its relation to concurrent startup failure remains unproven.
+Apple dyld source explains the next question: an identity mapper dereferences
+Image's saved rebasedAddress. Determine that object's file identity and loader
+address from original-process metadata before changing mapping lifetime or
+loader behavior. The fault-time maps alone cannot establish which allocation
+or image became invalid.
 
-Source **90dd7d6b4d200b61fcea91e555e331473bb5b469** maps the actual Wayland
-surface to the LCD main-display protocol role; its backend is still explicitly
-Wayland. It also collects the measured Display::update decoder and consumer in
-a bounded 4,096-byte diagnostic window even when the app remains alive.
-Run [39481604703](https://github.com/taowen/arlinux-xnu/actions/runs/39481604703)
-is its exact four-app regression; runtime effects remain unverified. Poll this
-handle rather than restarting after an observation delay.
+The same-cache reader uses declared slide-v2 pointer metadata for constant
+CFStrings, bounded decoded instructions and actual call/branch observations.
+The display wire layout comes from the real client's validation and loads,
+not a guessed receive-buffer size. Original evidence remains in Actions.
 
-Next implement the observed current display-info reply: four descriptors
-(three OOL and one port), three variable strings, fixed scalar tail, real screen
-geometry/mode/timing and genuine absent optional resources. Use the actual client
-validation and field consumption to define layout and meaning. Then follow the
-original remaining startup/service/input failures. Completion still requires
-visible Counter pixels, external click/state/pixel change, normal close and a
-fresh interactive relaunch. No compiler, registration, live process or IPC result
-certifies that goal. History remains in Git and Actions.
+Earlier source e3d5b7d removed bootstrap lookup's in-app QuartzCore server-start
+side effect and mixed forwarding path. Runs 39478502832 and 39478733527 still
+failed. That cleanup is an ownership simplification, not a proven abort fix;
+the later port-type repair has direct runtime evidence. Nearest symbols beside
+stripped functions do not by themselves establish call ownership or causality.
+The cfprefsd context assertion has not been disabled; its causal role is unproven.
+
+Completion still requires visible Counter pixels, external click/state/pixel
+change, normal close and fresh interactive relaunch, with Foundation and Swift
+regressions. No compiler, registration, live process or IPC result certifies it.

@@ -34,6 +34,13 @@ determine private wire layouts; a receive-buffer allocation is not necessarily
 the message length. Disassembly is read-only diagnostic evidence, not a runtime
 patch or proof that the service implements the requested effect.
 
+The Linux journey harness enables ARLINUX_STOP_ON_FAULT for original app
+processes. A fault first records registers and bounded kernel mappings, marks
+the journey failed, and stops the original process for existing read-only LLDB
+collection. Debugger collection or forced cleanup never counts as normal exit.
+Atlas Image metadata reads require a matched actual fault symbol and a complete
+writable-map bounds check; no guest calls or executable-memory dumps are added.
+
 Each original app generation has .stdout, .stderr and .runtime.log. The harness
 passes an actual inherited trace descriptor to the runtime; guest writes to stderr
 remain on descriptor 2. Native per-syscall traces no longer split dyld diagnostics

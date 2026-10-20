@@ -482,6 +482,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
                 RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
                 for (unsigned int i=0;i<6;i++) trace_call(i,uc->uc_mcontext.pc,r[i]);
             }
+            trace_record("DARWIN_VM_ALLOCATE address=0x",address,r[2],status);
             r[0]=status;
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
@@ -493,6 +494,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             else if (size>D_VM_MAX_ALLOCATION || start+size+offset+PAGE16<start) r[0]=D_KERN_INVALID_ARGUMENT;
             else if (!size) r[0]=0;
             else r[0]=RAW(SYS_munmap,start,(size+offset+PAGE16-1)&~(PAGE16-1),0,0,0,0) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
+            trace_record("DARWIN_VM_DEALLOCATE address=0x",start,r[2],r[0]);
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;
         }
@@ -734,6 +736,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_MPROTECT && (r[2] & ~(PROT_READ|PROT_WRITE))) { result = -ENOTSUP; break; }
         result = RAW(r[D_ARM64_SYSCALL_REGISTER]==D_SYS_MUNMAP ? SYS_munmap : SYS_mprotect,
                      r[0],(r[1]+PAGE16-1)&~(PAGE16-1),r[2],0,0,0);
+        if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_MUNMAP)
+            trace_record("DARWIN_MUNMAP address=0x",r[0],r[1],result);
         break;
     case D_SYS_MMAP: result=native_mmap(r); break;
     case D_SYS_MREMAP_ENCRYPTED:
