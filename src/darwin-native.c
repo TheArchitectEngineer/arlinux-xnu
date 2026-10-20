@@ -768,6 +768,26 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     }
 }
 
+static void trace_fault_maps(void)
+{
+    /* The failed original process is still alive here. Preserve kernel VM
+     * ranges/permissions/backing paths, never executable bytes or a replay.
+     * One bounded write keeps mapping lines together in the inherited log. */
+    char maps[32768];unsigned long used=0;
+    long fd=RAW(SYS_openat,AT_FDCWD,"/proc/self/maps",O_RDONLY|O_CLOEXEC,0,0,0);
+    if (fd<0) { trace_record("DARWIN_FAULT_MAPS_UNAVAILABLE status=0x",0,0,fd);return; }
+    long result=0;
+    while (used<sizeof(maps)) {
+        result=RAW(SYS_read,fd,maps+used,sizeof(maps)-used,0,0,0);
+        if (result==-EINTR) continue;
+        if (result<=0) break;
+        used+=result;
+    }
+    RAW(SYS_close,fd,0,0,0,0,0);
+    trace_record("DARWIN_FAULT_MAPS_BEGIN bytes=0x",used,0,result);
+    if (used) RAW(SYS_write,native_trace_fd,maps,used,0,0,0);
+    trace_record("DARWIN_FAULT_MAPS_END truncated=0x",used==sizeof(maps),0,result);
+}
 static void fault(int signal,siginfo_t *info,void *context)
 {
     const char label[]="DARWIN_NATIVE_FAULT signal/pc/address follows\n";
@@ -779,6 +799,7 @@ static void fault(int signal,siginfo_t *info,void *context)
     for (unsigned int i=0;i<31;i++)
         trace_record("DARWIN_FAULT_REGISTER index=0x",i,uc->uc_mcontext.pc,uc->uc_mcontext.regs[i]);
     trace_guest_frames("DARWIN_FAULT_FRAME nr=0x",uc->uc_mcontext.regs);
+    trace_fault_maps();
     RAW(SYS_exit_group,128+signal,0,0,0,0,0);
     __builtin_unreachable();
 }
