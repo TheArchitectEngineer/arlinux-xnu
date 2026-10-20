@@ -185,8 +185,8 @@ def install_launch_breakpoints(target):
                             (selector in ('initWithXPCDictionary:','encodeWithXPCDictionary:') or selector.startswith('_initWith'))):
                         address=objects.u64(entry+16)
                         print('APP_SCENE_SETTINGS_CODE '+json.dumps({'class':name,'method':selector,'address':hex(address)}),flush=True)
-                        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 128')
-                        capture_code_references(target,address,128,'APP_SCENE_SETTINGS_REFERENCE')
+                        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(address)+' --count 256')
+                        capture_code_references(target,address,256,'APP_SCENE_SETTINGS_REFERENCE')
                         if selector=='initWithXPCDictionary:':
                             capture_protocol_callees(target,address,128)
                     if name == '_OBJC_CLASS_$_BKSWorkspace' or any(part in selector.lower() for part in
@@ -469,19 +469,20 @@ def capture_protocol_blocks(target, address, count):
                 stored=True
             if instruction&0xffc003e0==0xa90003e0 and register in (instruction&31,(instruction>>10)&31):
                 stored=True
-        if not stored or pointer&3 or pointer in seen or address<=pointer<address+count*4:
+        if not stored or pointer&3 or pointer in seen:
             continue
         region=lldb.SBMemoryRegionInfo()
         error=target.GetProcess().GetMemoryRegionInfo(pointer,region)
         if error.Fail() or not region.IsExecutable():
             continue
-        first=objects.u32(pointer)
-        if first&0xffc003ff!=0xd10003ff and first&0xffc003e0!=0xa98003e0:
+        prologue=struct.unpack('<IIII',objects.read(pointer,16))
+        if not any(first&0xffc003ff==0xd10003ff or first&0xffc003e0==0xa98003e0 for first in prologue):
             continue
         seen.add(pointer)
         print('APP_SETTINGS_CODEC_BLOCK '+json.dumps({'method':hex(address),'pc':hex(address+index*4),'block':hex(pointer)}),flush=True)
-        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(pointer)+' --count 128')
-        capture_code_references(target,pointer,128,'APP_SETTINGS_CODEC_REFERENCE')
+        target.GetDebugger().HandleCommand('disassemble --start-address '+hex(pointer)+' --count 256')
+        capture_code_references(target,pointer,256,'APP_SETTINGS_CODEC_REFERENCE')
+        capture_switch_tables(target,pointer,256)
         callees=set()
         for offset,word in enumerate(struct.unpack('<'+'I'*128,objects.read(pointer,512))):
             if word&0xfc000000!=0x94000000:
@@ -499,6 +500,44 @@ def capture_protocol_blocks(target, address, count):
                 break
         if len(seen)>=4:
             break
+
+
+def capture_switch_tables(target, address, count):
+    """Read bounded ARM64 relative branch tables from their real operands."""
+    objects=GuestObjects(target.GetProcess())
+    instructions=list(target.ReadInstructions(target.ResolveLoadAddress(address),count))
+    for index,instruction in enumerate(instructions):
+        if instruction.GetMnemonic(target)!='ldrsw':
+            continue
+        match=re.fullmatch(r'(x\d+), \[(x\d+), (x\d+), lsl #2\]',instruction.GetOperands(target))
+        if not match or index<2 or index+2>=len(instructions):
+            continue
+        dest,base,offset=match.groups()
+        if instructions[index+1].GetMnemonic(target)!='add' or instructions[index+1].GetOperands(target)!=f'{dest}, {dest}, {base}':
+            continue
+        if instructions[index+2].GetMnemonic(target)!='br' or instructions[index+2].GetOperands(target)!=dest:
+            continue
+        add=instructions[index-1]; adrp=instructions[index-2]
+        pattern=re.fullmatch(base+r', '+base+r', #(0x[0-9a-f]+|[0-9]+)',add.GetOperands(target))
+        page=re.fullmatch(base+r', (0x[0-9a-f]+)',adrp.GetOperands(target))
+        if add.GetMnemonic(target)!='add' or adrp.GetMnemonic(target)!='adrp' or not pattern or not page:
+            continue
+        bound=None
+        for prior in instructions[max(0,index-8):index-2]:
+            limit=re.fullmatch(offset+r', #(0x[0-9a-f]+|[0-9]+)',prior.GetOperands(target))
+            if prior.GetMnemonic(target)=='cmp' and limit:
+                bound=int(limit.group(1),0)+1
+        if not bound or bound>32:
+            continue
+        table=int(page.group(1),16)+int(pattern.group(1),0)
+        targets=[table+delta for delta in struct.unpack('<'+'i'*bound,objects.read(table,bound*4))]
+        print('APP_SETTINGS_SWITCH '+json.dumps({'pc':hex(instruction.GetAddress().GetLoadAddress(target)),
+              'table':hex(table),'targets':[hex(value) for value in targets]}),flush=True)
+        for destination in sorted(set(targets)):
+            if abs(destination-address)>0x10000:
+                continue
+            target.GetDebugger().HandleCommand('disassemble --start-address '+hex(destination)+' --count 64')
+            capture_code_references(target,destination,64,'APP_SETTINGS_SWITCH_REFERENCE')
 
 
 def capture_code_references(target, address, count, label):
