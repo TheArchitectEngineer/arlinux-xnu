@@ -7,5 +7,5 @@ compatibility-version: 1.0
 exports:
   - archs: [ arm64 ]
     symbols: [ _UIApplicationMain ]
-    objc-classes: [ UIResponder, UIColor, UILabel, UIButton, UIScreen, UIViewController, UIWindow ]
+    objc-classes: [ UIResponder, UIColor, UILabel, UIButton, UITextField, UIScreen, UIViewController, UIWindow ]
 ...

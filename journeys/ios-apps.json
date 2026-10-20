@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "apps": {
+    "hello": {"name": "ARHello", "version": "1.0", "binary": "build/native/ARHello.app/ARHello"},
+    "workbench": {"name": "ARWorkbench", "version": "1.0", "binary": "build/native/ARWorkbench.app/ARWorkbench"}
+  },
+  "cases": [
+    {"id": "counter-lifecycle", "steps": [
+      {"do": "launch", "app": "hello"},
+      {"do": "see", "text": "ARHello.*Count: ?0"},
+      {"do": "click", "text": "^Increment$"},
+      {"do": "see", "text": "Count: ?1"},
+      {"do": "close"}, {"do": "exit", "app": "hello"},
+      {"do": "launch", "app": "hello"},
+      {"do": "see", "text": "ARHello.*Count: ?0"},
+      {"do": "close"}, {"do": "exit", "app": "hello"}
+    ]},
+    {"id": "text-file-persistence", "steps": [
+      {"do": "launch", "app": "workbench"},
+      {"do": "see", "text": "ARWorkbench"},
+      {"do": "click", "text": "^Edit$"},
+      {"do": "type", "text": "journey-note"},
+      {"do": "click", "text": "^Save$"},
+      {"do": "see", "text": "Saved: ?journey-note"},
+      {"do": "close"}, {"do": "exit", "app": "workbench"},
+      {"do": "launch", "app": "workbench"},
+      {"do": "see", "text": "Saved: ?journey-note"},
+      {"do": "close"}, {"do": "exit", "app": "workbench"}
+    ]},
+    {"id": "thread-memory", "steps": [
+      {"do": "launch", "app": "workbench"},
+      {"do": "click", "text": "^Thread$"},
+      {"do": "see", "text": "Thread: ?42"},
+      {"do": "click", "text": "^Memory$"},
+      {"do": "see", "text": "Memory: ?16384"},
+      {"do": "close"}, {"do": "exit", "app": "workbench"}
+    ]},
+    {"id": "app-child", "steps": [
+      {"do": "launch", "app": "workbench"},
+      {"do": "click", "text": "^Helper$"},
+      {"do": "see", "text": "Helper: ?37"},
+      {"do": "close"}, {"do": "exit", "app": "workbench"}
+    ]},
+    {"id": "concurrent-relaunch", "steps": [
+      {"do": "launch", "app": "hello"},
+      {"do": "click", "text": "^Increment$"}, {"do": "see", "text": "Count: ?1"},
+      {"do": "launch", "app": "workbench"}, {"do": "see", "text": "ARWorkbench"},
+      {"do": "alive", "app": "hello"},
+      {"do": "close"}, {"do": "exit", "app": "workbench"},
+      {"do": "click", "text": "^Increment$"}, {"do": "see", "text": "Count: ?2"},
+      {"do": "launch", "app": "workbench"}, {"do": "see", "text": "ARWorkbench"},
+      {"do": "close"}, {"do": "exit", "app": "workbench"},
+      {"do": "click", "text": "^Increment$"}, {"do": "see", "text": "Count: ?3"},
+      {"do": "close"}, {"do": "exit", "app": "hello"}
+    ]},
+    {"id": "crash-isolation", "steps": [
+      {"do": "launch", "app": "hello"},
+      {"do": "click", "text": "^Increment$"}, {"do": "see", "text": "Count: ?1"},
+      {"do": "launch", "app": "workbench"}, {"do": "see", "text": "ARWorkbench"},
+      {"do": "crash", "app": "workbench"},
+      {"do": "alive", "app": "hello"},
+      {"do": "click", "text": "^Increment$"}, {"do": "see", "text": "Count: ?2"},
+      {"do": "launch", "app": "workbench"}, {"do": "see", "text": "ARWorkbench"},
+      {"do": "close"}, {"do": "exit", "app": "workbench"},
+      {"do": "close"}, {"do": "exit", "app": "hello"}
+    ]}
+  ]
+}

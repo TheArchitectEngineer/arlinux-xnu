@@ -1,6 +1,6 @@
 /* ARHello 1.0: an actual programmatic UIKit application. No simulated window,
  * substitute event loop or host-drawn replica is used for acceptance. */
-#import "UIKit-interfaces.h"
+#import "../sdk/UIKit.h"
 
 enum { TextAlignmentCenter=1, ButtonTypeSystem=1, ControlStateNormal=0,
        ControlEventTouchUpInside=1UL<<6 };

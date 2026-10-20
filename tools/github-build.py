@@ -114,7 +114,7 @@ def report(run_id, job_name, verbose=False):
         if log_format == 'gh-run-view':
             lines = [re.sub(r'^[^\t]+\t[^\t]+\t', '', line) for line in lines]
         lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
-        markers = ('APP_INPUT ', 'APP_OUTCOME ', 'COMPILER_CACHE_STATS ', 'LLDB_RETRY_SKIPPED ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
+        markers = ('APP_INPUT ', 'APP_OUTCOME ', 'IOS_SUITE ', 'IOS_JOURNEY ', 'COMPILER_CACHE_STATS ', 'LLDB_RETRY_SKIPPED ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                    'DARLING_NATIVE_CONNECTED ', 'DARLING_RPC_ERROR ', 'DARLING_RPC_WAIT ',
                    'DARLING_RENDER_RECEIVED ', 'DARLING_PORT_MOVE_MEMBER ', 'NATIVE_SERVICE_PORTS ',
                    'HIDFOCUS_REQUEST_UNIMPLEMENTED ', 'SESSION_SERVICE_FAILED ',
@@ -194,7 +194,7 @@ def report(run_id, job_name, verbose=False):
             for line in item['observations']:
                 print('  ' + line)
         else:
-            concise = ('APP_OUTCOME ', 'COMPILER_CACHE_STATS ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
+            concise = ('APP_OUTCOME ', 'IOS_SUITE ', 'IOS_JOURNEY ', 'COMPILER_CACHE_STATS ', 'APP_PROCESS_STATUS=', 'LLDB_COMMAND_STATUS=',
                        'LLDB_RETRY_SKIPPED ', 'APP_STARTUP_INCOMPLETE ',
                        'ORIGINAL_WAIT_PID=', 'ORIGINAL_WAIT_START_TICKS ', 'ORIGINAL_WAIT_TRACE_STATUS=',
                        'NATIVE_SERVICE_PORTS ', 'NATIVE_ULOCK_QUEUES ', 'NATIVE_ULOCK_WAIT ',
@@ -244,7 +244,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['build', 'status', 'report', 'download'])
     parser.add_argument('--mode', choices=['both', 'host', 'baseline', 'native', 'dyld', 'app', 'playcover', 'darling'], default='native')
-    parser.add_argument('--ipc', choices=['local', 'darling'], default='local', help='IPC backend for the native dyld/app journey')
+    parser.add_argument('--ipc', choices=['local', 'darling'], default=None, help='IPC backend for the native dyld/app journey')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--job', help='Exact job name for report; default: all jobs')
@@ -260,6 +260,10 @@ def main():
     if args.command == 'report':
         report(args.run_id, args.job, args.verbose)
         return
+    if args.ipc is None:
+        args.ipc = 'darling' if args.mode == 'app' else 'local'
+    if args.command == 'build' and args.mode == 'app' and args.ipc != 'darling':
+        parser.error('Application journeys require the shared Darling session')
     repo = REPO
     if args.command == 'build':
         # A failed push must not silently dispatch stale remote sources. Resolve

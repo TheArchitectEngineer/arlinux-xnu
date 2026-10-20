@@ -31,6 +31,7 @@ static uint16_t cache_u16(const unsigned char *bytes)
     uint16_t value; memcpy(&value,bytes,sizeof(value)); return value;
 }
 #include "cache-bootstrap-policy.h"
+#include "ios-framework-bindings.h"
 static void cache_relocate_chain(unsigned char *page,uint32_t offset,
                                  const struct cache_slide2 *info)
 {
@@ -164,12 +165,10 @@ static uint64_t load_native_cache(const char *root)
                      memchr(file+image.path_offset,0,size-image.path_offset),"cache symbol/image path bounds");
                 int xpc_image=!strcmp((const char *)file+image.path_offset,"/usr/lib/system/libxpc.dylib");
                 int render_image=!strcmp((const char *)file+image.path_offset,"/System/Library/Frameworks/QuartzCore.framework/QuartzCore");
-                int cf_image=!strcmp((const char *)file+image.path_offset,"/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation");
-                int cg_image=!strcmp((const char *)file+image.path_offset,"/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics");
-                int objc_image=!strcmp((const char *)file+image.path_offset,"/usr/lib/libobjc.A.dylib");
+                int ui_image=ios_framework_image((const char *)file+image.path_offset);
                 int scene_image=!strcmp((const char *)file+image.path_offset,"/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices");
                 int base_image=!strcmp((const char *)file+image.path_offset,"/System/Library/PrivateFrameworks/BaseBoard.framework/BaseBoard");
-                if (xpc_image || render_image || cf_image || cg_image || objc_image || scene_image || base_image) {
+                if (xpc_image || render_image || ui_image || scene_image || base_image) {
                     uint32_t table[4]; memcpy(table,bytes+pos+8,sizeof(table));
                     need(range(table[0],(uint64_t)table[1]*16,size) && range(table[2],table[3],size),
                          "cache service symbol bounds");
@@ -180,32 +179,7 @@ static uint64_t load_native_cache(const char *root)
                         if (name>=table[3] || symbol[4]&0xe0 || (symbol[4]&0xe)!=0xe || !symbol[5]) continue;
                         const char *text=(const char *)file+table[2]+name;
                         need(memchr(text,0,table[3]-name)!=NULL,"cache symbol name termination");
-                        uint64_t *ui_target=NULL;
-                        if (cf_image) {
-                            if (!strcmp(text,"_CFRunLoopGetMain")) ui_target=&ui_api.runloop_main;
-                            if (!strcmp(text,"_CFRunLoopObserverCreate")) ui_target=&ui_api.observer_create;
-                            if (!strcmp(text,"_CFRunLoopAddObserver")) ui_target=&ui_api.observer_add;
-                            if (!strcmp(text,"_kCFRunLoopCommonModes")) {
-                                need(cache_contains(address,8,1),"CF run loop mode address");
-                                memcpy(&ui_api.common_modes,(void *)address,8);
-                            }
-                        }
-                        if (objc_image) {
-                            if (!strcmp(text,"_objc_getClass")) ui_target=&ui_api.objc_class;
-                            if (!strcmp(text,"_sel_registerName")) ui_target=&ui_api.selector;
-                            if (!strcmp(text,"_objc_msgSend")) ui_target=&ui_api.message;
-                        }
-                        if (cg_image) {
-                            if (!strcmp(text,"_CGColorSpaceCreateDeviceRGB")) ui_target=&ui_api.color_space;
-                            if (!strcmp(text,"_CGBitmapContextCreate")) ui_target=&ui_api.bitmap_create;
-                            if (!strcmp(text,"_CGContextTranslateCTM")) ui_target=&ui_api.context_translate;
-                            if (!strcmp(text,"_CGContextScaleCTM")) ui_target=&ui_api.context_scale;
-                        }
-                        if (ui_target) {
-                            need(cache_contains(address,4,4),"UIKit software output function address");
-                            *ui_target=address;
-                            fprintf(stderr,"NATIVE_UI_API symbol=%s address=%#" PRIx64 "\n",text,address);
-                        }
+                        ios_framework_bind(&ui_api,(const char *)file+image.path_offset,text,address);
                         if (render_image) {
                             if (!strncmp(text,"_CARender",9) && cache_contains(address,4,4))
                                 fprintf(stderr,"NATIVE_RENDER_EXPORT symbol=%s address=%#" PRIx64 "\n",text,address);

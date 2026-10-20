@@ -1,4 +1,4 @@
-/* Declaration-only SDK subset for ARHello 1.0. Implementations are supplied
+/* Shared declaration-only SDK subset for real journey apps. Implementations are supplied
  * exclusively by the selected firmware's UIKit/Foundation/Objective-C runtime.
  * LP64 iOS ABI: CGFloat is double, BOOL is signed char, NSInteger is long.
  * No framework object layouts or method implementations are reproduced here. */
@@ -20,6 +20,8 @@ __attribute__((objc_root_class))
 @end
 @interface NSString : NSObject
 + (id)stringWithFormat:(NSString *)format,...;
++ (id)stringWithUTF8String:(const char *)text;
+- (const char *)UTF8String;
 @end
 @interface UIResponder : NSObject @end
 @interface UIColor : NSObject
@@ -45,6 +47,11 @@ __attribute__((objc_root_class))
 @interface UIScreen : NSObject
 + (id)mainScreen;
 - (CGRect)bounds;
+@end
+@interface UITextField : UIView
+- (void)setPlaceholder:(NSString *)text;
+- (NSString *)text;
+- (BOOL)resignFirstResponder;
 @end
 @interface UIViewController : UIResponder
 - (UIView *)view;
