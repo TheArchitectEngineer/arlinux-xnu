@@ -96,6 +96,8 @@ class Processes:
         for item in self.processes.values():
             runtime = Path(item['runtime'])
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
+            if 'DARLING_UNHANDLED_SERVICE_INLINE' in runtime.read_text(errors='replace'):
+                arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZL14query_displaysv'])
             if 'unsupported bootstrap trust predicate layout' in Path(item['stdout']).with_suffix('.stderr').read_text(errors='replace'):
                 arguments.append('--bootstrap-context')
             result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)

@@ -46,12 +46,17 @@ with CacheSymbols(args.cache) as cache:
         requested={name for path,name in args.lookup if path==image['name']}
         if not matches and not requested:continue
         symbols=[]
+        requested_addresses=[]
         for value,name in cache.symbols(image):
             if name in requested:
                 record={'image':image['name'],'symbol':name,'address':hex(value)}
                 if record not in records:records.append(record)
+                requested_addresses.append((value,name,record))
             if any(base<=value<base+size for base,size in ranges):symbols.append((value,name))
         symbols.sort()
+        for value,name,record in requested_addresses:
+            if any(base<=value<base+size for base,size in ranges):
+                record['protocolContext']=cache.fault_context(image,value,symbols)
         for pc in matches:
             matched.add(pc)
             address=lookup_pc(pc)
