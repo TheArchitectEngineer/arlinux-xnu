@@ -78,15 +78,17 @@ def capture_display_code(target):
                     methods = objects.u64(objects.class_ro(cls)+32)
                     if not methods:
                         continue
-                    entry_size, count = objects.u32(methods) & 0xffff, objects.u32(methods+4)
+                    # objc4-750.1 method_list_t uses the low two bits for
+                    # fixup flags; they are not part of the entry size.
+                    entry_size, count = objects.u32(methods) & ~3, objects.u32(methods+4)
                     if entry_size != 24 or count > 256:
-                        raise ValueError('Unsupported CADisplay method metadata')
+                        raise ValueError(f'Unsupported CADisplay method metadata: size={entry_size} count={count}')
                     for index in range(count):
                         entry = methods+8+index*entry_size
                         name = objects.cstring(objects.u64(entry))
                         implementation = objects.u64(entry+16)
                         print('OBJC_DISPLAY_METHOD ' + json.dumps({'kind': kind, 'selector': name, 'address': hex(implementation)}), flush=True)
-                        if name in ('mainDisplay', 'displays') or name.startswith('initWith'):
+                        if name in ('mainDisplay', 'displays') or name.lstrip('_').startswith('initWith'):
                             disassemble('DISPLAY_METHOD_CODE', implementation, 96)
                             for child in list(dict.fromkeys(calls(implementation, 48)))[:3]:
                                 disassemble('DISPLAY_METHOD_CALLEE_CODE', child, 96)
