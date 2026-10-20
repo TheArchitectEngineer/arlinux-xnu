@@ -58,14 +58,11 @@ and all 43 retained file hashes were verified. This is partial Linux coverage.
 
 ## Current failed effect and handoff
 
-The session provider receives packed bootstrap messages but the existing entry
-supports only legacy message 0x10000000. Read-only CPX5 decoding shows message
-0x40000324 looks up com.apple.frontboard.systemappservices: type 7, flags 512,
-handle and lookup-handle zero. The dictionary omits subsystem/routine; those
-fields were required by the legacy entry. The initial empty-dictionary message
-0x40000388 is not understood. These requests still receive MIG_BAD_ID; no
-successful lookup or launch is invented. The service lookup also rejects any
-nonzero flags, so flags 512 need measured semantics before support is claimed.
+The measured lookup uses packed bootstrap message 0x40000324 for
+com.apple.frontboard.systemappservices: type 7, flags 512, handle and lookup-handle
+zero. Unlike the legacy request, its CPX5 dictionary omits subsystem/routine.
+Packed lookup is now supported as verified below. The initial empty-dictionary
+request 0x40000388 remains unsupported; no launch success is inferred from it.
 
 Run [39491337714](https://github.com/taowen/arlinux-xnu/actions/runs/39491337714),
 source 5b8c67fe0b7d75e09341968af3f0b14a79b452ef, verified receipt
@@ -102,7 +99,10 @@ invent service-port registration or BSXPC connect success. Bounded symbol-name
 collection from actual BaseBoard/BoardServices and libxpc will locate the real
 connect decoder/registration caller without repeated guessed selector lookups.
 The harness reports a dead provider explicitly rather than an opaque /proc/exe
-error. Rerun exact source and continue from the original process evidence.
+error. Run [39493707546](https://github.com/taowen/arlinux-xnu/actions/runs/39493707546),
+source **ad25af35ddf22b0727f89566eaff7cc678414dfc**, is the pending exact four-app
+regression. Poll it and continue from original process evidence. This subsequent
+document-only correction does not change that run's source identity.
 
 ## Evidence limits
 
