@@ -10,71 +10,88 @@ No complete Linux GUI, third-party IPA or Android acceptance has passed.
 
 sources.lock.json pins iPhone10,1, build 20H392, 6,035,280,776 bytes, SHA-256
 601cb23e740dacf8b61271fe02ffd5b3c146b518abb5a6e6b286e5f0475fe43b.
-Apple CDN metadata and the independent index matched; actual runner downloads,
-BuildManifest and mounted system version also passed validation. Real OS and
-Cryptex1,SystemOS volumes form the read-only filesystem. Apple executable data
-stays runner-local; retained downloads are text, screenshots and owned products.
+Runner validation checks actual download bytes, BuildManifest and mounted system
+version. Real OS and Cryptex1,SystemOS volumes form the read-only filesystem.
+Apple executable data stays runner-local; retained downloads are text,
+screenshots and owned products.
 
 The collection has 11 source-owned apps, 13 short journeys and two cross-app
-scenarios. The real SDK builds C/Objective-C/Swift for iOS 16. Exact same-run
-inputs use producer receipt SHA-256 and per-file hashes. Read-only UIKit/DOM
-inspection never invokes actions; external input and composed pixels are required.
+scenarios. Xcode 16.4's real SDK cross-compiles ARM64 apps on a hosted Intel Mac;
+Linux execution and optional Apple reference execution remain native ARM64.
+Input products use the exact producer receipt SHA-256 and per-file hashes.
+Read-only UIKit/DOM inspection never invokes actions; GUI acceptance additionally
+requires external input, actual composed pixels and normal lifecycle effects.
 
 Apple reference run [39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593),
 source 31cdc44086cf2acb681b396ec1ba6b06830d84dd, passed Console, Counter,
 Foundation and SwiftCards in 10 seconds (partial collection). Counter input
 changed genuine UIKit text and the composed label-region hash; close/relaunch
-returned to the original hash. Receipt
-1dda013907147b5c219de1a85d209a14f640d5526e936106b6332e891a652e04 and relied-upon
-screenshots/result hashes were verified. This is not Linux acceptance.
+returned to the original hash. Its receipt and relied-upon screenshots/result
+hashes were verified. This is a behavior reference, not Linux acceptance.
 
-## Verified Linux progress and current blockers
+## Latest verified Linux result
 
-The loader maps 43 UUID-declared cache members and all 2,705 indexed images,
-including the header-declared MH_DYLINKER. It relocates each actual slide-v2
-mapping and adapts code TLS accesses; the standalone interpreter is above the
-canonical cache range. VM collisions still fail with NOREPLACE. XNU's legacy
-and distinct immutable commpages contain the configured 16 KiB page size.
+Run [39473535129](https://github.com/taowen/arlinux-xnu/actions/runs/39473535129),
+source **692b4eb5797880af1b882989c9b10f386090b19c**, completed in 242 seconds.
+The result receipt SHA-256 is
+**5f2153fa25f2e5ec9f29459bb99585ec0460cfe38a2d960b011c679207b8e8ff**;
+the receipt and retained text artifact hashes were verified locally.
+This is the partial Console/Counter/Foundation/SwiftCards selection.
 
-Run [39460893484](https://github.com/taowen/arlinux-xnu/actions/runs/39460893484),
-source 584536d1dbe3f8d89c12aff58b32eb010b7ae268, verified the cache's separately
-declared dynamic configuration mapping at 0x22acf4000. Apple dyld-1066.10's
-SharedCacheRuntime.cpp creates the same mapping with actual cache device/inode
-identity and read-only protection. Real dyld now transfers into its cache copy.
-Receipt df9bd602d728f29c588bed5d7db485028a3bfe3ed2e43c1b892255442c2db0a3 and
-retained text/JSON hashes were verified.
-
-Run [39461736971](https://github.com/taowen/arlinux-xnu/actions/runs/39461736971),
-source 84577f34baf9bb6e8fa4b982cf66371b504c5c0a, verified actual name2oid and
-kern.bootargs reads. No Darwin boot flags were configured. Console/Foundation
-then abort because opening / with O_DIRECTORY|O_NOFOLLOW_ANY is unsupported.
-The restored split-cache/local-symbol reader resolves the original fault to
-dyld's _abort_with_payload_wrapper_internal. Receipt
-8212dd83c6a050ea6ae418c3ff55f824353526190d621f373b1b0a33323dbbd4 and retained
-text/JSON hashes were verified. All four selected app cases still fail.
-
-Run [39462328929](https://github.com/taowen/arlinux-xnu/actions/runs/39462328929),
-source fd17d36d6b6fdceaad696cbfbbc31b2954123cc8, retained original libxpc
-predicate context: __xpc_interface_routine now loads audit PID into w0 and uses
-different PID/euid rejection branches, so the old instruction matcher rejects
-the layout. Requester-echo checks follow it. Receipt
-cb16408d798633b04979f1e18cbebff2e2c8cbabcf13735430e7c6f8dc91354c and retained
-text/JSON hashes were verified. No predicate repair has passed yet.
+- Console's full interactive/relaunch journey passes, as it has since source
+  d75e519. Both generations perform genuine malloc and pthread computation,
+  accept input, print Counter: 1 / Goodbye and exit normally with status 0.
+- Foundation's complete objects/exception/timer journey passes, first established
+  in run 39473090148 at source db152bc. Actual
+  NSJSONSerialization preserves Unicode/collections; real exception unwind
+  succeeds; NSTimer runs its callback. It prints the computed result 10, accepts
+  q and exits normally with status 0. It does not certify a graphical app.
+- The loader handles 43 UUID-declared cache members and 2,705 images, actual
+  slide-v2 relocation, TLS adaptation, immutable commpage, cache-file identity,
+  dyld image-info registration, main-stack metadata and real kernel entropy.
+  Descriptor paths resolve through actual Linux file descriptors.
+- Actual task_info/host_info requests return through Darling Mach/MIG. Vector
+  receives use real message delivery and the XNU no-auxiliary EOF contract.
+  Modern dispatch reaches real workers. Workqueue returns replace saved guest
+  contexts instead of returning into libpthread's fatal path; actual event
+  callbacks and ordinary worker exit use its genuine upcalls. Fallback QoS
+  requests create real workers rather than being rejected as unknown flags.
+- Counter and SwiftCards now get beyond _BKSDisplayServicesStart. Counter
+  reaches UIApplicationMain and creates subsequent threads, then its real unfair
+  lock wait rejects the adaptive-spin flag (syscall 515, operation 0x1050002).
+  libsystem_platform traps on that error. No visible UIKit content or actual GUI
+  interaction has passed on this firmware.
+- The libxpc audit predicate adapter preserves actual credentials and original
+  echo/rejection branches. Runtime provider-authentication success is unproven.
 
 ## Current runner handoff
 
-Source 49d7eaa00cba12c13b308c930b89d6320a852b84 fixes / to resolve to the guest
-root descriptor's dot entry, and enforces O_NOFOLLOW_ANY with actual Linux
-openat2 RESOLVE_NO_SYMLINKS. Run
-[39462845920](https://github.com/taowen/arlinux-xnu/actions/runs/39462845920)
-was authoritatively queued on the macOS app-build runner at last inspection.
-Poll that exact run; do not restart merely because observation is delayed.
+Original-fault disassembly follows bounded named display callees on the runner.
+Run [39472863245](https://github.com/taowen/arlinux-xnu/actions/runs/39472863245),
+source **5e1496532c5d589a77455fb86ebc2652154609aa**, captured the real
+__BKSDisplayGetMainScreenInfo client. Receipt
+**e86f9b7aca08966eaf89975d3b4840c39be06611b76ec29697093a777f2a68ba** and
+retained text hashes were verified. MIG 6001009 has a 24-byte request and a
+60-byte normal reply: floats at 36/40/44/48 and Boolean bytes in 32-bit slots at
+52/56. The client's 68-byte receive allocation includes trailer space. Its
+wrapper uses either Boolean to allow otherwise-invalid empty bounds.
 
-Source 4fa847f extends only the bounded predicate disassembly to include the
-actual rejection blocks; that extension has not run yet. Next use actual branch
-targets to adapt provider authentication while preserving real session PID, UID,
-incarnation and requester-echo checks. Do not invent PID 1 or bypass identity.
-Real UIKit startup, input/rendering and normal close remain unestablished.
+Source **692b4eb5797880af1b882989c9b10f386090b19c** serves that exact layout
+with actual Wayland geometry, scale 1 and normal rotation. The configured
+nonempty display enables neither empty-bounds policy. The latest verified run
+records request 6001009, reply length 60, real dimensions 1024 by 600 and actual
+Mach return 0; the original BackBoard assertion is gone. Unknown messages still
+return MIG_BAD_ID. Neither dimensions nor successful IPC certify a useful frame.
 
-See APPS.md, ARCHITECTURE.md and DIAGNOSTICS.md. Replace this handoff when new
-evidence changes the next action; keep historical detail in Git and Actions.
+Source **eff52e6d52b3cbfbaa614eb0fd65a780f6cf70d5** accepts the optional
+adaptive-spin wait flag while preserving actual futex comparison, parking,
+wakeup, timeout and remaining-waiter accounting. With single-CPU guest affinity,
+a different lock owner cannot also be on-core while the waiter executes, so
+blocking directly follows XNU's fallback behavior.
+Run [39474334338](https://github.com/taowen/arlinux-xnu/actions/runs/39474334338)
+is the exact four-app regression; its runtime effects remain unverified.
+
+Poll that run rather than restarting after an observation delay. Next follow
+Counter's original failure toward visible content and real input. Storage, IPC,
+identity, input and lifecycle effects remain required. No compilation, console
+result or registration certifies the UIKit goal. History stays in Git and Actions.

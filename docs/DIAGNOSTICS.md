@@ -27,6 +27,13 @@ Missing artifacts are
 unavailable, not passing. Apple firmware/cache/core/executables stay on the runner;
 retain only safe text, screenshots and open-source products.
 
+Original fault symbolication retains bounded decoded instructions from the
+same-cache function and up to eight named display-protocol callees, at most
+three call levels. Use actual decoded reply validation and field loads to
+determine private wire layouts; a receive-buffer allocation is not necessarily
+the message length. Disassembly is read-only diagnostic evidence, not a runtime
+patch or proof that the service implements the requested effect.
+
 Each original app generation has .stdout, .stderr and .runtime.log. The harness
 passes an actual inherited trace descriptor to the runtime; guest writes to stderr
 remain on descriptor 2. Native per-syscall traces no longer split dyld diagnostics

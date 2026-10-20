@@ -1,7 +1,7 @@
 # ARLinux XNU experiment
 
 An experimental Darwin/iOS compatibility environment for ARLinux on
-Linux/Android. **A console journey passes on Linux; no complete UIKit GUI journey
+Linux/Android. **Console and Foundation journeys pass on Linux; no complete UIKit GUI journey
 has passed on Linux/Android yet.** XNU, dyld and iOS userland may be
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.

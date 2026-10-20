@@ -82,6 +82,13 @@ veneers. Shared framebuffer slots follow FREE -> DRAWING -> READY -> BUSY -> FRE
 only the actual compositor buffer-release event returns BUSY storage to FREE.
 A frame callback is not proof of physical presentation or useful content.
 
+Workqueue return operations are continuation transfers, not ordinary syscall
+results. After real event collection, the saved signal context re-enters the
+registered libpthread callback with its actual event buffer/count and reuse
+flag. Ordinary completed worker batches enter libpthread's exit upcall and real
+cleanup. Linux rt_sigreturn restores the signal mask/alternate-stack state before
+guest execution; a guest callback is never invoked inside the syscall handler.
+
 Framework/userland code may be adapted in private mappings. Privilege or device
 interfaces may be simplified only when their required application effects are
 preserved. Required synchronization, memory, input, IPC or lifecycle effects may
@@ -96,8 +103,10 @@ supported private ABI; no claim of arbitrary iOS version support is made.
 - Complete real Wayland input and normal close propagation through the guest main
   loop. The existing HID focus endpoint only supports discovery; actual operations
   fail explicitly. It is not implemented focus/input.
-- Finish the software renderer: actual text is visible but system controls are
-  missing. Keep genuine app content; do not patch fixture colors/actions to pass.
+- Finish and validate the software renderer on the current iOS 16 input. Earlier
+  experiments showed text with missing controls; the current firmware has not
+  yet completed UIKit startup. Keep genuine app content; do not patch fixture
+  colors/actions to pass.
 - Implement application-requested service launch and lifecycle, then independently
   verify rights/identity cleanup after normal exit and crashes. The suite includes
   a real UIActivityViewController client and bundled share extension for this purpose.
