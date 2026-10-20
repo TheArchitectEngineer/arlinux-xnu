@@ -13,6 +13,7 @@ parser.add_argument('cache',type=Path)
 parser.add_argument('trace',type=Path)
 parser.add_argument('output',type=Path)
 parser.add_argument('--lookup',action='append',nargs=2,default=[],metavar=('IMAGE','SYMBOL'))
+parser.add_argument('--bootstrap-context',action='store_true')
 args=parser.parse_args()
 trace=args.trace.read_text(errors='replace')
 patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_EXIT_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
@@ -23,6 +24,8 @@ frames=sorted({int(pc,16) for pattern in patterns for pc in re.findall(pattern,t
 records=[];matched=set()
 with CacheSymbols(args.cache) as cache:
     for image in cache.images():
+        if args.bootstrap_context and image['name']=='/usr/lib/system/libxpc.dylib':
+            records.append({'image':image['name'],'bootstrapCandidates':cache.bootstrap_context(image)})
         ranges=image['executable']
         matches=[pc for pc in frames if any(base<=pc<base+size for base,size in ranges)]
         requested={name for path,name in args.lookup if path==image['name']}

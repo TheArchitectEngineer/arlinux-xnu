@@ -4,6 +4,7 @@ and DyldSharedCache::forEachLocalSymbolEntry. No executable data is exported.
 from contextlib import ExitStack
 import mmap
 import struct
+import subprocess
 
 class Binary:
     def __init__(self,path,stack):
@@ -120,3 +121,42 @@ class CacheSymbols:
                 index,kind,section,_,value=member.unpack('<IBBHQ',offset+i*16)
                 if kind&0xe0 or kind&0xe!=0xe or not section or index>=size:continue
                 yield value,smember.string(strings+index,min(8192,size-index))
+
+    def bootstrap_context(self,image):
+        """Read-only disassembly around actual libxpc audit/pid predicates.
+        It records candidates; it neither selects a patch nor approves a layout.
+        """
+        symbols=list(self.symbols(image))
+        getters={value for value,name in symbols if 'audit_token' in name and 'get' in name}
+        candidates=[]
+        for base,size in image['executable']:
+            member,offset=self.locate(base,size)
+            for i in range(12,size-96,4):
+                word=member.unpack('<I',offset+i)[0]
+                if word&0xfc000000==0x94000000:
+                    immediate=word&0x3ffffff
+                    if immediate&0x2000000:immediate-=0x4000000
+                    target=base+i+immediate*4
+                    if target in getters:candidates.append((base+i-12,'audit-token getter call'))
+                # CMP Wn,#1 following LDR Wn,[SP,#offset]. Bound the register
+                # relation rather than guessing an iOS version or fixed address.
+                if word&0xfffffc1f==0x7100041f:
+                    prior=member.unpack('<I',offset+i-4)[0]
+                    if prior&0xffc003e0==0xb94003e0 and prior&31==(word>>5)&31:
+                        candidates.append((base+i-16,'stack value compared with pid 1'))
+        unique={address:reason for address,reason in candidates}
+        if len(unique)>32:raise ValueError('Ambiguous bootstrap diagnostic scope exceeds 32 windows')
+        result=[]
+        for address,reason in sorted(unique.items()):
+            member,offset=self.locate(address,96)
+            code=member.data[offset:offset+96]
+            source='\n'.join(' '.join(f'0x{byte:02x}' for byte in code[i:i+4]) for i in range(0,len(code),4))
+            process=subprocess.run(['llvm-mc-18','--disassemble','--triple=aarch64','--print-imm-hex'],
+                input=source,text=True,capture_output=True,timeout=5,check=True)
+            nearest=max(((value,name) for value,name in symbols if value<=address),default=None)
+            result.append({'address':hex(address),'reason':reason,'image':image['name'],
+                'nearestSymbol':nearest[1] if nearest else None,
+                'symbolDisplacement':address-nearest[0] if nearest else None,
+                'instructions':process.stdout,'decoderDiagnostics':process.stderr,
+                'note':'Branch immediates are relative to their instruction; observation only'})
+        return result

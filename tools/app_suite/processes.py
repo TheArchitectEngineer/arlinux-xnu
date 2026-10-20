@@ -95,8 +95,12 @@ class Processes:
         cache = ROOT / 'build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64'
         for item in self.processes.values():
             runtime = Path(item['runtime'])
-            command(sys.executable, ROOT / 'tools/symbolicate-cache.py', cache, runtime,
-                    runtime.with_suffix('.symbols.json'), capture_output=True)
+            arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
+            if 'unsupported bootstrap trust predicate layout' in Path(item['stdout']).with_suffix('.stderr').read_text(errors='replace'):
+                arguments.append('--bootstrap-context')
+            result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
+            runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
+            if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))
         candidates = sorted(self.processes.values(), key=lambda item: item['app'] != self.current)
         live = next((item for item in candidates if item['process'].poll() is None), None)
         if not live:
