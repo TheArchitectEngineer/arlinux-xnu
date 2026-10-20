@@ -106,7 +106,13 @@ def install_launch_breakpoints(target):
                        '_OBJC_CLASS_$_BKSWorkspace', '_OBJC_CLASS_$_FBSWorkspace',
                        '_OBJC_CLASS_$_FBSWorkspaceClient',
                        '_OBJC_CLASS_$_FBSUIApplicationWorkspaceClient',
-                       '_OBJC_CLASS_$_FBSWorkspaceEvent'):
+                       '_OBJC_CLASS_$_FBSWorkspaceEvent',
+                       '_OBJC_CLASS_$_FBSWorkspaceCreateSceneEvent',
+                       '_OBJC_CLASS_$_FBSWorkspaceSceneUpdateEvent',
+                       '_OBJC_CLASS_$_FBSWorkspaceSceneEvent',
+                       '_OBJC_CLASS_$_FBSSceneSettingsDiff',
+                       '_OBJC_CLASS_$_FBSSceneClientSettingsDiff',
+                       '_OBJC_CLASS_$_FBSSceneTransitionContext'):
             entries = []
             try:
                 cls = int(symbol['address'], 16)
@@ -117,8 +123,8 @@ def install_launch_breakpoints(target):
                 for index in range(count):
                     entry = methods+8+index*size
                     selector = objects.cstring(objects.u64(entry))
-                    if name in ('_OBJC_CLASS_$_FBSUIApplicationWorkspaceClient',
-                                '_OBJC_CLASS_$_FBSWorkspaceClient', '_OBJC_CLASS_$_FBSWorkspaceEvent') and selector in (
+                    if name.startswith('_OBJC_CLASS_$_FBS') and selector in (
+                            'queue_handleMessage:',
                             '_queue_handleMessageWithType:message:', 'queue_handleMessageWithType:message:client:',
                             '_queue_handleLaunch:', '_queue_handleCreateScene:',
                             '_queue_workspaceEventFromMessage:ofType:', 'initWithXPCDictionary:', 'encodeWithXPCDictionary:'):
@@ -373,8 +379,9 @@ def capture_code_references(target, address, count, label):
     words = struct.unpack('<' + 'I'*count, objects.read(address, count*4))
     for index, word in enumerate(words[:-1]):
         following = words[index+1]
-        # Adjacent AArch64 ADRP + ADD (immediate), using the same base.
-        if word & 0x9f000000 != 0x90000000 or following & 0xff000000 != 0x91000000:
+        # Actual ADRP/ADD literals and ADRP/LDR global key pointers. Private
+        # event codecs often load their XPC key from a relocated global.
+        if word & 0x9f000000 != 0x90000000:
             continue
         if (word & 31) != ((following >> 5) & 31):
             continue
@@ -382,7 +389,19 @@ def capture_code_references(target, address, count, label):
         if immediate & (1 << 20):
             immediate -= 1 << 21
         pointer = ((address+index*4) & ~4095) + (immediate << 12)
-        pointer += ((following >> 10) & 4095) << (12 if following & (1 << 22) else 0)
+        indirect = following & 0xffc00000 == 0xf9400000
+        if following & 0xff000000 == 0x91000000:
+            pointer += ((following >> 10) & 4095) << (12 if following & (1 << 22) else 0)
+        elif indirect:
+            pointer += ((following >> 10) & 4095)*8
+        else:
+            continue
+        source = pointer
+        if indirect:
+            try:
+                pointer = objects.u64(pointer)
+            except (ValueError, SystemError):
+                continue
         text = None
         try:
             text = objects.cfstring(pointer)
@@ -397,7 +416,8 @@ def capture_code_references(target, address, count, label):
             except (ValueError, UnicodeError, SystemError):
                 pass
         if text:
-            print(label + ' ' + json.dumps({'pc': hex(address+index*4), 'address': hex(pointer), 'text': text}), flush=True)
+            print(label + ' ' + json.dumps({'pc': hex(address+index*4), 'address': hex(pointer),
+                  'globalPointer': hex(source) if indirect else None, 'text': text}), flush=True)
 
 
 def capture_display_code(target):
