@@ -11,7 +11,7 @@
 
 mach_port_t mach_task_self(void) { return darwin_native_host_task(); }
 int mach_port_deallocate(mach_port_t task,mach_port_t port)
-{ (void)task; return darwin_native_host_port_refs(port,-1); }
+{ (void)task; return darwin_native_host_port_deallocate(port); }
 int mach_port_addref(mach_port_t port,mach_port_right_t right)
 { return right==MACH_PORT_RIGHT_SEND ? darwin_native_host_port_refs(port,1) : D_KERN_NOT_SUPPORTED; }
 int fileport_makeport(int fd,mach_port_t *port)
@@ -107,8 +107,24 @@ int arlinux_xpc_processinfo(void *request,size_t length,void *output,size_t capa
     fprintf(stderr,"PROCESSINFO_MESSAGE id=%x bits=%x bytes=%zu reply=%u\n",header->msgh_id,header->msgh_bits,length,header->msgh_remote_port);
     /* Do not let upstream silently discard OOL resources. Actual process-state
      * protocol behavior is still being diagnosed, not acknowledged as success. */
-    if ((header->msgh_bits&MACH_MSGH_BITS_COMPLEX) || length<32 || header->msgh_id!=0x10000000) {
+    if (length<32 || header->msgh_id!=0x10000000) {
         fprintf(stderr,"PROCESSINFO_MESSAGE_UNSUPPORTED\n"); abort();
+    }
+    if (header->msgh_bits&MACH_MSGH_BITS_COMPLEX) {
+        uint32_t count; memcpy(&count,(unsigned char *)request+sizeof(*header),sizeof(count));
+        size_t offset=sizeof(*header)+sizeof(mach_msg_body_t);
+        if (count>(length-offset)/sizeof(mach_msg_port_descriptor_t)) abort();
+        for (uint32_t i=0;i<count;i++,offset+=sizeof(mach_msg_port_descriptor_t)) {
+            mach_msg_port_descriptor_t descriptor;
+            memcpy(&descriptor,(unsigned char *)request+offset,sizeof(descriptor));
+            fprintf(stderr,"PROCESSINFO_DESCRIPTOR index=%u type=%u disposition=%u port=%u\n",
+                i,descriptor.type,descriptor.disposition,descriptor.name);
+            if (descriptor.type!=MACH_MSG_PORT_DESCRIPTOR ||
+                (descriptor.disposition!=D_MACH_TYPE_MOVE_SEND &&
+                 descriptor.disposition!=D_MACH_TYPE_MOVE_SEND_ONCE)) {
+                fprintf(stderr,"PROCESSINFO_DESCRIPTOR_UNSUPPORTED\n"); abort();
+            }
+        }
     }
     spc_message_t *message=spc_deserialize(request);
     if (!message) abort();

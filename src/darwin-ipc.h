@@ -477,6 +477,13 @@ int darwin_native_host_port_refs(uint32_t port,int delta)
 #endif
     (void)port; (void)delta; return D_KERN_NOT_SUPPORTED;
 }
+int darwin_native_host_port_deallocate(uint32_t port)
+{
+#ifdef ARLINUX_DARLING
+    if (darling_active) return dserver_rpc_mach_port_deallocate(CURRENT_TASK_PORT,port);
+#endif
+    (void)port; return D_KERN_NOT_SUPPORTED;
+}
 void *darwin_native_service_run(void *unused)
 {
     (void)unused;
