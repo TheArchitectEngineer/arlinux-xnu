@@ -97,6 +97,8 @@ class Processes:
         capture.mkdir()
         env['ARLINUX_CAPTURE_DIR'] = str(capture)
         app = self.apps[name]
+        trace_symbols=app.get('diagnosticSymbols',[]) if not self.reference and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' else []
+        if trace_symbols:env['ARLINUX_DEBUG_ENTRY_STOP']='1'
         if app.get('input',{}).get('kind') in ('firmware','ipa'):
             env['ARLINUX_INSPECT_APPLICATION']='1'
         if app['build'] != 'passed':
@@ -127,6 +129,24 @@ class Processes:
         self.generations.append(record)
         self.processes[name] = {**record, 'process': process, 'runtime': str(prefix.with_suffix('.runtime.log')), 'stdout': str(prefix.with_suffix('.stdout'))}
         self.current = name
+        if trace_symbols:
+            # The same owned original process stops before dyld. The debugger
+            # records real entry/callback execution, never calls either one.
+            specification=prefix.with_suffix('.trace-symbols.json')
+            specification.write_text(json.dumps(trace_symbols))
+            script=ROOT/'tools/app_suite/original_trace.py'
+            invocation=('script import runpy; '+f'runpy.run_path({str(script)!r})["trace"]('
+                f'lldb.debugger,{str(specification)!r},{str(prefix.with_suffix(".runtime.log"))!r},'
+                f'{str(prefix.with_suffix(".stderr"))!r})')
+            with prefix.with_suffix('.startup.lldb.log').open('wb') as output:
+                try:
+                    observed=subprocess.run(['sudo','-n','timeout','--kill-after=2','30','lldb-18','--batch',
+                        '--attach-pid',str(process.pid),'-o','settings set auto-confirm true','-o',invocation],
+                        stdout=output,stderr=subprocess.STDOUT,timeout=34)
+                    output.write(f'\nSTARTUP_TRACE_EXIT status={observed.returncode}\n'.encode())
+                finally:
+                    # A collector failure must not leave the app stopped.
+                    if process.poll() is None:os.kill(process.pid,signal.SIGCONT)
         if self.reference and app['kind']=='application':
             result=subprocess.run([str(ROOT/'build/reference-tools/desktop-events'),'focus',str(process.pid)],capture_output=True,timeout=7)
             if result.returncode:

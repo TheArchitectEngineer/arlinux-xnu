@@ -12,6 +12,7 @@ import lldb
 
 
 def collect(target, info_address, runtime_path):
+    owned_images=[]
     process=target.GetProcess()
     maps=Path(runtime_path).read_text()
     if 'DARWIN_FAULT_MAPS_BEGIN' not in maps:
@@ -116,6 +117,7 @@ def collect(target, info_address, runtime_path):
                 if not capacity(path):continue
                 name=string(path)
                 if '/build/apps/' in name or '/build/ios-input/apps/' in name:
+                    owned_images.append(dict(address=address,path=name))
                     print('DYLD_OWNED_IMAGE',json.dumps(dict(address=hex(address),path=name)))
         if not 36<=compact_size<=32768:raise ValueError('compact metadata size outside bound')
         data=read(compact_address,compact_size)
@@ -167,3 +169,4 @@ def collect(target, info_address, runtime_path):
                 print('DYLD_COMPACT_IMAGE',json.dumps(dict(address=hex(address),**image)))
     except (ValueError,struct.error) as error:
         print('DYLD_METADATA_UNAVAILABLE',str(error))
+    return owned_images

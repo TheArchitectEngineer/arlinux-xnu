@@ -4,6 +4,13 @@
   "version": "3.17.1",
   "kind": "application",
   "pixelAppearance": "mixed",
+  "diagnosticSymbols": [
+    {
+      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
+      "symbol": "_$s12ThingsCommon20THCDatabaseComponentC12startUpgrade10completionyyyc_tF",
+      "callbackRegister": "x0"
+    }
+  ],
   "input": {
     "kind": "ipa",
     "url": "https://archive.org/download/thingsi-phone-3.17.1-le-ti/ThingsiPhone_3.17.1_LeTi.ipa",

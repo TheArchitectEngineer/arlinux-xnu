@@ -140,6 +140,7 @@ static long native_thread_create_impl(const unsigned long long *r,const sigset_t
             RAW(SYS_munmap,memory,D_THREAD_RUNTIME_STACK_SIZE,0,0,0,0); thread->state=0; return alternate;
         }
         thread->launch_state=0;
+        thread->diagnostic_syscall_context=NULL;
         thread->retire_workqueue=0;
         thread->runtime_memory=memory; thread->runtime_top=memory+D_THREAD_RUNTIME_STACK_SIZE;
         thread->signal_memory=alternate; thread->guest_sp=r[2]; thread->pthread=r[3];

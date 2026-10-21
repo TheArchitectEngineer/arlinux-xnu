@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <signal.h>
 #include "darwin-native.h"
 #include "ios-platform-abi.h"
 #include "native-http.h"
@@ -238,6 +239,8 @@ int main(int argc,char **argv)
     }
     /* Zeroed argc/argv/env/apple terminators for this freestanding entry. */
     fprintf(stderr,"NATIVE_DARWIN_ENTRY entry=%#" PRIx64 " host_page=%ld (Linux services, not XNU boot)\n",im.entry,host);
+    const char *debug_stop=getenv("ARLINUX_DEBUG_ENTRY_STOP");
+    if(debug_stop && !strcmp(debug_stop,"1"))raise(SIGSTOP);
     darwin_native_prepare(root,program,container,cache_base,im.uuid,&im.codesign);
     darwin_native_enter(top,dynamic ? dyld.entry : im.entry);
 }
