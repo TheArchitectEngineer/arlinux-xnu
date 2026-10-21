@@ -9,6 +9,7 @@
 #include "ios-platform-abi.h"
 #include <errno.h>
 #include <sys/wait.h>
+#include <sys/auxv.h>
 #include <stddef.h>
 #include <signal.h>
 #include <stdio.h>
@@ -87,6 +88,7 @@ static int darwin_error(long result)
 }
 
 static int native_trace_fd=2,native_stop_on_fault,native_diagnose_syscalls;
+static int native_secure_exec;
 static void native_trace_prepare(void)
 {
     /* Host-TLS setup only. Keep syscall tracing out of the guest's stderr so
@@ -807,6 +809,15 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         break;
     }
     case D_SYS_GETPID: result = RAW(SYS_getpid,0,0,0,0,0,0); break;
+    case D_SYS_ISSETUGID:
+        /* XNU kern_prot.c: credential-tainted execution, not an errno.
+         * Honor Linux's kernel-supplied secure-exec state and current real/
+         * effective identities. Guest credential-changing calls are unsupported.
+         * In particular ENOSYS (-1) must not masquerade as a true query result
+         * and make CoreFoundation discard its explicit application home. */
+        result=native_secure_exec || RAW(SYS_getuid,0,0,0,0,0,0)!=RAW(SYS_geteuid,0,0,0,0,0,0) ||
+            RAW(SYS_getgid,0,0,0,0,0,0)!=RAW(SYS_getegid,0,0,0,0,0,0);
+        break;
     case D_SYS_THREAD_SELFID: result = RAW(SYS_gettid,0,0,0,0,0,0); break; /* thread_selfid */
     case D_SYS_FORK:
         result = RAW(SYS_clone,SIGCHLD,0,0,0,0,0);
@@ -935,6 +946,10 @@ void darwin_native_connect(void)
 
 void darwin_native_prepare(const char *root,const char *program,const char *container,uint64_t cache_base,const unsigned char uuid[16],uint32_t signature_bytes)
 {
+    /* Host libc/TLS is still active before entering the guest. AT_SECURE also
+     * covers executable file capabilities and LSM secure-execution policy. */
+    errno=0;native_secure_exec=getauxval(AT_SECURE)!=0;
+    if(errno) {perror("Linux secure execution state");exit(1);}
     darwin_native_connect();
     native_signature_bytes=signature_bytes;
     native_threads[0].tid=RAW(SYS_gettid,0,0,0,0,0,0);

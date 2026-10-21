@@ -35,6 +35,7 @@ enum darwin_syscall {
     D_SYS_WAIT4 = 7,
     D_SYS_GETPID = 20,
     D_SYS_GETUID = 24, D_SYS_GETEUID = 25, D_SYS_GETGID = 47, D_SYS_GETEGID = 43,
+    D_SYS_ISSETUGID = 327,
     D_SYS_GETTIMEOFDAY = 116,
     D_SYS_MUNMAP = 73,
     D_SYS_MPROTECT = 74,
