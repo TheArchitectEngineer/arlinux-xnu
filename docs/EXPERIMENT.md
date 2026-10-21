@@ -88,41 +88,40 @@ full regression. Android remains unverified.
 
 ## Things: original first UI, database initialization still incomplete
 
-Things iPhone 3.17.1/build 31701001 and its bundled frameworks execute unchanged.
-The former ThingsCommon trap at VM 0x19ff30 force-unwrapped a nil Foundation
-group-container URL. The loader now parses original application-group membership
-with libplist; a shared Linux directory becomes a declared writable root, and
-the filesystem adapter returns its real URL. No Things identifier is hardcoded.
+[Run 39692498977](https://github.com/taowen/arlinux-xnu/actions/runs/39692498977),
+source **ec0706dfa01a26eb492d45d5b52ed6fcb4683c4a**, PID/start 6161/14232,
+executes Things iPhone 3.17.1/build 31701001 and its bundled frameworks unchanged.
+It passes the actual 375x667-point viewport and composes the original
+**Upgrading Database** modal, but fails Inbox after 120.194 seconds; all 22 later
+task steps are blocked. Receipt
+**a942c4f5bd0a765a7d02e381cabcb59811fcaddff158671127541aa7f0bc4ee0**
+and all 84 files were verified. The saved main thread is in CoreGraphics/vImage
+composition and other live guest workers are in event waits. This does not
+establish a dispatch deadlock.
 
-[Run 39689862812](https://github.com/taowen/arlinux-xnu/actions/runs/39689862812),
-source **b444f95edf253fb3fbe6dfb9ded0de4a68c21ea6**, PID/start 5849/28795,
-passes the real 375x667-point viewport and composes the original **Upgrading
-Database** modal. Receipt
-**c7a56cc0b4ed319872c38b1fc9adba499018c34c78dccd5217a0cd854c24c366**
-and all 84 files were verified. It does not reach Inbox in 30 seconds.
+The former ThingsCommon trap force-unwrapped a nil group-container URL. The
+loader now parses original XML membership with libplist and registers actual
+shared Linux writable directories; Foundation resolves their real URLs. No
+Things identifier is hardcoded. Real writev preserves previously lost framework
+errors: AppCenter SQLite reports an open failure, and SecTask lacks DER data.
+The original SQLite statfs64 request now uses real mount/space metadata and no
+longer returns ENOSYS. SQLite advances to unsupported guarded_open_np (441),
+with AppCenter's database error changing from 10 to 14. This is file-I/O progress,
+not app success. Guarded calls now follow Darling's real-I/O, unenforced-guard
+policy, and access(W_OK) uses actual writable-root permissions; the original-app
+verification of those newer changes is pending.
 
-[Run 39691084207](https://github.com/taowen/arlinux-xnu/actions/runs/39691084207),
-source **74d2cf85728a951d627b22099451fd357abefada**, PID/start 5989/42062,
-still fails Inbox after 120.051 seconds; all 22 later task steps are blocked.
-Receipt **84b728e01f3700b1f1342bb7c784cc8d2af4a82549cb7a01973a8a82a20f51e8**
-and all 84 files were verified. The screenshot remains the upgrade modal.
-The saved main thread is in CoreGraphics/vImage composition and the other live
-guest workers are in event waits; this does not establish a dispatch deadlock.
+The same pinned IPA hash is verified after download from the declared official
+Archive.org storage mirror ia601807.us.archive.org. This run completes in 278 s,
+versus 538 s for the earlier writev run 39691084207; actual journeys remain about
+136-137 s. The input-preparation delay is removed in this observation, not a
+future network guarantee. Mapping failure arguments/callers also now retain an
+independent eight-request budget after successful startup mappings exhausted
+the old trace budget; their frequency is not a cause verdict.
 
-Real Linux writev now preserves previously lost CoreFoundation diagnostics.
-The original stderr reports AppCenter SQLite open result 10 (I/O error) and
-unsupported entitlement loading. The saved original SQLite call chain requests
-unimplemented statfs64 (345). The current adapter now resolves this named path
-through a real descriptor and reuses the existing fstatfs64 mount/space packing;
-no successful database result is fabricated. Verification remains pending.
-Repeated later mmap errors exhausted the ordinary startup trace budget, so the
-existing mapper now retains eight actual failed mappings' arguments, paths and
-caller frames separately. Frequency alone does not identify the cause.
-
-The signed IPA has XML but no DER entitlement blob. Native iOS SecTask requests
-DER without XML fallback; XML-to-DER conversion remains unsupported, explicitly
-reported rather than silently claiming no grants. Group preferences/keychain,
-DER-only group membership and last-member uninstall cleanup are also incomplete.
-Exact package URL/version/hash and distribution limits remain in APPS.md and
+The IPA has XML but no DER entitlements. Native iOS SecTask requests DER without
+XML fallback; conversion remains explicitly unsupported. Group preferences,
+keychain, DER-only membership and last-member removal are also incomplete.
+Exact input URL/version/hash and distribution limits are in APPS.md and
 apps/things/app.json. Create/edit/complete and data survival across normal
-close/reopen are unverified. No fixture can substitute for those requirements.
+close/reopen remain unverified; no fixture can substitute for those requirements.
