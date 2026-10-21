@@ -109,6 +109,7 @@ static int session_error_reply(mach_msg_header_t *header,void *output,size_t cap
  * no process, successful lookup or ready service is invented by storing it. */
 static struct launch_bootstrap {
     uint32_t pid,incarnation;
+    uint32_t creator[8];
     int pidfd;
     char *name;
     spc_dictionary_t *configuration;
@@ -168,6 +169,7 @@ static int launch_bootstrap_store(spc_dictionary_t *request,const char *name,con
     }
     if(entry->configuration)spc_dictionary_destroy(entry->configuration);
     entry->configuration=data->value.value.dict;
+    memcpy(entry->creator,audit,sizeof(entry->creator));
     data->value=spc_null_create(); /* Transfer codec ownership exactly once. */
     fprintf(stderr,"SESSION_BOOTSTRAP_STORED pid=%u incarnation=%u service=%s fields=%zu\n",
         entry->pid,entry->incarnation,entry->name,entry->configuration->num_items);
@@ -273,6 +275,25 @@ static int launch_instance_lookup(spc_dictionary_t *request,const char *name,con
     return D_ENOTSUP;
 }
 
+/* Return the actual caller-supplied initialization dictionary only to a real
+ * child owned by that caller/service instance. The creator is the original
+ * kernel audit token, not an invented PID-1 credential or the manager's token. */
+static struct launch_bootstrap *launch_bootstrap_for_child(spc_dictionary_t *request,const uint32_t *audit)
+{
+    if(!audit || spc_dictionary_get_uint64(request,"type")!=5 ||
+       spc_dictionary_get_uint64(request,"handle")!=audit[5] ||
+       !spc_dictionary_get_bool(request,"self") ||
+       !darwin_native_host_process_matches(audit[5],audit[7]))return NULL;
+    for(struct service_instance *child=service_instances;child;child=child->next) {
+        if(child->child.pid!=(pid_t)audit[5] || (uint32_t)child->child.start_ticks!=audit[7])continue;
+        for(struct launch_bootstrap *entry=launch_bootstraps;entry;entry=entry->next)
+            if(entry->pid==child->owner && entry->incarnation==child->incarnation &&
+               !strcmp(entry->name,child->name) &&
+               darwin_native_host_process_matches(entry->pid,entry->incarnation))return entry;
+    }
+    return NULL;
+}
+
 int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
 {
     mach_msg_header_t *header=request;
@@ -295,7 +316,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
         else fprintf(stderr,"BOOTSTRAP_XPC_FIELD key=%.128s type=%x\n",item->key,item->value.type);
     }
     int set_bootstrap=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x2c6U;
-    if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U && !set_bootstrap) {
+    int copy_bootstrap=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x2c7U;
+    if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U && !set_bootstrap && !copy_bootstrap) {
         /* Unknown interface routines keep the actual unsupported response. */
         fprintf(stderr,"BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=%x bytes=%u\n",header->msgh_id,header->msgh_size);
         /* Scalar routing fields are logged above; don't dump arbitrary OOL
@@ -304,6 +326,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     }
     int error=D_ENOTSUP;
     uint32_t port=0;
+    struct launch_bootstrap *context=copy_bootstrap ? launch_bootstrap_for_child(message->content,audit) : NULL;
+    if(copy_bootstrap)error=context ? 0 : D_ESRCH;
     if(set_bootstrap)error=launch_bootstrap_store(message->content,name,audit);
     if(packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x324U &&
        spc_dictionary_get_uint64(message->content,"type")==5 &&
@@ -335,15 +359,40 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     spc_dictionary_set_uint64(reply,"rec_execcnt",incarnation);
     fprintf(stderr,"BOOTSTRAP_XPC_IDENTITY pid=%u incarnation=%u\n",requester,incarnation);
     spc_dictionary_set_int64(reply,"error",error);
-    if (!error && !set_bootstrap) spc_dictionary_set_send_port(reply,"port",port);
+    spc_dictionary_item_t *borrowed=NULL;
+    if(context) {
+        spc_dictionary_set_value(reply,"bootstrap",(spc_value_t){.type=SPC_TYPE_DICT,.value.dict=context->configuration});
+        borrowed=spc_dictionary_lookup(reply,"bootstrap");
+        spc_dictionary_set_data(reply,"creator",context->creator,sizeof(context->creator));
+    }
+    if (!error && !set_bootstrap && !copy_bootstrap) spc_dictionary_set_send_port(reply,"port",port);
     spc_message_t response={.remote_port={header->msgh_remote_port,D_MACH_TYPE_MOVE_SEND_ONCE},
         .id=0x20000000,.content=reply};
     spc_mach_message_t *encoded=spc_serialize(&response);
+    if(borrowed)borrowed->value=spc_null_create(); /* Context keeps its original owned objects/rights. */
+    int unsupported_copy=0;
+    if(context && encoded && (encoded->header.msgh_bits&MACH_MSGH_BITS_COMPLEX)) {
+        mach_msg_body_t *body=(void *)((char *)encoded+sizeof(mach_msg_header_t));
+        mach_msg_port_descriptor_t *ports=(void *)(body+1);
+        for(uint32_t i=0;i<body->msgh_descriptor_count;i++) {
+            if(ports[i].type!=MACH_MSG_PORT_DESCRIPTOR ||
+               (ports[i].disposition!=D_MACH_TYPE_MOVE_SEND && ports[i].disposition!=D_MACH_TYPE_COPY_SEND)) {
+                unsupported_copy=1;break;
+            }
+            ports[i].disposition=D_MACH_TYPE_COPY_SEND;
+        }
+    }
+    if(context && (!encoded || encoded->header.msgh_size>capacity || unsupported_copy)) {
+        free(encoded);spc_dictionary_destroy(reply);spc_message_destroy(message);
+        return session_error_reply(header,output,capacity,audit);
+    }
     if (!encoded || encoded->header.msgh_size>capacity) abort();
     /* Upstream's malloc-backed header does not initialize the voucher field.
      * This host service has no voucher to transfer. */
     encoded->header.msgh_voucher_port=MACH_PORT_NULL;
     memcpy(output,encoded,encoded->header.msgh_size);
+    if(context)fprintf(stderr,"SESSION_BOOTSTRAP_COPY_REPLY pid=%u incarnation=%u creator=%u service=%s\n",
+        audit[5],audit[7],context->pid,context->name);
     fprintf(stderr,"BOOTSTRAP_XPC_REPLY error=%d port=%u bytes=%u\n",error,port,encoded->header.msgh_size);
     free(encoded);
     spc_dictionary_destroy(reply);

@@ -244,7 +244,8 @@ class Processes:
                 # this is tied to that observed failure, not a symbol dump for
                 # every app or an invented managed-service flag.
                 image='/usr/lib/system/libxpc.dylib'
-                for symbol in ('_xpc_copy_bootstrap','__xpc_copy_xpcservice_dictionary'):
+                for symbol in ('_xpc_copy_bootstrap','__xpc_copy_xpcservice_dictionary',
+                               '__fetch_xpcservice_info','__xpc_dictionary_create_bootstrap_copy'):
                     arguments+=['--lookup',image,symbol]
                 arguments+=['--list-symbols',image,'xpcservice']
             command(*arguments,capture_output=True)

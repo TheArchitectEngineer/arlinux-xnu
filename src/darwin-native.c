@@ -150,14 +150,21 @@ static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned
         for (;;) {
             /* A rejected large reservation must not advance/wrap the cursor
              * and make subsequent ordinary allocations fail as well. */
-            if (requested>=D_GUEST_COMMPAGE_RO || size+alignment>D_GUEST_COMMPAGE_RO-requested) return -ENOMEM;
+            if (requested>=D_GUEST_COMMPAGE_RO || size+alignment>D_GUEST_COMMPAGE_RO-requested) {
+                trace_record("DARWIN_ANON_RANGE_EXHAUSTED cursor=0x",requested,size,alignment);
+                return -ENOMEM;
+            }
             unsigned long next=requested+size+alignment;
             if (__atomic_compare_exchange_n(&guest_next,&requested,next,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED))break;
         }
         raw=RAW(SYS_mmap,requested,size+alignment,protection,
                 (shared ? MAP_SHARED : MAP_PRIVATE)|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
         if (raw==-EEXIST) continue; /* Preserve existing mappings, choose another range. */
-        if ((unsigned long)raw >= (unsigned long)-4095) return raw;
+        if ((unsigned long)raw >= (unsigned long)-4095) {
+            trace_record("DARWIN_ANON_HOST_REJECTED address=0x",requested,size+alignment,raw);
+            trace_record("DARWIN_ANON_HOST_POLICY protection=0x",protection,shared,0);
+            return raw;
+        }
         if ((unsigned long)raw!=requested) {
             RAW(SYS_munmap,raw,size+alignment,0,0,0,0); return -ENOTSUP;
         }
