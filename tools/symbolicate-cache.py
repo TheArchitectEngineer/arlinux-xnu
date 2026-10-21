@@ -40,7 +40,7 @@ fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(
 records=[];matched=set()
 with CacheSymbols(args.cache) as cache:
     targets=[]
-    for pc in set(returns)|stack_returns:
+    for pc in (set(returns)|stack_returns)-unsupported_returns:
         if pc in faults:continue
         try:call=cache.return_call(pc)
         except ValueError:continue # Original app/host addresses are outside this cache.

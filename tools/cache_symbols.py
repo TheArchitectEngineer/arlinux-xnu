@@ -275,8 +275,13 @@ class CacheSymbols:
         member,offset=self.locate(address,size)
         code=member.data[offset:offset+size]
         source='\n'.join(' '.join(f'0x{byte:02x}' for byte in code[i:i+4]) for i in range(0,len(code),4))
-        process=subprocess.run(['llvm-mc-18','--disassemble','--triple=aarch64','--print-imm-hex'],
-            input=source,text=True,capture_output=True,timeout=5,check=True)
+        try:
+            process=subprocess.run(['llvm-mc-18','--disassemble','--triple=aarch64','--print-imm-hex'],
+                input=source,text=True,capture_output=True,timeout=5,check=True)
+        except (subprocess.TimeoutExpired,subprocess.CalledProcessError) as error:
+            return {'address':hex(address),'bytes':size,'instructions':'',
+                'status':'decoder-timeout' if isinstance(error,subprocess.TimeoutExpired) else 'decoder-failed',
+                'note':'Instruction decoding unavailable; original addresses and independent metadata remain evidence'}
         return {'address':hex(address),'bytes':size,'instructions':process.stdout,
                 'decoderDiagnostics':process.stderr,
                 'note':'Branch immediates are relative to their instruction; observation only'}
