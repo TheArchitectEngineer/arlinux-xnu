@@ -133,7 +133,7 @@ Darwin stat/fstatat share actual Linux statx metadata and guest record packing.
 This provides platform file operations, not Apple sandbox or data protection.
 End-to-end persistence acceptance belongs to the Notes journey in EXPERIMENT.md.
 
-### Lifecycle boundary and next implementation
+### Lifecycle boundary
 
 The previous implementation encoded legacy FrontBoard launch/scene events in
 native-xpc.c and ios-scene-codec.c. That path did not complete UIKit launch on
@@ -168,11 +168,17 @@ FBSScene's genuine agent creation notification. That path binds the agent to
 its scene before its original event handler dispatches into UIKit. The removed
 direct UIApplication workspace callback skipped that required binding. The
 software rendering boundary produces original Counter/Swift content and actual
-input changes. Their complete selected GUI journeys pass. Session scene registration, complete
-workspace enumeration, focus updates, host-process/remote endpoint support,
-broader input/normal-close coverage remain unfinished. The concurrent relaunch
-and crash-isolation journeys pass, but do not certify UIKit activation-state
-transitions or arbitrary helper cleanup. Unsupported operations fail visibly.
+input changes. Their complete selected GUI journeys pass. Actual compositor
+focus changes now enter the original scene updater on its callout queue, using immutable settings and FBSSceneSettingsDiff. Visible live
+windows stay foreground; our owned nonzero deactivation contribution represents
+host focus loss without pretending to encode Apple's lock/background policy.
+The original completion response remains opaque and is not acceptance.
+The independent focus-activation journey verifies public UIApplication state,
+original UIKit notifications, changed pixels after reactivation and both normal
+exits. Geometry propagation exists but resize, minimize/background and Android
+have not been verified. Session scene registration, complete workspace enumeration,
+host-process/remote endpoints and arbitrary helper cleanup remain unfinished.
+Unsupported operations fail visibly.
 
 Use the existing injected platform library as the adaptation seam. Inspect the
 real UIKit/FrontBoard startup path to choose the narrowest framework-facing
@@ -246,6 +252,10 @@ it does not establish working controls or input.
 ## Required semantics
 
 Memory mappings preserve requested alignment, protection and real storage.
+Anonymous Darwin shared mappings use actual Linux MAP_SHARED backing with the
+same low-address/alignment/protection rules as private allocations. This supports
+original UIKit's HangTracer allocation during reactivation without patching that
+framework; it does not establish working fork/Mach task inheritance.
 Guest allocations stay in the low-address range required by this Objective-C
 ABI; host signal stacks may use host addresses. Real fork/COW, wait and thread
 join must not be replaced by success values. Unknown calls fail. A single CPU
@@ -274,9 +284,10 @@ supported private ABI; no claim of arbitrary iOS version support is made.
 
 - Extend private-container storage for further app-required operations; Notes
   now verifies original Foundation atomic write and new-process readback.
-- Complete UIKit scene activation-state and geometry updates from real host
-  changes. Primary pointer input, basic text commits and normal close already
-  pass their recorded journeys; broader key/IME/multitouch behavior is pending.
+- Verify scene geometry, minimize and background behavior from real host
+  changes. Visible-window focus activation/deactivation, primary pointer input,
+  basic text commits and normal close pass their recorded journeys;
+  broader key/IME/multitouch behavior is pending.
 - Extend rendering coverage and evaluate real GPU-backed presentation. Original
   UIKit text, controls, system colors and CPU drawing already pass on this input;
   remote contexts, IOSurface/Metal and hardware acceleration remain unverified.

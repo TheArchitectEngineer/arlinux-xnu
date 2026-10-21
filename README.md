@@ -3,7 +3,7 @@
 An experimental Darwin/iOS compatibility environment for ARLinux on
 Linux/Android. **Counter and Swift/UIKit interaction, close/relaunch, Console
 and Foundation journeys pass on Linux. Notes also passes text entry, atomic save
-and new-process readback. A full run passes 11/15 journeys; the
+and new-process readback. Two-app focus activation also passes. A full run passes 11/16 journeys; the
 collection still fails overall, and Android remains unverified.** XNU, dyld and iOS userland may be
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.

@@ -92,6 +92,13 @@ The summary retains the first two and final two screenshots when there are more
 than four. screenshotsRecorded and fullJourney identify the full retained case;
 this bounds reporting only, never capture, acceptance or evidence retention.
 The step's effect wait and diagnostic collection time are recorded separately.
+After receipt verification, the report totals journey and included diagnosis time
+and lists the three slowest journeys with their failed effect. These numbers
+identify feedback cost, not root causes. A failed application-state step records
+the observed public state, real notification counts and PID/start identity;
+diagnosis targets the actual failed peer rather than whichever window was last
+focused. Resolved scene-updater symbol scans are removed from automatic failure
+collection; original-process stacks and fault symbolication remain.
 These are observed facts, not an automatic root-cause verdict. Full logs and
 original-process stacks remain available. Compare dispatch-to-completion and
 job start offsets; compiler cache hits alone do not measure feedback latency.

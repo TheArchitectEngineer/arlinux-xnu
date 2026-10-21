@@ -61,6 +61,19 @@ def collect_evidence(run):
         except (OSError,ValueError,KeyError) as error:
             raise SystemExit('Evidence verification failed: '+str(error)) from error
         print(f'  Verified {artifact}: receipt plus {count} files; {directory}')
+        result_path=directory/'apps/result.json'
+        covered={entry['path'] for entry in json.loads((directory/'receipt.json').read_bytes())['files']}
+        if 'apps/result.json' in covered:
+            suite=json.loads(result_path.read_bytes());cases=suite['cases']
+            passed=sum(case['status']=='passed' for case in cases)
+            journey=sum(case.get('journeySeconds',0) for case in cases)
+            diagnosis=sum(step.get('diagnosticSeconds',0) for case in cases for step in case['steps'])
+            scope='full collection' if suite['fullSuite'] else 'partial selection'
+            print(f'  Verified effects: {passed}/{len(cases)} passed ({scope}); journey={journey:.1f}s, diagnosis={diagnosis:.1f}s included')
+            for case in sorted(cases,key=lambda case:case.get('journeySeconds',0),reverse=True)[:3]:
+                failed=next((step for step in case['steps'] if step['status']=='failed'),{})
+                detail=(f"; failed {failed['do']}, effect={failed.get('seconds')}s, diagnosis={failed.get('diagnosticSeconds')}s" if failed else '')
+                print(f"    Slow journey: {case['id']} {case.get('journeySeconds')}s {case['status']}{detail}")
         verified.append(directory)
     return verified
 

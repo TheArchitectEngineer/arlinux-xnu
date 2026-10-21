@@ -37,8 +37,8 @@ runtime and remain a separate future input.
 ## Independent execution and shared mechanisms
 
 Workers owns three short journeys, not one combined pass. Each other app owns a
-single bounded user flow. apps/scenarios contains only concurrent relaunch and
-crash-isolation flows using Counter and Workers. The common runner owns process,
+single bounded user flow. apps/scenarios contains concurrent relaunch,
+crash-isolation and focus-activation flows using Counter and Workers. The common runner owns process,
 external desktop input, structured read-only UI state, screenshots, stdout for console apps, bounded diagnostics
 and cleanup; it knows no app selectors, fake callbacks or app-specific outcomes.
 
@@ -46,7 +46,7 @@ No app is a prerequisite for another app's acceptance. Each journey owns a fresh
 actual Mach session and new state directory. Its relaunch preserves that state.
 A failing button cannot suppress Foundation, Swift, Web or later apps. Build
 failures are retained and fail that app rather than disappearing from selection.
-The all selection requires every case including the two session scenarios.
+The all selection requires every case including the three session scenarios.
 Subsets explicitly record fullSuite=false. Forced cleanup never proves close.
 
 Linux input goes through Xvfb -> Weston X11 backend -> real Wayland seat.
@@ -57,6 +57,14 @@ apps publish read-only public view/accessibility properties and actual frames;
 Web uses its genuine DOM and WebKit script-message transport. The observer never
 calls actions, sets view state or implements a framework. No OCR, Vision model,
 image recognition model or template matcher is used.
+
+The focus-activation journey switches actual compositor focus between two app
+processes and reads public UIApplication.applicationState plus real UIKit
+did-become-active/will-resign-active notifications. An unfocused visible window
+must become inactive and reactivate when focused again. This is passive fixture
+observation; the runner never posts notifications or calls lifecycle/delegate
+methods. The same journey requires real Count 1/2 pixels after reactivation and
+both normal exits. State/notification checks alone cannot pass that journey.
 
 Clicks use actual exported control frames transformed through actual host window
 geometry. Acceptance combines the real widget/DOM value with unmodified composed
