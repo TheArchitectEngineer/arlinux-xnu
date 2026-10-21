@@ -51,6 +51,8 @@ enum darwin_syscall {
     D_SYS_FSTAT64 = 339,
     D_SYS_LSTAT64 = 340,
     D_SYS_GETDIRENTRIES64 = 344, D_SYS_FSTATFS64 = 346,
+    D_SYS_GETFSSTAT64 = 347,
+    D_SYS_GETTID = 286, /* XNU credential override query, not Linux gettid. */
     D_SYS_BSDTHREAD_CREATE = 360,
     D_SYS_BSDTHREAD_TERMINATE = 361,
     D_SYS_BSDTHREAD_CTL = 478, /* XNU syscalls.master; 364 is lchown. */

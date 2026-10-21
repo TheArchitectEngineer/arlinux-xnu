@@ -123,7 +123,7 @@ done:
     trace_record("DARWIN_FSGETPATH object=0x",r[3],fsid[0],result);
     return result;
 }
-static long native_fstatfs(int fd,unsigned long destination)
+static long native_statfs_value(int fd,struct darwin_statfs64 *value)
 {
     struct statfs actual={0};
     long error=RAW(SYS_fstatfs,fd,&actual,0,0,0,0);
@@ -178,7 +178,48 @@ static long native_fstatfs(int fd,unsigned long destination)
     RAW(SYS_close,mounts,0,0,0,0,0);
     if(error) return error;
     if(!best) return -ENOENT;
-    return guest_copy(&out,destination,sizeof(out),1);
+    *value=out;
+    return 0;
+}
+static long native_fstatfs(int fd,unsigned long destination)
+{
+    struct darwin_statfs64 value;
+    long error=native_statfs_value(fd,&value);
+    return error ? error : guest_copy(&value,destination,sizeof(value),1);
+}
+static long native_getfsstat(const unsigned long long *r)
+{
+    /* XNU vfs_syscalls.c:getfsstat64: NULL asks for the count; otherwise
+     * return at most the number of complete statfs64 records that fit.
+     * Enumerate only filesystems exposed by our declared root/bundle mapping,
+     * using the same real fd-backed metadata as fstatfs/getattrlist. */
+    if((int)r[1]<0 || (r[2]!=0 && r[2]!=1 && r[2]!=2))return -EINVAL;
+    int descriptors[]={root_descriptor,bundle_descriptor};
+    struct darwin_statfs64 values[2];
+    unsigned int count=0;
+    for(unsigned int i=0;i<2;i++) {
+        if(descriptors[i]<0)continue;
+        struct darwin_statfs64 value;
+        long error=native_statfs_value(descriptors[i],&value);
+        if(error)return error;
+        int duplicate=0;
+        for(unsigned int j=0;j<count;j++)
+            if(value.type==values[j].type && value.fsid[0]==values[j].fsid[0] && value.fsid[1]==values[j].fsid[1])duplicate=1;
+        if(duplicate)continue;
+        __builtin_memset(value.mount_point,0,sizeof(value.mount_point));
+        if(i==0)value.mount_point[0]='/';
+        else {
+            if(bundle_path_length>=sizeof(value.mount_point))return -ENAMETOOLONG;
+            __builtin_memcpy(value.mount_point,bundle_path,bundle_path_length+1);
+        }
+        values[count++]=value;
+    }
+    if(!r[0])return count;
+    unsigned int copied=r[1]/sizeof(values[0]);
+    if(copied>count)copied=count;
+    long error=guest_copy(values,r[0],copied*sizeof(values[0]),1);
+    trace_record("DARWIN_GETFSSTAT visible=0x",count,copied,error);
+    return error ? error : copied;
 }
 static long native_getdirentries(const unsigned long long *r)
 {

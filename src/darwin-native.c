@@ -749,12 +749,17 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         if(native_diagnose_syscalls)trace_getattrlist(r,uc->uc_mcontext.pc);
         result=native_getattrlist(r); break;
     case D_SYS_FSTATFS64: result=native_fstatfs(r[0],r[1]); break;
+    case D_SYS_GETFSSTAT64: result=native_getfsstat(r); break;
     case D_SYS_FSGETPATH: result=native_fsgetpath(r); break;
     case D_SYS_GETDIRENTRIES64: result=native_getdirentries(r); break;
     case D_SYS_GETUID: result=RAW(SYS_getuid,0,0,0,0,0,0); break;
     case D_SYS_GETEUID: result=RAW(SYS_geteuid,0,0,0,0,0,0); break;
     case D_SYS_GETGID: result=RAW(SYS_getgid,0,0,0,0,0,0); break;
     case D_SYS_GETEGID: result=RAW(SYS_getegid,0,0,0,0,0,0); break;
+    case D_SYS_GETTID:
+        /* XNU kern_prot.c:gettid returns ESRCH when this thread has no
+         * credential override. No override-setting API is implemented. */
+        result=-ESRCH; break;
     case D_SYS_GETTIMEOFDAY: {
         struct { int64_t seconds,microseconds; } host;
         struct { int32_t minutes_west,dst; } timezone;
