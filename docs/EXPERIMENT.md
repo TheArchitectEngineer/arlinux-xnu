@@ -165,23 +165,28 @@ collections complete; the third child is explicitly omitted from attachment,
 with its actual fault records retained in session.log. No DOM, usable connection,
 normal helper retirement, third-party IPA or Android acceptance is claimed.
 
-Latest selected run [39572965048](https://github.com/taowen/arlinux-xnu/actions/runs/39572965048),
-source **378110995c513d37e691ac45aa287aa61ed48612**, attempt 1, passes Counter
+Latest selected run [39589004917](https://github.com/taowen/arlinux-xnu/actions/runs/39589004917),
+source **66377b31d7b7244c8e5f8c22781f1fec8d495169**, attempt 1, passes Counter
 and fails the same Web DOM step (1/2, partial). Receipt
-**9666568eb7e32de489c57f3777bec488f3f5d847a08a62e7940690dc013445f4**
-and 46 evidence files were verified. App **5949/72390** shares owned session
-**5946/72385**. Original WebContent **5987/72860** waits for its network-process
-connection. Networking **6071/73627** receives the check-in grant, then exits
-with wait status 256. Its original exit stack now resolves to WebKit's
-XPCServiceInitializer<NetworkProcess>, return PC **0x1989112f4**. The same-cache
-instructions put that exit on failed getConnectionIdentifier/getClientIdentifier
-branches, after checkEntitlements. This proves original WebKit initialization
-has advanced beyond check-in; it is not a usable connection or DOM result.
-The live replacement Networking **6076/73866** is correctly attached, still in
-host cache instruction rewriting. Targeted reads of the two original identifier
-consumers are next; no identifier or successful return is synthesized.
-Total feedback is 157 s; journeys take 37.862 s including 21.556 s of diagnosis.
-The previous full 14/16 result remains source-specific.
+**ab3fded0ae98fbec216b1948b71ea9f4df01a2d6bd7657a9a054ba3647bfe527**
+and 47 evidence files were verified. App **5996/39571** shares owned session
+**5993/39566**. WebContent **6035/39853** now has original IPC::Connection
+message dispatch -> WebProcess::initializeWebProcess -> WebCore::commonVMSlow ->
+JSC::VM construction in its retained fault stack. This is evidence of actual
+client/helper message consumption beyond the receive-grant producer marker.
+VM construction traps at **0x19a37c2d8**, with original crash metadata including
+stack boundary **0x300100000** and anomalous bound **0xffff55003a506270**.
+The root cause is not yet established; next read original pthread stack-query
+and StackBounds consumers before changing TLS, stack sizing or checks.
+Networking **6057/40269** separately exits with wait status 256 in the original
+getConnectionIdentifier/getClientIdentifier failure branch. Same-cache code
+confirms real server-port extraction and nonempty client-identifier checks;
+which check failed is unproven. Replacement **6066/40330** is retained too.
+Failure collection now chooses live distinct services and symbolizes the closed
+session log after retirement, preserving the previously missed late VM fault.
+Total feedback is 166 s; journeys take 38.927 s including 23.338 s of diagnosis.
+No DOM or helper-lifecycle acceptance. The previous full 14/16 result remains
+source-specific; the full goal remains active.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
