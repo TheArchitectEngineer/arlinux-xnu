@@ -6,6 +6,8 @@
 #define ARLINUX_IOS_PLATFORM_ABI_VERSION 5UL
 #define ARLINUX_IOS_PLATFORM_QUERY 0x4152494fUL
 #define ARLINUX_IOS_PLATFORM_LIBRARY "libarlinux-ios.dylib"
+/* Actual per-dimension limit enforced by the CPU CALayer backing allocator. */
+#define ARLINUX_IOS_SOFTWARE_SURFACE_MAX 8192U
 enum arlinux_ios_window_flags {
     ARLINUX_IOS_WINDOW_CONFIGURED=1U,
     ARLINUX_IOS_WINDOW_ACTIVE=2U,

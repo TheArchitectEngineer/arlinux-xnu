@@ -83,63 +83,46 @@ took 156 s overall and 30 s in journeys.
 
 ## Complete collection and remaining failures
 
-Earlier full baseline [39547510074](https://github.com/taowen/arlinux-xnu/actions/runs/39547510074),
-source **cd29bf9626899d583147a10a2f0214d53edf6ce3**, attempt 1, passed **13/16**
+Full run [39553178774](https://github.com/taowen/arlinux-xnu/actions/runs/39553178774),
+source **bbcea4052d92bff88e3a1c63a88764b38f2daa03**, attempt 1, passes **14/16**
 journeys. The collection is still **failed**. Receipt
-**ad95702ad12daf4a283cf92a6c3518273d4308089d10c402804b49c465b26eec**
-and all 239 retained files were verified. Individual journeys total 172.536 s,
-including 23.980 s of diagnosis.
+**e8ab388e1d3114b31a9626faf9b63b480be131fbb833a1ddeba6940583addfb2**
+and all 240 retained files were verified. Individual journeys total 138.700 s,
+including 15.783 s of diagnosis. Total feedback is 550 s; the actual firmware
+transfer takes 329.065 s, dominating preparation. No general latency reduction
+is claimed from this run.
 
 Console, Foundation, Counter, Swift, Notes, Canvas, Process and all three Workers
-journeys pass in this full run. Concurrent relaunch passes all 29 steps; crash
-isolation and focus activation each pass all 22 steps. These scenarios do not
-establish arbitrary helper cleanup or background lifecycle behavior.
+journeys pass. Concurrent relaunch passes all 29 steps; crash isolation and focus
+activation each pass all 22 steps. These scenarios do not establish arbitrary
+helper cleanup or background lifecycle behavior. The earlier kmsg preallocation
+regression is repaired: auxiliary ownership adds to the allocation and leaves
+the original inline-message capacity intact.
 
-| Capability | Current evidence / next boundary |
+Network passes all 14 steps. Processes **7270/61861** and **7319/62226**
+(PID/startTicks) each receive an actual status 200 / 13-byte response through
+Linux libcurl and original NSURLSession completion. JSON parsing and main-queue
+delivery produce Network: 42 in composed pixels, the peer records two requests,
+and each app exits 0. This proves foreground HTTP across close/new-process
+relaunch. HTTPS, redirects, cancellation and background networking still need
+independent app journeys; NECP and arbitrary BSD sockets are not implemented.
+The earlier selected 4/4 run 39552858185 also passed this flow, with its second
+composed screenshot visually inspected.
+
+Workers queue now requires successive Queue 3 and Queue 6 effects in each of two
+fresh processes, with normal exits. This full run passes that stronger flow.
+The earlier no-main-stage failure in run 39545899351 remains an intermittent
+observation; one full pass does not prove its isolated cause or general repair.
+
+| Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Network | Foreground HTTP/JSON now passes twice across normal close/new-process relaunch in the selected run below. General HTTPS, redirects, cancellation and background networking are not yet accepted. NECP and arbitrary BSD sockets remain unimplemented. |
-| Web | Original WebCore::IOSurface::maximumSize() reaches IOSurfaceClientGetPropertyMaximum and aborts because the IOSurface kernel service is absent. WebContent launch is also unimplemented. No DOM/helper/presentation acceptance. |
-| Share | The flow waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
+| Web | Process 6491/54275 reaches WebCore::IOSurface::maximumSize(), then IOSurfaceClientGetPropertyMaximum aborts because the IOSurface kernel service is absent. WebContent launch is also unimplemented. No DOM/helper/presentation acceptance. |
+| Share | Process 6288/51832 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
 
-Workers queue remains intermittent: earlier full run 39545899351 recorded actual
-submit/background value=3 but no main stage. No scheduling repair is claimed.
-The strengthened queue journey now requires two clicks, Queue 3 then Queue 6,
-normal exit, a fresh process, and the same two deliveries and normal exit again.
-Selected run [39548964193](https://github.com/taowen/arlinux-xnu/actions/runs/39548964193),
-source **5a3d835c43c37b4f469de8e696941bf9ccb6d785**, attempt 1, passes all three
-Workers journeys. Receipt
-**609a79057061c77b65e580258bc8d1e6f23419f9feac365560bcb9d36a3fad46**
-and 48 files were verified. Queue generations are **5864/19727** and
-**5927/20124** (PID/startTicks). Journeys total 15.579 s, including 8.947 s for
-queue; overall feedback takes 142 s. This partial pass neither establishes the
-intermittent cause nor certifies the other apps with this changed source.
-
-Current selected run [39552858185](https://github.com/taowen/arlinux-xnu/actions/runs/39552858185),
-source **bbcea4052d92bff88e3a1c63a88764b38f2daa03**, attempt 1, passes **4/4**:
-Counter, Foundation, Swift and the strengthened Network journey. Receipt
-**b1d38e02bd75f2972047a703e3633eee859b7bda0d3c21e2deb8c7a41b6982e4**
-and 67 files were verified. Network processes **6163/19520** and **6211/19866**
-(PID/startTicks) each receive a real status 200 / 13-byte HTTP response through
-the Linux transport and original NSURLSession completion. Original JSON parsing
-and main-queue delivery produce Network: 42 in both composed screenshots;
-the real peer records two requests and both processes exit 0. Both label regions
-have SHA-256 **f644f4534ec9f43dced20328a20848908027283d18ce86692efbf40c4af929d4**;
-the second composed screenshot was also visually inspected. The 14-step Network
-journey takes 7.215 s; all four total 25.986 s, with 161 s overall feedback.
-This is a partial Linux result, not whole-suite, HTTPS or Android acceptance.
-
-The last completed full candidate,
-[39552256606](https://github.com/taowen/arlinux-xnu/actions/runs/39552256606), source
-**02fb54c6521a32b97cf9849fd6dee7445e224d2a**, regressed to **2/16**: extra kmsg
-ownership fields had reduced the original inline capacity, breaking real port
-preallocation and terminating shared sessions. Receipt
-**9470367e04640c6315b2b8c3b6dc2473ebcf0559aee1b6dae1113d5d7062d1c5**
-and 165 files were verified. The current correction adds auxiliary ownership
-storage to the allocation, preserving the original capacity; the four-app run
-above verifies that boundary again. Full revalidation of that same corrected
-runtime is [39553178774](https://github.com/taowen/arlinux-xnu/actions/runs/39553178774).
-At this update it is still running in toolchain preparation; do not replace its
-unknown result with the earlier 13/16 baseline or the selected 4/4 result.
+The current Web investigation uses the existing original-process collector to
+resolve WebCore's maximum-size query/configuration setter and the actual
+IOSurface property functions. It replaces unrelated standing QuartzCore dumps;
+no query result, GPU service or app effect is fabricated by diagnosis.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary

@@ -134,6 +134,15 @@ verified frame shows the real Counter label and blue button. External clicks
 change app state and composed pixels, including after a fresh-process relaunch.
 Remote context sharing is unsupported.
 
+WebCore's existing setMaximumSize(IntSize) platform interface supplies the same
+8192-per-dimension bound enforced by CPU CALayer backing. The actual iOS 16.7.16
+setter/getter ABI was inspected from the producing cache; no firmware address or
+version switch selects it. The original getter reads this configuration before
+attempting an IOKit limit query. This publishes software backing policy, not an
+IOSurface kernel driver, successful surface allocation or GPU capability.
+Unavailable exports retain the original unsupported path. WebContent process
+launch, surface sharing and actual DOM rendering still need end-to-end proof.
+
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor
 validation and final memory protections. Shared mappings follow XNU's existing

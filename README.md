@@ -4,9 +4,8 @@ An experimental Darwin/iOS compatibility environment for ARLinux on
 Linux/Android. **Counter and Swift/UIKit interaction, close/relaunch, Console
 and Foundation journeys pass on Linux. Notes also passes text entry, atomic save
 and new-process readback. Foreground Foundation HTTP now passes a real request,
-normal close and a second request from a new process. The current runtime passes
-a four-app subset; the full collection is being revalidated after a Mach-core
-regression and remains incomplete. Android remains unverified.** XNU, dyld and iOS userland may be
+normal close and a second request from a new process. The current full run passes
+14/16 journeys; Web and Share still fail, so the collection remains incomplete. Android remains unverified.** XNU, dyld and iOS userland may be
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.
 

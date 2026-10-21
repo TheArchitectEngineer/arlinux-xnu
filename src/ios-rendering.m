@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dlfcn.h>
+#include "ios-platform-abi.h"
 
 static id (*local_context)(id,SEL,id);
 static SEL local_selector;
@@ -25,7 +27,8 @@ static void software_layer_display(CALayer *layer,SEL selector)
     if (CGRectIsEmpty(bounds)) { layer.contents=nil; return; }
     double width=ceil(bounds.size.width*scale),height=ceil(bounds.size.height*scale);
     if (!isfinite(width) || !isfinite(height) || !isfinite(bounds.origin.x) || !isfinite(bounds.origin.y) ||
-        scale<=0 || width<1 || height<1 || width>8192 || height>8192) {
+        scale<=0 || width<1 || height<1 || width>ARLINUX_IOS_SOFTWARE_SURFACE_MAX ||
+        height>ARLINUX_IOS_SOFTWARE_SURFACE_MAX) {
         fprintf(stderr,"IOS_RENDER_CPU_BACKING_FAILED reason=unsupported-geometry width=%g height=%g scale=%g\n",width,height,(double)scale);
         abort();
     }
@@ -84,6 +87,34 @@ static id software_context(id cls,SEL selector,id options)
     if (!context) abort();
     return context;
 }
+static void configure_web_surface_limit(void)
+{
+    if(!objc_getClass("WKWebView"))return;
+    /* WebCore already provides this platform configuration interface, also
+     * used when its WebContent peer receives the UI process's maximum size.
+     * The measured iOS 16.7.16 ABI stores an IntSize (two int32s) from x0;
+     * its own maximumSize() reads that atomic value before consulting IOKit.
+     * Configure the real CPU backing limit, without inventing an IOSurface
+     * service, successful allocation, GPU resource or application effect. */
+    struct webcore_size { int32_t width,height; };
+    void *webcore=dlopen("/System/Library/PrivateFrameworks/WebCore.framework/WebCore",RTLD_NOW|RTLD_LOCAL|RTLD_NOLOAD);
+    void (*set_size)(struct webcore_size)=webcore ?
+        dlsym(webcore,"_ZN7WebCore9IOSurface14setMaximumSizeENS_7IntSizeE") : NULL;
+    struct webcore_size (*get_size)(void)=webcore ?
+        dlsym(webcore,"_ZN7WebCore9IOSurface11maximumSizeEv") : NULL;
+    if(!set_size || !get_size) {
+        fprintf(stderr,"IOS_WEB_SURFACE_LIMIT_UNAVAILABLE setter=%d getter=%d\n",set_size!=NULL,get_size!=NULL);
+        if(webcore)dlclose(webcore);
+        return; /* Keep the original unsupported path observable. */
+    }
+    struct webcore_size limit={ARLINUX_IOS_SOFTWARE_SURFACE_MAX,ARLINUX_IOS_SOFTWARE_SURFACE_MAX};
+    set_size(limit);
+    struct webcore_size actual=get_size();
+    fprintf(stderr,"IOS_WEB_SURFACE_LIMIT width=%d height=%d backend=cpu app_acceptance=false\n",
+        actual.width,actual.height);
+    if(actual.width!=limit.width || actual.height!=limit.height)abort();
+    dlclose(webcore);
+}
 void arlinux_ios_rendering_start(void)
 {
     Class cls=objc_getClass("CAContext");
@@ -106,4 +137,5 @@ void arlinux_ios_rendering_start(void)
         abort();
     }
     method_setImplementation(display,(IMP)software_layer_display);
+    configure_web_surface_limit();
 }
