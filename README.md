@@ -2,8 +2,8 @@
 
 An experimental Darwin/iOS compatibility environment for ARLinux on
 Linux/Android. **Counter and Swift/UIKit interaction, close/relaunch, Console
-and Foundation journeys pass on Linux. The full collection and Android remain
-unverified.** XNU, dyld and iOS userland may be
+and Foundation journeys pass on Linux. A full run passes 10/15 journeys; the
+collection still fails overall, and Android remains unverified.** XNU, dyld and iOS userland may be
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.
 

@@ -140,7 +140,9 @@ direct UIApplication workspace callback skipped that required binding. The
 software rendering boundary produces original Counter/Swift content and actual
 input changes. Their complete selected GUI journeys pass. Session scene registration, complete
 workspace enumeration, focus updates, host-process/remote endpoint support,
-broader input/normal-close coverage remain unfinished. Unsupported operations fail visibly.
+broader input/normal-close coverage remain unfinished. The concurrent relaunch
+and crash-isolation journeys pass, but do not certify UIKit activation-state
+transitions or arbitrary helper cleanup. Unsupported operations fail visibly.
 
 Use the existing injected platform library as the adaptation seam. Inspect the
 real UIKit/FrontBoard startup path to choose the narrowest framework-facing
@@ -155,9 +157,10 @@ wire support only when it is a small, reusable part of this contract; do not
 build a parallel service hierarchy solely to preserve an internal wire format.
 The removed legacy path had no passing GUI journey. Preserve verified shared
 transport/runtime behavior while implementing the replacement.
-First prove launch, external input and close/relaunch with Counter, then run
-Swift/UIKit and the independent app collection against the same adapter. An
-app-specific exception is evidence to revisit the boundary, not a new policy.
+Counter and Swift/UIKit now prove launch, external input and close/relaunch
+against the same adapter. The independent collection exposes remaining platform
+boundaries. An app-specific exception is evidence to revisit the boundary, not
+a new policy.
 
 | Owner | Responsibility | Must not own |
 | --- | --- | --- |

@@ -61,15 +61,45 @@ in evidence and do not satisfy the composed-pixel requirement.
   fault/unsupported-call/LLDB evidence remains available. Historical diagnosis
   failures and their repairs remain in Git/Actions rather than a growing diary.
 
-## Remaining scope and next experiment
+## Complete collection and remaining failures
 
-Run the complete 11-app, 13-journey collection and both multi-process scenarios
-against the same adapters. Storage persistence/text input, networking, WebKit,
-extension processes, concurrent focus and crash isolation are not certified by
-these four passes. Primary-pointer contacts and Alt-F4 are implemented; keyboard
-text, scroll and multitouch are not. Session lifecycle focus updates, complete
-workspace enumeration and broader process cleanup still require work.
-No third-party IPA or Android acceptance has passed. The goal remains active.
+Full run [39531478920](https://github.com/taowen/arlinux-xnu/actions/runs/39531478920),
+source **10a20ef4f8a436bbac8b7b778fb902f11143f4e2**, attempt 1, passed **10/15**
+journeys. The collection is still **failed**. Receipt
+**1817ca54ae9a32ab83ade79b62ee441ad4633382ed6ef5e130b6eb5c0e2c5b06**
+and all 202 retained files were verified. This run took 285 s; app journeys 149 s.
+
+Alongside the four basic apps, Canvas passes actual red-to-green repaint and
+normal close; Workers passes independent thread, mmap and asynchronous queue
+journeys. Concurrent relaunch passes all 29 steps, with Counter surviving the
+other app's normal close/relaunch. Crash isolation passes all 22 steps: Counter
+remains usable after Workers is deliberately killed, and a new Workers process
+can interact and exit normally. This proves those scenarios, not all process
+cleanup or UIKit scene activation-state transitions.
+
+| Remaining journey | Actual failure evidence / next boundary |
+| --- | --- |
+| Notes | Uncaught NSInvalidArgumentException: NSFileManager fileSystemRepresentationWithPath receives a nil/empty path while UIKeyboardCache initializes. Trace the actual home/cache path and Linux keyboard boundary before changing storage or UI behavior. Text/save/reopen has not passed. |
+| Network | Original os_variant internal-security query crashed on a fabricated partial status cache. The cache claim was removed; latest original process reaches further networking code but still faults, with NECP operations observed. No HTTP round trip has passed. |
+| Web | JavaScriptCore WTFCrashWithInfo during WebKit initialization; retain original caller/argument evidence before deciding the platform dependency. No DOM output accepted. |
+| Share | Original libdispatch reports a Mach semaphore timed-wait API failure during presentation. Extension launch/payload/retirement have not passed. |
+| Process | Child-side MIG reply-port construction fails after fork. Fork/session/rights inheritance needs implementation; this console capability is not an ordinary iOS app lifecycle claim. |
+
+Latest runtime source **f7a27d5966ba73523df8abefce12e3f2ce1ff376** was checked in
+run [39531756257](https://github.com/taowen/arlinux-xnu/actions/runs/39531756257).
+Console, Foundation, Counter and Swift still pass after removing the false OS
+variant cache. Network still fails at a different boundary. Receipt
+**468d08d9aeb0512b2f0cdf2baf7ed6b525e150b461709204c2928a2e9e2620a5**
+and 67 files were verified. The other ten journeys were not rerun at this source;
+the 10/15 result above belongs to its explicitly recorded earlier source.
+
+Primary-pointer contacts and Alt-F4 are implemented; keyboard text, scroll and
+multitouch are not. Home/container storage, networking, WebKit and extension
+services remain incomplete. Session lifecycle activation-state updates, complete
+workspace enumeration and broader process cleanup still require work. The next
+implementation boundary is the actual Notes keyboard/home/cache failure, while
+retaining the independently diagnosed network/semaphore/fork/WebKit failures.
+No third-party IPA or Android acceptance has passed. The full goal remains active.
 
 The successful selected run took **135 s** from dispatch to completion, including
 queues; the real app journeys took **22 s**. These are measurements, not a latency
