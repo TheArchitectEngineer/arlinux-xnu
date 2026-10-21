@@ -70,6 +70,29 @@
         {
           "do": "exit",
           "app": "workers"
+        },
+        {
+          "do": "launch",
+          "app": "workers"
+        },
+        {
+          "do": "see",
+          "text": "^Ready$"
+        },
+        {
+          "do": "click",
+          "text": "^Queue$"
+        },
+        {
+          "do": "see",
+          "text": "Queue: ?3"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "workers"
         }
       ]
     }
