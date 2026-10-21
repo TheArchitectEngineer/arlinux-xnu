@@ -249,6 +249,12 @@ use real openat2/mkdirat/renameat/unlinkat/fsync operations under declared stora
 with beneath/no-magic-link resolution; firmware and bundle writes are rejected.
 Darwin stat/fstatat share actual Linux statx metadata and guest record packing.
 This provides platform file operations, not Apple sandbox or data protection.
+Guarded file calls follow the integrated Darling adapter's real-open/close
+policy: cookie memory is validated and reads/writes/errors are real, but XNU
+descriptor guard enforcement, guard exceptions and CLOFORK protection are not
+installed. This is recorded explicitly in runtime traces. Normal fd protection
+for the runtime's own descriptors is retained. access(W_OK) checks actual Linux
+permissions within the declared writable roots instead of rejecting every path.
 End-to-end persistence acceptance belongs to the Notes journey in EXPERIMENT.md.
 
 Application groups are separate real directories beneath the explicit

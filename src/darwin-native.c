@@ -431,6 +431,37 @@ static void trace_guest_frames(const char *tag,const unsigned long long *r);
 #include "darwin-ui.h"
 #include "darwin-fork.h"
 
+static long native_close(int fd)
+{
+    if(fd==root_descriptor || fd==bundle_descriptor || fd==container_descriptor || native_group_descriptor(fd) ||
+       (native_trace_fd>2 && fd==native_trace_fd) || (native_http_event>=0 && fd==native_http_event))return -EBADF;
+    return RAW(SYS_close,fd,0,0,0,0,0);
+}
+static long native_guarded_file(const unsigned long long *r)
+{
+    /* Darling's guarded_open_np/guarded_close_np adapters perform real I/O
+     * without installing XNU's descriptor guard policy. Keep that boundary
+     * explicit: validate the readable cookie, but claim no guard/CLOFORK
+     * enforcement or guard exception delivery. No cookie is logged. */
+    uint64_t cookie;
+    if(!r[1] || guest_copy(&cookie,r[1],sizeof(cookie),0))return -EFAULT;
+    long result;
+    switch(r[D_ARM64_SYSCALL_REGISTER]) {
+    case D_SYS_GUARDED_OPEN:
+        if(r[2]&~(unsigned long)D_GUARD_KNOWN_MASK)return -EINVAL;
+        result=guest_openat(D_AT_FDCWD,r[0],r[3]&~(unsigned long)D_O_CLOFORK,r[4]);break;
+    case D_SYS_GUARDED_CLOSE: result=native_close((int)r[0]);break;
+    case D_SYS_GUARDED_WRITE: result=RAW(SYS_write,r[0],r[2],r[3],0,0,0);break;
+    case D_SYS_GUARDED_PWRITE: result=RAW(SYS_pwrite64,r[0],r[2],r[3],r[4],0,0);break;
+    case D_SYS_GUARDED_WRITEV: result=RAW(SYS_writev,r[0],r[2],(uint32_t)r[3],0,0,0);break;
+    default:return -ENOTSUP;
+    }
+    static unsigned int traces;
+    if(__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<8)
+        trace_record("DARWIN_GUARDED_FILE policy_enforced=0 syscall=0x",r[D_ARM64_SYSCALL_REGISTER],0,result);
+    return result;
+}
+
 /* Read only the original ARM64 frame records. A corrupt/inaccessible chain
  * stops collection; addresses are evidence, never a synthetic unwind. */
 static void trace_guest_frames(const char *tag,const unsigned long long *r)
@@ -886,8 +917,18 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         result=guest_path(r[0],buffer);
         if (result) break;
         if (r[1]&~(R_OK|W_OK|X_OK)) { result=-EINVAL; break; }
-        if (r[1]&W_OK) { result=-EROFS; break; }
         int directory=path_directory(&path);
+        if(r[1]&W_OK) {
+            /* Advisory access must agree with the writable storage roots used
+             * by open, including real permissions and beneath-root traversal. */
+            char relative[4096];long base=native_storage_path(directory,path,relative);
+            if(base<0) {result=base;break;}
+            struct open_how how={.flags=O_PATH|O_CLOEXEC,.resolve=RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS};
+            long fd=RAW(SYS_openat2,base,relative,&how,sizeof(how),0,0);
+            if(fd<0) {result=fd;break;}
+            result=RAW(SYS_faccessat2,fd,"",r[1],AT_EMPTY_PATH,0,0);
+            RAW(SYS_close,fd,0,0,0,0,0);break;
+        }
         result=RAW(SYS_faccessat,directory,path,r[1],0,0,0);
         break;
     }
@@ -898,6 +939,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case D_SYS_PROC_INFO: result=native_proc_info(r); break;
     case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_openat(D_AT_FDCWD,r[0],r[1],r[2]); break;
     case D_SYS_OPENAT: case D_SYS_OPENAT_NOCANCEL: result=guest_openat((int)r[0],r[1],r[2],r[3]); break;
+    case D_SYS_GUARDED_OPEN: case D_SYS_GUARDED_CLOSE: case D_SYS_GUARDED_WRITE:
+    case D_SYS_GUARDED_PWRITE: case D_SYS_GUARDED_WRITEV: result=native_guarded_file(r);break;
     case D_SYS_MKDIR: result=native_storage_mkdir(D_AT_FDCWD,r[0],r[1]); break;
     case D_SYS_MKDIRAT: result=native_storage_mkdir((int)r[0],r[1],r[2]); break;
     case D_SYS_UNLINK: case D_SYS_RMDIR:
@@ -908,9 +951,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case D_SYS_FSYNC: case D_SYS_FSYNC_NOCANCEL: result=RAW(SYS_fsync,r[0],0,0,0,0,0); break;
     case D_SYS_FSTATAT64: result=guest_stat(r[1],r[2],D_SYS_FSTATAT64,(int)r[0],r[3]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
-        result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor || (int)r[0]==container_descriptor || native_group_descriptor((int)r[0]) ||
-                (native_trace_fd>2 && (int)r[0]==native_trace_fd) ||
-                (native_http_event>=0 && (int)r[0]==native_http_event)) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
+        result=native_close((int)r[0]);break;
     case D_SYS_PREAD: case D_SYS_PREAD_NOCANCEL: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
     case D_SYS_LSEEK: result=RAW(SYS_lseek,r[0],r[1],r[2],0,0,0); break;
     case D_SYS_SHARED_REGION_CHECK: /* Actual process-private cache mappings prepared before entry. */

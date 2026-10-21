@@ -27,6 +27,8 @@ enum darwin_syscall {
     D_SYS_READ = 3,
     D_SYS_WRITE = 4,
     D_SYS_WRITEV=121, D_SYS_WRITEV_NOCANCEL=412,
+    D_SYS_GUARDED_OPEN=441, D_SYS_GUARDED_CLOSE=442,
+    D_SYS_GUARDED_WRITE=485, D_SYS_GUARDED_PWRITE=486, D_SYS_GUARDED_WRITEV=487,
     D_SYS_OPEN = 5,
     D_SYS_UNLINK=10, D_SYS_RENAME=128, D_SYS_MKDIR=136, D_SYS_RMDIR=137,
     D_SYS_FSYNC=95, D_SYS_FSYNC_NOCANCEL=408,
@@ -190,6 +192,8 @@ enum darwin_open_flags {
     D_O_NOFOLLOW = 0x100, D_O_DIRECTORY = 0x100000, D_O_CLOEXEC = 0x1000000,
     D_O_NOFOLLOW_ANY = 0x20000000
 };
+/* XNU guarded.h/fcntl.h; protection policy is separate from actual file I/O. */
+enum { D_GUARD_KNOWN_MASK=0x1f, D_O_CLOFORK=0x08000000 };
 /* XNU bsd/sys/{mount,dirent}.h LP64 inode64 records. */
 struct darwin_statfs64 {
     uint32_t block_size; int32_t io_size;
