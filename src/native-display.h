@@ -91,7 +91,7 @@ static void native_surface_leave(void *data,struct wl_surface *surface,struct wl
 static const struct wl_surface_listener native_wl_surface_listener={
     .enter=native_surface_enter,.leave=native_surface_leave
 };
-static void native_pointer_publish(struct native_wayland *w,uint32_t phase)
+static void native_input_publish(struct native_wayland *w,struct arlinux_ios_input_event event)
 {
     struct timespec now;
     need(!clock_gettime(CLOCK_MONOTONIC,&now),"Wayland input timestamp");
@@ -99,15 +99,19 @@ static void native_pointer_publish(struct native_wayland *w,uint32_t phase)
     uint32_t read=__atomic_load_n(&w->control->input_read,__ATOMIC_ACQUIRE);
     if(write-read>=ARLINUX_IOS_INPUT_CAPACITY) {
         __atomic_store_n(&w->control->input_overflow,1,__ATOMIC_RELEASE);
-        fprintf(stderr,"WAYLAND_POINTER_OVERFLOW app=%ld\n",(long)getppid());
+        fprintf(stderr,"WAYLAND_INPUT_OVERFLOW app=%ld\n",(long)getppid());
         return;
     }
-    w->control->input[write%ARLINUX_IOS_INPUT_CAPACITY]=(struct arlinux_ios_pointer_event){
-        .nanoseconds=(uint64_t)now.tv_sec*1000000000+now.tv_nsec,
-        .x_fixed=w->pointer_x,.y_fixed=w->pointer_y,.phase=phase,.sequence=write+1};
+    event.nanoseconds=(uint64_t)now.tv_sec*1000000000+now.tv_nsec;event.sequence=write+1;
+    w->control->input[write%ARLINUX_IOS_INPUT_CAPACITY]=event;
     __atomic_store_n(&w->control->input_write,write+1,__ATOMIC_RELEASE);
-    fprintf(stderr,"WAYLAND_POINTER app=%ld sequence=%u phase=%u x_fixed=%d y_fixed=%d\n",
-        (long)getppid(),write+1,phase,w->pointer_x,w->pointer_y);
+    fprintf(stderr,"WAYLAND_INPUT app=%ld sequence=%u kind=%u\n",(long)getppid(),write+1,event.kind);
+}
+static void native_pointer_publish(struct native_wayland *w,uint32_t phase)
+{
+    struct arlinux_ios_input_event event={.kind=ARLINUX_IOS_INPUT_POINTER,
+        .data.pointer={.x_fixed=w->pointer_x,.y_fixed=w->pointer_y,.phase=phase}};
+    native_input_publish(w,event);
 }
 static void native_pointer_cancel(struct native_wayland *w)
 {
@@ -182,10 +186,27 @@ static void native_keyboard_key(void *data,struct wl_keyboard *keyboard,uint32_t
     struct native_wayland *w=data;(void)keyboard;(void)serial;(void)time;
     /* Wayland keycodes use evdev; XKB's evdev map adds its eight-key offset.
      * Resolve the supplied keymap/modifier state, never assume an Alt bit. */
-    if(w->keyboard_focused && w->keys && state==WL_KEYBOARD_KEY_STATE_PRESSED &&
-       key<=UINT32_MAX-8 && xkb_state_key_get_one_sym(w->keys,key+8)==XKB_KEY_F4 &&
-       xkb_state_mod_name_is_active(w->keys,XKB_MOD_NAME_ALT,XKB_STATE_MODS_EFFECTIVE)>0)
-        native_request_close(w,"Alt-F4");
+    if(!w->keyboard_focused || !w->keys || state!=WL_KEYBOARD_KEY_STATE_PRESSED || key>UINT32_MAX-8)return;
+    xkb_keysym_t symbol=xkb_state_key_get_one_sym(w->keys,key+8);
+    if(symbol==XKB_KEY_F4 && xkb_state_mod_name_is_active(w->keys,XKB_MOD_NAME_ALT,XKB_STATE_MODS_EFFECTIVE)>0) {
+        native_request_close(w,"Alt-F4");return;
+    }
+    /* Window shortcuts are not text commits. General UIKit key-command/press
+     * events and repeat/IME composition remain separate unsupported capabilities. */
+    if(xkb_state_mod_name_is_active(w->keys,XKB_MOD_NAME_ALT,XKB_STATE_MODS_EFFECTIVE)>0 ||
+       xkb_state_mod_name_is_active(w->keys,XKB_MOD_NAME_CTRL,XKB_STATE_MODS_EFFECTIVE)>0 ||
+       xkb_state_mod_name_is_active(w->keys,XKB_MOD_NAME_LOGO,XKB_STATE_MODS_EFFECTIVE)>0)return;
+    struct arlinux_ios_input_event event={.kind=ARLINUX_IOS_INPUT_TEXT};
+    if(symbol==XKB_KEY_BackSpace)event.kind=ARLINUX_IOS_INPUT_DELETE;
+    else if(symbol==XKB_KEY_Return || symbol==XKB_KEY_KP_Enter)event.data.utf8[0]='\n';
+    else {
+        int bytes=xkb_state_key_get_utf8(w->keys,key+8,event.data.utf8,sizeof(event.data.utf8));
+        if(bytes<=0)return;
+        if(bytes>=(int)sizeof(event.data.utf8)) {
+            fprintf(stderr,"WAYLAND_TEXT_UNSUPPORTED reason=commit-too-large\n");return;
+        }
+    }
+    native_input_publish(w,event);
 }
 static void native_keyboard_modifiers(void *data,struct wl_keyboard *keyboard,uint32_t serial,uint32_t depressed,uint32_t latched,uint32_t locked,uint32_t group)
 {

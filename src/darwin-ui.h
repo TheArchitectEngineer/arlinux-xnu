@@ -142,7 +142,7 @@ static long native_ios_window_read(struct arlinux_ios_window_state *state,unsign
     }
     return -EAGAIN;
 }
-static long native_ios_pointer_read(struct arlinux_ios_pointer_event *event,unsigned long size)
+static long native_ios_input_read(struct arlinux_ios_input_event *event,unsigned long size)
 {
     if(!event || size!=sizeof(*event))return -EINVAL;
     if(!ui.control || native_current_thread()!=native_threads)return -ENOTSUP;
@@ -160,5 +160,5 @@ static long native_ios_pointer_read(struct arlinux_ios_pointer_event *event,unsi
 static const struct arlinux_ios_platform_api native_ios_platform_api={
     .version=ARLINUX_IOS_PLATFORM_ABI_VERSION,.size=sizeof(struct arlinux_ios_platform_api),
     .attach=native_ios_platform_attach,.read_window=native_ios_window_read,
-    .read_pointer=native_ios_pointer_read
+    .read_input=native_ios_input_read
 };

@@ -51,7 +51,7 @@ struct darwin_frame_control {
     /* Single host writer. Odd window_sequence means publication in progress. */
     uint32_t window_sequence,width,height,refresh_millihz,window_flags;
     uint32_t input_read,input_write,input_overflow;
-    struct arlinux_ios_pointer_event input[ARLINUX_IOS_INPUT_CAPACITY];
+    struct arlinux_ios_input_event input[ARLINUX_IOS_INPUT_CAPACITY];
 };
 void darwin_native_ui_api(const struct darwin_ui_api *api);
 void darwin_native_ui_output(void *pixels,uint32_t width,uint32_t height,

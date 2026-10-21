@@ -49,6 +49,18 @@ static const struct arlinux_ios_platform_api *input_host;
 static UITouch *contact;
 static CGPoint contact_point;
 static unsigned int pointer_bindings;
+static id (*original_image_cache_init)(id,SEL,BOOL);
+static id image_cache_without_apple_disk(id object,SEL selector,BOOL local)
+{
+    (void)local;
+    /* The measured original initializer always constructs its NSCache. Only
+     * local-access mode enters CheckSandboxAccess for Apple's shared cache
+     * container. This backend supplies no such container: preserve the real
+     * non-local initializer instead of fabricating its path or a cache hit.
+     * Later original cache operations/rendering still determine actual output. */
+    fprintf(stderr,"IOS_INPUT_IMAGE_CACHE apple_local_disk=false\n");
+    return original_image_cache_init(object,selector,NO);
+}
 
 static void require_input_method(Class cls,const char *selector,const char *types)
 {
@@ -116,7 +128,36 @@ static void deliver_contact(UITouchPhase phase,uint64_t time)
     [app sendEvent:event];CFRelease(hand);
     if(!touching) {[event _clearTouches];[contact release];contact=nil;}
 }
-static void pointer_tick(CFRunLoopTimerRef timer,void *context)
+static id<UIKeyInput> find_text_target(UIView *view,unsigned int depth)
+{
+    if(!view || depth>64)return nil;
+    if(view.isFirstResponder && [view conformsToProtocol:@protocol(UIKeyInput)])return (id<UIKeyInput>)view;
+    for(UIView *child in view.subviews) {
+        id<UIKeyInput> target=find_text_target(child,depth+1);
+        if(target)return target;
+    }
+    return nil;
+}
+static void deliver_text(const struct arlinux_ios_input_event *event)
+{
+    UIApplication *app=[UIApplication sharedApplication];
+    id<UIKeyInput> target=find_text_target(app.keyWindow,0);
+    if(!target)for(UIWindow *window in app.windows) {
+        target=find_text_target(window,0);if(target)break;
+    }
+    if(!target) {fprintf(stderr,"IOS_TEXT_INPUT_NO_RESPONDER kind=%u\n",event->kind);return;}
+    /* UIKeyInput is the framework's text-commit boundary. Original editing,
+     * delegate callbacks, selection and drawing stay in UIKit. Never search
+     * for an app selector, alter a control value, or call its target/action. */
+    fprintf(stderr,"IOS_TEXT_INPUT kind=%u responder=%s\n",event->kind,class_getName(object_getClass(target)));
+    if(event->kind==ARLINUX_IOS_INPUT_DELETE) {[target deleteBackward];return;}
+    size_t size=strnlen(event->data.utf8,sizeof(event->data.utf8));
+    NSString *text=size<sizeof(event->data.utf8) ?
+        [[[NSString alloc] initWithBytes:event->data.utf8 length:size encoding:NSUTF8StringEncoding] autorelease] : nil;
+    if(!text) {fprintf(stderr,"IOS_TEXT_INPUT_INVALID_UTF8\n");abort();}
+    [target insertText:text];
+}
+static void input_tick(CFRunLoopTimerRef timer,void *context)
 {
     (void)timer;(void)context;
     @autoreleasepool {
@@ -126,17 +167,23 @@ static void pointer_tick(CFRunLoopTimerRef timer,void *context)
             (ARLINUX_IOS_WINDOW_ACTIVE|ARLINUX_IOS_WINDOW_BACKEND_ALIVE);
         if(!active && contact)deliver_contact(UITouchPhaseCancelled,mach_absolute_time());
         for(unsigned int i=0;i<ARLINUX_IOS_INPUT_CAPACITY;i++) {
-            struct arlinux_ios_pointer_event pointer;
-            long status=input_host->read_pointer(&pointer,sizeof(pointer));
+            struct arlinux_ios_input_event pointer;
+            long status=input_host->read_input(&pointer,sizeof(pointer));
             if(!status)break;
             if(status==-EOVERFLOW) {deliver_contact(UITouchPhaseCancelled,mach_absolute_time());break;}
             if(status<0) {fprintf(stderr,"IOS_INPUT_READ_FAILED status=%ld\n",status);abort();}
             if(!active)continue;
+            if(pointer.kind==ARLINUX_IOS_INPUT_TEXT || pointer.kind==ARLINUX_IOS_INPUT_DELETE) {
+                deliver_text(&pointer);continue;
+            }
+            if(pointer.kind!=ARLINUX_IOS_INPUT_POINTER) {
+                fprintf(stderr,"IOS_INPUT_INVALID_KIND kind=%u\n",pointer.kind);abort();
+            }
             bind_pointer();
-            if(pointer.phase==ARLINUX_IOS_POINTER_DOWN) {
+            if(pointer.data.pointer.phase==ARLINUX_IOS_POINTER_DOWN) {
                 if(contact)deliver_contact(UITouchPhaseCancelled,pointer.nanoseconds);
                 UIWindow *window=[UIApplication sharedApplication].keyWindow;
-                CGPoint point=[window convertPoint:CGPointMake(pointer.x_fixed/256.0,pointer.y_fixed/256.0) fromWindow:nil];
+                CGPoint point=[window convertPoint:CGPointMake(pointer.data.pointer.x_fixed/256.0,pointer.data.pointer.y_fixed/256.0) fromWindow:nil];
                 UIView *view=[window hitTest:point withEvent:nil];
                 if(!window || !view)continue;
                 contact=[[UITouch alloc] init];[contact setWindow:window];[contact setTapCount:1];
@@ -144,9 +191,9 @@ static void pointer_tick(CFRunLoopTimerRef timer,void *context)
                 [contact setView:view];[contact _setIsFirstTouchForView:YES];
                 deliver_contact(UITouchPhaseBegan,pointer.nanoseconds);
             } else if(contact) {
-                contact_point=[contact.window convertPoint:CGPointMake(pointer.x_fixed/256.0,pointer.y_fixed/256.0) fromWindow:nil];
-                UITouchPhase phase=pointer.phase==ARLINUX_IOS_POINTER_MOVE ? UITouchPhaseMoved :
-                    pointer.phase==ARLINUX_IOS_POINTER_UP ? UITouchPhaseEnded : UITouchPhaseCancelled;
+                contact_point=[contact.window convertPoint:CGPointMake(pointer.data.pointer.x_fixed/256.0,pointer.data.pointer.y_fixed/256.0) fromWindow:nil];
+                UITouchPhase phase=pointer.data.pointer.phase==ARLINUX_IOS_POINTER_MOVE ? UITouchPhaseMoved :
+                    pointer.data.pointer.phase==ARLINUX_IOS_POINTER_UP ? UITouchPhaseEnded : UITouchPhaseCancelled;
                 deliver_contact(phase,pointer.nanoseconds);
             }
         }
@@ -177,6 +224,10 @@ static void local_keyboard_start(id receiver,SEL selector)
 void arlinux_ios_input_start(const struct arlinux_ios_platform_api *api)
 {
     input_host=api;
+    Class imageCache=objc_getClass("TIImageCacheClient");
+    require_input_method(imageCache,"initWithLocalAccess:","@20@0:8B16");
+    Method imageInit=class_getInstanceMethod(imageCache,sel_registerName("initWithLocalAccess:"));
+    original_image_cache_init=(void *)method_setImplementation(imageInit,(IMP)image_cache_without_apple_disk);
     Class cls=objc_getClass("_UIRemoteKeyboards");
     const struct { const char *selector,*types; IMP implementation; } bindings[]={
         {"applicationKeyWindowDidChange:","v24@0:8@16",(IMP)local_focus_update},
@@ -193,7 +244,7 @@ void arlinux_ios_input_start(const struct arlinux_ios_platform_api *api)
         method_setImplementation(method,bindings[i].implementation);
     }
     CFRunLoopTimerRef timer=CFRunLoopTimerCreate(NULL,CFAbsoluteTimeGetCurrent()+0.016,
-        0.016,0,0,pointer_tick,NULL);
+        0.016,0,0,input_tick,NULL);
     if(!timer)abort();
     CFRunLoopAddTimer(CFRunLoopGetMain(),timer,kCFRunLoopCommonModes);CFRelease(timer);
 }
