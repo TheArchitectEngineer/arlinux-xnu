@@ -318,9 +318,11 @@ class Processes:
                     arguments+=['--lookup',image,symbol]
                 arguments+=['--list-symbols',image,'xpcservice']
             if 'service=com.apple.WebKit.GPU ' in session_text:
-                # Original GPU worker fails mapping the transferred stream handle.
+                # Shared stream mapping now works; inspect original rendering policy.
                 image='/System/Library/Frameworks/WebKit.framework/WebKit'
-                arguments+=['--lookup',image,'__ZN6WebKit12SharedMemory3mapERKNS0_6HandleENS0_10ProtectionE']
+                arguments+=['--lookup-fragment',image,'setUseGPUProcessForDOMRendering',
+                    '--objc-method',image,'WKPreferences','_features',
+                    '--objc-method',image,'WKPreferences','_setEnabled:forFeature:']
             command(*arguments,capture_output=True)
         except (OSError,RuntimeError,subprocess.SubprocessError) as error:
             self.diagnostic['collectionErrors'].append('Service runtime symbolication: '+str(error))
