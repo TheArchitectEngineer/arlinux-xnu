@@ -118,9 +118,11 @@ static long native_sysctl_value(const unsigned long long *r,int node)
         return native_sysctl_output(r,&empty,1);
     }
     if(node==NATIVE_SYSCTL_OSVARIANT) {
-        uint64_t value=D_OS_VARIANT_INITIAL_BITS;
-        for(unsigned int i=0;i<D_OS_VARIANT_STATUS_FIELDS;i++)
-            value|=(uint64_t)D_OS_VARIANT_STATUS_NO<<(i*D_OS_VARIANT_STATUS_WIDTH);
+        /* XNU kern_sysctl.c starts this opaque launchd-owned cache at zero.
+         * No Apple launchd initialized it here. Let this userland compute its
+         * own checks instead of claiming a partial, version-specific cache.
+         * Libc libdarwin/variant.c treats zero as an uncached result. */
+        uint64_t value=0;
         return native_sysctl_output(r,&value,sizeof(value));
     }
     return -ENOENT;

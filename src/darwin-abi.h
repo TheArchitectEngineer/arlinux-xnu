@@ -371,13 +371,6 @@ struct darwin_proc_unique {
 };
 _Static_assert(sizeof(struct darwin_proc_unique)==56,"Darwin process unique identity wire layout");
 
-/* Libc-1272 libdarwin/variant.c cached-status wire encoding. */
-#define D_OS_VARIANT_INITIAL_BITS UINT64_C(0x70000000f0000000)
-enum darwin_variant_status {
-    D_OS_VARIANT_STATUS_NO=2, D_OS_VARIANT_STATUS_WIDTH=2,
-    D_OS_VARIANT_STATUS_FIELDS=6
-};
-
 /* XNU mach/message.h audit_token_t (bsd/security/audit identity ordering). */
 struct darwin_audit_token {
     uint32_t audit_uid,euid,egid,ruid,rgid,pid,session,idversion;
