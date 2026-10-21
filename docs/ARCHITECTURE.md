@@ -456,3 +456,11 @@ Anonymous VM_FLAGS_PURGABLE allocations start with real nonvolatile, zero-filled
 backing. This flag does not itself discard memory; later volatile/discard state
 control remains unsupported. Do not report such control as completed or infer
 shared-memory/IPC conformance from initial allocation success.
+
+Interrupt-enter can receive a completed outer RPC reply before its own reply.
+The native client uses Darling's existing push_reply protocol to return that
+exact body and its SCM_RIGHTS descriptors to the server's interrupt stack. A
+pipe acknowledgement proves the server copied the body before the generated
+buffer can be reused. Original received FDs close after transfer; interrupt_exit
+lets the server deliver the saved outer reply normally. No fabricated reply or
+parallel client-side reply queue is introduced.

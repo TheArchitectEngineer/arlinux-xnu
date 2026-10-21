@@ -100,7 +100,60 @@ static void darling_unblock(uint64_t *saved)
 #define dserver_rpc_hooks_atomic_begin darling_block
 #define dserver_rpc_hooks_atomic_end darling_unblock
 #define dserver_rpc_hooks_get_interrupt_status() (-EINTR)
-#define dserver_rpc_hooks_push_reply(fd,msg,size) darling_abort("unexpected deferred RPC reply")
+/* Follow Darling libsystem_kernel resources/dserver-rpc-defs.c: an outer
+ * reply can arrive before interrupt_enter. Return that exact reply to the
+ * server's interrupt stack and await its pipe acknowledgement before the
+ * generated receive buffer is reused. No local synthetic reply or queue. */
+static void darling_push_reply(int fd,const struct msghdr *reply,size_t size)
+{
+    if(reply->msg_flags&(MSG_TRUNC|MSG_CTRUNC) || reply->msg_iovlen!=1 ||
+       size<sizeof(dserver_rpc_replyhdr_t) || size>reply->msg_iov[0].iov_len)
+        darling_abort("invalid deferred reply envelope");
+    int descriptors[DSERVER_RPC_REPLY_MAX_FD_COUNT+1];size_t count=0;
+    for(struct cmsghdr *item=CMSG_FIRSTHDR(reply);item;item=CMSG_NXTHDR((struct msghdr *)reply,item)) {
+        if(item->cmsg_level!=SOL_SOCKET || item->cmsg_type!=SCM_RIGHTS ||
+           item->cmsg_len<CMSG_LEN(0) ||
+           item->cmsg_len>(size_t)((char *)reply->msg_control+reply->msg_controllen-(char *)item))
+            darling_abort("invalid deferred reply descriptors");
+        size_t bytes=item->cmsg_len-CMSG_LEN(0);
+        if(bytes%sizeof(int) || bytes/sizeof(int)>DSERVER_RPC_REPLY_MAX_FD_COUNT-count)
+            darling_abort("excess deferred reply descriptors");
+        darling_copy(descriptors+count,CMSG_DATA(item),bytes);count+=bytes/sizeof(int);
+    }
+    int pipe_ends[2];
+    if(RAW(SYS_pipe2,pipe_ends,O_CLOEXEC,0,0,0,0))darling_abort("deferred reply pipe");
+    descriptors[count]=pipe_ends[1];
+    dserver_rpc_call_push_reply_t call={
+        .header={.number=dserver_callnum_push_reply,
+            .pid=RAW(SYS_getpid,0,0,0,0,0,0),.tid=RAW(SYS_gettid,0,0,0,0,0,0),
+            .architecture=dserver_rpc_architecture_arm64},
+        .reply=(uint64_t)(uintptr_t)reply->msg_iov[0].iov_base,.reply_size=size};
+    struct iovec data={.iov_base=&call,.iov_len=sizeof(call)};
+    union {struct cmsghdr alignment;char bytes[CMSG_SPACE(sizeof(descriptors))];} control={0};
+    struct msghdr message={.msg_name=&darling_address,.msg_namelen=sizeof(darling_address),
+        .msg_iov=&data,.msg_iovlen=1,.msg_control=control.bytes,
+        .msg_controllen=CMSG_SPACE((count+1)*sizeof(int))};
+    struct cmsghdr *rights=CMSG_FIRSTHDR(&message);
+    rights->cmsg_level=SOL_SOCKET;rights->cmsg_type=SCM_RIGHTS;
+    rights->cmsg_len=CMSG_LEN((count+1)*sizeof(int));
+    darling_copy(CMSG_DATA(rights),descriptors,(count+1)*sizeof(int));
+    long sent;
+    do {sent=RAW(SYS_sendmsg,fd,&message,MSG_NOSIGNAL,0,0,0);}while(sent==-EINTR);
+    if(sent!=(long)sizeof(call))darling_abort("return deferred reply to server");
+    RAW(SYS_close,pipe_ends[1],0,0,0,0,0);
+    unsigned char acknowledgement=0;long received;
+    do {received=RAW(SYS_read,pipe_ends[0],&acknowledgement,1,0,0,0);}while(received==-EINTR);
+    RAW(SYS_close,pipe_ends[0],0,0,0,0,0);
+    if(received!=1 || acknowledgement!=1)darling_abort("deferred reply acknowledgement");
+    /* SCM_RIGHTS gave the server its own references; the received originals
+     * belong to this hook and must not leak when its buffer is overwritten. */
+    for(size_t i=0;i<count;i++)RAW(SYS_close,descriptors[i],0,0,0,0,0);
+    static unsigned int traces;
+    if(__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT)
+        trace_record("DARLING_RPC_REPLY_SAVED bytes=0x",size,count,
+            ((const dserver_rpc_replyhdr_t *)reply->msg_iov[0].iov_base)->number);
+}
+#define dserver_rpc_hooks_push_reply darling_push_reply
 /* The exact upstream generator output is built on the runner and consumed as
  * a system include, retaining upstream diagnostics policy for generated code. */
 #include <src/rpc.c>

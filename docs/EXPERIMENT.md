@@ -87,7 +87,7 @@ Full run [39600777191](https://github.com/taowen/arlinux-xnu/actions/runs/396007
 source **dae77eae50bc105f1edfbd2ed05aa0ba38a726b1**, attempt 1, passes **14/16**
 journeys. The collection is still **failed**. Receipt
 **6fd98c60bb808417cd4970903b07a642fab9d92547b42e96dc172cd018a50e72**
-and all 252 retained files were verified. Individual journeys total 155.062 s,
+and all 252 retained files were verified. Individual journeys total 155.058 s,
 including 29.284 s of diagnosis. Total feedback is 309 s; firmware transfer takes
 15.53 s, toolchain setup 66 s and pinned-userland preparation 45 s. The common
 getrlimit and real page-protection fixes retain all 14 previously passing flows.
@@ -137,6 +137,19 @@ backing; volatile/discard control remains unsupported. It also gives only Web's
 first DOM observation a 45-second cold-start budget, retaining actual pixels,
 external input and normal-close requirements. Runner validation is pending.
 These are not GPU hardware acceleration, DOM or helper-lifecycle acceptance.
+
+Selected run [39601926927](https://github.com/taowen/arlinux-xnu/actions/runs/39601926927),
+source **9996fc2144aa600bf3b37d93a0f30d11cfea63ff**, attempt 1, passes Counter
+but fails Web after its explicit 45-second first-DOM budget (1/2, partial).
+Receipt **7426ae3af440aaeb9546f7573ec0d4f0b15f61affd7b2266aafbe864e95cebca**
+and 43 files were verified. App **5979/17318** shares owned session **5976/17313**;
+WebContent **6020/17594** exits 125 at the former deferred-reply fatal hook.
+The same boundary previously ended Networking in the full run. This run does
+not reach/certify the new buffer allocation. The candidate replaces the fatal
+hook with integrated Darling's real push_reply/pipe-acknowledgement protocol,
+preserving the original body and FD ownership for normal outer-call completion.
+Total feedback is 214 s; journeys take 69.801 s including 18.161 s of diagnosis.
+It remains a failed Web journey, not a timeout-only success. Validation pending.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
