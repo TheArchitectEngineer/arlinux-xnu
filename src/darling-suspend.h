@@ -12,6 +12,7 @@ struct native_arm_thread_state64 {
 struct native_arm_neon_state64 {
     _Alignas(16) unsigned char vectors[32][16];
     uint32_t fpsr,fpcr;
+    uint64_t padding;
 };
 _Static_assert(sizeof(struct native_arm_thread_state64)==272,"ARM_THREAD_STATE64 ABI");
 _Static_assert(sizeof(struct native_arm_neon_state64)==528,"ARM_NEON_STATE64 ABI");
@@ -43,7 +44,7 @@ static void darling_suspend(int signal,siginfo_t *info,void *opaque)
     state.sp=context->uc_mcontext.sp;state.pc=context->uc_mcontext.pc;
     state.cpsr=context->uc_mcontext.pstate;state.padding=0;
     darling_copy(neon.vectors,floating->vregs,sizeof(neon.vectors));
-    neon.fpsr=floating->fpsr;neon.fpcr=floating->fpcr;
+    neon.fpsr=floating->fpsr;neon.fpcr=floating->fpcr;neon.padding=0;
     static unsigned int observations;
     int observe=__atomic_fetch_add(&observations,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT;
     if(observe)trace_record("DARLING_THREAD_SUSPEND_BEGIN pc=0x",state.pc,state.sp,0);
