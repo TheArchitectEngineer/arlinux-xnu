@@ -78,8 +78,8 @@ original-process collector also reads bounded stacks from its owning session
 and at most two live original helper PID/start-tick identities, preferring the
 latest live instance of each distinct service. Reused/exited PIDs
 are marked unavailable; further helpers are explicitly counted as omitted.
-Service-log symbolication follows these attachments to include exits during
-collection. These attachments run after the failed effect and never count as service
+Service-log symbolication runs after the owning session has retired and its
+log is closed, to include exits/faults during collection and cleanup. These attachments run after the failed effect and never count as service
 readiness or normal exit. Helpers that have not reached Mach-O entry may still
 be in host cache preparation; inspect the original stacks before adding IPC.
 The runner session explicitly enables the existing stop-on-fault option for its

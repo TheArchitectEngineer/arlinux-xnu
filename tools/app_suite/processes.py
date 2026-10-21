@@ -276,6 +276,14 @@ class Processes:
                 record['collectionError']=str(error)
         self.diagnostic['serviceProcesses']=observations
         self.diagnostic['serviceProcessesOmitted']=max(0,len(started)-len(selected))
+
+    def symbolize_retired_services(self):
+        # The session is now retired and its log closed. Symbolicating while
+        # helpers still execute can miss the actual exit/fault during teardown.
+        if self.reference or self.diagnostic is None:return
+        log=self.output/(self.case['id']+'--session')/'session.log'
+        if not log.is_file() or 'SESSION_SERVICE_STARTED ' not in log.read_text(errors='replace'):return
+        cache=ROOT/'build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64'
         try:
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,log,
                 self.directory/'service-runtime.symbols.json']

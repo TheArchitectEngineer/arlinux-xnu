@@ -33,7 +33,14 @@ def main():
         started=time.monotonic()
         try:
             with (AppleSession if args.reference else Session)(output/(case['id']+'--session')) as session:
-                result=Case(case,apps,session.identity,session.environment,output,args.reference).run()
+                journey=Case(case,apps,session.identity,session.environment,output,args.reference)
+                result=journey.run()
+            if result['status']=='failed':
+                diagnosis_started=time.monotonic()
+                journey.symbolize_retired_services()
+                failed=next((step for step in result['steps'] if step['status']=='failed'),None)
+                if failed is not None:
+                    failed['diagnosticSeconds']=round(failed.get('diagnosticSeconds',0)+time.monotonic()-diagnosis_started,3)
         except (OSError,RuntimeError,subprocess.SubprocessError) as error:
             result={'id':case['id'],'status':'failed','error':str(error),'steps':[], 'infrastructureFailure':True}
         result['journeySeconds']=round(time.monotonic()-started,3)
