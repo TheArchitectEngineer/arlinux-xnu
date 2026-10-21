@@ -33,7 +33,7 @@ returns={int(pc,16):int(index,16) for index,pc in re.findall(
     r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED)_FRAME nr=0x([0-9a-fA-F]+) pc=(0x[0-9a-fA-F]+)',trace)}
 unsupported_returns={int(pc,16) for pc in re.findall(
     r'DARWIN_UNIMPLEMENTED_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
-unsupported_stack_returns={int(pc,16) for index,pc in re.findall(r'frame #(\d+): (0x[0-9a-fA-F]+)',trace) if int(index)>0}
+stack_returns={int(pc,16) for index,pc in re.findall(r'frame #(\d+): (0x[0-9a-fA-F]+)',trace) if int(index)>0}
 def lookup_pc(pc):return pc-4 if (pc in returns or pc in stack_returns) and pc not in faults else pc
 fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(
     r'DARWIN_FAULT_REGISTER index=0x([0-9a-fA-F]+) pc=\S+ result=0x([0-9a-fA-F]+)',trace) if int(index,16)<31]

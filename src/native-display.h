@@ -10,6 +10,8 @@
 #include <sys/eventfd.h>
 #include <time.h>
 #include <linux/input-event-codes.h>
+#include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include "ios-platform-abi.h"
 static int native_display_enabled;
 static void *native_display_pixels;
@@ -23,6 +25,11 @@ struct native_wayland {
     struct wl_surface *surface;
     struct wl_seat *seat;
     struct wl_pointer *pointer;
+    struct wl_keyboard *keyboard;
+    struct xkb_context *key_context;
+    struct xkb_keymap *keymap;
+    struct xkb_state *keys;
+    int keyboard_focused;
     int32_t pointer_x,pointer_y;
     int pointer_inside,pointer_down;
     struct native_wl_buffer buffers[2];
@@ -140,6 +147,55 @@ static const struct wl_pointer_listener native_pointer_listener={
     .enter=native_pointer_enter,.leave=native_pointer_leave,.motion=native_pointer_motion,
     .button=native_pointer_button,.axis=native_pointer_axis
 };
+static void native_request_close(struct native_wayland *w,const char *source)
+{
+    fprintf(stderr,"WAYLAND_CLOSE app=%ld source=%s\n",(long)getppid(),source);
+    native_window_publish(w,native_window_flags(w)|ARLINUX_IOS_WINDOW_CLOSE_REQUESTED);
+    native_pointer_cancel(w);w->running=0;
+}
+static void native_keyboard_keymap(void *data,struct wl_keyboard *keyboard,uint32_t format,int32_t fd,uint32_t size)
+{
+    struct native_wayland *w=data;(void)keyboard;
+    need(format==WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 && size && size<=1024*1024,"Wayland XKB keymap format/size");
+    char *map=mmap(NULL,size,PROT_READ,MAP_PRIVATE,fd,0);close(fd);
+    need(map!=MAP_FAILED && memchr(map,0,size),"Wayland XKB keymap mapping");
+    if(!w->key_context)w->key_context=xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    need(w->key_context!=NULL,"Wayland XKB context");
+    if(w->keys)xkb_state_unref(w->keys);
+    if(w->keymap)xkb_keymap_unref(w->keymap);
+    w->keymap=xkb_keymap_new_from_string(w->key_context,map,XKB_KEYMAP_FORMAT_TEXT_V1,XKB_KEYMAP_COMPILE_NO_FLAGS);
+    munmap(map,size);need(w->keymap!=NULL,"Wayland XKB keymap");
+    w->keys=xkb_state_new(w->keymap);need(w->keys!=NULL,"Wayland XKB state");
+}
+static void native_keyboard_enter(void *data,struct wl_keyboard *keyboard,uint32_t serial,struct wl_surface *surface,struct wl_array *keys)
+{
+    struct native_wayland *w=data;(void)keyboard;(void)serial;(void)keys;
+    w->keyboard_focused=surface==w->surface;
+}
+static void native_keyboard_leave(void *data,struct wl_keyboard *keyboard,uint32_t serial,struct wl_surface *surface)
+{
+    struct native_wayland *w=data;(void)keyboard;(void)serial;(void)surface;
+    w->keyboard_focused=0;native_pointer_cancel(w);
+}
+static void native_keyboard_key(void *data,struct wl_keyboard *keyboard,uint32_t serial,uint32_t time,uint32_t key,uint32_t state)
+{
+    struct native_wayland *w=data;(void)keyboard;(void)serial;(void)time;
+    /* Wayland keycodes use evdev; XKB's evdev map adds its eight-key offset.
+     * Resolve the supplied keymap/modifier state, never assume an Alt bit. */
+    if(w->keyboard_focused && w->keys && state==WL_KEYBOARD_KEY_STATE_PRESSED &&
+       key<=UINT32_MAX-8 && xkb_state_key_get_one_sym(w->keys,key+8)==XKB_KEY_F4 &&
+       xkb_state_mod_name_is_active(w->keys,XKB_MOD_NAME_ALT,XKB_STATE_MODS_EFFECTIVE)>0)
+        native_request_close(w,"Alt-F4");
+}
+static void native_keyboard_modifiers(void *data,struct wl_keyboard *keyboard,uint32_t serial,uint32_t depressed,uint32_t latched,uint32_t locked,uint32_t group)
+{
+    struct native_wayland *w=data;(void)keyboard;(void)serial;
+    if(w->keys)xkb_state_update_mask(w->keys,depressed,latched,locked,0,0,group);
+}
+static const struct wl_keyboard_listener native_keyboard_listener={
+    .keymap=native_keyboard_keymap,.enter=native_keyboard_enter,.leave=native_keyboard_leave,
+    .key=native_keyboard_key,.modifiers=native_keyboard_modifiers
+};
 static void native_seat_capabilities(void *data,struct wl_seat *seat,uint32_t capabilities)
 {
     struct native_wayland *w=data;
@@ -148,6 +204,12 @@ static void native_seat_capabilities(void *data,struct wl_seat *seat,uint32_t ca
         wl_pointer_add_listener(w->pointer,&native_pointer_listener,w);
     } else if(!(capabilities&WL_SEAT_CAPABILITY_POINTER) && w->pointer) {
         native_pointer_cancel(w);wl_pointer_destroy(w->pointer);w->pointer=NULL;w->pointer_inside=0;
+    }
+    if((capabilities&WL_SEAT_CAPABILITY_KEYBOARD) && !w->keyboard) {
+        w->keyboard=wl_seat_get_keyboard(seat);
+        wl_keyboard_add_listener(w->keyboard,&native_keyboard_listener,w);
+    } else if(!(capabilities&WL_SEAT_CAPABILITY_KEYBOARD) && w->keyboard) {
+        wl_keyboard_destroy(w->keyboard);w->keyboard=NULL;w->keyboard_focused=0;
     }
 }
 static const struct wl_seat_listener native_seat_listener={.capabilities=native_seat_capabilities};
@@ -241,8 +303,7 @@ static void native_toplevel_configure(void *data,struct xdg_toplevel *top,int32_
 static void native_toplevel_close(void *data,struct xdg_toplevel *top)
 {
     struct native_wayland *w=data; (void)top;
-    native_window_publish(w,native_window_flags(w)|ARLINUX_IOS_WINDOW_CLOSE_REQUESTED);
-    w->running=0;
+    native_request_close(w,"xdg-toplevel");
 }
 static const struct xdg_toplevel_listener native_toplevel_listener={
     .configure=native_toplevel_configure,.close=native_toplevel_close
