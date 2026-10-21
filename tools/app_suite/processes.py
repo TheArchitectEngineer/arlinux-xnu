@@ -112,6 +112,7 @@ class Processes:
         # Read the failed original process, not a replay that changes scheduling.
         if self.reference:
             return  # actual exit/status and screenshot retained; no Linux cache/LLDB on Apple host
+        self.diagnostic={'collectionErrors':[]}
         cache = ROOT / 'build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64'
         for item in self.processes.values():
             runtime = Path(item['runtime'])
@@ -135,9 +136,13 @@ class Processes:
                 arguments.extend(['--lookup-bytes','4096'])
                 for symbol in ('-[CALayer display]','-[CALayer _display]'):
                     arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore',symbol])
-            result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
-            runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
-            if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))
+            try:
+                result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
+                runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
+                if result.returncode:raise RuntimeError('Original-process symbolication failed; inspect '+str(runtime.with_suffix('.symbolication.log')))
+            except (RuntimeError,OSError,subprocess.SubprocessError) as error:
+                self.diagnostic['collectionErrors'].append(str(error))
+                # Independent original-process stacks must still be collected.
         candidates = sorted(self.processes.values(), key=lambda item: item['app'] != self.current)
         live = next((item for item in candidates if item['process'].poll() is None), None)
         if not live:
@@ -149,7 +154,11 @@ class Processes:
         # not Mach-O bytes or an arbitrary heap dump. The actual x19 object
         # must lie entirely in a writable non-executable original VM range.
         runtime=Path(live['runtime']).read_text(errors='replace')
-        symbols=json.loads(Path(live['runtime']).with_suffix('.symbols.json').read_text())
+        symbol_path=Path(live['runtime']).with_suffix('.symbols.json')
+        try:symbols=json.loads(symbol_path.read_text())
+        except (OSError,ValueError) as error:
+            self.diagnostic['collectionErrors'].append('Runtime symbols unavailable: '+str(error))
+            symbols=[]
         if any('Atlas5Image2mlEv' in record.get('nearestSymbol','') and 'faultContext' in record for record in symbols):
             register=re.search(r'DARWIN_FAULT_REGISTER index=0x0*13 pc=\S+ result=(0x[0-9a-f]+)',runtime)
             if register:
@@ -178,7 +187,7 @@ class Processes:
             for item in commands:
                 args += ['-o', item]
             result = subprocess.run(args, stdout=log, stderr=subprocess.STDOUT, timeout=15)
+        self.diagnostic.update(identity=live['identity'],status=result.returncode,
+            target='current app' if live['app']==self.current else 'surviving peer')
         command(sys.executable,ROOT/'tools/symbolicate-cache.py',cache,
                 self.directory/'original-process.lldb.log',self.directory/'original-process.symbols.json',capture_output=True)
-        self.diagnostic = {'identity': live['identity'], 'status': result.returncode,
-                           'target': 'current app' if live['app'] == self.current else 'surviving peer'}
