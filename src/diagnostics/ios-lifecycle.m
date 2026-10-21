@@ -108,6 +108,7 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
         {"UITouch","_setIsFirstTouchForView:"},{"UITouch","_setHidEvent:"},
         {"UIEvent","_clearTouches"},{"UIEvent","_addTouch:forDelayedDelivery:"},
         {"UIEvent","_setHIDEvent:"},{"UIEvent","_setTimestamp:"},
+        {"UITouchesEvent","_clearTouches"},{"UITouchesEvent","_addTouch:forDelayedDelivery:"},
         {"UIApplication","_touchesEvent"},{"UIApplication","sendEvent:"},
         {"UIApplication","_terminateWithStatus:"},{"UIApplication","_applicationWillTerminate"}
     };

@@ -12,6 +12,7 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('cache',type=Path)
 parser.add_argument('trace',type=Path)
 parser.add_argument('output',type=Path)
+parser.add_argument('--stderr',type=Path,help='Same original process diagnostic stderr; retain observed error-construction callers')
 parser.add_argument('--lookup',action='append',nargs=2,default=[],metavar=('IMAGE','SYMBOL'))
 parser.add_argument('--lookup-selector',action='append',nargs=2,default=[],metavar=('IMAGE','SELECTOR'),
                     help='Resolve bounded actual class/instance selector symbols before reading their code')
@@ -23,16 +24,22 @@ args=parser.parse_args()
 if args.lookup_bytes is not None and (not 4<=args.lookup_bytes<=4096 or args.lookup_bytes%4):
     parser.error('--lookup-bytes must be a multiple of 4 between 4 and 4096')
 trace=args.trace.read_text(errors='replace')
+if args.stderr:trace+='\n'+args.stderr.read_text(errors='replace')
 patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED)_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'NORMAL_RUNTIME_FAULT_PC (0x[0-9a-fA-F]+)',
           r'DARWIN_NATIVE_FAULT[^\n]*\nDARWIN_CALL nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)']
 frames=sorted({int(pc,16) for pattern in patterns for pc in re.findall(pattern,trace)})
+error_returns={int(pc,16):int(index) for index,pc in re.findall(
+    r'IOS_FILE_ERROR_FRAME index=(\d+) pc=(0x[0-9a-fA-F]+)',trace)}
+frames=sorted(set(frames)|set(error_returns))
 faults={int(pc,16) for pc in re.findall(r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
 returns={int(pc,16):int(index,16) for index,pc in re.findall(
     r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED)_FRAME nr=0x([0-9a-fA-F]+) pc=(0x[0-9a-fA-F]+)',trace)}
+returns.update(error_returns)
 unsupported_returns={int(pc,16) for pc in re.findall(
     r'DARWIN_UNIMPLEMENTED_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
+unsupported_returns.update(error_returns)
 stack_returns={int(pc,16) for index,pc in re.findall(r'frame #(\d+): (0x[0-9a-fA-F]+)',trace) if int(index)>0}
 def lookup_pc(pc):return pc-4 if (pc in returns or pc in stack_returns) and pc not in faults else pc
 fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(

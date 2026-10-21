@@ -117,6 +117,11 @@ class Processes:
         for item in self.processes.values():
             runtime = Path(item['runtime'])
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
+            stderr=Path(item['stdout']).with_suffix('.stderr')
+            if stderr.is_file():arguments.extend(['--stderr',stderr])
+            if 'IOS_COLOR_LOOKUP_FAILED ' in stderr.read_text(errors='replace'):
+                arguments.extend(['--lookup','/System/Library/PrivateFrameworks/CoreUI.framework/CoreUI',
+                    '+[CUIDesignLibraryCompositeCatalog _catalogsForDesignSystem:colorScheme:contrast:styling:error:]'])
             if 'DARLING_UNHANDLED_SERVICE_INLINE' in runtime.read_text(errors='replace'):
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZL14query_displaysv'])
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZN2CA7Display7Display6updateEv'])
