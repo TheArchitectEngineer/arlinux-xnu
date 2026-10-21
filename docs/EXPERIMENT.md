@@ -87,6 +87,29 @@ selected Things run, not a new complete collection result.
 
 ## Next original app
 
+The group-storage boundary in
+[run 39689862812](https://github.com/taowen/arlinux-xnu/actions/runs/39689862812),
+source **b444f95edf253fb3fbe6dfb9ded0de4a68c21ea6**, gets Things beyond the
+previous trap: original PID/start ticks 5849/28795 passes its real 375x667-point
+viewport and displays the original **Upgrading Database** modal with actual
+composed text/progress pixels. Receipt
+**c7a56cc0b4ed319872c38b1fc9adba499018c34c78dccd5217a0cd854c24c366**
+and all 84 files were verified. Original declared group lookups return their
+real registered paths. Membership comes from XML metadata; no Things ID is
+hardcoded. The unchanged binary still fails to reach Inbox in 30 seconds, so
+create/edit/complete/reopen is not accepted.
+
+The saved main thread is in CoreGraphics/vImage software composition and another
+thread is in UIKit's event-fetcher run loop; other live workers are waiting for
+kevents. The original group Sessions.json read returns ENOENT in fresh state.
+This does not establish a database failure or dispatch deadlock. The next run
+allows 120 seconds for the actual first database initialization while preserving
+the Inbox/pixel requirement and all task actions; it must distinguish slow cold
+startup from a persistent stall. Shared storage changed since the last full
+collection and requires fresh regression. DER conversion remains unimplemented.
+
+### Proven earlier failure mechanism
+
 Things iPhone 3.17.1/build 31701001 executes its original binary/frameworks in
 [run 39687337351](https://github.com/taowen/arlinux-xnu/actions/runs/39687337351),
 source **9247ddb92ac2d366d0cd9adc3d51bb4919b36e48**, attempt 1. Its first

@@ -1,13 +1,12 @@
 /* TLS-free access to explicit, real application-group storage. The launcher
  * registers only groups declared by the original executable's metadata. */
 #pragma once
-enum { D_GROUP_LIMIT=32, D_GROUP_IDENTIFIER_LIMIT=256 };
 struct native_group {
-    char identifier[D_GROUP_IDENTIFIER_LIMIT],path[4096];
+    char identifier[D_NATIVE_GROUP_IDENTIFIER_LIMIT],path[4096];
     unsigned int path_length;
     int descriptor;
 };
-static struct native_group native_groups[D_GROUP_LIMIT];
+static struct native_group native_groups[D_NATIVE_GROUP_LIMIT];
 static unsigned int native_group_count;
 static int native_group_descriptor(int descriptor)
 {
@@ -19,11 +18,11 @@ static int native_group_descriptor(int descriptor)
 int darwin_native_group_register(const char *identifier,const char *path)
 {
     size_t id_length=strlen(identifier),path_length=strlen(path);
-    if(!id_length || id_length>=D_GROUP_IDENTIFIER_LIMIT || !path_length || path_length>=4096)
+    if(!id_length || id_length>=D_NATIVE_GROUP_IDENTIFIER_LIMIT || !path_length || path_length>=4096)
         return -ENAMETOOLONG;
     for(unsigned int i=0;i<native_group_count;i++)
         if(!strcmp(native_groups[i].identifier,identifier))return -EEXIST;
-    if(native_group_count==D_GROUP_LIMIT)return -E2BIG;
+    if(native_group_count==D_NATIVE_GROUP_LIMIT)return -E2BIG;
     int descriptor=open(path,O_PATH|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
     if(descriptor<0)return -errno;
     struct native_group *group=&native_groups[native_group_count++];

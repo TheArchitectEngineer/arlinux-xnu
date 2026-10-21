@@ -245,11 +245,23 @@ shared only with that app's subsequent generation in the same journey. Repeated
 path separators are collapsed before matching the declared roots; dot components
 and actual symlink traversal are preserved. This prevents a remaining leading
 slash from making Linux ignore the firmware directory descriptor. Storage writes
-use real openat2/mkdirat/renameat/unlinkat/fsync operations under the container,
+use real openat2/mkdirat/renameat/unlinkat/fsync operations under declared storage roots,
 with beneath/no-magic-link resolution; firmware and bundle writes are rejected.
 Darwin stat/fstatat share actual Linux statx metadata and guest record packing.
 This provides platform file operations, not Apple sandbox or data protection.
 End-to-end persistence acceptance belongs to the Notes journey in EXPERIMENT.md.
+
+Application groups are separate real directories beneath the explicit
+`--group-root`, shared by applications with matching original XML entitlement
+membership. The loader parses that metadata with libplist; the guest filesystem
+adapter resolves NSFileManager group URLs through the sized platform API. Only
+registered groups become writable roots. Directory creation, traversal, rename
+and file writes use the same Linux storage operations as private containers.
+The test case owns this root across process relaunches; service children inherit
+its location from the verified caller command line and read their own metadata.
+DER-only membership, XML-to-DER transmutation, group preferences/keychain, and
+installation-wide last-member removal are not implemented by this boundary.
+Actual original-app acceptance remains recorded in EXPERIMENT.md.
 
 ### Lifecycle boundary
 

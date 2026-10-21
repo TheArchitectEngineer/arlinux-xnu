@@ -90,12 +90,12 @@ static void native_launch_groups(const char *path,const struct darwin_code_metad
     }
     plist_t groups=metadata ? plist_dict_get_item(metadata,"com.apple.security.application-groups") : NULL;
     if(groups) {
-        need(plist_get_node_type(groups)==PLIST_ARRAY && plist_array_get_size(groups)<=32,"application groups bounds");
+        need(plist_get_node_type(groups)==PLIST_ARRAY && plist_array_get_size(groups)<=D_NATIVE_GROUP_LIMIT,"application groups bounds");
         for(uint32_t i=0;i<plist_array_get_size(groups);i++) {
             plist_t item=plist_array_get_item(groups,i);
             need(plist_get_node_type(item)==PLIST_STRING,"application group type");
             char *name=NULL;plist_get_string_val(item,&name);
-            need(name && *name && strlen(name)<256 && strcmp(name,".") && strcmp(name,".."),"application group identifier");
+            need(name && *name && strlen(name)<D_NATIVE_GROUP_IDENTIFIER_LIMIT && strcmp(name,".") && strcmp(name,".."),"application group identifier");
             for(const unsigned char *p=(const unsigned char *)name;*p;p++)
                 need((*p>='a' && *p<='z') || (*p>='A' && *p<='Z') || (*p>='0' && *p<='9') || *p=='.' || *p=='-' || *p=='_',
                      "unsupported group identifier character");

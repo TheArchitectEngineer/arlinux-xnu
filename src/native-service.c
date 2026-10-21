@@ -180,10 +180,12 @@ int native_service_spawn(uint32_t owner,uint32_t incarnation,const char *service
         instance[8],instance[9],instance[10],instance[11],instance[12],instance[13],instance[14],instance[15]);
     char *args[24]={executable,"--role","service","--service-name",(char *)service,"--service-instance",uuid,
         "--root",(char *)caller.root,"--dyld",(char *)caller.dyld,"--container",(char *)caller.container,
-        "--service-index",(char *)caller.service_index,program,NULL};
+        "--service-index",(char *)caller.service_index,NULL};
+    size_t argument_count=0;while(args[argument_count])argument_count++;
     if(caller.group_root) {
-        args[15]="--group-root";args[16]=(char *)caller.group_root;args[17]=program;args[18]=NULL;
+        args[argument_count++]="--group-root";args[argument_count++]=(char *)caller.group_root;
     }
+    args[argument_count++]=program;args[argument_count]=NULL;
     char prefix[PATH_MAX+64],server[64],provider[64];
     const char *directory=getenv("ARLINUX_DARLING_PREFIX");
     if(!directory || snprintf(prefix,sizeof(prefix),"ARLINUX_DARLING_PREFIX=%s",directory)>=(int)sizeof(prefix)) {

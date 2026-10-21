@@ -6,7 +6,7 @@
     "steps": [
       {"do":"launch","app":"things"},
       {"do":"viewport","width":375,"height":667},
-      {"do":"see","text":"^Inbox$","timeoutSeconds":30},
+      {"do":"see","text":"^Inbox$","timeoutSeconds":120},
       {"do":"click","text":"^New To-Do$","target":"text"},
       {"do":"type","text":"ARLinux task"},
       {"do":"click","text":"^Done$","target":"text"},

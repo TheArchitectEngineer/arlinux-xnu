@@ -4,6 +4,7 @@
 /* Guest pthread slots plus the one native Mach-service thread created by the
  * launcher. Transport bookkeeping must cover both, not fail one thread early. */
 enum { D_NATIVE_GUEST_THREAD_CAPACITY=32, D_NATIVE_SERVICE_THREADS=1 };
+enum { D_NATIVE_GROUP_LIMIT=32, D_NATIVE_GROUP_IDENTIFIER_LIMIT=256 };
 /* TLS-free native helper; inherits the caller's actual syscall filter. */
 long darwin_clone_callback(uint64_t stack,void (*callback)(void *),void *argument);
 extern char darwin_clone_callback_return[];
