@@ -165,12 +165,12 @@ collections complete; the third child is explicitly omitted from attachment,
 with its actual fault records retained in session.log. No DOM, usable connection,
 normal helper retirement, third-party IPA or Android acceptance is claimed.
 
-Latest selected run [39568869763](https://github.com/taowen/arlinux-xnu/actions/runs/39568869763),
-source **c5a5d6714693179d3b77fdb881cc52cdb61cc8c3**, attempt 1, passes Counter
+Latest selected run [39569601749](https://github.com/taowen/arlinux-xnu/actions/runs/39569601749),
+source **a422b45684c63f4c55e2c8119d5f824d1ecea726**, attempt 1, passes Counter
 and fails the same original Web DOM step (1/2, partial). Receipt
-**7db0965851ad019dcb15e6e9945ed2c0093cbdb29f7225fdf021c49e95aff47f**
-and 47 files were verified. App **5949/64980**, WebContent **5989/65516** and
-**6008/65692**, and Networking **6015/65696** share owned session **5946/64975**.
+**208ad544ee83470fd8c094ea2e706e929b1c8f311c938ecd0ceae10b402efd08**
+and 46 files were verified. App **5956/33565**, WebContent **5993/34044** and
+**6013/34215**, and Networking **6019/34221** share owned session **5953/33560**.
 The actual XPCService metadata replies contain five fields for WebContent and
 four for Networking. Original consumers pass the former direct-launch rejection
 and issue actual check-in requests 0x325 (type 6, handle 0, flags 0, service name).
@@ -182,8 +182,11 @@ stack continues in original NSRunLoop/CFRunLoop, with the scavenger in its timed
 wait. No fatal fault/exit is observed in the retained session interval. This
 supports that actual allocator path, not general thread-state conformance.
 Check-in still returns unsupported; no empty endpoint, fake ready flag or DOM
-callback is supplied. Total feedback is 188 s; journeys take 40.553 s including
-23.820 s of diagnosis. The previous full 14/16 result remains source-specific.
+callback is supplied. Exact matching resolves one bootstrap check-in wrapper
+and two connection check-in functions; reply extraction also needs the actual
+bootstrap_check_in3/interface-routine consumers, not a guessed dictionary key.
+Total feedback is 170 s; journeys take 37.521 s including 20.914 s of diagnosis.
+The previous full 14/16 result remains source-specific.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary

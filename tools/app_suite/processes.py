@@ -240,7 +240,9 @@ class Processes:
             if 'BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=40000325 ' in session_text:
                 image='/usr/lib/system/libxpc.dylib'
                 arguments+=['--lookup-fragment',image,'__xpc_bootstrap_routine_check_in',
-                    '--lookup-fragment',image,'__xpc_connection_check_in']
+                    '--lookup-fragment',image,'__xpc_connection_check_in',
+                    '--lookup',image,'_bootstrap_check_in3',
+                    '--lookup',image,'__xpc_interface_routine']
             if 'BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=400002c7 ' in session_text or \
                'BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=400002ce ' in session_text:
                 # Original helpers requested bootstrap/service metadata. Read
