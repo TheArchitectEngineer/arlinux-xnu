@@ -83,14 +83,14 @@ took 156 s overall and 30 s in journeys.
 
 ## Complete collection and remaining failures
 
-Full run [39600777191](https://github.com/taowen/arlinux-xnu/actions/runs/39600777191),
-source **dae77eae50bc105f1edfbd2ed05aa0ba38a726b1**, attempt 1, passes **14/16**
+Full run [39604373891](https://github.com/taowen/arlinux-xnu/actions/runs/39604373891),
+source **5a7ffb4f961daf345072971bd2e3b9f151e88cad**, attempt 1, passes **14/16**
 journeys. The collection is still **failed**. Receipt
-**6fd98c60bb808417cd4970903b07a642fab9d92547b42e96dc172cd018a50e72**
-and all 252 retained files were verified. Individual journeys total 155.058 s,
-including 29.284 s of diagnosis. Total feedback is 309 s; firmware transfer takes
-15.53 s, toolchain setup 66 s and pinned-userland preparation 45 s. The common
-getrlimit and real page-protection fixes retain all 14 previously passing flows.
+**996ddc14544637d8984f9037b000721d5f9fe48adb27ba330ecb2b47f600af41**
+and all 345 retained files were verified. Individual journeys total 190.624 s,
+including 29.052 s of diagnosis. Total feedback is 353 s; firmware transfer takes
+16.361 s, toolchain setup 43 s and pinned-userland preparation 44 s. Resource,
+protection, purgeable-allocation and deferred-RPC changes retain all 14 passing flows.
 
 Console, Foundation, Counter, Swift, Notes, Canvas, Process and all three Workers
 journeys pass. Concurrent relaunch passes all 29 steps; crash isolation and focus
@@ -99,7 +99,7 @@ helper cleanup or background lifecycle behavior. The earlier kmsg preallocation
 regression is repaired: auxiliary ownership adds to the allocation and leaves
 the original inline-message capacity intact.
 
-Network passes all 14 steps. Processes **7479/42135** and **7529/42497**
+Network passes all 14 steps. Processes **7842/46583** and **7891/46948**
 (PID/startTicks) each receive an actual status 200 / 13-byte response through
 Linux libcurl and original NSURLSession completion. JSON parsing and main-queue
 delivery produce Network: 42 in composed pixels, the peer records two requests,
@@ -116,43 +116,21 @@ observation; one full pass does not prove its isolated cause or general repair.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Web | Original VM now initializes; rendering stream buffer allocation rejects PURGABLE. Networking initialization also remains incomplete. No DOM or helper-lifecycle acceptance. |
-| Share | Process 6147/30322 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
+| Web | Original VM initializes and stream allocation succeeds; named-memory export remains the current failed boundary. Networking initialization also remains incomplete. No DOM or helper-lifecycle acceptance. |
+| Share | Process 6275/31171 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
 
-Web app **6373/32926** shares owned session **6370/32921**. Real WebContent
-**6414/33211** passes bootstrap, unique receive-right handoff, actual client
-message dispatch, JSC VM stack-bound checks and WTF configuration freezing.
-The service catalogue is prepared from actual firmware bundles; it supplies
-metadata and Linux-owned process lifetimes, never a fake ready endpoint.
-Network service **6449/33720** still ends with runtime fatal status 125; the
-original identifier failure from its earlier instance remains unresolved.
-
-The full log catches WebContent advancing beyond the LaunchServices database
-wait to rendering. It traps in RemoteRenderingBackendProxy::ensureGPUProcessConnection
-at **0x198e11f1c** after IPC::StreamClientConnection::create returns no buffer.
-The preceding real VM allocation requests **0x200100** bytes with flags **3**
-(ANYWHERE | PURGABLE), rejected as KERN_INVALID_ARGUMENT (**4**). The candidate
-supports initial nonvolatile purgeable allocation with actual zero-filled
-backing; volatile/discard control remains unsupported. It also gives only Web's
-first DOM observation a 45-second cold-start budget, retaining actual pixels,
-external input and normal-close requirements. Runner validation is pending.
-These are not GPU hardware acceleration, DOM or helper-lifecycle acceptance.
-
-Selected run [39603490048](https://github.com/taowen/arlinux-xnu/actions/runs/39603490048),
-source **73316e84825455390854277d2ac58ec39400e401**, attempt 1, passes Counter
-but fails Web at an original native-session fault (1/2, partial). Receipt
-**260c2e5cdde052849e598ece931b6e68bbbcc5afe09b60c4cb4c7f0985a096e0**
-and 47 files were verified. Bounded LLDB preserves session thread #2's actual
-abort -> dtape_stub_log -> _mach_make_memory_entry -> generated Mach VM server
--> ipc_kobject_server -> real Mach message dispatch. This identifies the shared
-session exit; it is not explained by the secondary app workqueue failure in the
-previous run. Anonymous allocation and acknowledged deferred replies advance
-original execution to named-memory export, which is still unimplemented.
-The candidate returns KERN_NOT_SUPPORTED/no port instead of aborting the shared
-core. This contains an unsupported application request; it does not implement
-named/shared memory or certify Web rendering. True Linux shared backing and
-capability/mapping lifetime remain required. Total feedback is 185 s; journeys
-take 59.168 s including 23.375 s of diagnosis. Full regression is pending.
+Web app **6514/33745** shares owned session **6511/33740**. Its rendering-stream
+buffer allocates successfully, but the real named-memory export returns unsupported.
+The original consumer traps at **0x1990c9b60**; the shared session no longer aborts.
+The candidate builds named entries from real Linux memfd backing, reusing Darling's
+shared-remap descriptor/tree ownership and XNU's real port/no-senders lifetime.
+S2C file mapping transfers an actual FD; source and target aliases retain the same
+backing. The former no-op-success mach_vm_map_external is replaced by actual mapping
+or an explicit error. Source overlap/permissions, mapping identity and descriptor
+ownership are checked. Concurrent snapshot/rebind conversion and per-unmap registry
+retirement remain limited; general shared-memory correctness is not claimed.
+Runner validation of the original DOM/input journey is pending; no named-entry or
+Web acceptance follows from code or compilation alone. Web and Share still fail.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary

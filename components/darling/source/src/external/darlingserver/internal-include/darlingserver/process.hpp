@@ -80,6 +80,7 @@ namespace DarlingServer {
 			uint64_t pageCount;
 			int protection;
 			uint64_t mapOffset;
+			uint64_t backingDevice, backingInode;
 			bool shared;
 		};
 

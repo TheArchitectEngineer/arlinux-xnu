@@ -13,6 +13,7 @@ struct dtape_task;
 typedef struct dtape_map_shared_descriptor {
 	os_refcnt_t refcount;
 	int memfd;
+	uint64_t backing_device, backing_inode;
 	uint64_t size;
 } dtape_map_shared_descriptor_t;
 

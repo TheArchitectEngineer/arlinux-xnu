@@ -55,7 +55,23 @@ static long darling_receive(int fd,struct msghdr *message)
             dserver_s2c_call_t *call=message->msg_iov[0].iov_base;
             if (call->mmap.header.call_number==dserver_callnum_s2c) {
                 if (message->msg_flags&(MSG_TRUNC|MSG_CTRUNC)) darling_abort("truncated S2C memory request");
-                darling_memory_reply(fd,call,result,&updates);
+                int descriptor=-1;
+                struct cmsghdr *rights=CMSG_FIRSTHDR(message);
+                if(call->mmap.header.s2c_number==dserver_s2c_msgnum_mmap) {
+                    if(result!=(long)sizeof(call->mmap))darling_abort("invalid S2C mmap envelope");
+                    if(call->mmap.fd>=0) {
+                        if(call->mmap.fd!=0 || !rights || rights->cmsg_level!=SOL_SOCKET ||
+                           rights->cmsg_type!=SCM_RIGHTS || rights->cmsg_len!=CMSG_LEN(sizeof(int)) ||
+                           message->msg_controllen<CMSG_LEN(sizeof(int)) ||
+                           message->msg_controllen>CMSG_SPACE(sizeof(int)))
+                            darling_abort("invalid S2C mmap descriptor");
+                        darling_copy(&descriptor,CMSG_DATA(rights),sizeof(descriptor));
+                        if(descriptor<0)darling_abort("negative S2C mmap descriptor");
+                    }
+                }
+                if(rights && descriptor<0)darling_abort("unexpected S2C descriptors");
+                darling_memory_reply(fd,call,result,&updates,descriptor);
+                if(descriptor>=0)RAW(SYS_close,descriptor,0,0,0,0,0);
                 continue;
             }
         }

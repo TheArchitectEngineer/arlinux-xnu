@@ -512,7 +512,7 @@ DarlingServer::Process::MemoryInfo DarlingServer::Process::memoryInfo() const {
 	return info;
 };
 
-static const std::regex memoryRegionEntryRegex("([0-9a-fA-F]+)\\-([0-9a-fA-F]+)\\s+((?:r|w|x|p|s|\\-)+)\\s+([0-9a-fA-F]+)");
+static const std::regex memoryRegionEntryRegex("([0-9a-fA-F]+)\\-([0-9a-fA-F]+)\\s+((?:r|w|x|p|s|\\-)+)\\s+([0-9a-fA-F]+)\\s+([0-9a-fA-F]+):([0-9a-fA-F]+)\\s+([0-9]+)");
 
 DarlingServer::Process::MemoryRegionInfo DarlingServer::Process::memoryRegionInfo(uintptr_t address) const {
 	if (isDead()) {
@@ -543,6 +543,8 @@ DarlingServer::Process::MemoryRegionInfo DarlingServer::Process::memoryRegionInf
 		info.pageCount = (endAddress - info.startAddress) / sysconf(_SC_PAGESIZE);
 
 		info.mapOffset = std::stoul(match[4].str(), nullptr, 16);
+		info.backingDevice = (std::stoull(match[5].str(), nullptr, 16) << 32) | std::stoull(match[6].str(), nullptr, 16);
+		info.backingInode = std::stoull(match[7].str(), nullptr, 10);
 
 		auto perms = match[3].str();
 

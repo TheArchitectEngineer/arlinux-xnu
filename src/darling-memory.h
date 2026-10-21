@@ -58,15 +58,19 @@ static void darling_memory_complete(const struct darling_memory_updates *updates
     if (updates->count) trace_record("DARLING_CODE_COPY_COMPLETE ranges=0x",updates->count,0,0);
 }
 static long darling_memory_mmap(const dserver_s2c_call_t *call,
-                                struct darling_memory_updates *updates)
+                                struct darling_memory_updates *updates,int descriptor)
 {
     uint64_t address=call->mmap.address,length=call->mmap.length;
     int protection=call->mmap.protection,flags=call->mmap.flags;
     if (!length || length>D_VM_MAX_ALLOCATION ||
-        (protection&~(PROT_READ|PROT_WRITE|PROT_EXEC)) || call->mmap.fd!=-1 || call->mmap.offset ||
-        (flags&~(MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED|MAP_FIXED_NOREPLACE)) ||
-        (flags&(MAP_PRIVATE|MAP_ANONYMOUS))!=(MAP_PRIVATE|MAP_ANONYMOUS) ||
+        (protection&~(PROT_READ|PROT_WRITE|PROT_EXEC)) ||
+        (flags&~(MAP_SHARED|MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED|MAP_FIXED_NOREPLACE)) ||
+        ((flags&(MAP_SHARED|MAP_PRIVATE))!=MAP_SHARED && (flags&(MAP_SHARED|MAP_PRIVATE))!=MAP_PRIVATE) ||
         ((flags&MAP_FIXED) && (flags&MAP_FIXED_NOREPLACE))) return -ENOTSUP;
+    if(flags&MAP_ANONYMOUS) {
+        if(call->mmap.fd!=-1 || descriptor!=-1 || call->mmap.offset)return -EINVAL;
+    } else if(call->mmap.fd!=0 || descriptor<0 || call->mmap.offset<0 ||
+              (call->mmap.offset&(PAGE16-1)))return -EINVAL;
     length=(length+PAGE16-1)&~(PAGE16-1);
     int fixed=flags&(MAP_FIXED|MAP_FIXED_NOREPLACE);
     if (fixed && (address<PAGE16 || !darling_memory_range(address,length))) return -EINVAL;
@@ -80,16 +84,21 @@ static long darling_memory_mmap(const dserver_s2c_call_t *call,
     struct darling_memory_updates next; darling_copy(&next,updates,sizeof(next));
     long result=darling_memory_replace(&next,address,length,protection&PROT_EXEC);
     if (!result) result=RAW(SYS_mmap,address,length,protection,
-                            fixed ? flags : MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0);
+                            fixed ? flags : flags|MAP_FIXED,descriptor,call->mmap.offset);
     if ((unsigned long)result>=(unsigned long)-4095) {
         if (!fixed) RAW(SYS_munmap,address,length,0,0,0,0);
         return result;
     }
     darling_copy(updates,&next,sizeof(next));
+    if(descriptor>=0) {
+        static unsigned int traces;
+        if(__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT)
+            trace_record("DARLING_SHARED_FILE_MAPPED address=0x",result,length,call->mmap.offset);
+    }
     return result;
 }
 static void darling_memory_reply(int fd,const dserver_s2c_call_t *call,long count,
-                                 struct darling_memory_updates *updates)
+                                 struct darling_memory_updates *updates,int descriptor)
 {
     union {
         dserver_s2c_replyhdr_t header;
@@ -104,7 +113,7 @@ static void darling_memory_reply(int fd,const dserver_s2c_call_t *call,long coun
     switch (reply.header.s2c_number) {
     case dserver_s2c_msgnum_mmap:
         if (count!=(long)sizeof(call->mmap)) darling_abort("invalid S2C mmap packet");
-        result=darling_memory_mmap(call,updates);
+        result=darling_memory_mmap(call,updates,descriptor);
         reply.mmap.address=(unsigned long)result>=(unsigned long)-4095 ? UINT64_MAX : (uint64_t)result;
         reply.mmap.errno_result=(unsigned long)result>=(unsigned long)-4095 ? -result : 0;
         size=sizeof(reply.mmap);

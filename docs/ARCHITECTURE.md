@@ -465,9 +465,17 @@ buffer can be reused. Original received FDs close after transfer; interrupt_exit
 lets the server deliver the saved outer reply normally. No fabricated reply or
 parallel client-side reply queue is introduced.
 
-Named-memory export (_mach_make_memory_entry) is still unsupported: it returns
-KERN_NOT_SUPPORTED and no port, rather than aborting the shared Mach session.
-WebKit's rendering stream reaches this real boundary. Anonymous allocation alone
-is not shared memory; a future Linux-backed named entry must retain common
-backing, actual rights transfer, mapping and lifetime across independent tasks.
-Do not substitute an empty capability or a copied snapshot for shared writes.
+Named-memory export and mapping use real IKOT_NAMED_ENTRY ports and the existing
+Darling memfd descriptor/map ownership. Linux S2C mapping consumes one actual
+SCM_RIGHTS FD, maps the same file backing and closes the temporary descriptor.
+The named port holds one descriptor reference; installed mappings hold their own
+references until task-map retirement. No-senders destruction releases the port's
+reference. Export and shared remap share one backing-conversion implementation.
+Mapped device/inode/offset identity prevents stale mapping records from silently
+binding a reused address to an old object. Unsupported overlaps, parent entries,
+copy-on-write and fixed named mappings return errors. The source-private to
+shared conversion retains upstream's snapshot/rebind race with concurrent writers;
+it is not arbitrary concurrent VM conformance. Per-unmap registry retirement also
+remains incomplete; ambiguous/reused ranges fail rather than returning old backing.
+No empty capability, copied destination snapshot or unmapped-success reply counts
+as shared-memory behavior. Current named-entry candidate awaits app-flow validation.

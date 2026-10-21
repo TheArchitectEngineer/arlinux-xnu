@@ -285,6 +285,8 @@ struct DTapeHooks {
 			memory_region_info->start_address = info.startAddress;
 			memory_region_info->page_count = info.pageCount;
 			memory_region_info->map_offset = info.mapOffset;
+			memory_region_info->backing_device = info.backingDevice;
+			memory_region_info->backing_inode = info.backingInode;
 			protection = info.protection;
 			memory_region_info->shared = info.shared;
 		} catch (...) {

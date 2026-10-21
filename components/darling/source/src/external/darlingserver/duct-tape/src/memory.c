@@ -7,6 +7,8 @@
 
 #include <kern/zalloc.h>
 #include <kern/kalloc.h>
+#include <kern/ipc_kobject.h>
+#include <ipc/ipc_port.h>
 #include <vm/vm_kern.h>
 
 #include <stdlib.h>
@@ -56,6 +58,7 @@ static inline int memfd_create(const char *name, unsigned int flags) { return (i
 
 int close(int fd);
 int ftruncate(int fd, off_t length);
+int dprintf(int fd, const char *format, ...);
 
 #define MAP_ANONYMOUS 0x20
 #define MAP_SHARED 0x01
@@ -137,6 +140,7 @@ static dtape_map_shared_descriptor_t* dtape_map_shared_descriptor_create(int mem
 	os_ref_init(&desc->refcount, NULL);
 
 	desc->memfd = memfd;
+	desc->backing_device = desc->backing_inode = 0;
 	desc->size = size;
 
 	return desc;
@@ -201,7 +205,7 @@ static size_t dtape_map_find_shared_entries_locked(dtape_map_t* map, uint64_t ad
 	}
 
 	RB_FOREACH(entry, dtape_map_shared_entry_head, &map->shared_entries) {
-		if (entry->address + entry->size < address || entry->address > address + size) {
+		if (entry->address + entry->size <= address || entry->address >= address + size) {
 			continue;
 		}
 
@@ -562,18 +566,110 @@ kern_return_t mach_vm_allocate_kernel(vm_map_t map, mach_vm_offset_t* addr, mach
 	}
 };
 
+/* Reuse the same memfd descriptors/map ownership as Darling shared remap.
+ * The initial private-to-shared conversion retains upstream's copy/rebind race
+ * with concurrent writers. Once bound, all aliases use the same live backing. */
+static kern_return_t dtape_share_region(vm_map_t map, uint64_t start, uint64_t length,
+    dtape_map_shared_descriptor_t **result, uint64_t *result_offset, vm_prot_t *protection, vm_prot_t required) {
+    dtape_memory_region_info_t info;
+    if (!dtape_hooks->task_get_memory_region_info(map->dtape_task->context, start, &info))
+        return KERN_INVALID_ADDRESS;
+    uint64_t host_page = sysconf(_SC_PAGESIZE);
+    if (!host_page || info.page_count > UINT64_MAX / host_page || start < info.start_address)
+        return KERN_INVALID_ADDRESS;
+    uint64_t available = info.page_count * host_page;
+    if (start - info.start_address > available || length > available - (start - info.start_address))
+        return KERN_INVALID_ADDRESS;
+    int prot = info.protection & (PROT_READ | PROT_WRITE | PROT_EXEC);
+    if (!(prot & PROT_READ) || (required & ~prot)) return KERN_PROTECTION_FAILURE;
+    *protection = prot;
+    dtape_map_shared_entry_t *existing[2];
+    dtape_mutex_lock(&map->shared_entry_lock);
+    size_t count = dtape_map_find_shared_entries_locked(map, start, length, existing, 2);
+    if (count == 1 && info.shared && info.backing_inode &&
+        info.backing_inode == existing[0]->descriptor->backing_inode &&
+        info.backing_device == existing[0]->descriptor->backing_device &&
+        existing[0]->address <= start &&
+        start - existing[0]->address <= existing[0]->size &&
+        length <= existing[0]->size - (start - existing[0]->address) &&
+        info.map_offset + start - info.start_address == existing[0]->page_offset * host_page + start - existing[0]->address) {
+        *result = existing[0]->descriptor;
+        dtape_map_shared_descriptor_retain(*result);
+        *result_offset = existing[0]->page_offset * host_page + start - existing[0]->address;
+        dtape_mutex_unlock(&map->shared_entry_lock);
+        return KERN_SUCCESS;
+    }
+    if (count || info.shared) {
+        dtape_mutex_unlock(&map->shared_entry_lock);
+        return KERN_NOT_SUPPORTED; /* Never silently replace an existing alias. */
+    }
+    kern_return_t kr = KERN_RESOURCE_SHORTAGE;
+    int fd = memfd_create("darling-shared", MFD_CLOEXEC);
+    void *local = MAP_FAILED;
+    dtape_map_shared_descriptor_t *descriptor = NULL;
+    dtape_map_shared_entry_t *entry = NULL;
+    if (fd < 0 || ftruncate(fd, length)) goto out;
+    local = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (local == MAP_FAILED) goto out;
+    descriptor = dtape_map_shared_descriptor_create(fd, length);
+    if (!descriptor) goto out;
+    fd = -1;
+    entry = dtape_map_shared_entry_create(start, length, 0, descriptor);
+    if (!entry) goto out;
+    kr = copyinmap(map, start, local, length);
+    if (kr != KERN_SUCCESS) goto out;
+    if (dtape_hooks->task_map_file(map->dtape_task->context, descriptor->memfd,
+        dtape_byte_count_to_page_count_round_up(length), prot, start, 0,
+        dtape_memory_flag_fixed | dtape_memory_flag_overwrite) != start) {
+        kr = KERN_FAILURE; goto out;
+    }
+    if (!dtape_hooks->task_get_memory_region_info(map->dtape_task->context, start, &info) ||
+        !info.shared || !info.backing_inode) {kr = KERN_FAILURE; goto out;}
+    descriptor->backing_device = info.backing_device;
+    descriptor->backing_inode = info.backing_inode;
+    dtape_map_insert_shared_entry_locked(map, entry); entry = NULL;
+    *result = descriptor; descriptor = NULL; *result_offset = 0;
+    kr = KERN_SUCCESS;
+out:
+    if (local != MAP_FAILED) munmap(local, length);
+    if (entry) dtape_map_shared_entry_destroy(entry);
+    if (descriptor) dtape_map_shared_descriptor_release(descriptor);
+    if (fd >= 0) close(fd);
+    dtape_mutex_unlock(&map->shared_entry_lock);
+    return kr;
+}
+
 kern_return_t _mach_make_memory_entry(vm_map_t target_map, memory_object_size_t* size, memory_object_offset_t offset, vm_prot_t permission, ipc_port_t* object_handle, ipc_port_t parent_entry) {
-	/* An unsupported application request must not abort the shared Mach
-	 * session. Linux-backed named entries are not implemented yet: return
-	 * the real capability error, never a success with a placeholder port. */
-	if (target_map == VM_MAP_NULL) {
-		return KERN_INVALID_TASK;
-	}
-	if (!size || !object_handle || !*size) {
-		return KERN_INVALID_ARGUMENT;
-	}
-	*object_handle = IP_NULL;
-	return KERN_NOT_SUPPORTED;
+    if (target_map == VM_MAP_NULL) return KERN_INVALID_TASK;
+    if (!size || !object_handle || !*size || offset > UINT64_MAX - *size) return KERN_INVALID_ARGUMENT;
+    static unsigned int traces;
+    if (__atomic_fetch_add(&traces, 1, __ATOMIC_RELAXED) < 32)
+        dprintf(2, "MACH_NAMED_ENTRY_REQUEST bytes=%llu offset=%#llx protection=%x parent=%d\n",
+            (unsigned long long)*size, (unsigned long long)offset, permission, parent_entry != IP_NULL);
+    *object_handle = IP_NULL;
+    if (parent_entry != IP_NULL || (permission & ~(VM_PROT_READ | VM_PROT_WRITE))) return KERN_NOT_SUPPORTED;
+    if (!permission || (offset & PAGE_MASK)) return KERN_INVALID_ARGUMENT;
+    uint64_t length = mach_vm_round_page(*size);
+    if (length < *size || offset > UINT64_MAX - length) return KERN_INVALID_ARGUMENT;
+    vm_named_entry_t entry = kalloc(sizeof(*entry));
+    if (!entry) return KERN_RESOURCE_SHORTAGE;
+    bzero(entry, sizeof(*entry)); named_entry_lock_init(entry);
+    uint64_t backing_offset = 0; vm_prot_t source_protection = VM_PROT_NONE;
+    dtape_map_shared_descriptor_t *descriptor = NULL;
+    kern_return_t kr = dtape_share_region(target_map, offset, length, &descriptor, &backing_offset, &source_protection, permission);
+    if (kr != KERN_SUCCESS || (permission & ~source_protection)) {
+        if (descriptor) dtape_map_shared_descriptor_release(descriptor);
+        named_entry_lock_destroy(entry); kfree(entry, sizeof(*entry));
+        return kr != KERN_SUCCESS ? kr : KERN_PROTECTION_FAILURE;
+    }
+    entry->dtape_descriptor = descriptor;
+    entry->offset = backing_offset; entry->size = length;
+    entry->protection = permission; entry->ref_count = 1;
+    /* XNU vm_user.c's real named-entry port and no-senders lifetime. */
+    *object_handle = ipc_kobject_alloc_port((ipc_kobject_t)entry, IKOT_NAMED_ENTRY,
+        IPC_KOBJECT_ALLOC_MAKE_SEND | IPC_KOBJECT_ALLOC_NSREQUEST);
+    *size = length;
+    return KERN_SUCCESS;
 };
 
 kern_return_t mach_memory_entry_access_tracking(ipc_port_t entry_port, int* access_tracking, uint32_t* access_tracking_reads, uint32_t* access_tracking_writes) {
@@ -637,8 +733,51 @@ kern_return_t mach_vm_machine_attribute(vm_map_t map, mach_vm_address_t addr, ma
 };
 
 kern_return_t mach_vm_map_external(vm_map_t target_map, mach_vm_offset_t* address, mach_vm_size_t initial_size, mach_vm_offset_t mask, int flags, ipc_port_t port, vm_object_offset_t offset, boolean_t copy, vm_prot_t cur_protection, vm_prot_t max_protection, vm_inherit_t inheritance) {
-	dtape_stub_safe();
-	return KERN_SUCCESS;
+    if (target_map == VM_MAP_NULL) return KERN_INVALID_TASK;
+    if (!address || !initial_size || initial_size > UINT64_MAX - PAGE_MASK ||
+        (cur_protection & ~VM_PROT_ALL) || (max_protection & ~VM_PROT_ALL) ||
+        (cur_protection & ~max_protection)) return KERN_INVALID_ARGUMENT;
+    if (copy || mask > PAGE_MASK || (offset & PAGE_MASK) ||
+        (flags & ~(VM_FLAGS_ANYWHERE | VM_FLAGS_OVERWRITE | VM_FLAGS_ALIAS_MASK))) return KERN_NOT_SUPPORTED;
+    uint64_t length = mach_vm_round_page(initial_size);
+    bool fixed = !(flags & VM_FLAGS_ANYWHERE);
+    if (fixed && ((*address & PAGE_MASK) || *address > UINT64_MAX - length)) return KERN_INVALID_ARGUMENT;
+    dtape_memory_flags_t memory_flags = fixed ? dtape_memory_flag_fixed : dtape_memory_flag_none;
+    if (flags & VM_FLAGS_OVERWRITE) memory_flags |= dtape_memory_flag_overwrite;
+    if (!IP_VALID(port)) {
+        if (port != IP_NULL || offset) return KERN_INVALID_ARGUMENT;
+        uintptr_t mapped = dtape_hooks->task_allocate_pages(target_map->dtape_task->context,
+            dtape_byte_count_to_page_count_round_up(length), cur_protection, fixed ? *address : 0, memory_flags);
+        if (!mapped) return KERN_RESOURCE_SHORTAGE;
+        *address = mapped; return KERN_SUCCESS;
+    }
+    if (fixed) return KERN_NOT_SUPPORTED; /* Preserve existing alias bookkeeping. */
+    dtape_map_shared_descriptor_t *descriptor = NULL; uint64_t backing_offset = 0;
+    ip_lock(port);
+    if (ip_active(port) && ip_kotype(port) == IKOT_NAMED_ENTRY) {
+        vm_named_entry_t entry = (vm_named_entry_t)ip_get_kobject(port);
+        /* Port lock protects its live, immutable kobject metadata. Retain the
+         * shared descriptor before unlocking; never sleep on a mutex here. */
+        if (entry->dtape_descriptor && offset <= entry->size && length <= entry->size - offset &&
+            !(max_protection & ~entry->protection)) {
+            descriptor = entry->dtape_descriptor; dtape_map_shared_descriptor_retain(descriptor);
+            backing_offset = entry->offset + offset;
+        }
+    }
+    ip_unlock(port);
+    if (!descriptor) return KERN_INVALID_ARGUMENT;
+    dtape_map_shared_entry_t *mapping = dtape_map_shared_entry_create(0, length,
+        dtape_byte_count_to_page_count_round_down(backing_offset), descriptor);
+    if (!mapping) {dtape_map_shared_descriptor_release(descriptor); return KERN_RESOURCE_SHORTAGE;}
+    uintptr_t mapped = dtape_hooks->task_map_file(target_map->dtape_task->context, descriptor->memfd,
+        dtape_byte_count_to_page_count_round_up(length), cur_protection, fixed ? *address : 0,
+        dtape_byte_count_to_page_count_round_down(backing_offset), memory_flags);
+    dtape_map_shared_descriptor_release(descriptor);
+    if (!mapped) {dtape_map_shared_entry_destroy(mapping); return KERN_FAILURE;}
+    mapping->address = mapped;
+    dtape_map_insert_shared_entry(target_map, mapping);
+    *address = mapped;
+    return KERN_SUCCESS;
 };
 
 kern_return_t mach_vm_msync(vm_map_t map, mach_vm_offset_t address, mach_vm_size_t size, vm_sync_t sync_flags) {
@@ -863,158 +1002,27 @@ out:
 };
 
 static kern_return_t mach_vm_remap_external_shared(vm_map_t target_map, mach_vm_offset_t* address, mach_vm_size_t size, mach_vm_offset_t mask, int flags, vm_map_t src_map, mach_vm_offset_t memory_address, vm_prot_t* cur_protection, vm_prot_t* max_protection, vm_inherit_t inheritance) {
-	kern_return_t kr = KERN_SUCCESS;
-	int memfd = -1;
-	void* mapped_addr = NULL;
-	dtape_memory_region_info_t region_info;
-	int prot = 0;
-	vm_map_address_t target_addr = 0;
-	vm_prot_t vm_prot = VM_PROT_NONE;
-	dtape_map_shared_descriptor_t* descriptor = NULL;
-	dtape_map_shared_entry_t* src_shared_entry = NULL;
-	dtape_map_shared_entry_t* target_shared_entry = NULL;
-	dtape_map_shared_entry_t* src_existing_entries[8];
-	size_t src_existing_entry_count = 0;
-
-	uintptr_t end_memaddr = mach_vm_round_page(memory_address + size);
-	uintptr_t start_memaddr = mach_vm_trunc_page(memory_address);
-	size_t map_size = end_memaddr - start_memaddr;
-
-	if (!dtape_hooks->task_get_memory_region_info(src_map->dtape_task->context, memory_address, &region_info)) {
-		kr = KERN_FAILURE;
-		goto out;
-	}
-
-	if (region_info.protection & dtape_memory_protection_read) {
-		prot |= PROT_READ;
-		vm_prot |= VM_PROT_READ;
-	}
-	if (region_info.protection & dtape_memory_protection_write) {
-		prot |= PROT_WRITE;
-		vm_prot |= VM_PROT_WRITE;
-	}
-	if (region_info.protection & dtape_memory_protection_execute) {
-		prot |= PROT_EXEC;
-		vm_prot |= VM_PROT_EXECUTE;
-	}
-
-	dtape_mutex_lock(&src_map->shared_entry_lock);
-
-	src_existing_entry_count = dtape_map_find_shared_entries_locked(src_map, start_memaddr, map_size, src_existing_entries, sizeof(src_existing_entries) / sizeof(*src_existing_entries));
-
-	if (src_existing_entry_count == 1 && src_existing_entries[0]->address == start_memaddr && src_existing_entries[0]->size >= map_size) {
-		// special case for what LLDB does with dyld info
-		dtape_map_shared_descriptor_retain(src_existing_entries[0]->descriptor);
-		descriptor = src_existing_entries[0]->descriptor;
-		dtape_mutex_unlock(&src_map->shared_entry_lock);
-		goto src_setup_done;
-	} else if (src_existing_entry_count != 0) {
-		// TODO: handle this case gracefully
-		dtape_stub_unsafe("Cannot complexly remap existing shared regions yet");
-	}
-
-	dtape_mutex_unlock(&src_map->shared_entry_lock);
-
-	memfd = memfd_create("darling-remapped", MFD_CLOEXEC);
-	if (memfd < 0) {
-		kr = KERN_RESOURCE_SHORTAGE;
-		goto out;
-	}
-
-	if (ftruncate(memfd, map_size) < 0) {
-		kr = KERN_RESOURCE_SHORTAGE;
-		goto out;
-	}
-
-	mapped_addr = mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
-	if (mapped_addr == MAP_FAILED) {
-		mapped_addr = NULL;
-		kr = KERN_RESOURCE_SHORTAGE;
-		goto out;
-	}
-
-	descriptor = dtape_map_shared_descriptor_create(memfd, map_size);
-	if (!descriptor) {
-		kr = KERN_RESOURCE_SHORTAGE;
-		goto out;
-	}
-	memfd = -1; // the descriptor now owns the memfd
-
-	// FIXME: there's a race here between us reading the memory from the source process into the memfd and
-	//        when we actually replace the mapping in the source process with our shared version.
-	//        in that short window, other threads in the source process may be modifying the region
-	//        and any changes they make during that time will be lost when we replace it with our shared version.
-	//
-	//        even if we refactor this code to perform the memfd creation and setup within the source process,
-	//        there would still be a race since we can't actually prevent other threads from accessing that memory.
-
-	kr = copyinmap(src_map, start_memaddr, mapped_addr, map_size);
-	if (kr != KERN_SUCCESS) {
-		goto out;
-	}
-
-	if (dtape_hooks->task_map_file(src_map->dtape_task->context, descriptor->memfd, dtape_byte_count_to_page_count_round_up(map_size), prot, start_memaddr, 0, dtape_memory_flag_fixed | dtape_memory_flag_overwrite) != start_memaddr) {
-		kr = KERN_FAILURE;
-		goto out;
-	}
-
-	src_shared_entry = dtape_map_shared_entry_create(start_memaddr, map_size, 0, descriptor);
-	if (!src_shared_entry) {
-		kr = KERN_RESOURCE_SHORTAGE;
-		goto out;
-	}
-
-	dtape_map_insert_shared_entry(src_map, src_shared_entry);
-	src_shared_entry = NULL; // the map now owns the shared entry
-
-src_setup_done:
-	target_addr = dtape_hooks->task_map_file(target_map->dtape_task->context, descriptor->memfd, dtape_byte_count_to_page_count_round_up(map_size), prot, 0, 0, dtape_memory_flag_none);
-	if (!target_addr) {
-		kr = KERN_FAILURE;
-		goto out;
-	}
-
-	target_shared_entry = dtape_map_shared_entry_create(target_addr, map_size, 0, descriptor);
-	if (!target_shared_entry) {
-		kr = KERN_RESOURCE_SHORTAGE;
-		goto out;
-	}
-
-	dtape_map_insert_shared_entry(target_map, target_shared_entry);
-	target_shared_entry = NULL; // the map now owns the shared entry
-
-	*max_protection = VM_PROT_ALL;
-	*cur_protection = vm_prot;
-	*address = target_addr;
-
-	if (flags & VM_FLAGS_RETURN_DATA_ADDR) {
-		*address += memory_address - start_memaddr;
-	}
-
-out:
-	if (mapped_addr) {
-		if (munmap(mapped_addr, map_size) < 0) {
-			dtape_log_error("failed to unmap memfd");
-		}
-	}
-
-	if (descriptor) {
-		dtape_map_shared_descriptor_release(descriptor);
-	}
-
-	if (src_shared_entry) {
-		dtape_map_shared_entry_destroy(src_shared_entry);
-	}
-
-	if (target_shared_entry) {
-		dtape_map_shared_entry_destroy(target_shared_entry);
-	}
-
-	if (memfd >= 0) {
-		close(memfd);
-	}
-
-	return kr;
+    if (!target_map || !src_map || !address || !size || memory_address > UINT64_MAX - size ||
+        memory_address + size > UINT64_MAX - PAGE_MASK) return KERN_INVALID_ARGUMENT;
+    if (mask > PAGE_MASK || !(flags & VM_FLAGS_ANYWHERE) ||
+        (flags & ~(VM_FLAGS_ANYWHERE | VM_FLAGS_RETURN_DATA_ADDR | VM_FLAGS_ALIAS_MASK))) return KERN_NOT_SUPPORTED;
+    uint64_t start = mach_vm_trunc_page(memory_address);
+    uint64_t length = mach_vm_round_page(memory_address + size) - start;
+    dtape_map_shared_descriptor_t *descriptor = NULL; uint64_t offset = 0; vm_prot_t prot = 0;
+    kern_return_t kr = dtape_share_region(src_map, start, length, &descriptor, &offset, &prot, VM_PROT_NONE);
+    if (kr != KERN_SUCCESS) return kr;
+    dtape_map_shared_entry_t *mapping = dtape_map_shared_entry_create(0, length,
+        dtape_byte_count_to_page_count_round_down(offset), descriptor);
+    if (!mapping) {dtape_map_shared_descriptor_release(descriptor); return KERN_RESOURCE_SHORTAGE;}
+    uintptr_t mapped = dtape_hooks->task_map_file(target_map->dtape_task->context, descriptor->memfd,
+        dtape_byte_count_to_page_count_round_up(length), prot, 0,
+        dtape_byte_count_to_page_count_round_down(offset), dtape_memory_flag_none);
+    dtape_map_shared_descriptor_release(descriptor);
+    if (!mapped) {dtape_map_shared_entry_destroy(mapping); return KERN_FAILURE;}
+    mapping->address = mapped; dtape_map_insert_shared_entry(target_map, mapping);
+    *address = mapped + ((flags & VM_FLAGS_RETURN_DATA_ADDR) ? memory_address - start : 0);
+    *cur_protection = prot; *max_protection = VM_PROT_ALL;
+    return KERN_SUCCESS;
 };
 
 kern_return_t mach_vm_remap_external(vm_map_t target_map, mach_vm_offset_t* address, mach_vm_size_t size, mach_vm_offset_t mask, int flags, vm_map_t src_map, mach_vm_offset_t memory_address, boolean_t copy, vm_prot_t* cur_protection, vm_prot_t* max_protection, vm_inherit_t inheritance) {
@@ -1487,6 +1495,7 @@ mach_destroy_memory_entry(
 	named_entry->ref_count -= 1;
 
 	if (named_entry->ref_count == 0) {
+        if (named_entry->dtape_descriptor) dtape_map_shared_descriptor_release(named_entry->dtape_descriptor);
 		if (named_entry->is_sub_map) {
 			vm_map_deallocate(named_entry->backing.map);
 		} else if (named_entry->is_copy) {

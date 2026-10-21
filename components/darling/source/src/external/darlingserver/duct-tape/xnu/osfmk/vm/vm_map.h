@@ -182,7 +182,9 @@ extern queue_head_t vm_named_entry_list;
  *
  */
 
+struct dtape_map_shared_descriptor;
 struct vm_named_entry {
+	struct dtape_map_shared_descriptor *dtape_descriptor; /* Linux shared backing */
 	decl_lck_mtx_data(, Lock);              /* Synchronization */
 	union {
 		vm_map_t        map;            /* map backing submap */
