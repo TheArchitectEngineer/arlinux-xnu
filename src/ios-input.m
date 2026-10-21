@@ -29,6 +29,7 @@ enum { AR_HID_HAND=3, AR_HID_RANGE=1, AR_HID_TOUCH=2, AR_HID_POSITION=4,
 @interface UITouch (ARLinuxPointer)
 - (void)setWindow:(UIWindow *)window;
 - (void)setView:(UIView *)view;
+- (void)setGestureView:(UIView *)view;
 - (void)setTapCount:(NSUInteger)count;
 - (void)setTimestamp:(NSTimeInterval)timestamp;
 - (void)setPhase:(UITouchPhase)phase;
@@ -95,6 +96,7 @@ static void bind_pointer(void)
     const struct {Class cls;const char *selector,*types;} methods[]={
         {[UITouch class],"setWindow:","v24@0:8@16"},
         {[UITouch class],"setView:","v24@0:8@16"},
+        {[UITouch class],"setGestureView:","v24@0:8@16"},
         {[UITouch class],"setTapCount:","v24@0:8Q16"},
         {[UITouch class],"setTimestamp:","v24@0:8d16"},
         {[UITouch class],"setPhase:","v24@0:8q16"},
@@ -134,24 +136,19 @@ static void deliver_contact(UITouchPhase phase,uint64_t time)
     [contact setPhase:phase];[contact setTimestamp:(double)time/1e9];
     [contact _setLocationInWindow:contact_point resetPrevious:phase==UITouchPhaseBegan];
     [contact _setHidEvent:hand];
+    /* UIKit keeps the gesture routing view separately from the responder view.
+     * Follow KIF's touch construction before the original event collects its
+     * recognizers; no recognizer or application action is invoked directly. */
+    if(phase==UITouchPhaseBegan)[contact setGestureView:contact.view];
     UIApplication *app=[UIApplication sharedApplication];
     UIEvent *event=[app _touchesEvent];
     if(!event) {fprintf(stderr,"IOS_INPUT_EVENT_UNAVAILABLE\n");abort();}
     [event _clearTouches];[event _setHIDEvent:hand];
     [event _setTimestamp:(double)time/1e9];
-    if(phase==UITouchPhaseBegan) {
-        /* Hit testing is part of this real event, not a geometry-only query.
-         * Framework views may inspect its HID payload/type when routing input. */
-        UIView *view=[contact.window hitTest:contact_point withEvent:event];
-        if(!view) {
-            fprintf(stderr,"IOS_POINTER_NO_TARGET x=%g y=%g\n",contact_point.x,contact_point.y);
-            CFRelease(hand);[contact release];contact=nil;return;
-        }
-        [contact setView:view];[contact _setIsFirstTouchForView:YES];
-    }
     [event _addTouch:contact forDelayedDelivery:NO];
-    fprintf(stderr,"IOS_POINTER_DELIVER phase=%ld x=%g y=%g view=%s\n",(long)phase,
-        contact_point.x,contact_point.y,class_getName(object_getClass(contact.view)));
+    fprintf(stderr,"IOS_POINTER_DELIVER phase=%ld x=%g y=%g view=%s gestures=%lu\n",(long)phase,
+        contact_point.x,contact_point.y,class_getName(object_getClass(contact.view)),
+        (unsigned long)contact.gestureRecognizers.count);
     [app sendEvent:event];CFRelease(hand);
     if(!touching) {[event _clearTouches];[contact release];contact=nil;}
 }
@@ -212,9 +209,11 @@ static void input_tick(CFRunLoopTimerRef timer,void *context)
                 if(contact)deliver_contact(UITouchPhaseCancelled,pointer.nanoseconds);
                 UIWindow *window=[UIApplication sharedApplication].keyWindow;
                 CGPoint point=[window convertPoint:CGPointMake(pointer.data.pointer.x_fixed/256.0,pointer.data.pointer.y_fixed/256.0) fromWindow:nil];
-                if(!window)continue;
+                UIView *view=[window hitTest:point withEvent:nil];
+                if(!window || !view)continue;
                 contact=[[UITouch alloc] init];[contact setWindow:window];[contact setTapCount:1];
                 contact_point=point;[contact _setLocationInWindow:point resetPrevious:YES];
+                [contact setView:view];[contact _setIsFirstTouchForView:YES];
                 deliver_contact(UITouchPhaseBegan,pointer.nanoseconds);
             } else if(contact) {
                 contact_point=[contact.window convertPoint:CGPointMake(pointer.data.pointer.x_fixed/256.0,pointer.data.pointer.y_fixed/256.0) fromWindow:nil];

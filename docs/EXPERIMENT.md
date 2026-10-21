@@ -94,12 +94,21 @@ Pointer delivery records a UIView on begin and nil on end; no DOM callback
 reports a changed value. Normal close remains blocked, and forced cleanup is
 not acceptance. Feedback is 199 s; journeys 56.6 s including 19.5 s diagnosis.
 
-The next input candidate builds the actual UIEvent/HID payload before calling
-UIKit hitTest:withEvent:, replacing its prior nil-event hit query for all apps.
-This is a routing correction to the shared input boundary, not a WebKit target
-substitution or direct DOM action. It still requires original event delivery,
-changed JS state/pixels and normal close to pass; its cause/effect is unproven
-until runner validation.
+The event-before-hit-test candidate does not fix the DOM input failure:
+[run 39618854476](https://github.com/taowen/arlinux-xnu/actions/runs/39618854476),
+source **02dc71694a5aec612a30973127affe6a41ed3887**, attempt 1, passes Canvas,
+Counter and Notes (3/4 partial), but Web **6185/39098** still shows Count 0 after
+external input. Receipt
+**f08da97441ba68390799e3f0a873d1b667b112500e8716d2592393a02da70d62**
+and all 80 files were verified. Journeys take 76.2 s, including 21.0 s diagnosis;
+total feedback is 202 s. The ineffective hit-test candidate is removed.
+
+The next candidate supplies UIKit's separate gesture routing view before the
+original UITouchesEvent collects recognizers, following
+[KIF's primary implementation](https://github.com/kif-framework/KIF/blob/master/Sources/KIF/Additions/UITouch-KIFAdditions.m).
+Its actual selector ABI is checked and actual recognizer counts are recorded.
+No recognizer, DOM callback or app action is invoked directly. External DOM
+count/pixel change and normal close still require runner acceptance.
 
 This run's journeys take 67.8 s (diagnosis 21.7 s included); total feedback is
 534 s, including delayed GitHub finalization after execution/evidence upload.
