@@ -13,6 +13,19 @@ static const struct arlinux_ios_platform_api *platform;
 static uint32_t last_generation=UINT32_MAX;
 static uint32_t last_flags=UINT32_MAX;
 static unsigned int samples;
+static void (*original_control_action)(id,SEL,SEL,id,id);
+static unsigned int control_actions;
+static void observe_control_action(id control,SEL method,SEL action,id target,id event)
+{
+    unsigned int sequence=__atomic_fetch_add(&control_actions,1,__ATOMIC_RELAXED);
+    if(sequence<64)
+        fprintf(stderr,"IOS_CONTROL_ACTION sequence=%u stage=enter control=%.96s action=%.160s target=%.96s event=%p\n",
+            sequence,class_getName(object_getClass(control)),action ? sel_getName(action) : "<none>",
+            target ? class_getName(object_getClass(target)) : "<responder-chain>",event);
+    else if(sequence==64)fprintf(stderr,"IOS_CONTROL_ACTION_TRUNCATED limit=64\n");
+    original_control_action(control,method,action,target,event);
+    if(sequence<64)fprintf(stderr,"IOS_CONTROL_ACTION sequence=%u stage=return\n",sequence);
+}
 struct protocol_evidence {
     Protocol *seen[32];
     unsigned int protocols,methods,missing,encoding_differences;
@@ -117,6 +130,14 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
 {
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
     if (!enabled || strcmp(enabled,"1")) return;
+    /* Observe only actual UIKit dispatch. Forward the exact original arguments;
+     * never call the app's selector or supply a missing action/event. */
+    Class control=objc_getClass("UIControl");
+    Method action=control ? class_getInstanceMethod(control,sel_registerName("sendAction:to:forEvent:")) : NULL;
+    const char *types=action ? method_getTypeEncoding(action) : NULL;
+    if(types && !strcmp(types,"v40@0:8:16@24@32"))
+        original_control_action=(void *)method_setImplementation(action,(IMP)observe_control_action);
+    else fprintf(stderr,"IOS_CONTROL_ACTION_UNAVAILABLE types=%.256s\n",types ? types : "<absent>");
     prior_uncaught=NSGetUncaughtExceptionHandler();
     NSSetUncaughtExceptionHandler(record_uncaught);
     /* Candidate input/termination boundaries: inspect actual loaded signatures

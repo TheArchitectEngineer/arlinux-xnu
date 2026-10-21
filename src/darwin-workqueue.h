@@ -110,6 +110,9 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
          * libdispatch's fallback marker. It still requests a real worker at
          * that QoS; the marker does not create a separate kernel queue. */
         if (!qos || (priority&~(D_PTHREAD_PRIORITY_MASK|D_PRIORITY_OVERCOMMIT|D_PRIORITY_FALLBACK))) return -ENOTSUP;
+        static unsigned int requests;
+        unsigned int observation=__atomic_fetch_add(&requests,1,__ATOMIC_RELAXED);
+        if(observation<64)trace_record("DARWIN_WORKQUEUE_REQUEST count=0x",r[2],priority,qos);
         for (unsigned int i=0;i<r[2];i++) {
             uint64_t size=D_GUEST_PAGE_SIZE+D_WORKQUEUE_STACK_SIZE+
                           ((registered_pthread_size+D_GUEST_PAGE_SIZE-1)&~(D_GUEST_PAGE_SIZE-1));
@@ -122,6 +125,7 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
             if (priority&D_PRIORITY_OVERCOMMIT) flags|=D_WQ_OVERCOMMIT;
             unsigned long long arguments[6]={0,0,self,self,flags,0};
             long result=native_thread_create_impl(arguments,original_mask,1,low);
+            if(observation<64)trace_record("DARWIN_WORKQUEUE_CREATED request=0x",observation,flags,result);
             if ((unsigned long)result>=(unsigned long)-4095) {
                 RAW(SYS_munmap,memory,size,0,0,0,0); return result;
             }
