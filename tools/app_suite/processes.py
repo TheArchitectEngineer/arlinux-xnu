@@ -313,11 +313,11 @@ class Processes:
                                '__ZN6WebKit29XPCServiceInitializerDelegate19getClientIdentifierERN3WTF6StringE'):
                     arguments+=['--lookup',image,symbol]
             if 'service=com.apple.WebKit.WebContent ' in session_text:
-                # Run 39600136880 reaches this original wait after real VM
-                # initialization. Inspect the dependency before replacing it.
-                arguments+=['--lookup-fragment',
+                # Full run 39600777191 reaches actual rendering stream creation
+                # after the database wait. Read the failed buffer consumer.
+                arguments+=['--lookup',
                     '/System/Library/Frameworks/WebKit.framework/WebKit',
-                    'LaunchServicesDatabaseManager']
+                    '__ZN3IPC22StreamClientConnection6createEj']
             command(*arguments,capture_output=True)
         except (OSError,RuntimeError,subprocess.SubprocessError) as error:
             self.diagnostic['collectionErrors'].append('Service runtime symbolication: '+str(error))

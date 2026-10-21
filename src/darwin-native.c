@@ -649,9 +649,13 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             unsigned long status=D_KERN_INVALID_ARGUMENT; /* KERN_INVALID_ARGUMENT */
             if (r[0]!=CURRENT_TASK_PORT) status=D_KERN_INVALID_TASK; /* KERN_INVALID_TASK */
             else if (guest_copy(&address,r[1],sizeof(address),0)) status=D_KERN_INVALID_ADDRESS;
-            else if (((number==D_TRAP_VM_ALLOCATE ? r[3] : r[4])&~(unsigned long)(D_VM_FLAGS_TAG_MASK|D_VM_FLAGS_ANYWHERE))==0 &&
+            else if (((number==D_TRAP_VM_ALLOCATE ? r[3] : r[4])&~(unsigned long)(D_VM_FLAGS_TAG_MASK|D_VM_FLAGS_ANYWHERE|D_VM_FLAGS_PURGABLE))==0 &&
                      ((number==D_TRAP_VM_ALLOCATE ? r[3] : r[4])&D_VM_FLAGS_ANYWHERE) && r[2] &&
                      (number==D_TRAP_VM_ALLOCATE || !(r[5]&~(PROT_READ|PROT_WRITE)))) {
+                /* VM_FLAGS_PURGABLE begins nonvolatile, with real zero-filled
+                 * backing just like ordinary anonymous memory. Accept that
+                 * allocation capability; volatile/discard state control is
+                 * still unsupported, never reported as a completed purge. */
                 long mapped=anonymous_aligned(r[2],number==D_TRAP_VM_ALLOCATE ? PROT_READ|PROT_WRITE : r[5],
                                               number==D_TRAP_VM_ALLOCATE ? PAGE16-1 : r[3]);
                 if ((unsigned long)mapped>=(unsigned long)-4095) status=D_KERN_RESOURCE_SHORTAGE;

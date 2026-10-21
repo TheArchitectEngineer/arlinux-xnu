@@ -83,16 +83,14 @@ took 156 s overall and 30 s in journeys.
 
 ## Complete collection and remaining failures
 
-Full run [39564800794](https://github.com/taowen/arlinux-xnu/actions/runs/39564800794),
-source **d88d586edfc530138f91b2ac32916f7e80b70e1a**, attempt 1, passes **14/16**
+Full run [39600777191](https://github.com/taowen/arlinux-xnu/actions/runs/39600777191),
+source **dae77eae50bc105f1edfbd2ed05aa0ba38a726b1**, attempt 1, passes **14/16**
 journeys. The collection is still **failed**. Receipt
-**a706fefc4630de978c19fc3def9bb55437e1d219d45742e01110400deb89f8fe**
-and all 257 retained files were verified. Individual journeys total 175.825 s,
-including 27.552 s of diagnosis. Total feedback is 323 s; firmware transfer takes
-15.611 s, toolchain setup 47 s and pinned-userland preparation 46 s. This full
-regression retains the 14 passing journeys after the virtual-memory fixes.
-Both WebContent helpers now pass the real 38 GiB reservation and reach the
-service metadata boundary below. This is not a Web journey pass.
+**6fd98c60bb808417cd4970903b07a642fab9d92547b42e96dc172cd018a50e72**
+and all 252 retained files were verified. Individual journeys total 155.062 s,
+including 29.284 s of diagnosis. Total feedback is 309 s; firmware transfer takes
+15.53 s, toolchain setup 66 s and pinned-userland preparation 45 s. The common
+getrlimit and real page-protection fixes retain all 14 previously passing flows.
 
 Console, Foundation, Counter, Swift, Notes, Canvas, Process and all three Workers
 journeys pass. Concurrent relaunch passes all 29 steps; crash isolation and focus
@@ -101,7 +99,7 @@ helper cleanup or background lifecycle behavior. The earlier kmsg preallocation
 regression is repaired: auxiliary ownership adds to the allocation and leaves
 the original inline-message capacity intact.
 
-Network passes all 14 steps. Processes **7288/39683** and **7338/40128**
+Network passes all 14 steps. Processes **7479/42135** and **7529/42497**
 (PID/startTicks) each receive an actual status 200 / 13-byte response through
 Linux libcurl and original NSURLSession completion. JSON parsing and main-queue
 delivery produce Network: 42 in composed pixels, the peer records two requests,
@@ -118,72 +116,27 @@ observation; one full pass does not prove its isolated cause or general repair.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Web | Latest selected run below passes actual bootstrap/service metadata and JavaScriptCore suspension/resume. Real service queue/check-in handoff is implemented; the original network connection still fails. No DOM or helper-lifecycle acceptance. |
-| Share | Process 6058/26678 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
+| Web | Original VM now initializes; rendering stream buffer allocation rejects PURGABLE. Networking initialization also remains incomplete. No DOM or helper-lifecycle acceptance. |
+| Share | Process 6147/30322 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
 
-Selected run [39555581254](https://github.com/taowen/arlinux-xnu/actions/runs/39555581254),
-source **35927cc3076e52cfb342ce06a0f2da89f0b1213f**, attempt 1, passes Canvas and
-Counter but **fails Web** (2/3). Receipt
-**543768b1c2cbf93d5c8a67aad1a451c01d531d2e27c3f113c4ea119c36941b34**
-and 49 files were verified. Original WebCore getters return the configured CPU
-limit 8192x8192 and four-byte BGRA row alignment; Canvas actually repaints and
-Counter still closes/relaunches interactively. Web process **5987/22843** no
-longer aborts at the IOSurface limit/alignment queries, but WebCount 0 never
-appears in the 8.019 s effect wait. Its real main run loop is waiting, not a
-completed page. Total feedback is 156 s, including 9.542 s of diagnosis.
+Web app **6373/32926** shares owned session **6370/32921**. Real WebContent
+**6414/33211** passes bootstrap, unique receive-right handoff, actual client
+message dispatch, JSC VM stack-bound checks and WTF configuration freezing.
+The service catalogue is prepared from actual firmware bundles; it supplies
+metadata and Linux-owned process lifetimes, never a fake ready endpoint.
+Network service **6449/33720** still ends with runtime fatal status 125; the
+original identifier failure from its earlier instance remains unresolved.
 
-The actual session receives type=5/flags=32 instance-scoped discovery for
-com.apple.WebKit.WebContent and com.apple.WebKit.Networking from that audit
-identity, then returns error 45. Their nested bootstrap requests (ID 0x400002c6)
-also remain unsupported. The next boundary is real Linux-owned helper launch,
-bootstrap/connection and retirement, without an empty success endpoint or a
-synthetic DOM callback. No IOSurface driver, GPU allocation or Web pass is
-claimed. Targeted cache reads of the original configuration interfaces replaced
-unrelated standing QuartzCore dumps; the original fault/run-loop evidence stays.
-
-In the current full run, Web **6281/29591** supplies its original bootstrap
-dictionary. WebContent children **6321/30067**, **6344/30245**, and Networking
-child **6350/30249** run in the headless service role under session **6278/29585**.
-Actual PID/start ticks bind each log. Both WebContent processes map the original
-0x980000000-byte (38 GiB) private reservation at 0x400090000, after dyld. The
-allocator searches real holes with MAP_FIXED_NOREPLACE and uses MAP_NORESERVE;
-it preserves the guest address limit and does not disable Gigacage. Earlier
-rejections exposed three separate boundaries: a 4 GiB cap, whole-span cursor
-skipping over dyld, and Linux commit accounting for the sparse writable mapping.
-All three children subsequently request operation 0x2c7 and receive the caller's
-original bootstrap dictionary plus its real 32-byte creator audit token. No
-nested environment values are logged. All then request 0x2ce and fault in the
-original xpc_main -> _xpc_copy_xpcservice_dictionary direct-launch rejection.
-The exact reply consumer expects `identifier` and `xpcservice-dict`; implementing
-that operation from actual bundle metadata is the next boundary, followed by
-real check-in/port handoff and the original DOM/input journey.
-Firmware preparation registers actual service identifiers/paths once; the
-index hash is 9356cbc9a2e8d549d4acc5708b23c18ad1d04057ae9b0b5afaf990e1a5ca5868.
-Runtime validates the indexed bundle instead of repeating a full FUSE glob in
-the synchronous session loop. Original session and both WebContent LLDB
-collections complete; the third child is explicitly omitted from attachment,
-with its actual fault records retained in session.log. No DOM, usable connection,
-normal helper retirement, third-party IPA or Android acceptance is claimed.
-
-Latest selected run [39600136880](https://github.com/taowen/arlinux-xnu/actions/runs/39600136880),
-source **973607e0f3fb6b0a006f445fa42d037d796df4c6**, attempt 1, passes Counter
-and fails Web DOM (1/2, partial). Receipt
-**0b59a7e1b662a24869a06089b4821b2d45129491b12076a336ec3c94060b6821**
-and 47 evidence files were verified. App **6200/67367** shares owned session
-**6197/67362**; WebContent **6238/67850**, Networking **6275/68560** and
-replacement **6326/68721** are retained by PID/start ticks.
-The original VM passes the former stack-bound and WTF configuration-freezing
-crashes. vm_protect now returns actual success after applying Linux protection.
-WebContent's original stack advances through initializeWebProcess ->
-setWebsiteDataStoreParameters -> ensureNetworkProcessConnection ->
-LaunchServicesDatabaseManager::waitForDatabaseUpdate (binary semaphore wait).
-This proves forward execution beyond the previous VM crashes, not DOM success.
-Targeted matching-cache reads of this actual dependency are next, alongside a
-full collection regression for the common resource/protection changes.
-Networking still separately exits in its connection/client identifier branch;
-no synthetic identifier is supplied. Total feedback is 190 s; journeys take
-40.406 s including 23.389 s of diagnosis. No DOM or helper-lifecycle acceptance.
-The previous full 14/16 result remains source-specific; the full goal remains active.
+The full log catches WebContent advancing beyond the LaunchServices database
+wait to rendering. It traps in RemoteRenderingBackendProxy::ensureGPUProcessConnection
+at **0x198e11f1c** after IPC::StreamClientConnection::create returns no buffer.
+The preceding real VM allocation requests **0x200100** bytes with flags **3**
+(ANYWHERE | PURGABLE), rejected as KERN_INVALID_ARGUMENT (**4**). The candidate
+supports initial nonvolatile purgeable allocation with actual zero-filled
+backing; volatile/discard control remains unsupported. It also gives only Web's
+first DOM observation a 45-second cold-start budget, retaining actual pixels,
+external input and normal-close requirements. Runner validation is pending.
+These are not GPU hardware acceleration, DOM or helper-lifecycle acceptance.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary

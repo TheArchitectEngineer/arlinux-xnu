@@ -296,3 +296,13 @@ suite still run. Reports cache completed raw logs only after matching run/attemp
 source/job identity and their recorded SHA-256. --verbose retains full observations.
 Shortening feedback must not create a second builder, fake backend, probe-only
 acceptance or an exception that turns an unimplemented app effect green.
+
+Web's first DOM observation has an explicit 45-second cold-start budget: its
+original helpers must load/adapt the real cache and initialize a VM before
+showing content. Run 39600136880's live WebContent still entered its real
+five-second database wait during post-failure diagnosis. Diagnosing at the old
+eight-second first-paint cutoff interrupts startup before this work completes.
+Only this first observation gets the budget; subsequent input/effects use the
+normal deadline. Required structured text, composed ink/changed pixels, external
+click and normal close remain unchanged. Report actual effect duration; a longer
+budget never certifies a blank window or a surviving helper.

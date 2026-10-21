@@ -10,7 +10,8 @@
         },
         {
           "do": "see",
-          "text": "WebCount: ?0"
+          "text": "WebCount: ?0",
+          "timeoutSeconds": 45
         },
         {
           "do": "click",

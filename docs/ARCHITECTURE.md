@@ -451,3 +451,8 @@ does not maintain a separate Mach maximum-permission ceiling: trusted guest
 code can subsequently request writable protection. No sandbox or permanent
 anti-tampering guarantee is claimed. Executable protection remains unsupported
 on this direct trap path; real command failures are returned.
+
+Anonymous VM_FLAGS_PURGABLE allocations start with real nonvolatile, zero-filled
+backing. This flag does not itself discard memory; later volatile/discard state
+control remains unsupported. Do not report such control as completed or infer
+shared-memory/IPC conformance from initial allocation success.
