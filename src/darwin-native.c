@@ -646,12 +646,27 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             return;
         }
         break;
-    case D_SYS_MAC_SYSCALL: {                /* __mac_syscall: compatibility dyld policy only */
+    case D_SYS_MAC_SYSCALL: {
         char policy[5];
         struct iovec local={policy,sizeof(policy)},remote={(void *)r[0],sizeof(policy)};
         long pid=RAW(SYS_getpid,0,0,0,0,0,0);
         if (RAW(SYS_process_vm_readv,pid,&local,1,&remote,1,0)!=(long)sizeof(policy)) {
             result=-EFAULT; break;
+        }
+        if(r[1]==D_SANDBOX_CHECK) {
+            char name[8],argument;
+            if(!guest_copy(name,r[0],sizeof(name),0) && !__builtin_memcmp(name,"Sandbox",sizeof(name))) {
+                /* No Apple Seatbelt policy is installed in this Linux
+                 * compatibility process. Match Darling's sandbox_check
+                 * boundary: a policy query adds no denial. This neither
+                 * installs a profile nor grants Unix file/process rights;
+                 * actual host operations retain their normal permission checks.
+                 * Reference: darlinghq/darling src/sandbox/sandbox.c.
+                 * Other Sandbox calls remain unsupported. */
+                result=guest_copy(&argument,r[2],sizeof(argument),0);
+                if(!result)trace_record("DARWIN_SANDBOX_CHECK policy_installed=0x",0,uc->uc_mcontext.pc,0);
+                break;
+            }
         }
         if (r[1]!=D_AMFI_DYLD_POLICY || policy[0]!='A' || policy[1]!='M' || policy[2]!='F' ||
             policy[3]!='I' || policy[4]) break;

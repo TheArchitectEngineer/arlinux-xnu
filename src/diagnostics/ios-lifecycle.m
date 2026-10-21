@@ -98,6 +98,27 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
 {
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
     if (!enabled || strcmp(enabled,"1")) return;
+    /* Candidate input/termination boundaries: inspect actual loaded signatures
+     * before binding them. These getters do not create or deliver any event. */
+    const struct {const char *cls,*selector;} input_methods[]={
+        {"UITouch","setWindow:"},{"UITouch","setView:"},
+        {"UITouch","setPhase:"},{"UITouch","setTapCount:"},
+        {"UITouch","setTimestamp:"},{"UITouch","setGestureView:"},
+        {"UITouch","_setLocationInWindow:resetPrevious:"},
+        {"UITouch","_setIsFirstTouchForView:"},{"UITouch","_setHidEvent:"},
+        {"UIEvent","_clearTouches"},{"UIEvent","_addTouch:forDelayedDelivery:"},
+        {"UIEvent","_setHIDEvent:"},{"UIEvent","_setTimestamp:"},
+        {"UIApplication","_touchesEvent"},{"UIApplication","sendEvent:"},
+        {"UIApplication","_terminateWithStatus:"},{"UIApplication","_applicationWillTerminate"}
+    };
+    for(unsigned int i=0;i<sizeof(input_methods)/sizeof(*input_methods);i++) {
+        Class cls=objc_getClass(input_methods[i].cls);
+        Method method=cls ? class_getInstanceMethod(cls,sel_registerName(input_methods[i].selector)) : NULL;
+        fprintf(stderr,"IOS_INPUT_ABI class=%s selector=%s types=%s implementation=%p\n",
+            input_methods[i].cls,input_methods[i].selector,
+            method ? method_getTypeEncoding(method) : "<absent>",
+            method ? (void *)method_getImplementation(method) : NULL);
+    }
     Protocol *protocol=objc_getProtocol("FBSSceneUpdater");
     Class adapter=objc_getClass("ARLinuxSceneUpdater");
     struct protocol_evidence evidence={0};
