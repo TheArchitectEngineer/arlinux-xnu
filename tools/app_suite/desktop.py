@@ -59,14 +59,24 @@ class Desktop:
                 'green':sum(p[1]>200 and p[0]<70 and p[2]<70 for p in pixels),
                 'sha256':hashlib.sha256(crop.tobytes()).hexdigest()}
 
-    def observe(self,pattern,word=False,timeout_seconds=8,interactive=None):
+    def observe(self,pattern,word=False,timeout_seconds=8,interactive=None,region=None):
         if type(timeout_seconds) not in (int,float) or not 0<timeout_seconds<=120:
             raise RuntimeError('UI observation timeout must be positive and at most 120 seconds')
+        if region is not None and (not isinstance(region,list) or len(region)!=4 or
+                any(type(value) not in (int,float) for value in region) or
+                not (0<=region[0]<1 and 0<=region[1]<1 and region[2]>0 and region[3]>0 and
+                     region[0]+region[2]<=1 and region[1]+region[3]<=1)):
+            raise RuntimeError('Observation region must be inside the normalized viewport')
         deadline=time.monotonic()+timeout_seconds;regex=re.compile(pattern,re.I)
         while True:
             self.guard();state=self.inspection()
             matches=[] if not state else [item for item in state['elements'] if regex.search(item['text']) and (not word or item['interactive'])
                                          and (interactive is None or item['interactive']==interactive)]
+            if region is not None and state:
+                width,height=state['viewport']
+                left,top,right,bottom=region[0]*width,region[1]*height,(region[0]+region[2])*width,(region[1]+region[3])*height
+                matches=[item for item in matches if left<=item['rect'][0] and top<=item['rect'][1] and
+                         item['rect'][0]+item['rect'][2]<=right and item['rect'][1]+item['rect'][3]<=bottom]
             if len(matches)>1:raise RuntimeError('Ambiguous structured UI target: '+pattern)
             if matches:
                 path=self.snapshot('observe');rect=self.screen_rect(state,matches[0]['rect']);pixels=self.sample(path,rect)

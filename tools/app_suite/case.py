@@ -51,7 +51,7 @@ class Case(Processes,Desktop):
         elif action == 'pixels':
             self.observe_pixels(step)
         elif action == 'see':
-            self.observe(step['text'],timeout_seconds=step.get('timeoutSeconds',8),interactive=step.get('interactive'))
+            self.observe(step['text'],timeout_seconds=step.get('timeoutSeconds',8),interactive=step.get('interactive'),region=step.get('region'))
         elif action == 'application-state':
             deadline=time.monotonic()+8
             while True:
@@ -67,7 +67,9 @@ class Case(Processes,Desktop):
                     raise RuntimeError('Application state/notifications did not reach '+name+' '+step['state'])
                 time.sleep(.1)
         elif action == 'click':
-            target = self.observe(step['text'], word=True)
+            target_kind=step.get('target','control')
+            if target_kind not in ('control','text'):raise RuntimeError('Unknown click target kind')
+            target = self.observe(step['text'], word=target_kind=='control',region=step.get('region'))
             self.click_target(target)
         elif action == 'focus':
             if self.reference:
