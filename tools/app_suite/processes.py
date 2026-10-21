@@ -238,6 +238,15 @@ class Processes:
             target='failed-step app' if live['app']==target else 'surviving peer')
         arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,
                 self.directory/'original-process.lldb.log',self.directory/'original-process.symbols.json']
+        session_log=self.output/(self.case['id']+'--session')/'session.log'
+        if session_log.is_file() and 'name=com.apple.containermanagerd' in session_log.read_text(errors='replace'):
+            # A real original app asked for the missing shared-container service.
+            # Read its Foundation consumer and C boundary, not unrelated symbols
+            # or a synthetic call that supplies the missing URL.
+            arguments+=['--objc-method','/System/Library/Frameworks/Foundation.framework/Foundation',
+                'NSFileManager','containerURLForSecurityApplicationGroupIdentifier:',
+                '--lookup-fragment','/usr/lib/system/libsystem_containermanager.dylib',
+                'container_create_or_lookup_app_group_path_by_app_group_identifier']
         if os.environ.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' and 'IOS_POINTER_DELIVER ' in Path(live['stdout']).with_suffix('.stderr').read_text(errors='replace'):
             image='/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore'
             for selector in ('_addTouch:forDelayedDelivery:','_clearTouches'):

@@ -250,6 +250,9 @@ static long native_csops(const unsigned long long *r)
         if(!native_codesign.signature_bytes)result=-EINVAL;
         else if((uint32_t)r[1]==D_CS_OPS_ENTITLEMENTS_BLOB)
             result=native_codesign_copy(native_codesign.xml,native_codesign.xml_bytes,r[2],r[3]);
+        /* XNU can transmute XML to DER. Until that boundary exists here, an
+         * XML-only signed input must not look like a successful empty grant. */
+        else if(!native_codesign.der && native_codesign.xml)result=-ENOTSUP;
         else result=native_codesign_copy(native_codesign.der,native_codesign.der_bytes,r[2],r[3]);
     }
     if (__atomic_fetch_add(&native_codesign_traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {

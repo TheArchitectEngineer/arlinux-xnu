@@ -99,10 +99,22 @@ return, and the branch force-unwraps that missing URL. Actual signature metadata
 declares application groups. Unsupported csops queries are a dependency clue,
 not proof that supplying metadata alone will implement shared storage.
 
-The loader now retains bounded, original XML/DER entitlement blobs, and csops
-exposes those bytes with XNU's short-buffer protocol and PID/audit-incarnation
-checks. It asserts no Apple signature validation or platform trust. This change
-requires an actual runner journey; group storage remains a separate Linux-backed
-boundary, not an app-specific fabricated URL. Exact input metadata/distribution
+The loader retains bounded original XML/DER entitlement blobs, and csops exposes
+those bytes with XNU's short-buffer protocol and PID/audit-incarnation checks.
+[Run 39688587964](https://github.com/taowen/arlinux-xnu/actions/runs/39688587964),
+source **16d1c860252439686cddba69afe1a6d39eba0bc0**, still traps at the same
+original instruction, PID/start 5924/54308. Receipt
+**f2af3aa181ad6c28380b1455074fe3b33f1819e2b39616303df4abdf043b3fa4**
+and 83 files were verified. Its actual DER queries receive an empty header:
+this IPA has XML but no DER. Apple's SecTask implementation requests DER without
+XML fallback; XNU normally transmutes it. The runtime now explicitly rejects
+this unimplemented conversion instead of reporting no entitlements. The same
+session records com.apple.containermanagerd lookup failures (1102), so metadata
+alone cannot supply shared storage. Targeted original consumer disassembly is
+included in the next failing journey's existing diagnosis.
+
+No Apple signature validation or platform trust is asserted. DER conversion and
+shared storage remain Linux-backed boundaries, not app-specific fabricated
+grants or URLs. Exact input metadata/distribution
 limits are in APPS.md. Create/edit/complete/reopen remains unverified, as does
 the Apple-host IPA path. Source-owned fixtures cannot substitute for this goal.

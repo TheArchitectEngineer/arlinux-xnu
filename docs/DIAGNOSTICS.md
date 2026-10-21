@@ -301,6 +301,13 @@ after the interrupted-writer failure in 39515278534.
 
 ## Runtime boundaries
 
+When the original failed process actually requests com.apple.containermanagerd,
+its existing cache symbolication reads the Foundation group-container method and
+the corresponding libsystem_containermanager C boundary. The bounded disassembly
+is evidence for storage adaptation, not a daemon implementation. Embedded XML-only
+entitlements require DER transmutation for the native iOS SecTask consumer; a
+successful empty DER reply would incorrectly discard the input's declared groups.
+
 src/diagnostics/ios-ui.h owns optional capture/view-tree diagnostics. Those run on
 the genuine UIKit main loop and use raw syscalls, never host libc/TLS. They do not
 change layout, call control actions or supply implementation. API export/code
