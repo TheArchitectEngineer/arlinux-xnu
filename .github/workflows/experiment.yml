@@ -58,8 +58,17 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
+        # Download needs only the hosted image's Python/curl, not the packages
+        # below. Join it in this step; no detached producer or cross-run input.
+        mkdir -p build/results
+        python3 tools/prepare-ios-userland.py --download-only > build/results/firmware-download.log 2>&1 &
+        firmware_pid=$!
+        trap 'kill "$firmware_pid" 2>/dev/null || true' EXIT
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends clang-18 cmake ccache ninja-build bison flex libbsd-dev lld-18 llvm-18 libwayland-dev wayland-protocols 7zip lldb-18 fuse3 unionfs-fuse libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev weston xvfb xdotool scrot python3-pil
+        wait "$firmware_pid"
+        trap - EXIT
+        grep '^APPLE_DOWNLOAD_TIMING ' build/results/firmware-download.log
         python3 - <<'PY'
         import hashlib, os, pathlib
         digest = hashlib.sha256()

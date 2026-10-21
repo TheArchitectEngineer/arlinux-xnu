@@ -230,7 +230,7 @@ def report(run_id, job_name, verbose=False):
             lines = [re.sub(r'^[^\t]+\t[^\t]+\t', '', line) for line in lines]
         lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
         markers=('APP_BUILD ','APP_CASE ','APP_DIAGNOSIS ','APP_SUITE ','APP_INPUT_VERIFIED ','APP_INPUT_HANDOFF ',
-                 'COMPILER_CACHE_STATS ','APPLE_PREPARATION_TIMING ','EXPERIMENT_RECEIPT ')
+                 'COMPILER_CACHE_STATS ','APPLE_DOWNLOAD_TIMING ','APPLE_PREPARATION_TIMING ','EXPERIMENT_RECEIPT ')
         item['observations']=[line for line in lines if line.startswith(markers)]
         for line in (lines if verbose else item['observations']):
             if verbose:print('  '+line)

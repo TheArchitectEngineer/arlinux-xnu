@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import struct
 import time
+import argparse
 from concurrent.futures import ThreadPoolExecutor
 
 root = Path(__file__).resolve().parents[1]
@@ -66,17 +67,36 @@ def download_firmware():
     return time.monotonic()-started
 
 
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--download-only',action='store_true',
+    help='Workflow-internal: fetch the declared firmware while apt installs tools; validation remains mandatory before extraction')
+args=parser.parse_args()
+if args.download_only:
+    seconds=download_firmware()
+    print('APPLE_DOWNLOAD_TIMING '+json.dumps({'seconds':round(seconds,3),
+        'bytes':archive.stat().st_size,'validated':False}),flush=True)
+    raise SystemExit(0)
+
+
 # The source-owned APFS reader and pinned firmware download are independent.
 # Join both real commands before validation/extraction; neither a cached image
 # nor a detached background download can become an input after a failure.
 started=time.monotonic()
-with ThreadPoolExecutor(max_workers=2) as preparation:
-    reader_task=preparation.submit(prepare_reader)
-    firmware_task=preparation.submit(download_firmware)
-    reader_seconds=reader_task.result()
-    firmware_seconds=firmware_task.result()
+downloaded_before_preparation=archive.is_file()
+if downloaded_before_preparation:
+    # The workflow has joined its download process. Existing bytes are still
+    # untrusted: the size and SHA-256 checks below run before any extraction.
+    reader_seconds=prepare_reader()
+    firmware_seconds=0
+else:
+    with ThreadPoolExecutor(max_workers=2) as preparation:
+        reader_task=preparation.submit(prepare_reader)
+        firmware_task=preparation.submit(download_firmware)
+        reader_seconds=reader_task.result()
+        firmware_seconds=firmware_task.result()
 print('APPLE_PREPARATION_TIMING '+json.dumps({'readerSeconds':round(reader_seconds,3),
-    'downloadSeconds':round(firmware_seconds,3),'parallelSeconds':round(time.monotonic()-started,3)}),flush=True)
+    'downloadSeconds':round(firmware_seconds,3),'parallelSeconds':round(time.monotonic()-started,3),
+    'downloadedBeforePreparation':downloaded_before_preparation}),flush=True)
 if source.get('bytes') and archive.stat().st_size!=source['bytes']:
     raise SystemExit('Apple firmware byte size mismatch')
 actual = sha(archive)
