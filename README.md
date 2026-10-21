@@ -6,8 +6,10 @@ and Foundation journeys pass on Linux. Notes also passes text entry, atomic save
 and new-process readback. Foreground Foundation HTTP now passes a real request,
 normal close and a second request from a new process. The full recovery run
 39621212426 passes 15/17 journeys after withdrawing an unsupported gesture
-binding. Web and Share remain incomplete. Original Calculator has not yet
-been validated. Android remains unverified.** XNU, dyld and iOS userland may be
+binding. Web and Share remain incomplete. Original Calculator now launches
+and produces its genuine keypad in a renderer frame; actual composed
+presentation, calculation and close/relaunch remain unverified. Android remains
+unverified.** XNU, dyld and iOS userland may be
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.
 

@@ -5,8 +5,9 @@
 Run real iOS apps with selected Apple framework semantics and Linux-backed
 platform services. Native ARM64, 16 KiB guest pages, one actual CPU, non-arm64e,
 software framebuffer. Compilation/execution happen only on hosted runners via
-build.sh. The collection has 11 source-owned apps, 14 short journeys and three
-cross-app scenarios. Selected runs never certify the whole collection.
+build.sh. The collection has 11 source-owned apps, one original firmware app,
+15 short app journeys and three cross-app scenarios. Selected runs never
+certify the whole collection.
 
 sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16 build 20H392,
 6,035,280,776 bytes, SHA-256
@@ -14,7 +15,31 @@ sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16 build 20H392,
 Firmware and bundles are read-only; writes use each app's actual private Linux
 container. Apple executable data stays runner-local.
 
-## Latest full recovery
+## Original Calculator: launches and renders; interaction pending
+
+[Run 39623164769](https://github.com/taowen/arlinux-xnu/actions/runs/39623164769),
+source **b1bd662268b199b98fd3930be36126fb6ecf0e52**, attempt 1, resolves
+`private/var/staged_system_apps/Calculator.app` from the pinned firmware.
+Original version 1.0.0/build 1.0 is thin ARM64, subtype 0, not encrypted;
+executable SHA-256 is
+**82dc9e13e2f215f1128c13521b9b5110418c566742a25e5a1f9500c5dbc74120**.
+The app's genuine UIKit/Swift tree contains its scientific keypad and display,
+and its retained renderer frame shows that interface. The composed screenshot
+was still black at early failure, so this is not presentation acceptance.
+The journey fails before input because the observer labels both the result
+and custom-control child labels as passive text, making `0` ambiguous.
+Original PID/start ticks: **5933/40890**. Execution receipt
+**2ddd6c194eac3a6a38aa35b7ad84712931c686e217a33f4e82d03e2285ad120e**
+and all 23 files were verified. No calculation, normal close or relaunch has
+passed yet. The next observer change reads actual UIControl ancestry to
+distinguish controls from passive labels; it changes no app behavior.
+
+The preceding input attempt, run 39622602064/source b2d6db6, searched only
+ordinary application directories and could not resolve Calculator. Counter's
+complete click/close/relaunch still passed; its receipt and all 36 files were
+verified. Staged-app resolution corrects that actual input failure.
+
+## Latest full fixture recovery
 
 [Run 39621212426](https://github.com/taowen/arlinux-xnu/actions/runs/39621212426),
 source **f80aa41777cbb7ed00261e423bf7001c389db0a0**, attempt 1, restores
