@@ -44,6 +44,21 @@ in evidence and do not satisfy the composed-pixel requirement.
 
 ## Working adaptation boundaries
 
+Notes now passes its complete edit/save/reopen journey in selected run
+[39537811333](https://github.com/taowen/arlinux-xnu/actions/runs/39537811333),
+source **45c9b1f54025bb66d5fd5fec9f0b3abeb8c4a3d4**, attempt 1. Console,
+Foundation, Counter and Swift/UIKit also pass at that source. Receipt
+**ed4215d621f1d1231096ec4c811038ff23836ddec6fa23a714054ee7a86dd6c4**
+and all 74 retained files were verified. This remains a partial collection.
+Notes starts empty, receives actual keyboard input `app-note-42`, saves through
+original Foundation atomic file writing, closes with exit 0, and reads the
+content after a new-process launch before another exit 0. Process identities are
+**6113/92769** and **6197/93216** (PID/startTicks). The saved label region hash
+**c2480e721003b4d440cdf1b11d286c22e6fde6355850acf930dcc4d1507817cb**
+matches after relaunch; initial blank frames remain rejected. Actual Linux
+temporary-file creation and rename are retained in the runtime log. This run
+took 156 s overall and 30 s in journeys.
+
 - Genuine FBSScene agent creation enters original UIKit launch. Local CAContext
   and CPU CALayer backing preserve original layout/text/drawing. Actual resilient
   file mappings load Helvetica/SFUI. This is software composition, not GPU proof.
@@ -63,11 +78,11 @@ in evidence and do not satisfy the composed-pixel requirement.
 
 ## Complete collection and remaining failures
 
-Full run [39535886835](https://github.com/taowen/arlinux-xnu/actions/runs/39535886835),
-source **5f7b6a1450b3a86c28d5ed0ad998f31f95ec3106**, attempt 1, passed **10/15**
+Full run [39538117840](https://github.com/taowen/arlinux-xnu/actions/runs/39538117840),
+source **45c9b1f54025bb66d5fd5fec9f0b3abeb8c4a3d4**, attempt 1, passed **11/15**
 journeys. The collection is still **failed**. Receipt
-**45d37f495ded7697a892dc2ec3d171acfa38d743a4edaee9d6493c49a65fa7ba**
-and all 215 retained files were verified. This run took 315 s; app journeys 171 s.
+**78f3b512556e4a57e8e2c545166a0e668c335aa9da436659eda120b82c13b635**
+and all 218 retained files were verified. This run took 295 s; app journeys 167 s.
 
 Alongside the four basic apps, Canvas passes actual red-to-green repaint and
 normal close; Workers passes independent thread, mmap and asynchronous queue
@@ -79,22 +94,21 @@ cleanup or UIKit scene activation-state transitions.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Notes | After forwarding timed semaphore traps, the actual failure is CoreEmoji asserting that its framework bundle cannot be found. The earlier nil keyboard-cache path and semaphore failure are no longer this run's blocker. Text/save/reopen has not passed; writable app storage is still incomplete. |
 | Network | The process no longer crashes on the fabricated OS-variant cache or thread-capacity failure. It times out without Network 42; actual NECP operations remain unsupported. No HTTP round trip has passed. |
-| Web | JavaScriptCore WTFCrashWithInfo during WebKit initialization; retain original caller/argument evidence before deciding the platform dependency. No DOM output accepted. |
+| Web | Original fault arguments identify WTF::pageSize() during JavaScriptCore initialization, immediately after a failed system query. Investigate the guest page-size query, consistent with WebKit PageBlock.cpp, before assuming a JIT failure. No DOM output accepted. |
 | Share | Real timed semaphore forwarding passes the earlier dispatch failure. The flow now waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
 | Process | Child-side MIG reply-port construction fails after fork. Fork/session/rights inheritance needs implementation; this console capability is not an ordinary iOS app lifecycle claim. |
 
 The runtime now forwards timed semaphore operations to the existing Darling
 implementation and creates workloop workers on actual epoll readiness instead
 of eagerly allocating one per registered queue. Idle workers enter original
-libpthread cleanup. This full run retains the same ten passing journeys; it
+libpthread cleanup. This full run retains the earlier ten passing journeys and adds Notes; it
 does not establish complete scheduling or arbitrary helper cleanup.
 
-Each launch has an explicit Linux-backed private home/container. Original
-firmware and current guest file opens remain read-only; writable storage is a
-remaining platform capability. Primary-pointer contacts, Alt-F4 and actual host
-keyboard text commits/deletion are implemented. Text editing is not yet accepted;
+Each launch has an explicit Linux-backed private home/container. Firmware and
+bundles remain read-only; writes target the actual private container. Primary
+pointer contacts, Alt-F4 and actual host keyboard text commits/deletion are
+implemented. Notes verifies basic keyboard text entry and persistence;
 scroll, IME composition, key repeat and multitouch remain unsupported. Session
 activation-state updates, networking, WebKit and extensions require further work.
 No third-party IPA or Android acceptance has passed. The full goal remains active.

@@ -75,9 +75,10 @@ context/layer behavior while avoiding a nonexistent Apple render server. Hosted
 run 39514010952 confirms original UIKit text in composed pixels. ios-input.m owns actual
 UIKit key-window focus locally instead of exporting the local scene token to
 Apple's remote keyboard arbiter. Primary Wayland pointer input, normal close and relaunch pass Counter and
-Swift/UIKit journeys. Host keyboard text commits and deletion now enter the
-actual first responder's UIKeyInput methods; Notes editing/persistence has not
-passed, so this does not establish text-input compatibility. Keyboard availability
+Swift/UIKit journeys. Host keyboard text commits and deletion enter the
+actual first responder's UIKeyInput methods. Notes verifies basic text entry,
+atomic save and new-process readback; broader text-input compatibility is not
+established. Keyboard availability
 comes from the actual Wayland seat and is shared consistently with GraphicsServices
 and UIKit. Key repeat, IME composition and general key commands remain unsupported.
 The backend replaces CALayer's default `_display`
@@ -108,6 +109,17 @@ ios-filesystem.m implements file URL reachability using actual stat and returns
 Cocoa errors with the real underlying POSIX failure. Non-file URL schemes retain
 their original implementation. It preserves CoreUI parsing, Foundation URL/data
 objects and subsequent real open errors.
+
+Each application launch declares a canonical private Linux home/container,
+shared only with that app's subsequent generation in the same journey. Repeated
+path separators are collapsed before matching the declared roots; dot components
+and actual symlink traversal are preserved. This prevents a remaining leading
+slash from making Linux ignore the firmware directory descriptor. Storage writes
+use real openat2/mkdirat/renameat/unlinkat/fsync operations under the container,
+with beneath/no-magic-link resolution; firmware and bundle writes are rejected.
+Darwin stat/fstatat share actual Linux statx metadata and guest record packing.
+This provides platform file operations, not Apple sandbox or data protection.
+End-to-end persistence acceptance belongs to the Notes journey in EXPERIMENT.md.
 
 ### Lifecycle boundary and next implementation
 
