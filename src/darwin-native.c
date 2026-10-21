@@ -345,6 +345,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 #include "darwin-kqueue.h"
 #include "darwin-workqueue.h"
 #include "darwin-ui.h"
+#include "darwin-fork.h"
 
 /* Read only the original ARM64 frame records. A corrupt/inaccessible chain
  * stops collection; addresses are evidence, never a synthetic unwind. */
@@ -864,13 +865,11 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             RAW(SYS_getgid,0,0,0,0,0,0)!=RAW(SYS_getegid,0,0,0,0,0,0);
         break;
     case D_SYS_THREAD_SELFID: result = RAW(SYS_gettid,0,0,0,0,0,0); break; /* thread_selfid */
-    case D_SYS_FORK:
-        result = RAW(SYS_clone,SIGCHLD,0,0,0,0,0);
-        if (!result) {
-            r[1] = 1;           /* Darwin raw fork child discriminator */
-            result = RAW(SYS_getpid,0,0,0,0,0,0);
-        } else r[1] = 0;
+    case D_SYS_FORK: {
+        int child=0;result=native_fork(&child);
+        r[1]=child; /* Darwin raw fork child discriminator. */
         break;
+    }
     case D_SYS_WAIT4:
         if (r[3] || (r[2] & ~(WNOHANG|WUNTRACED))) { result = -ENOTSUP; break; }
         result = RAW(SYS_wait4,r[0],r[1],r[2],0,0,0);

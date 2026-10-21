@@ -8,6 +8,7 @@ static int darling_active;
 #include <darlingserver/rpc.h>
 #include <darlingserver/rpc-supplement.h>
 static struct sockaddr_un darling_address;
+static int darling_server_pid,darling_fork_checkin;
 static struct { int tid,fd; } darling_clients[D_NATIVE_GUEST_THREAD_CAPACITY+D_NATIVE_SERVICE_THREADS];
 static int darling_socket(void);
 static void *darling_copy(void *destination,const void *source,size_t size)
@@ -116,8 +117,9 @@ static int darling_socket(void)
         struct sockaddr_un local={.sun_family=AF_UNIX};
         if (RAW(SYS_bind,fd,&local,sizeof(local.sun_family),0,0,0)) darling_abort("autobind client socket");
         darling_clients[i].fd=fd;
-        int result=dserver_rpc_explicit_checkin(fd,0,&local,-1);
+        int result=dserver_rpc_explicit_checkin(fd,darling_fork_checkin,&local,-1);
         if (result) { trace_call(0,0,result); darling_abort("thread checkin"); }
+        darling_fork_checkin=0;
         return fd;
     }
     darling_abort("client thread capacity");
@@ -140,6 +142,21 @@ static uint32_t darling_thread_self(void)
     if (result || !port) darling_abort("thread self");
     return port;
 }
+static void darling_after_fork(void)
+{
+    /* Closing this child's inherited references must not check out the still
+     * live parent threads. Each child gets its own authenticated RPC socket. */
+    for(unsigned int i=0;i<sizeof(darling_clients)/sizeof(*darling_clients);i++) {
+        if(darling_clients[i].tid)RAW(SYS_close,darling_clients[i].fd,0,0,0,0,0);
+        darling_clients[i].tid=0;darling_clients[i].fd=0;
+    }
+    if(RAW(SYS_prctl,PR_SET_PTRACER,darling_server_pid,0,0,0,0))
+        darling_abort("authorize child memory access");
+    darling_fork_checkin=1;
+    if(dserver_rpc_task_self_trap(&darling_task_port) || !darling_task_port ||
+       dserver_rpc_host_self_trap(&darling_host_port) || !darling_host_port)
+        darling_abort("child task/host self");
+}
 static void darling_prepare(void)
 {
     if (darling_active) return;
@@ -155,6 +172,7 @@ static void darling_prepare(void)
     char *end=NULL; long pid=server ? strtol(server,&end,10) : 0;
     if (!server || !*server || *end || pid<=0 || pid>INT32_MAX ||
         prctl(PR_SET_PTRACER,pid,0,0,0)) darling_abort("authorize exact server memory access");
+    darling_server_pid=pid;
     darling_active=1;
     if (dserver_rpc_task_self_trap(&darling_task_port) || !darling_task_port ||
         dserver_rpc_host_self_trap(&darling_host_port) || !darling_host_port) darling_abort("task/host self");
