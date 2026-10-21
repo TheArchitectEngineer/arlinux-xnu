@@ -31,8 +31,13 @@ and custom-control child labels as passive text, making `0` ambiguous.
 Original PID/start ticks: **5933/40890**. Execution receipt
 **2ddd6c194eac3a6a38aa35b7ad84712931c686e217a33f4e82d03e2285ad120e**
 and all 23 files were verified. No calculation, normal close or relaunch has
-passed yet. The next observer change reads actual UIControl ancestry to
-distinguish controls from passive labels; it changes no app behavior.
+passed yet. A subsequent UIControl-ancestry classification candidate also
+fails before input in run 39623814301 (Counter passes), and is withdrawn.
+That run's receipt **e536fa3a1893eae2a42d81037b877db740c9eadb700380fe4b03217456431d51**
+and all 41 files were verified. The journey now identifies the displayed result
+in its actual top viewport region and clicks unique visible key text, using
+the same external pointer path. It needs no claim that the custom view is a
+UIControl, no OCR and no app selector/action.
 
 The preceding input attempt, run 39622602064/source b2d6db6, searched only
 ordinary application directories and could not resolve Calculator. Counter's

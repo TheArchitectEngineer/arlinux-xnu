@@ -51,7 +51,7 @@ class Case(Processes,Desktop):
         elif action == 'pixels':
             self.observe_pixels(step)
         elif action == 'see':
-            self.observe(step['text'],timeout_seconds=step.get('timeoutSeconds',8),interactive=step.get('interactive'),region=step.get('region'))
+            self.observe(step['text'],timeout_seconds=step.get('timeoutSeconds',8),region=step.get('region'))
         elif action == 'application-state':
             deadline=time.monotonic()+8
             while True:
