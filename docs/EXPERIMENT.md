@@ -19,10 +19,11 @@ and two cross-app scenarios; selected runs never certify the whole collection.
 
 ## Current failed GUI effect
 
-Run [39518111587](https://github.com/taowen/arlinux-xnu/actions/runs/39518111587),
-source **02d016dec9003714d2048ae9bc2d99cba115e869**, selected Counter. Receipt
-**11be997783cf98e3469ed6e1f47feb71e7ea325f2be3ce95d757893ff84ea0d2**
-and all 52 files were verified by build --wait --evidence. The process renders
+Run [39519310964](https://github.com/taowen/arlinux-xnu/actions/runs/39519310964),
+source **7ad52727e8558fce95b3f1b63164f265b7de776e**, selected Console, Counter
+and Foundation. Receipt
+**3bac08b57b2557bd98f4279c9317c39479ab017198aa83d81ae7457119efc281**
+and all 64 files were verified by build --wait --evidence. The process renders
 the original Counter label in actual composed pixels, but its button is still
 invisible. The click step fails its pixel requirement before submitting input;
 nine later steps are blocked. No complete GUI journey is accepted.
@@ -53,13 +54,15 @@ nine later steps are blocked. No complete GUI journey is accepted.
 - The actual resolver calls CUIDesignLibrary, then its composite catalog.
   The original call reports Cocoa error 256, underlying POSIX error 78 (Darwin
   ENOSYS), for `/System/Library/PrivateFrameworks/CoreUI.framework/DesignLibrary-iOS.bundle/iOSRepositories/LightStandard.car`.
-  UIKit falls back to clearColor after that failed resource lookup. Next connect
-  the missing filesystem operation to its actual path, masks and caller chain;
+  UIKit falls back to clearColor after that failed resource lookup. The same
+  actual path now appears in failing getattrlist (220), with five attribute
+  groups recorded: common=0xd03fde0d, volume=0, directory=5, file=1, fork=0x40.
+  Next implement the required filesystem metadata contract from the XNU ABI;
   changing the app's color or display gamut would hide this evidence.
 - Frame evidence now writes a temporary file and atomically publishes complete
   frames. This run's encoder passes; incomplete temporary files never replace
   the last completed frame. The failure summary samples four screenshots while
-  preserving all 32 observations and their files in the full journey evidence.
+  preserving every observation and its files in the full journey evidence.
 - Counter's journey now also clicks after relaunch and requires Count: 1.
   Original-process fatal-service diagnosis preserves waiting caller stacks;
   default non-diagnostic fatal exits remain unchanged.
@@ -70,11 +73,9 @@ unfinished. No app/control callback is invoked by the harness or adapter.
 
 ## Verified regression and reference limits
 
-Run [39514010952](https://github.com/taowen/arlinux-xnu/actions/runs/39514010952),
-source 6f7fade465a035f261b08a8af8233af00257e49c, passed Console and Foundation
-(fullSuite=false). Receipt
-1fbe7255461ff6fc8c7c79928e0375334375d6701c3fc12488e33df0a431734c and all
-65 files were verified. Counter failed separately. Console covers real allocation, computing pthread,
+The same run passed Console and Foundation (fullSuite=false); Counter failed
+separately. Original-process diagnosis returned status 0 with no collection
+errors. Console covers real allocation, computing pthread,
 external stdin, normal exit and a fresh relaunch. Foundation covers Unicode JSON,
 exception unwind, NSTimer computation and normal exit. Swift/UIKit has no passing Linux
 journey and must be included after Counter startup progresses.

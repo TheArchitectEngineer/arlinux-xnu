@@ -100,6 +100,16 @@ Within firmware preparation, downloading the pinned firmware overlaps building
 the pinned APFS reader. Both commands must complete before input validation and
 extraction. APPLE_PREPARATION_TIMING records readerSeconds, downloadSeconds and
 parallelSeconds so an overlap claim can be compared with actual measurements.
+Run [39519310964](https://github.com/taowen/arlinux-xnu/actions/runs/39519310964)
+measured reader=19.652s, download=15.523s, overlap=19.652s (their observed sum
+would be 35.175s). The full three-app run took 167s, including queues, package
+installation and original-process diagnosis; this is not a 15.523s measured
+end-to-end improvement. Console/Foundation passed; Counter retained the same
+required pixel failure. All 64 evidence files were verified. Diagnosis took
+10.334s with no collection errors and actual symbolized ENOSYS caller frames.
+Decoder timeout/failure now has an explicit per-context status; it does not
+discard independent symbols. Runtime symbolication failure is recorded without
+skipping original-process LLDB collection.
 
 ## Start with the effect that failed
 
