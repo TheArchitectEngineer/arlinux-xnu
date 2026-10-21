@@ -59,10 +59,16 @@ static long native_attr_guest_path(int fd,char output[1024])
 static uint32_t native_attr_object_type(unsigned int mode)
 {
     /* XNU vtype, matching Darling's linux_mode_to_vtype. */
-    if(S_ISREG(mode))return 1;if(S_ISDIR(mode))return 2;
-    if(S_ISBLK(mode))return 3;if(S_ISCHR(mode))return 4;
-    if(S_ISLNK(mode))return 5;if(S_ISSOCK(mode))return 6;
-    if(S_ISFIFO(mode))return 7;return 0;
+    switch(mode&S_IFMT) {
+    case S_IFREG:return 1;
+    case S_IFDIR:return 2;
+    case S_IFBLK:return 3;
+    case S_IFCHR:return 4;
+    case S_IFLNK:return 5;
+    case S_IFSOCK:return 6;
+    case S_IFIFO:return 7;
+    default:return 0;
+    }
 }
 static long native_attr_object(int fd,const struct darwin_attrlist *request,
                                unsigned long destination,unsigned long capacity,unsigned long options)
@@ -103,8 +109,8 @@ static long native_attr_object(int fd,const struct darwin_attrlist *request,
         }
     }
     returned.common=request->common&(available|D_ATTR_RETURNED);
-    if(S_ISDIR(actual.stx_mode) && (actual.stx_mask&STATX_NLINK))returned.directory=request->directory&D_ATTR_DIR_LINKCOUNT;
-    else if(S_ISREG(actual.stx_mode))returned.file=request->file&
+    if((actual.stx_mode&S_IFMT)==S_IFDIR && (actual.stx_mask&STATX_NLINK))returned.directory=request->directory&D_ATTR_DIR_LINKCOUNT;
+    else if((actual.stx_mode&S_IFMT)==S_IFREG)returned.file=request->file&
         (D_ATTR_FILE_LINKCOUNT|D_ATTR_FILE_TOTALSIZE|D_ATTR_FILE_ALLOCSIZE|
          D_ATTR_FILE_IOBLOCKSIZE|D_ATTR_FILE_DATALENGTH|D_ATTR_FILE_DATAALLOCSIZE);
     if(!(actual.stx_mask&STATX_NLINK))returned.file&=~D_ATTR_FILE_LINKCOUNT;
