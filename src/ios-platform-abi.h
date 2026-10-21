@@ -8,6 +8,7 @@
 #define ARLINUX_IOS_PLATFORM_LIBRARY "libarlinux-ios.dylib"
 /* Actual per-dimension limit enforced by the CPU CALayer backing allocator. */
 #define ARLINUX_IOS_SOFTWARE_SURFACE_MAX 8192U
+#define ARLINUX_IOS_SOFTWARE_PIXEL_BYTES 4U /* 8-bit premultiplied BGRA */
 enum arlinux_ios_window_flags {
     ARLINUX_IOS_WINDOW_CONFIGURED=1U,
     ARLINUX_IOS_WINDOW_ACTIVE=2U,

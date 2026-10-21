@@ -37,7 +37,7 @@ static void software_layer_display(CALayer *layer,SEL selector)
      * display scheduling and delegate displayLayer: dispatch stay original. */
     CGColorSpaceRef colors=CGColorSpaceCreateDeviceRGB();
     CGContextRef context=colors ? CGBitmapContextCreate(NULL,(size_t)width,(size_t)height,8,
-        (size_t)width*4,colors,kCGImageAlphaPremultipliedFirst|kCGBitmapByteOrder32Little) : NULL;
+        (size_t)width*ARLINUX_IOS_SOFTWARE_PIXEL_BYTES,colors,kCGImageAlphaPremultipliedFirst|kCGBitmapByteOrder32Little) : NULL;
     if (colors) CGColorSpaceRelease(colors);
     if (!context) {
         fprintf(stderr,"IOS_RENDER_CPU_BACKING_FAILED reason=bitmap-allocation\n"); abort();
@@ -102,6 +102,10 @@ static void configure_web_surface_limit(void)
         dlsym(webcore,"_ZN7WebCore9IOSurface14setMaximumSizeENS_7IntSizeE") : NULL;
     struct webcore_size (*get_size)(void)=webcore ?
         dlsym(webcore,"_ZN7WebCore9IOSurface11maximumSizeEv") : NULL;
+    void (*set_alignment)(size_t)=webcore ?
+        dlsym(webcore,"_ZN7WebCore9IOSurface23setBytesPerRowAlignmentEm") : NULL;
+    size_t (*get_alignment)(void)=webcore ?
+        dlsym(webcore,"_ZN7WebCore9IOSurface20bytesPerRowAlignmentEv") : NULL;
     if(!set_size || !get_size) {
         fprintf(stderr,"IOS_WEB_SURFACE_LIMIT_UNAVAILABLE setter=%d getter=%d\n",set_size!=NULL,get_size!=NULL);
         if(webcore)dlclose(webcore);
@@ -113,6 +117,16 @@ static void configure_web_surface_limit(void)
     fprintf(stderr,"IOS_WEB_SURFACE_LIMIT width=%d height=%d backend=cpu app_acceptance=false\n",
         actual.width,actual.height);
     if(actual.width!=limit.width || actual.height!=limit.height)abort();
+    if(set_alignment && get_alignment) {
+        /* The real bitmap allocator takes width * four BGRA bytes per row;
+         * no driver pitch or unavailable GPU alignment is advertised. */
+        set_alignment(ARLINUX_IOS_SOFTWARE_PIXEL_BYTES);
+        size_t alignment=get_alignment();
+        fprintf(stderr,"IOS_WEB_SURFACE_LAYOUT row_alignment=%zu pixel_bytes=%u backend=cpu app_acceptance=false\n",
+            alignment,ARLINUX_IOS_SOFTWARE_PIXEL_BYTES);
+        if(alignment!=ARLINUX_IOS_SOFTWARE_PIXEL_BYTES)abort();
+    } else fprintf(stderr,"IOS_WEB_SURFACE_LAYOUT_UNAVAILABLE setter=%d getter=%d\n",
+        set_alignment!=NULL,get_alignment!=NULL);
     dlclose(webcore);
 }
 void arlinux_ios_rendering_start(void)

@@ -145,9 +145,11 @@ class Processes:
                 # including WebCore's own platform-configuration setter.
                 arguments.extend(['--lookup-bytes','1024'])
                 for symbol in ('__ZN7WebCore9IOSurface11maximumSizeEv',
-                               '__ZN7WebCore9IOSurface14setMaximumSizeENS_7IntSizeE'):
+                               '__ZN7WebCore9IOSurface14setMaximumSizeENS_7IntSizeE',
+                               '__ZN7WebCore9IOSurface20bytesPerRowAlignmentEv',
+                               '__ZN7WebCore9IOSurface23setBytesPerRowAlignmentEm'):
                     arguments.extend(['--lookup','/System/Library/PrivateFrameworks/WebCore.framework/WebCore',symbol])
-                for symbol in ('_IOSurfaceGetPropertyMaximum','_IOSurfaceClientGetPropertyMaximum'):
+                for symbol in ('_IOSurfaceGetPropertyAlignment','_IOSurfaceClientGetPropertyAlignment'):
                     arguments.extend(['--lookup','/System/Library/Frameworks/IOSurface.framework/IOSurface',symbol])
             try:
                 result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)

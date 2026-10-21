@@ -142,6 +142,11 @@ attempting an IOKit limit query. This publishes software backing policy, not an
 IOSurface kernel driver, successful surface allocation or GPU capability.
 Unavailable exports retain the original unsupported path. WebContent process
 launch, surface sharing and actual DOM rendering still need end-to-end proof.
+The paired bytesPerRowAlignment platform configuration uses four-byte BGRA row
+alignment, matching the actual width * four bytesPerRow passed to
+CGBitmapContextCreate. It uses WebCore's own scalar setter/getter interface;
+the input semantics are declared in WebKit's IOSurface.h. Its next app run must
+verify that configuration rather than treating the setting call as acceptance.
 
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor
