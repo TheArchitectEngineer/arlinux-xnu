@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "darwin-codesign.h"
 /* Guest pthread slots plus the one native Mach-service thread created by the
  * launcher. Transport bookkeeping must cover both, not fail one thread early. */
 enum { D_NATIVE_GUEST_THREAD_CAPACITY=32, D_NATIVE_SERVICE_THREADS=1 };
@@ -72,5 +73,5 @@ uint32_t darwin_native_service_register(uint32_t bootstrap,uint64_t name,uint32_
 uint32_t darwin_native_service_check_in(uint32_t bootstrap,uint64_t name,uint64_t output,uint64_t flags);
 
 /* Single native guest process. No host libc use after guest TLS takes over. */
-void darwin_native_prepare(const char *root,const char *program,const char *container,uint64_t cache_base,const unsigned char uuid[16],uint32_t signature_bytes);
+void darwin_native_prepare(const char *root,const char *program,const char *container,uint64_t cache_base,const unsigned char uuid[16],const struct darwin_code_metadata *codesign);
 __attribute__((noreturn)) void darwin_native_enter(uint64_t stack, uint64_t entry);

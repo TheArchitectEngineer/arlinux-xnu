@@ -1092,14 +1092,14 @@ void darwin_native_connect(void)
     darling_prepare();
 }
 
-void darwin_native_prepare(const char *root,const char *program,const char *container,uint64_t cache_base,const unsigned char uuid[16],uint32_t signature_bytes)
+void darwin_native_prepare(const char *root,const char *program,const char *container,uint64_t cache_base,const unsigned char uuid[16],const struct darwin_code_metadata *codesign)
 {
     /* Host libc/TLS is still active before entering the guest. AT_SECURE also
      * covers executable file capabilities and LSM secure-execution policy. */
     errno=0;native_secure_exec=getauxval(AT_SECURE)!=0;
     if(errno) {perror("Linux secure execution state");exit(1);}
     darwin_native_connect();
-    native_signature_bytes=signature_bytes;
+    native_codesign=*codesign;
     native_threads[0].tid=RAW(SYS_gettid,0,0,0,0,0,0);
     native_threads[0].state=2; native_threads[0].port=(D_THREAD_PORT_INDEX_BASE<<D_PORT_NAME_INDEX_SHIFT)|D_PORT_GENERATION_TAG; native_threads[0].refs=1;
 #ifdef ARLINUX_DARLING

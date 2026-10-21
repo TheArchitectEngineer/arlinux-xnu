@@ -63,34 +63,46 @@ comparison, not a pixel-equivalence baseline. The new phone viewport gate has
 not passed on macOS. An arbitrary desktop-shaped iPhone app cannot establish
 that a display difference is a rendering bug.
 
-## Latest complete collection: failed, 15/18
+## Latest complete collection before Things: failed, 17/19
 
-[Run 39685455873](https://github.com/taowen/arlinux-xnu/actions/runs/39685455873),
-source **4ca70fd2e5bd5f3edc3d56d360d436371919d6b0**, attempt 1, passes 15/18
-journeys, before adding the second phone case. Receipt
-**bb2893724e1bd769e2ab76590c55e423a7d8eb4eb08b5fd520266023ec067688**
-and all 308 files were verified. Feedback was 344 s; journeys 203.4 s including
-42.5 s diagnosis. Counter, Notes, Swift, Network, Workers, Console, Foundation,
-Process and all three cross-app scenarios pass.
+[Run 39687118653](https://github.com/taowen/arlinux-xnu/actions/runs/39687118653),
+source **d87ec6731af2fcc83e112625070329ae6b0a0d94**, attempt 1, passes 17/19
+journeys, including both original Calculator phone cases. Receipt
+**9903e0e46e913b55d905c8c0b8ccccf757aa3b4f4943e8097ba1a706a9286e37**
+and all 362 files were verified. Feedback was 360 s; journeys 225.7 s including
+34.3 s diagnosis. Canvas, Counter, Notes, Swift, Network, Workers, Console,
+Foundation, Process and all three cross-app scenarios pass.
 
-- Canvas fails to click Paint: its fixed y=280 button extends past the corrected
-  300-point desktop viewport. Its source-owned fixture now places that button
-  within the actual bounds; the same red-to-green pointer journey must rerun.
-- Web reaches DOM but external input still fails to produce WebCount 1. An earlier
-  complete run also timed out before first paint; startup is not deterministic.
+- Canvas's source-owned button now stays within the corrected viewport; its
+  unchanged external-input red-to-green journey passes.
+- Web times out at first DOM/pixels. Earlier runs reached DOM but failed external
+  input to WebCount 1; startup is not deterministic.
 - Share still cannot show EchoExtension. Real extension discovery/launch and
   payload/lifetime acceptance remain incomplete.
 
-Do not report the older 16/18 baseline as the current complete result. The new
-phone cases and Canvas layout fix require a fresh full collection run.
+Things adds a twentieth case after this run. No current full 20-case result
+has passed; selected original-app runs do not certify the collection.
 
 ## Next original app
 
-Things iPhone 3.17.1/build 31701001 has been acquired and inspected, not executed.
-Its exact package URL, hashes, architecture, encryption metadata and distribution
-limits are recorded in APPS.md. Its pinned IPA is now declared in the same
-runner input/launch path; actual create/edit/complete/reopen storage remains
-unverified. Input preparation preserves the package contents, validates archive
-safety and version/hash/ISA/encryption, and uses the shared bundle path. The
-Apple-host IPA path is explicitly unvalidated; no reference success is inferred.
-No source-owned fixture can substitute for this remaining goal requirement.
+Things iPhone 3.17.1/build 31701001 executes its original binary/frameworks in
+[run 39687337351](https://github.com/taowen/arlinux-xnu/actions/runs/39687337351),
+source **9247ddb92ac2d366d0cd9adc3d51bb4919b36e48**, attempt 1. Its first
+viewport step fails, blocking task actions. Receipt
+**4ab49a25d1e1dc98b8ab4c172a806f5804086a6d7cbac3bbd7915eb01c7da3a5**
+and all 83 files were verified. Original PID/start ticks: 5862/37632.
+
+The retained fault PC 0x3025ebf30 is ThingsCommon VM address 0x19ff30, a
+`brk #1`. Original code calls NSFileManager's
+`containerURLForSecurityApplicationGroupIdentifier:`; the saved x24 is its nil
+return, and the branch force-unwraps that missing URL. Actual signature metadata
+declares application groups. Unsupported csops queries are a dependency clue,
+not proof that supplying metadata alone will implement shared storage.
+
+The loader now retains bounded, original XML/DER entitlement blobs, and csops
+exposes those bytes with XNU's short-buffer protocol and PID/audit-incarnation
+checks. It asserts no Apple signature validation or platform trust. This change
+requires an actual runner journey; group storage remains a separate Linux-backed
+boundary, not an app-specific fabricated URL. Exact input metadata/distribution
+limits are in APPS.md. Create/edit/complete/reopen remains unverified, as does
+the Apple-host IPA path. Source-owned fixtures cannot substitute for this goal.

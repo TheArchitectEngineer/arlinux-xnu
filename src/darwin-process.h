@@ -207,13 +207,29 @@ static long native_current_audit_token(struct darwin_audit_token *token)
     return native_linux_audit_number("/proc/self/sessionid",&token->session);
 }
 
-static uint32_t native_signature_bytes,native_codesign_traces;
+static struct darwin_code_metadata native_codesign;
+static uint32_t native_codesign_traces;
+static long native_codesign_copy(const unsigned char *blob,uint32_t length,uint64_t address,uint64_t capacity)
+{
+    /* XNU xnu-8796.141.3 bsd/kern/kern_proc.c: csops_copy_token.
+     * A short buffer receives a zero magic and big-endian required length. */
+    if(capacity<8)return -ERANGE;
+    unsigned char header[8]={0};
+    if(!blob)return guest_copy(header,address,sizeof(header),1);
+    if(capacity<length) {
+        header[4]=length>>24;header[5]=length>>16;header[6]=length>>8;header[7]=length;
+        long result=guest_copy(header,address,sizeof(header),1);
+        return result ? result : -ERANGE;
+    }
+    return guest_copy((void *)blob,address,length,1);
+}
 static long native_csops(const unsigned long long *r)
 {
     uint32_t pid=RAW(SYS_getpid,0,0,0,0,0,0);
     if ((int32_t)r[0] && (int32_t)r[0]!=(int32_t)pid) return -ESRCH;
     uint32_t version=0;
-    if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_CSOPS_AUDITTOKEN && r[4]) {
+    if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_CSOPS_AUDITTOKEN) {
+        if(!r[4])return -EINVAL;
         struct darwin_audit_token token;
         if (guest_copy(&token,r[4],sizeof(token),0)) return -EFAULT;
         uint64_t ticks=0; uint32_t parent=0;
@@ -223,20 +239,24 @@ static long native_csops(const unsigned long long *r)
         version=token.idversion;
     }
     long result=-ENOTSUP;
-    /* The loader records actual LC_CODE_SIGNATURE presence. No signature means
-     * status zero and no entitlements, as XNU reports for unsigned code. An
-     * embedded, unvalidated signature must not be silently labelled unsigned. */
-    if (!native_signature_bytes) {
-        if ((uint32_t)r[1]==D_CS_OPS_STATUS) {
-            uint32_t flags=0;
-            result=r[2] ? guest_copy(&flags,r[2],sizeof(flags),1) : 0;
-        } else if ((uint32_t)r[1]==D_CS_OPS_ENTITLEMENTS_BLOB) result=-EINVAL;
+    /* This compatibility machine admits pinned inputs without Apple's trust
+     * enforcement. Report no validated/platform/enforcement flags. Metadata
+     * queries expose the actual embedded bytes, never invented grants. */
+    if ((uint32_t)r[1]==D_CS_OPS_STATUS) {
+        uint32_t flags=0;
+        result=r[2] ? guest_copy(&flags,r[2],sizeof(flags),1) : 0;
+    } else if ((uint32_t)r[1]==D_CS_OPS_ENTITLEMENTS_BLOB ||
+               (uint32_t)r[1]==D_CS_OPS_DER_ENTITLEMENTS_BLOB) {
+        if(!native_codesign.signature_bytes)result=-EINVAL;
+        else if((uint32_t)r[1]==D_CS_OPS_ENTITLEMENTS_BLOB)
+            result=native_codesign_copy(native_codesign.xml,native_codesign.xml_bytes,r[2],r[3]);
+        else result=native_codesign_copy(native_codesign.der,native_codesign.der_bytes,r[2],r[3]);
     }
     if (__atomic_fetch_add(&native_codesign_traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
         const char label[]="DARWIN_CODESIGN_QUERY pid/op/bytes/signature_bytes/idversion/result follows\n";
         RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         trace_call(0,0,pid); trace_call(1,0,r[1]); trace_call(2,0,r[3]);
-        trace_call(3,0,native_signature_bytes); trace_call(4,0,version); trace_call(5,0,result);
+        trace_call(3,0,native_codesign.signature_bytes); trace_call(4,0,version); trace_call(5,0,result);
     }
     return result;
 }

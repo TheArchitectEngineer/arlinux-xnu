@@ -1,5 +1,6 @@
 /* Shared bounded ARM64 Mach-O image loader; consumers supply die/need. */
 #pragma once
+#include "darwin-codesign.h"
 #define PAGE16 16384UL
 #define LC_SEGMENT_64 0x19
 #define LC_MAIN 0x80000028U
@@ -34,10 +35,35 @@ struct image {
     uint64_t header_address,slide;
     uint64_t dyld_info_address,dyld_info_size;
     uint32_t filetype;
-    uint32_t signature_bytes;
+    struct darwin_code_metadata codesign;
     unsigned char uuid[16];
 };
 static int range(uint64_t offset,uint64_t length,uint64_t size) { return offset<=size && length<=size-offset; }
+static uint32_t signature_u32(const unsigned char *p)
+{ return (uint32_t)p[0]<<24 | (uint32_t)p[1]<<16 | (uint32_t)p[2]<<8 | p[3]; }
+static void image_codesign(struct darwin_code_metadata *out,const unsigned char *bytes,uint32_t size)
+{
+    /* EmbeddedSignature/SuperBlob and BlobIndex use big endian, unlike Mach-O.
+     * Preserve XML and DER verbatim; do not infer entitlements from bundle IDs. */
+    out->signature_bytes=size;
+    if(!size)return;
+    need(size>=12 && signature_u32(bytes)==0xfade0cc0U,"invalid signature superblob");
+    uint32_t length=signature_u32(bytes+4),count=signature_u32(bytes+8);
+    need(length>=12 && length<=size && count<=(length-12)/8,"signature index bounds");
+    for(uint32_t i=0;i<count;i++) {
+        uint32_t slot=signature_u32(bytes+12+i*8),offset=signature_u32(bytes+16+i*8);
+        need(offset>=12+(uint64_t)count*8 && range(offset,8,length),"signature blob bounds");
+        uint32_t magic=signature_u32(bytes+offset),n=signature_u32(bytes+offset+4);
+        need(n>=8 && range(offset,n,length),"signature blob length");
+        if(slot==5) {
+            need(!out->xml && magic==0xfade7171U,"invalid XML entitlement slot");
+            out->xml=bytes+offset;out->xml_bytes=n;
+        } else if(slot==7) {
+            need(!out->der && magic==0xfade7172U,"invalid DER entitlement slot");
+            out->der=bytes+offset;out->der_bytes=n;
+        }
+    }
+}
 static uint64_t round16(uint64_t size) { need(size<=UINT64_MAX-(PAGE16-1),"size overflow"); return (size+PAGE16-1)&~(PAGE16-1); }
 static void load_image(const char *path,struct image *im,int dynamic) {
     int fd=open(path,O_RDONLY); if(fd<0) die("open Mach-O");
@@ -65,7 +91,7 @@ static void load_image(const char *path,struct image *im,int dynamic) {
             need(cmd.size==sizeof(cmd)+sizeof(data),"invalid code signature command");
             memcpy(data,im->bytes+pos+sizeof(cmd),sizeof(data));
             need(range(data[0],data[1],im->size),"code signature bounds");
-            im->signature_bytes=data[1];
+            image_codesign(&im->codesign,im->bytes+data[0],data[1]);
         } else if(cmd.cmd==LC_SEGMENT_64) {
             need(cmd.size>=sizeof(struct segment) && im->count<MAX_SEGMENTS,"invalid segment command");
             struct segment s; memcpy(&s,im->bytes+pos,sizeof(s));

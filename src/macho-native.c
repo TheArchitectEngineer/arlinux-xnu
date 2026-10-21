@@ -237,6 +237,6 @@ int main(int argc,char **argv)
     }
     /* Zeroed argc/argv/env/apple terminators for this freestanding entry. */
     fprintf(stderr,"NATIVE_DARWIN_ENTRY entry=%#" PRIx64 " host_page=%ld (Linux services, not XNU boot)\n",im.entry,host);
-    darwin_native_prepare(root,program,container,cache_base,im.uuid,im.signature_bytes);
+    darwin_native_prepare(root,program,container,cache_base,im.uuid,&im.codesign);
     darwin_native_enter(top,dynamic ? dyld.entry : im.entry);
 }

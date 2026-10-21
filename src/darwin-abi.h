@@ -279,7 +279,9 @@ enum darwin_service_abi {
     D_AMFI_ALLOW_FALLBACK_PATHS = 8, D_AMFI_ALLOW_PRINT_ENV = 16, D_AMFI_ALLOW_FAILED_INSERT = 32
 };
 /* XNU bsd/sys/codesign.h: read-only current-executable metadata. */
-enum darwin_codesign_operation { D_CS_OPS_STATUS=0, D_CS_OPS_ENTITLEMENTS_BLOB=7 };
+enum darwin_codesign_operation {
+    D_CS_OPS_STATUS=0, D_CS_OPS_ENTITLEMENTS_BLOB=7, D_CS_OPS_DER_ENTITLEMENTS_BLOB=16
+};
 enum darwin_commpage_offset {
     D_COMM_VERSION = 0x1e, D_COMM_CPU_CAPABILITIES64 = 0x10, D_COMM_CPU_CAPABILITIES = 0x20,
     D_COMM_USER_PAGE_SHIFT_32 = 0x24, D_COMM_USER_PAGE_SHIFT_64 = 0x25,
