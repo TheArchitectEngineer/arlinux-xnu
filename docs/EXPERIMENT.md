@@ -83,14 +83,16 @@ took 156 s overall and 30 s in journeys.
 
 ## Complete collection and remaining failures
 
-Full run [39553178774](https://github.com/taowen/arlinux-xnu/actions/runs/39553178774),
-source **bbcea4052d92bff88e3a1c63a88764b38f2daa03**, attempt 1, passes **14/16**
+Full run [39564800794](https://github.com/taowen/arlinux-xnu/actions/runs/39564800794),
+source **d88d586edfc530138f91b2ac32916f7e80b70e1a**, attempt 1, passes **14/16**
 journeys. The collection is still **failed**. Receipt
-**e8ab388e1d3114b31a9626faf9b63b480be131fbb833a1ddeba6940583addfb2**
-and all 240 retained files were verified. Individual journeys total 138.700 s,
-including 15.783 s of diagnosis. Total feedback is 550 s; the actual firmware
-transfer takes 329.065 s, dominating preparation. No general latency reduction
-is claimed from this run.
+**a706fefc4630de978c19fc3def9bb55437e1d219d45742e01110400deb89f8fe**
+and all 257 retained files were verified. Individual journeys total 175.825 s,
+including 27.552 s of diagnosis. Total feedback is 323 s; firmware transfer takes
+15.611 s, toolchain setup 47 s and pinned-userland preparation 46 s. This full
+regression retains the 14 passing journeys after the virtual-memory fixes.
+Both WebContent helpers now pass the real 38 GiB reservation and reach the
+service metadata boundary below. This is not a Web journey pass.
 
 Console, Foundation, Counter, Swift, Notes, Canvas, Process and all three Workers
 journeys pass. Concurrent relaunch passes all 29 steps; crash isolation and focus
@@ -99,7 +101,7 @@ helper cleanup or background lifecycle behavior. The earlier kmsg preallocation
 regression is repaired: auxiliary ownership adds to the allocation and leaves
 the original inline-message capacity intact.
 
-Network passes all 14 steps. Processes **7270/61861** and **7319/62226**
+Network passes all 14 steps. Processes **7288/39683** and **7338/40128**
 (PID/startTicks) each receive an actual status 200 / 13-byte response through
 Linux libcurl and original NSURLSession completion. JSON parsing and main-queue
 delivery produce Network: 42 in composed pixels, the peer records two requests,
@@ -116,8 +118,8 @@ observation; one full pass does not prove its isolated cause or general repair.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Web | The latest selected run below configures original WebCore size/row-layout policy and gets past the IOSurface query abort. It waits for unsupported WebContent/Networking service discovery; no DOM/helper/presentation acceptance. |
-| Share | Process 6288/51832 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
+| Web | Real WebContent helpers pass Gigacage reservation and receive original bootstrap configuration. They and Networking abort at unsupported service metadata operation 0x2ce. No DOM, connection or helper-lifecycle acceptance. |
+| Share | Process 6058/26678 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
 
 Selected run [39555581254](https://github.com/taowen/arlinux-xnu/actions/runs/39555581254),
 source **35927cc3076e52cfb342ce06a0f2da89f0b1213f**, attempt 1, passes Canvas and
@@ -139,35 +141,29 @@ synthetic DOM callback. No IOSurface driver, GPU allocation or Web pass is
 claimed. Targeted cache reads of the original configuration interfaces replaced
 unrelated standing QuartzCore dumps; the original fault/run-loop evidence stays.
 
-Selected run [39560351656](https://github.com/taowen/arlinux-xnu/actions/runs/39560351656),
-source **39375c9e20b8a72c802ee03c6a980fa66a447791**, attempt 1, passes Counter
-but still fails Web's original DOM step (1/2). Receipt
-**dd958ddb716d2c17e5d236b1acba126696db92f4b48a9d510b471487cb814b61**
-and all 46 files were verified. App **6058/73088** (PID/startTicks) supplies
-its actual bootstrap dictionary; the session stores its owned values/rights
-without logging nested values. Initial helper resolution rejected duplicate
-bundle matches in run 39558975718. This run proves the matches are aliases of
-the same actual executable: device/inode identity resolves them without choosing
-by path order or service-specific rules. Distinct executable conflicts still fail.
-WebContent children **6099/73645**, **6118/73812**, and Networking child
-**6139/74134** run in the headless service role under session **6055**. All reach
-NATIVE_DARWIN_ENTRY and record original SIGTRAP faults. The existing stop-on-fault
-option now preserves them instead of allowing exit 133 before attachment.
-Original session and both WebContent LLDB collections complete; the third child
-is explicitly omitted from attachment, but its fault stack is retained in the
-session runtime log. Same-cache symbolication identifies WebContent's actual
-Gigacage::ensureGigacage call-once fault at 0x199315330, with the original fatal
-literal reporting failure to allocate gigacage memory. Networking reaches
-WebKit::XPCServiceMain -> xpc_main -> _xpc_copy_xpcservice_dictionary, whose
-original abort literal is "An XPC service cannot be launched directly".
-These identify virtual-address reservation and service launch-context boundaries,
-not evidence that arbitrary additional Apple daemons are required. The native
-allocator currently limits mappings to 4 GiB and its low-address heap; changing
-that policy needs correct pointer/address ownership, not a suppressed assertion.
-The session's original stack waits for real messages. No DOM, usable connection
-or helper-cleanup acceptance is claimed. Total feedback is 177 s; the journeys
-take 35.536 s including 20.713 s of diagnosis. Additional failure collection is
-measured cost, not a shorter feedback-time claim.
+In the current full run, Web **6281/29591** supplies its original bootstrap
+dictionary. WebContent children **6321/30067**, **6344/30245**, and Networking
+child **6350/30249** run in the headless service role under session **6278/29585**.
+Actual PID/start ticks bind each log. Both WebContent processes map the original
+0x980000000-byte (38 GiB) private reservation at 0x400090000, after dyld. The
+allocator searches real holes with MAP_FIXED_NOREPLACE and uses MAP_NORESERVE;
+it preserves the guest address limit and does not disable Gigacage. Earlier
+rejections exposed three separate boundaries: a 4 GiB cap, whole-span cursor
+skipping over dyld, and Linux commit accounting for the sparse writable mapping.
+All three children subsequently request operation 0x2c7 and receive the caller's
+original bootstrap dictionary plus its real 32-byte creator audit token. No
+nested environment values are logged. All then request 0x2ce and fault in the
+original xpc_main -> _xpc_copy_xpcservice_dictionary direct-launch rejection.
+The exact reply consumer expects `identifier` and `xpcservice-dict`; implementing
+that operation from actual bundle metadata is the next boundary, followed by
+real check-in/port handoff and the original DOM/input journey.
+Firmware preparation registers actual service identifiers/paths once; the
+index hash is 9356cbc9a2e8d549d4acc5708b23c18ad1d04057ae9b0b5afaf990e1a5ca5868.
+Runtime validates the indexed bundle instead of repeating a full FUSE glob in
+the synchronous session loop. Original session and both WebContent LLDB
+collections complete; the third child is explicitly omitted from attachment,
+with its actual fault records retained in session.log. No DOM, usable connection,
+normal helper retirement, third-party IPA or Android acceptance is claimed.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary

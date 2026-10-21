@@ -64,6 +64,18 @@ execution avoids instruction interpretation; shared buffers and batched host
 events can avoid unnecessary IPC/copies. Current software composition still has
 copying and CPU costs: hardware acceleration and zero-copy are not established.
 
+Guest anonymous memory remains within the actual low address geometry required
+by the retained Objective-C runtime. The maximum virtual reservation follows
+that geometry rather than a 4 GiB byte cap. A cursor is a placement hint;
+MAP_FIXED_NOREPLACE owns the real range atomically. On conflicts, a bounded
+raw-syscall reader searches actual /proc/self/maps holes, so a large reservation
+can fit after dyld without replacing it or skipping the entire requested size.
+Private anonymous mappings use Linux MAP_NORESERVE for demand-paged backing,
+following WebKit's Linux allocation strategy; allocation still reports actual
+kernel errors and does not change host overcommit policy. Shared anonymous
+memory retains real shared backing. See the [WebKit allocation discussion](https://bugs.webkit.org/show_bug.cgi?id=183329)
+and [Linux commit accounting](https://docs.kernel.org/mm/overcommit-accounting.html).
+
 | Capability | Preferred implementation | Required observable effect |
 | --- | --- | --- |
 | Objective-C/Swift, Foundation objects and serialization | Original userland where usable | Real language/object behavior across independent apps |
@@ -169,8 +181,13 @@ it neither returns a connection port nor claims a helper was started. Actual
 instance-scoped service check-in and usable connection remain required.
 
 The candidate Linux service launcher keys one-shot instances by audited caller,
-service and actual UUID. It resolves CFBundleIdentifier/CFBundleExecutable from
-read-only firmware XPC bundles with libplist and executes the original Mach-O
+service and actual UUID. Firmware preparation registers actual XPC bundle
+identifiers/relative paths once in a root-bound plist index, recording its hash
+with the input identity. This is operational lookup data, not a feature checklist
+or evidence of service compatibility. Runtime launch reads only the indexed
+candidate bundles, revalidates their identifiers and confines their canonical
+executables to that firmware root. It resolves CFBundleIdentifier/CFBundleExecutable
+with libplist and executes the original Mach-O
 through the same native launcher in the headless service role. Root, dyld and
 container come from the verified caller's real command line, not guest-provided
 paths. Only explicit session variables, XPC_SERVICE_NAME and an explicitly
@@ -179,6 +196,12 @@ not inherited. pidfds, real exit status, caller-death
 termination and a parent-death signal own its process lifetime. Starting an ELF
 launcher or entering a Mach-O is not XPC readiness: instance lookup still fails
 until actual check-in/port handoff is implemented and the app effect passes.
+The bootstrap-copy candidate returns the caller's original dictionary and
+actual 32-byte kernel audit token only to its owned child PID/incarnation. The
+session retains the original objects/send rights; reply descriptors copy send
+rights instead of consuming that ownership. Unsupported right forms or oversized
+inline responses fail. This supplies real initialization data, not a ready
+connection or a fabricated managed-service identity.
 
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor
