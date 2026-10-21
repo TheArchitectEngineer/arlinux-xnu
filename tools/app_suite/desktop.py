@@ -39,7 +39,12 @@ class Desktop:
         sizes=re.findall(r'WAYLAND_BACKEND_READY width=(\d+) height=(\d+)',stderr)
         if not sizes:raise RuntimeError('No actual configured fullscreen framebuffer geometry')
         width,height=map(int,sizes[-1])
-        return int(fields['X']),int(fields['Y']),int(fields['WIDTH'])/width,int(fields['HEIGHT'])/height
+        logical_width,logical_height=state['viewport']
+        if logical_width<=0 or logical_height<=0 or width<=0 or height<=0:
+            raise RuntimeError('Invalid logical viewport or configured framebuffer')
+        # Inspection rectangles are UIKit points. The actual desktop window
+        # contains buffer pixels, so include the point-to-buffer conversion.
+        return int(fields['X']),int(fields['Y']),int(fields['WIDTH'])/logical_width,int(fields['HEIGHT'])/logical_height
 
     def screen_rect(self,state,rect):
         x,y,sx,sy=self.window(state)
