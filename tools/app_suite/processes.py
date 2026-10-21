@@ -323,6 +323,12 @@ class Processes:
                 for symbol in ('__ZN6WebKit29XPCServiceInitializerDelegate23getConnectionIdentifierERN3IPC10Connection10IdentifierE',
                                '__ZN6WebKit29XPCServiceInitializerDelegate19getClientIdentifierERN3WTF6StringE'):
                     arguments+=['--lookup',image,symbol]
+            if 'service=com.apple.WebKit.Networking ' in session_text:
+                # Run 39607303960 blocks in this original preferences consumer
+                # before reaching rendering. Read the actual service boundary.
+                arguments+=['--lookup',
+                    '/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation',
+                    '-[CFPrefsSearchListSource synchronouslySendSystemMessage:andUserMessage:andDirectMessage:replyHandler:]']
             if 'service=com.apple.WebKit.WebContent ' in session_text:
                 # Full run 39600777191 reaches actual rendering stream creation
                 # after the database wait. Read the failed buffer consumer.

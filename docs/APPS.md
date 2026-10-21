@@ -102,3 +102,11 @@ Unsupported camera, push, purchases, Metal or modern SwiftUI are not implied by
 any current app passing. Current results belong in EXPERIMENT.md, not a growing
 list of optimistic feature claims. Build source and tooling paths are exclusively
 in README and the single hosted workflow.
+
+Process also offers an independent named-memory command journey: the real console
+App exports a Mach memory entry, maps its alias, reads the nonzero initial data,
+writes in both directions, drops the port, then forks a child that modifies the
+shared alias. Parent readback, real child status, unmapping and normal interactive
+exit are required. This strengthens coverage of actual backing/lifetime across
+fork; it does not certify transferring the port to an unrelated task. Web remains
+the original independent-helper/rendering consumer and its failure stays red.

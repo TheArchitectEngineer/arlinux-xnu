@@ -21,6 +21,35 @@
           "app": "process"
         }
       ]
+    },
+    {
+      "id": "named-memory-alias-fork",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "process"
+        },
+        {
+          "do": "stdout",
+          "text": "Process COW: 11 shared: 42 child: 37"
+        },
+        {
+          "do": "stdin",
+          "text": "m"
+        },
+        {
+          "do": "stdout",
+          "text": "Process Mach shared: initial 23 source 61 alias 61 child 39"
+        },
+        {
+          "do": "stdin",
+          "text": "q"
+        },
+        {
+          "do": "exit",
+          "app": "process"
+        }
+      ]
     }
   ]
 }

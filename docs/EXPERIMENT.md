@@ -129,8 +129,20 @@ backing. The former no-op-success mach_vm_map_external is replaced by actual map
 or an explicit error. Source overlap/permissions, mapping identity and descriptor
 ownership are checked. Concurrent snapshot/rebind conversion and per-unmap registry
 retirement remain limited; general shared-memory correctness is not claimed.
-Runner validation of the original DOM/input journey is pending; no named-entry or
-Web acceptance follows from code or compilation alone. Web and Share still fail.
+Selected run [39607303960](https://github.com/taowen/arlinux-xnu/actions/runs/39607303960),
+source **5acfad223f9a6736e8de7a5d238cf8928284aecc**, attempt 1, passes Counter
+but fails Web (1/2, partial). Receipt
+**6d3de01805d1ffeeb36934730d4966fc3faf37c9e8d1d70eeffc30aa6d2a668a**
+and 48 files were verified. App **6029/29785**, session **6026/29779**,
+WebContent **6072/30272** and Networking **6109/30971** are retained. Original
+Networking blocks in CFPrefsSearchListSource's synchronous XPC preference request;
+WebContent waits for its network connection. There is no named-entry request or
+file-mapping witness in this run: compiling the new implementation does not
+validate its effects. Total feedback is 238 s; journeys take 79.09 s including
+24.791 s of diagnosis. The candidate adds the independent Process named-memory
+command journey and reads the original preferences consumer. The source-owned
+collection now has 17 journeys; the last verified full run above had 16.
+Web and Share still fail; named-memory behavior awaits real App validation.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
