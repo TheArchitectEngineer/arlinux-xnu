@@ -173,7 +173,10 @@ class Processes:
         for record in symbols:
             if record.get('symbol')!='_dispatch_main_q':continue
             address=int(record['address'],16)
-            maps=Path(f'/proc/{pid}/maps').read_text()
+            try:maps=Path(f'/proc/{pid}/maps').read_text()
+            except OSError as error:
+                self.diagnostic['collectionErrors'].append('Dispatch metadata maps unavailable: '+str(error))
+                continue  # Optional metadata cannot suppress original-process stacks.
             if any(int(begin,16)<=address and address+128<=int(end,16) and permissions[:3]=='rw-'
                    for begin,end,permissions in re.findall(r'^([0-9a-f]+)-([0-9a-f]+) ([-rwxps]{4}) ',maps,re.M)):
                 commands.insert(-1,f'memory read --format x --size 8 --count 16 {address:#x}')

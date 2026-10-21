@@ -65,6 +65,14 @@
           "text": "Queue: ?3"
         },
         {
+          "do": "click",
+          "text": "^Queue$"
+        },
+        {
+          "do": "see",
+          "text": "Queue: ?6"
+        },
+        {
           "do": "close"
         },
         {
@@ -86,6 +94,14 @@
         {
           "do": "see",
           "text": "Queue: ?3"
+        },
+        {
+          "do": "click",
+          "text": "^Queue$"
+        },
+        {
+          "do": "see",
+          "text": "Queue: ?6"
         },
         {
           "do": "close"

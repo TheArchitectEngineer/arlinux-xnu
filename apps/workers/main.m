@@ -5,6 +5,7 @@
 static void *compute(void *value) { *(int *)value=42; return (void *)37; }
 @interface WorkersDelegate : UIResponder <UIApplicationDelegate>
 @property(nonatomic,strong) UIWindow *window; @property(nonatomic,strong) UILabel *result;
+@property(nonatomic) NSUInteger queueValue;
 @end
 @implementation WorkersDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
@@ -32,10 +33,12 @@ static void *compute(void *value) { *(int *)value=42; return (void *)37; }
     puts("APP_WORKER_QUEUE stage=submit");fflush(stdout);
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0),^{
         NSUInteger value=[@[@2,@3,@5] count];
-        printf("APP_WORKER_QUEUE stage=background value=%lu\n",(unsigned long)value);fflush(stdout);
-        dispatch_async(dispatch_get_main_queue(),^{
+        dispatch_queue_t main=dispatch_get_main_queue();
+        printf("APP_WORKER_QUEUE stage=background value=%lu main_queue=%p\n",(unsigned long)value,(__bridge void *)main);fflush(stdout);
+        dispatch_async(main,^{
             puts("APP_WORKER_QUEUE stage=main");fflush(stdout);
-            self.result.text=value==3 ? @"Queue: 3" : @"Queue failed";
+            self.queueValue+=value;
+            self.result.text=value==3 ? [NSString stringWithFormat:@"Queue: %lu",(unsigned long)self.queueValue] : @"Queue failed";
         });
     });
 }
