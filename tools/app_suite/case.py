@@ -62,7 +62,9 @@ class Case(Processes,Desktop):
                 events=re.findall(r'WAYLAND_TOPLEVEL_FOCUS[^\n]*activated=(0|1)',log)
                 if events and events[-1]=='1':self.current=name;break
                 if time.monotonic()>=deadline:raise RuntimeError('Actual compositor did not focus requested app')
-                command('xdotool','key','--clearmodifiers','alt+Tab');time.sleep(.2)
+                # The workflow runs Weston's default desktop shell with
+                # --no-config: its window switcher is Super+Tab, not Alt+Tab.
+                command('xdotool','key','--clearmodifiers','super+Tab');time.sleep(.2)
         elif action == 'type':
             if self.reference: command(ROOT/'build/reference-tools/desktop-events','type',step['text'])
             else: command('xdotool', 'type', '--clearmodifiers', '--delay', '40', step['text'])

@@ -1,7 +1,8 @@
 /* Opt-in, read-only lifecycle ABI evidence from the actual loaded firmware.
- * No framework messages, method replacements or app callbacks are invoked.
+ * No app actions or lifecycle transitions are supplied by this observer.
  * Method names in historical header dumps are only discovery hints. */
 #include <objc/runtime.h>
+#import <Foundation/Foundation.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,10 +95,28 @@ static void describe_methods(Class cls,int meta)
     }
     free(methods);
 }
+static NSUncaughtExceptionHandler *prior_uncaught;
+static unsigned int recording_uncaught;
+static void record_uncaught(NSException *exception)
+{
+    if(!__atomic_exchange_n(&recording_uncaught,1,__ATOMIC_RELAXED)) {
+        fprintf(stderr,"IOS_UNCAUGHT_EXCEPTION name=%.256s reason=%.1024s\n",
+            exception.name.UTF8String,exception.reason.UTF8String);
+        NSArray *frames=exception.callStackReturnAddresses;
+        for(NSUInteger i=0;i<frames.count && i<24;i++)
+            fprintf(stderr,"IOS_UNCAUGHT_EXCEPTION_FRAME index=%lu pc=0x%llx\n",
+                (unsigned long)i,[frames[i] unsignedLongLongValue]);
+    }
+    /* Keep the existing handler and the runtime's normal fatal outcome.
+     * A returned diagnostic callback does not handle or suppress the throw. */
+    if(prior_uncaught)prior_uncaught(exception);
+}
 void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
 {
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
     if (!enabled || strcmp(enabled,"1")) return;
+    prior_uncaught=NSGetUncaughtExceptionHandler();
+    NSSetUncaughtExceptionHandler(record_uncaught);
     /* Candidate input/termination boundaries: inspect actual loaded signatures
      * before binding them. These getters do not create or deliver any event. */
     const struct {const char *cls,*selector;} input_methods[]={

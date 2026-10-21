@@ -41,6 +41,10 @@ metadata for the first 32 calls; the guest output buffer is never read or change
 The failure summary includes eight syscall frequency entries and eight resource
 paths; full arguments, callers and truncation markers remain in runtimeLog.
 Frequency is not a root-cause verdict.
+The same opt-in profile records an uncaught NSException's actual name, reason
+and at most 24 original throw-stack addresses. It chains the previous uncaught
+handler and preserves normal termination. Those frames are symbolicated from
+the same original process stderr/cache; an abort symbol alone is not a cause.
 
 ## Short feedback loop
 
