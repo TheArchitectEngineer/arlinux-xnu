@@ -142,7 +142,7 @@ jobs:
         done
         ccache cc -Wall -Wextra -Werror -O2 -g "${spc_flags[@]}" -c src/native-xpc.c -o build/native/native-xpc.o
         cp third_party/libspc/LICENSE build/native/libspc-LICENSE
-        rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include)
+        rpc_flags=(-DARLINUX_DARLING=1 -isystem build/darling-ipc -isystem build/darling-ipc/include -isystem build/darling-ipc/src/startup)
         cp build/darling-ipc/libarlinux_mach_core.so build/native/
         core_flags=(-Lbuild/native -larlinux_mach_core '-Wl,-rpath,$ORIGIN')
         ccache cc -Wall -Wextra -Werror -O2 -g -fno-stack-protector -ffreestanding -fno-builtin -mgeneral-regs-only -ffixed-x18 -mno-outline-atomics "${rpc_flags[@]}" -c src/darwin-native.c -o build/native/runtime.o

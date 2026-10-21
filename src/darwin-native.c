@@ -7,6 +7,9 @@
 #include "darwin-abi.h"
 #include "darwin-machine.h"
 #include "ios-platform-abi.h"
+#ifdef ARLINUX_DARLING
+#include "rtsig.h"
+#endif
 #include <errno.h>
 #include <sys/wait.h>
 #include <sys/auxv.h>
@@ -1139,6 +1142,15 @@ void darwin_native_prepare(const char *root,const char *program,const char *cont
     for (unsigned int i=0;i<sizeof(failures)/sizeof(failures[0]);i++) {
         if (sigaction(failures[i],&action,NULL)) { perror("fault handler"); exit(1); }
     }
+#ifdef ARLINUX_DARLING
+    /* Diagnose the original interrupted context when the integrated core
+     * suspends a task. Use the core's generated signal number, not a host libc
+     * RT offset or a guessed constant. This is opt-in evidence, not successful
+     * task-suspend emulation or a signal ignored by the production runtime. */
+    if(native_stop_on_fault && sigaction(LINUX_SIGRTMIN,&action,NULL)) {
+        perror("Darling suspension diagnosis");exit(1);
+    }
+#endif
     void *vdso = dlopen("linux-vdso.so.1",RTLD_NOW|RTLD_LOCAL);
     uint32_t *sigreturn = vdso ? dlsym(vdso,"__kernel_rt_sigreturn") : NULL;
     /* Linux ARM64's VDSO ABI is mov x8,#139; svc #0. Allow that exact
