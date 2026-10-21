@@ -1,26 +1,231 @@
 {
   "version": 1,
-  "cases": [{
-    "id": "calculate-close-relaunch",
-    "steps": [
-      {"do":"launch","app":"calculator"},
-      {"do":"see","text":"^0$","region":[0,0,1,0.25],"timeoutSeconds":30},
-      {"do":"click","text":"^2$","target":"text"},
-      {"do":"click","text":"^(\\+|plus|加)$","target":"text"},
-      {"do":"click","text":"^3$","target":"text"},
-      {"do":"click","text":"^(=|equals|等于)$","target":"text"},
-      {"do":"see","text":"^5$","region":[0,0,1,0.25]},
-      {"do":"close"},
-      {"do":"exit","app":"calculator"},
-      {"do":"launch","app":"calculator"},
-      {"do":"click","text":"^(AC|C|clear|all clear|全部清除|清除)$","target":"text"},
-      {"do":"click","text":"^7$","target":"text"},
-      {"do":"click","text":"^(\\+|plus|加)$","target":"text"},
-      {"do":"click","text":"^8$","target":"text"},
-      {"do":"click","text":"^(=|equals|等于)$","target":"text"},
-      {"do":"see","text":"^15$","region":[0,0,1,0.25]},
-      {"do":"close"},
-      {"do":"exit","app":"calculator"}
-    ]
-  }]
+  "cases": [
+    {
+      "id": "portrait-calculate-close-relaunch",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "calculator"
+        },
+        {
+          "do": "viewport",
+          "width": 375,
+          "height": 667
+        },
+        {
+          "do": "see",
+          "text": "^0$",
+          "region": [
+            0,
+            0,
+            1,
+            0.5
+          ],
+          "timeoutSeconds": 30
+        },
+        {
+          "do": "click",
+          "text": "^2$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^(\\+|plus|加)$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^3$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^(=|equals|等于)$",
+          "target": "text"
+        },
+        {
+          "do": "see",
+          "text": "^5$",
+          "region": [
+            0,
+            0,
+            1,
+            0.5
+          ]
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "calculator"
+        },
+        {
+          "do": "launch",
+          "app": "calculator"
+        },
+        {
+          "do": "click",
+          "text": "^(AC|C|clear|all clear|全部清除|清除)$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^7$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^(\\+|plus|加)$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^8$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^(=|equals|等于)$",
+          "target": "text"
+        },
+        {
+          "do": "see",
+          "text": "^15$",
+          "region": [
+            0,
+            0,
+            1,
+            0.5
+          ]
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "calculator"
+        }
+      ],
+      "display": {
+        "width": 375,
+        "height": 667,
+        "scale": 2
+      }
+    },
+    {
+      "id": "calculate-close-relaunch",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "calculator"
+        },
+        {
+          "do": "viewport",
+          "width": 667,
+          "height": 375
+        },
+        {
+          "do": "see",
+          "text": "^0$",
+          "region": [
+            0,
+            0,
+            1,
+            0.5
+          ],
+          "timeoutSeconds": 30
+        },
+        {
+          "do": "click",
+          "text": "^2$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^(\\+|plus|加)$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^3$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^(=|equals|等于)$",
+          "target": "text"
+        },
+        {
+          "do": "see",
+          "text": "^5$",
+          "region": [
+            0,
+            0,
+            1,
+            0.5
+          ]
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "calculator"
+        },
+        {
+          "do": "launch",
+          "app": "calculator"
+        },
+        {
+          "do": "click",
+          "text": "^(AC|C|clear|all clear|全部清除|清除)$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^7$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^(\\+|plus|加)$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^8$",
+          "target": "text"
+        },
+        {
+          "do": "click",
+          "text": "^(=|equals|等于)$",
+          "target": "text"
+        },
+        {
+          "do": "see",
+          "text": "^15$",
+          "region": [
+            0,
+            0,
+            1,
+            0.5
+          ]
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "calculator"
+        }
+      ],
+      "display": {
+        "width": 667,
+        "height": 375,
+        "scale": 2
+      }
+    }
+  ]
 }

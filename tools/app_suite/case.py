@@ -52,6 +52,14 @@ class Case(Processes,Desktop):
             self.observe_pixels(step)
         elif action == 'see':
             self.observe(step['text'],timeout_seconds=step.get('timeoutSeconds',8),region=step.get('region'))
+        elif action == 'viewport':
+            deadline=time.monotonic()+8
+            while True:
+                self.guard();observed=self.inspection(name)
+                self.steps[-1]['observedViewport']=observed.get('viewport') if observed else None
+                if observed and observed['viewport']==[step['width'],step['height']]:break
+                if time.monotonic()>=deadline:raise RuntimeError('Actual UIKit viewport does not match the declared phone dimensions')
+                time.sleep(.1)
         elif action == 'application-state':
             deadline=time.monotonic()+8
             while True:
@@ -190,6 +198,7 @@ class Case(Processes,Desktop):
                     self.cleanup.append({'app': name, 'helper': helper, 'forced': True,
                                          'acceptanceEvidence': False})
         return {'id': self.case['id'], 'status': 'failed' if error else 'passed', 'error': error,
+                'display':getattr(self,'display',None),
                 'session': self.session, 'processes': self.generations, 'steps': self.steps,
                 'observations': self.observations, 'helpers': self.helpers,
                 'diagnostic': self.diagnostic, 'cleanup': self.cleanup}

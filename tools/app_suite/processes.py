@@ -72,6 +72,7 @@ class Processes:
                 raise RuntimeError(f'{name} exited unexpectedly: {item["process"].returncode}')
 
     def launch(self, name):
+        if not self.generations:self.configure_display()
         previous = self.processes.get(name)
         if previous and previous['process'].poll() is None:
             raise RuntimeError('App is still running: ' + name)

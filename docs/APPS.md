@@ -37,6 +37,13 @@ original. The package remains outside Git and is not uploaded as evidence.
 | Share | Objective-C / UIActivityViewController, NSItemProvider, NSExtensionContext | App requests bundled iOS sharing extension; payload round trip, independent PID, retirement/restart |
 
 Console programs are Darwin bottom-layer apps, not normal home-screen iOS apps.
+Calculator now has independent iPhone 8 portrait (375x667 points at 2x) and
+landscape (667x375 points at 2x) flows. The runner resizes its real nested
+compositor to the corresponding pixel dimensions before app launch; each flow
+must observe the expected UIKit viewport. Other journeys restore their normal
+desktop geometry. These phone profiles are pending validation. An Apple-host
+reference must also satisfy its actual viewport step; merely recording a
+requested profile does not certify that macOS applied it.
 In particular fork is not an ordinary iOS App Store lifecycle requirement. They
 do not certify UIKit. Sharing uses the actual public iOS extension APIs. The retired macOS-only
 initWithServiceName/serviceListener fixture and its private declarations were

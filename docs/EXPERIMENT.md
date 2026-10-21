@@ -17,6 +17,32 @@ container. Apple executable data stays runner-local.
 
 ## Original Calculator: Linux journey passes
 
+After point-scale adaptation and correcting the harness's point-to-pixel
+mapping, run **39685654769** (source **5b1d297de2174ac37fbe5c352f2ea93d3c323fba**,
+attempt 1) passes the calculation/normal-close/relaunch flow independently on
+Linux and the native Apple-host reference. Both consume the same pinned
+original executable; only the Apple reference copy undergoes the declared
+PlayCover conversion/signing. Linux receipt
+**019814b23da02356f7622c0bcbbc497d5e981f93d5fcd3622b49528e3b3bca46**
+(35 files) and Apple receipt
+**9dfb22559920359a44f8f4eb84006c7b27202ba6db9624d0a97b9f37ef45e62a**
+(27 files) were verified. Window geometries differ, so this is behavioral
+comparison, not pixel equivalence. Phone-sized profiles are now required for
+Calculator's next acceptance rather than assuming an arbitrary desktop shape
+is supported by an iPhone application.
+
+The preceding run 39684808787/source 131ca26 fails all four Linux journeys
+because the observer still reads logical rectangles as framebuffer pixels;
+its verified screenshot nevertheless shows non-overlapping keys after scale
+adaptation. Linux receipt
+**c734b676ef0148d1d43048498b29c724e3640251f4743d47dc80ca9bee8879f7**
+(133 files). The Apple app launches but its observer aborts on an undeclared
+Pillow dependency; Apple receipt
+**987563571e1ae65e631161d558c6cb2e82e1783f9f7c666788609ec8925787dd**
+(11 files). The harness now maps real points to desktop pixels and uses the
+existing native Apple sampler for mixed-theme contrast; neither fix supplies
+app results or actions.
+
 The first opt-in geometry run (39625694451, source c4f316f) confirms a
 1024x600-point window on a 512x300-point UIScreen with nativeBounds 1024x600 and
 scale/nativeScale 2. The original keypad views subclass UIView, not UIControl;

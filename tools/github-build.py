@@ -71,7 +71,13 @@ def collect_evidence(run):
             try:count=verify_result_files(staging,expected,run)
             except (OSError,ValueError,KeyError) as error:
                 raise SystemExit(f'Fresh evidence verification failed: {error}; retained at {staging}') from error
-            staging.rename(directory)  # Only complete, hash-verified downloads become reusable.
+            try:staging.rename(directory)  # Only complete, hash-verified downloads become reusable.
+            except OSError:
+                # Another observer may have published this exact run while
+                # our download was in flight. Accept only a verified winner.
+                if not directory.is_dir():raise
+                count=verify_result_files(directory,expected,run)
+                print(f'  Concurrent evidence verified; duplicate download retained at {staging}')
         print(f'  Verified {artifact}: receipt plus {count} files; {directory}')
         result_path=directory/'apps/result.json'
         covered={entry['path'] for entry in json.loads((directory/'receipt.json').read_bytes())['files']}

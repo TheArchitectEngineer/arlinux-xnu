@@ -178,7 +178,7 @@ jobs:
         export WAYLAND_DISPLAY=arlinux-ios
         mkdir -p "$XDG_RUNTIME_DIR"
         chmod 700 "$XDG_RUNTIME_DIR"
-        Xvfb "$DISPLAY" -screen 0 1280x800x24 -nolisten tcp > build/results/xvfb.log 2>&1 &
+        Xvfb "$DISPLAY" -screen 0 1920x1800x24 -nolisten tcp > build/results/xvfb.log 2>&1 &
         for ((i=0; i<100; i++)); do
           if xdotool getdisplaygeometry > /dev/null 2>&1; then break; fi
           sleep .05

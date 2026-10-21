@@ -9,6 +9,28 @@ from pathlib import Path
 from .context import ROOT,command,sha
 
 class Desktop:
+    def configure_display(self):
+        profile=self.case.get('display')
+        if profile:
+            values=[profile.get(key) for key in ('width','height','scale')]
+            if any(type(value) is not int or value<=0 for value in values):
+                raise RuntimeError('Display profile requires positive integer points and scale')
+            width,height=values[0]*values[2],values[1]*values[2]
+            if width>1600 or height>1600:raise RuntimeError('Display profile exceeds the runner display')
+        else:width,height=1024,600
+        self.display={'requested':profile,'bufferPixels':[width,height],'reference':self.reference}
+        if self.reference:return  # A viewport step must verify the actual Apple window; never claim an applied profile.
+        ids=command('xdotool','search','--onlyvisible','--class','[Ww]eston',capture_output=True,text=True).stdout.split()
+        if len(ids)!=1:raise RuntimeError('No unique real nested compositor for display configuration')
+        command('xdotool','windowsize',ids[0],width,height)
+        deadline=time.monotonic()+5
+        while True:
+            fields=dict(line.split('=',1) for line in command('xdotool','getwindowgeometry','--shell',ids[0],capture_output=True,text=True).stdout.splitlines() if '=' in line)
+            if (int(fields['WIDTH']),int(fields['HEIGHT']))==(width,height):
+                self.display['observedBufferPixels']=[width,height];return
+            if time.monotonic()>=deadline:raise RuntimeError('Real compositor did not accept the display profile')
+            time.sleep(.05)
+
     def snapshot(self,label):
         path=self.directory/f'{len(self.observations):03d}-{label}.png'
         command('screencapture','-x',path) if self.reference else command('scrot',path)
