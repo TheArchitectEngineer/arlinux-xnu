@@ -255,6 +255,10 @@ descriptor guard enforcement, guard exceptions and CLOFORK protection are not
 installed. This is recorded explicitly in runtime traces. Normal fd protection
 for the runtime's own descriptors is retained. access(W_OK) checks actual Linux
 permissions within the declared writable roots instead of rejecting every path.
+POSIX and open-file-description advisory locks translate Darwin's flock record
+to Linux fcntl commands. The filesystem owns conflicts, blocking, ranges and
+fork/dup lifetime; GETLK returns its real lock metadata. This follows Darling's
+field/type conversion rather than reporting a successful uninstalled lock.
 End-to-end persistence acceptance belongs to the Notes journey in EXPERIMENT.md.
 
 Application groups are separate real directories beneath the explicit

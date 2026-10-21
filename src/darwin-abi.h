@@ -419,7 +419,14 @@ struct darwin_port_options { uint32_t flags,queue_limit; uint64_t reserved[2]; }
 _Static_assert(sizeof(struct darwin_port_options)==24,"Darwin port options wire layout");
 
 /* XNU bsd/sys/fcntl.h, fchecklv_t LP64 wire layout. */
-enum darwin_fcntl { D_F_GETPATH=50, D_F_ADDFILESIGS_RETURN=97, D_F_CHECK_LV=98 };
+enum darwin_fcntl {
+    D_F_GETLK=7,D_F_SETLK=8,D_F_SETLKW=9,D_F_GETPATH=50,
+    D_F_OFD_SETLK=90,D_F_OFD_SETLKW=91,D_F_OFD_GETLK=92,
+    D_F_ADDFILESIGS_RETURN=97,D_F_CHECK_LV=98
+};
+enum darwin_flock_type { D_F_RDLCK=1,D_F_UNLCK=2,D_F_WRLCK=3 };
+struct darwin_flock { int64_t start,length;int32_t pid;int16_t type,whence; };
+_Static_assert(sizeof(struct darwin_flock)==24 && offsetof(struct darwin_flock,type)==20,"Darwin ARM64 flock ABI");
 /* F_ADDFILESIGS_RETURN uses the original three-field LP64 fsignatures_t.
  * blob_start is a file offset relative to file_start, not a guest pointer. */
 struct darwin_fsignatures { int64_t file_start;uint64_t blob_start,blob_size; };

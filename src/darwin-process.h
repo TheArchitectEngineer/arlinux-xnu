@@ -264,12 +264,43 @@ static long native_csops(const unsigned long long *r)
     return result;
 }
 
+static long native_file_lock(int fd,uint32_t command,unsigned long address)
+{
+    /* Same field/type translation as Darling's fcntl adapter, with OFD
+     * commands preserving Linux open-description ownership across fork/dup.
+     * No advisory-lock success is emulated; the Linux filesystem owns it. */
+    struct darwin_flock guest;
+    if(guest_copy(&guest,address,sizeof(guest),0))return -EFAULT;
+    short type=guest.type==D_F_RDLCK ? F_RDLCK : guest.type==D_F_WRLCK ? F_WRLCK :
+        guest.type==D_F_UNLCK ? F_UNLCK : -1;
+    if(type<0)return -EINVAL;
+    int operation;
+    switch(command) {
+    case D_F_GETLK:operation=F_GETLK;break;
+    case D_F_SETLK:operation=F_SETLK;break;
+    case D_F_SETLKW:operation=F_SETLKW;break;
+    case D_F_OFD_GETLK:operation=F_OFD_GETLK;break;
+    case D_F_OFD_SETLK:operation=F_OFD_SETLK;break;
+    case D_F_OFD_SETLKW:operation=F_OFD_SETLKW;break;
+    default:return -ENOTSUP;
+    }
+    struct flock host={.l_type=type,.l_whence=guest.whence,.l_start=guest.start,
+        .l_len=guest.length,.l_pid=guest.pid};
+    long result=RAW(SYS_fcntl,fd,operation,&host,0,0,0);
+    if(result || (command!=D_F_GETLK && command!=D_F_OFD_GETLK))return result;
+    guest.type=host.l_type==F_RDLCK ? D_F_RDLCK : host.l_type==F_WRLCK ? D_F_WRLCK : D_F_UNLCK;
+    guest.whence=host.l_whence;guest.start=host.l_start;guest.length=host.l_len;guest.pid=host.l_pid;
+    return guest_copy(&guest,address,sizeof(guest),1);
+}
 static long native_fcntl(const unsigned long long *r)
 {
     long status=RAW(SYS_fcntl,r[0],F_GETFD,0,0,0,0);
     if (status<0) return status;
     status=-ENOTSUP;
-    if (r[1]==D_F_GETPATH) {
+    if(r[1]==D_F_GETLK || r[1]==D_F_SETLK || r[1]==D_F_SETLKW ||
+       r[1]==D_F_OFD_GETLK || r[1]==D_F_OFD_SETLK || r[1]==D_F_OFD_SETLKW) {
+        status=native_file_lock((int)r[0],r[1],r[2]);
+    } else if (r[1]==D_F_GETPATH) {
         char path[1024],root[1024];
         status=native_fd_path(r[0],path);
         if(!status) {
