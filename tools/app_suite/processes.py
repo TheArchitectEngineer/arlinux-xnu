@@ -120,6 +120,10 @@ class Processes:
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
             stderr=Path(item['stdout']).with_suffix('.stderr')
             if stderr.is_file():arguments.extend(['--stderr',stderr])
+            if self.steps and self.steps[-1].get('do')=='application-state':
+                arguments.extend(['--objc-method','/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices',
+                    'FBSScene','updater:didUpdateSettings:withDiff:transitionContext:completion:'])
+                arguments.extend(['--list-symbols','/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices','Deactivation'])
             if 'fileSystemRepresentationWithPath:]: nil or empty path argument' in stderr.read_text(errors='replace'):
                 for symbol in ('_CheckSandboxAccess','-[TIImageCacheClient initWithLocalAccess:]'):
                     arguments.extend(['--lookup','/System/Library/PrivateFrameworks/TextInput.framework/TextInput',symbol])
