@@ -123,8 +123,7 @@ class Processes:
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
             stderr=Path(item['stdout']).with_suffix('.stderr')
             if stderr.is_file():arguments.extend(['--stderr',stderr])
-            if ('APP_WORKER_QUEUE stage=background' in Path(item['stdout']).read_text(errors='replace') and
-                'APP_WORKER_QUEUE stage=main' not in Path(item['stdout']).read_text(errors='replace')):
+            if 'APP_WORKER_QUEUE stage=background' in Path(item['stdout']).read_text(errors='replace'):
                 for symbol in ('_dispatch_main_q','_dispatch_get_main_queue_port_4CF',
                     '_dispatch_main_queue_callback_4CF','_dispatch_runloop_queue_poke','_dispatch_main_queue_wakeup'):
                     arguments.extend(['--lookup','/usr/lib/system/libdispatch.dylib',symbol])
@@ -170,9 +169,12 @@ class Processes:
             self.diagnostic['collectionErrors'].append('Runtime symbols unavailable: '+str(error))
             symbols=[]
         commands.insert(-1,'target variable native_mach_wakeups native_mach_wakeups_omitted')
-        for record in symbols:
-            if record.get('symbol')!='_dispatch_main_q':continue
-            address=int(record['address'],16)
+        queue_addresses={int(record['address'],16) for record in symbols if record.get('symbol')=='_dispatch_main_q'}
+        # The fixture logs the actual public dispatch_get_main_queue() object.
+        # This keeps metadata collection useful even when a private symbol is absent.
+        queue_addresses.update(int(value,16) for value in re.findall(
+            r'APP_WORKER_QUEUE stage=background[^\n]* main_queue=(0x[0-9a-f]+)',Path(live['stdout']).read_text(errors='replace')))
+        for address in sorted(queue_addresses)[:2]:
             try:maps=Path(f'/proc/{pid}/maps').read_text()
             except OSError as error:
                 self.diagnostic['collectionErrors'].append('Dispatch metadata maps unavailable: '+str(error))
