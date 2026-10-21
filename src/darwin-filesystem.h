@@ -187,6 +187,21 @@ static long native_fstatfs(int fd,unsigned long destination)
     long error=native_statfs_value(fd,&value);
     return error ? error : guest_copy(&value,destination,sizeof(value),1);
 }
+static long native_statfs(unsigned long address,unsigned long destination)
+{
+    char buffer[4096],*path=buffer;
+    long error=guest_path(address,buffer);if(error)return error;
+    int directory=path_directory(&path);
+    /* statfs follows the named object, including symlinks. Reuse the actual
+     * mount/space metadata and Darwin packing used by fstatfs64. O_PATH avoids
+     * imposing file-read permission on this metadata query. */
+    long fd=RAW(SYS_openat,directory,path,O_PATH|O_CLOEXEC,0,0,0);
+    if(fd<0)return fd;
+    struct darwin_statfs64 value;
+    error=native_statfs_value(fd,&value);
+    RAW(SYS_close,fd,0,0,0,0,0);
+    return error ? error : guest_copy(&value,destination,sizeof(value),1);
+}
 static long native_getfsstat(const unsigned long long *r)
 {
     /* XNU vfs_syscalls.c:getfsstat64: NULL asks for the count; otherwise

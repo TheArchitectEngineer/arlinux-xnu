@@ -103,8 +103,12 @@ def prepare_bundle(app,original,info,root,origin,destination=None,platform_libra
 def prepare_ipa_app(app):
     declared=app['input'];directory=ROOT/'build/ipa-input'/app['id']
     directory.mkdir(parents=True,exist_ok=False);archive=directory/'app.ipa'
-    subprocess.run(['curl','--fail','--location','--retry','3','--max-time','180',
-                    '--output',str(archive),declared['url']],check=True)
+    # The retry budget must bound the original-input phase, not multiply a
+    # three-minute timeout four times before unrelated journeys can start.
+    # The outer deadline also covers curl's final in-flight retry.
+    subprocess.run(['curl','--fail','--location','--retry','3','--connect-timeout','15',
+                    '--max-time','60','--retry-max-time','120',
+                    '--output',str(archive),declared['url']],check=True,timeout=185)
     if archive.stat().st_size!=declared['bytes'] or sha(archive)!=declared['sha256']:
         raise RuntimeError('IPA size/SHA-256 mismatch')
     unpacked=directory/'extracted';unpacked.mkdir();seen=set()

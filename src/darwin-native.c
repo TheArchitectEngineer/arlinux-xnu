@@ -420,6 +420,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 #include "darwin-attributes.h"
 #include "darwin-signature.h"
 #include "darwin-process.h"
+static void trace_guest_frames(const char *tag,const unsigned long long *r);
 #include "darwin-mmap.h"
 #include "darwin-ipc.h"
 #include "darwin-threads.h"
@@ -928,6 +929,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         if(native_diagnose_syscalls)trace_getattrlist(r,uc->uc_mcontext.pc);
         result=native_getattrlist(r); break;
     case D_SYS_FSTATFS64: result=native_fstatfs(r[0],r[1]); break;
+    case D_SYS_STATFS64: result=native_statfs(r[0],r[1]); break;
     case D_SYS_GETFSSTAT64: result=native_getfsstat(r); break;
     case D_SYS_FSGETPATH: result=native_fsgetpath(r); break;
     case D_SYS_GETDIRENTRIES64: result=native_getdirentries(r); break;

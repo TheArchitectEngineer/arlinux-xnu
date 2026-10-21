@@ -215,12 +215,25 @@ static long native_mmap(const unsigned long long *r)
         return result;
     }
     long result=native_file_mmap(r);
-    static unsigned int traces;
-    if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
+    static unsigned int traces,failures;
+    int failed=(unsigned long)result>=(unsigned long)-4095;
+    int failure_trace=failed && __atomic_fetch_add(&failures,1,__ATOMIC_RELAXED)<8;
+    if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT || failure_trace) {
         const char label[]="DARWIN_FILE_MMAP address/bytes/protection/flags/fd/offset/result follows\n";
         RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
         for (unsigned int i=0;i<6;i++) trace_call(i,0,r[i]);
         trace_call(6,0,result);
+    }
+    if(failure_trace) {
+        char path[1024];
+        if(!native_fd_path((int)r[4],path)) {
+            unsigned int n=0;while(path[n])n++;
+            const char label[]="DARWIN_MMAP_FAILED_PATH ";
+            RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
+            RAW(SYS_write,native_trace_fd,path,n,0,0,0);
+            RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
+        }
+        trace_guest_frames("DARWIN_MMAP_FAILURE_FRAME nr=0x",r);
     }
     return result;
 }

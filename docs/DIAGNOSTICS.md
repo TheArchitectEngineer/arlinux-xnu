@@ -7,7 +7,10 @@ independent app collection, not a timeout/readiness check. Compilation and guest
 remain on hosted runners, never WSL or the workstation.
 
 The default failure collection symbolizes original stacks and records the live
-process. Do not attach a standing catalogue of private-service symbol dumps to
+process. Original IPA downloads have a shared retry budget and a 185-second
+outer deadline; an unavailable input fails that app and does not silently choose
+another binary or hold the collection for four independent three-minute waits.
+Do not attach a standing catalogue of private-service symbol dumps to
 every failure. Use explicit targeted cache lookups only for the current failed
 effect. Production framework adaptation is allowed; the diagnostic harness must
 remain read-only with respect to app/framework behavior.
@@ -60,6 +63,12 @@ metadata for the first 32 calls; the guest output buffer is never read or change
 The failure summary includes eight syscall frequency entries and eight resource
 paths; full arguments, callers and truncation markers remain in runtimeLog.
 Frequency is not a root-cause verdict.
+File-mapping failures have a separate eight-request observation budget, retaining
+the original arguments, real descriptor path and saved caller frames even when
+successful startup mappings exhausted the ordinary trace limit. This addresses
+the original Things run's many later mmap errors without guessing from frequency
+or treating a missing image as proof of a mapping cause. Results are unchanged;
+the same cache symbolicator resolves these callers without blanket code dumps.
 For the original IOSurface initialization abort, targeted reads now resolve the
 actual WebCore size/row-layout configuration and IOSurface property boundary,
 rather than unrelated QuartzCore backing-store functions. Current selected Web
@@ -275,8 +284,7 @@ Each original app generation has .stdout, .stderr and .runtime.log. The harness
 preserves CoreFoundation's actual vectored stderr writes through Linux writev,
 including short counts and real errors. Framework log messages are evidence,
 not a replacement for the corresponding process stack and app-visible effect.
-The harness
-passes an actual inherited trace descriptor to the runtime; guest writes to stderr
+The harness passes an actual inherited trace descriptor to the runtime; guest writes to stderr
 remain on descriptor 2. Native per-syscall traces no longer split dyld diagnostics
 into tiny interleaved fragments. Host loader/Wayland diagnostics may still share
 .stderr; neither stream alone is an acceptance oracle. Source-owned apps export read-only
