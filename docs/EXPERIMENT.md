@@ -14,7 +14,19 @@ sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16 build 20H392,
 Firmware and bundles are read-only; writes use each app's actual private Linux
 container. Apple executable data stays runner-local.
 
-## Last working complete baseline
+## Latest full recovery
+
+[Run 39621212426](https://github.com/taowen/arlinux-xnu/actions/runs/39621212426),
+source **f80aa41777cbb7ed00261e423bf7001c389db0a0**, attempt 1, restores
+**15/17** passing journeys. Web still fails after external input at WebCount 1;
+Share still cannot display EchoExtension. The collection remains failed.
+Execution receipt **5c3ea3fc886dfcc8f95e2ca17eefcee4f696f0b2e79d1010dee84dc025077a7e**
+and all 264 evidence files were verified. Journeys total 215.0 s including
+35.2 s diagnosis. Counter, Notes, Canvas, Swift, Network, Workers and all three
+session flows pass again. Original Calculator is being added as a separate,
+unverified firmware-binary input and cannot inherit these fixture results.
+
+## Earlier complete baseline
 
 [Run 39614075257](https://github.com/taowen/arlinux-xnu/actions/runs/39614075257),
 source **e5541829df527be52376c5120bca7cca3ba3f633**, attempt 1, passes **15/17**

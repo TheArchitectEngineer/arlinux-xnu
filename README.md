@@ -4,9 +4,10 @@ An experimental Darwin/iOS compatibility environment for ARLinux on
 Linux/Android. **Counter and Swift/UIKit interaction, close/relaunch, Console
 and Foundation journeys pass on Linux. Notes also passes text entry, atomic save
 and new-process readback. Foreground Foundation HTTP now passes a real request,
-normal close and a second request from a new process. The last working full baseline passes
-15/17 journeys. A later gesture-interface candidate regressed to 4/17 and has
-been withdrawn; recovery validation is pending. Web and Share remain incomplete. Android remains unverified.** XNU, dyld and iOS userland may be
+normal close and a second request from a new process. The full recovery run
+39621212426 passes 15/17 journeys after withdrawing an unsupported gesture
+binding. Web and Share remain incomplete. Original Calculator has not yet
+been validated. Android remains unverified.** XNU, dyld and iOS userland may be
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.
 
@@ -17,8 +18,10 @@ Wayland is the window/input backend, not a replacement for UIKit controls.
 Dependency-heavy framework internals may be adapted or replaced behind explicit
 interfaces; reproducing the entire Apple service ecosystem is not the goal.
 
-The source-owned [app collection](docs/APPS.md) drives development. Each small app
-owns its sources, build declaration and short journeys. There is no all-purpose
+The [app collection](docs/APPS.md) drives development. Source-owned fixtures
+and original-binary inputs each own a declaration and short journeys. Original
+Calculator is now an acceptance target, not a verified compatibility result.
+There is no all-purpose
 workbench, freestanding syscall probe, alternate IPC backend selector or separate
 kernel-boot experiment in the build. Required failures remain red.
 

@@ -59,13 +59,14 @@ class Desktop:
                 'green':sum(p[1]>200 and p[0]<70 and p[2]<70 for p in pixels),
                 'sha256':hashlib.sha256(crop.tobytes()).hexdigest()}
 
-    def observe(self,pattern,word=False,timeout_seconds=8):
+    def observe(self,pattern,word=False,timeout_seconds=8,interactive=None):
         if type(timeout_seconds) not in (int,float) or not 0<timeout_seconds<=120:
             raise RuntimeError('UI observation timeout must be positive and at most 120 seconds')
         deadline=time.monotonic()+timeout_seconds;regex=re.compile(pattern,re.I)
         while True:
             self.guard();state=self.inspection()
-            matches=[] if not state else [item for item in state['elements'] if regex.search(item['text']) and (not word or item['interactive'])]
+            matches=[] if not state else [item for item in state['elements'] if regex.search(item['text']) and (not word or item['interactive'])
+                                         and (interactive is None or item['interactive']==interactive)]
             if len(matches)>1:raise RuntimeError('Ambiguous structured UI target: '+pattern)
             if matches:
                 path=self.snapshot('observe');rect=self.screen_rect(state,matches[0]['rect']);pixels=self.sample(path,rect)
@@ -77,7 +78,17 @@ class Desktop:
                 key=(self.current,self.processes[self.current]['generation'],tuple(matches[0]['rect']))
                 old=self.painted.get(key)
                 changed=not old or old['text']==matches[0]['text'] or old['sha256']!=pixels['sha256']
-                if changed and pixels['ink']>=8 and pixels['pixels']-pixels['ink']>=pixels['pixels']//2:
+                painted=pixels['ink']>=8 and pixels['pixels']-pixels['ink']>=pixels['pixels']//2
+                if self.apps[self.current].get('pixelAppearance')=='mixed':
+                    # Original apps may have dark, colored or light surfaces.
+                    # Require contrasting real pixels, not a particular theme.
+                    from PIL import Image
+                    with Image.open(path) as image:
+                        x,y,w,h=rect
+                        luminance=image.convert('L').crop((x,y,x+w,y+h)).histogram()
+                    occupied=[i for i,count in enumerate(luminance) if count>=8]
+                    painted=bool(occupied) and occupied[-1]-occupied[0]>=48
+                if changed and painted:
                     self.painted[key]={'text':matches[0]['text'],'sha256':pixels['sha256']}
                     return {**matches[0],'screenRect':rect}
             if time.monotonic()>=deadline:raise RuntimeError('Missing structured UI state or actual composited pixels: '+pattern)

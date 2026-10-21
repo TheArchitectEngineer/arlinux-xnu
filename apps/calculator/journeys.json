@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "cases": [{
+    "id": "calculate-close-relaunch",
+    "steps": [
+      {"do":"launch","app":"calculator"},
+      {"do":"see","text":"^0$","interactive":false,"timeoutSeconds":30},
+      {"do":"click","text":"^2$"},
+      {"do":"click","text":"^(\\+|plus|加)$"},
+      {"do":"click","text":"^3$"},
+      {"do":"click","text":"^(=|equals|等于)$"},
+      {"do":"see","text":"^5$","interactive":false},
+      {"do":"close"},
+      {"do":"exit","app":"calculator"},
+      {"do":"launch","app":"calculator"},
+      {"do":"click","text":"^(AC|C|clear|all clear|全部清除|清除)$"},
+      {"do":"click","text":"^7$"},
+      {"do":"click","text":"^(\\+|plus|加)$"},
+      {"do":"click","text":"^8$"},
+      {"do":"click","text":"^(=|equals|等于)$"},
+      {"do":"see","text":"^15$","interactive":false},
+      {"do":"close"},
+      {"do":"exit","app":"calculator"}
+    ]
+  }]
+}

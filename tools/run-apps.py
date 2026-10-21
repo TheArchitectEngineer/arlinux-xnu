@@ -14,6 +14,7 @@ from app_suite.context import ROOT
 from app_suite.session import Session,AppleSession
 from app_suite.feedback import failure_summary
 from app_suite.selection import select
+from app_suite.inputs import prepare_inputs
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--app',default='all');parser.add_argument('--case');parser.add_argument('--reference',action='store_true');args=parser.parse_args()
@@ -27,6 +28,7 @@ def main():
     try:selected,cases,inputs,full_suite=select(ROOT,args.app,args.case)
     except ValueError as error:parser.error(str(error))
     if not selected<=set(apps):raise SystemExit('Requested apps are missing from the verified build selection')
+    prepare_inputs(apps,args.reference)
     output=ROOT/'build/results/apps';output.mkdir(parents=True,exist_ok=False)
     results=[]
     for case in cases:

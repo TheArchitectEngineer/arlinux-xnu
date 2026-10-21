@@ -94,8 +94,10 @@ class Processes:
         capture.mkdir()
         env['ARLINUX_CAPTURE_DIR'] = str(capture)
         app = self.apps[name]
+        if app.get('input',{}).get('kind')=='firmware':
+            env['ARLINUX_INSPECT_APPLICATION']='1'
         if app['build'] != 'passed':
-            raise RuntimeError('App build failed: '+name+'; inspect ios-app-inputs/'+name+'.build.log')
+            raise RuntimeError('App input failed: '+name+'; '+app.get('error','inspect its build log'))
         binary = ROOT / app['binary']
         arguments=[str(ROOT / 'build/native/macho-native'), '--role', app['kind'], '--dyld',
             str(ROOT / 'build/ios-input/dyld'), '--root', str(ROOT / 'build/ios-input/filesystem/root'),

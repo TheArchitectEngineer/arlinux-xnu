@@ -180,7 +180,7 @@ int main(int argc,char **argv)
         memcpy((void *)top,token_parameter,token_count+1);uint64_t token_parameter_address=top;
         token=0;memset(token_parameter,0,sizeof(token_parameter));
         const char *container_names[]={"HOME","CFFIXED_USER_HOME","TMPDIR"};
-        const char *diagnostic_names[]={"DYLD_PRINT_LIBRARIES","DYLD_PRINT_SEGMENTS","ARLINUX_DIAGNOSE_LIFECYCLE"};
+        const char *diagnostic_names[]={"DYLD_PRINT_LIBRARIES","DYLD_PRINT_SEGMENTS","ARLINUX_DIAGNOSE_LIFECYCLE","ARLINUX_INSPECT_APPLICATION"};
         uint64_t environments[1+sizeof(container_names)/sizeof(*container_names)+sizeof(diagnostic_names)/sizeof(*diagnostic_names)];
         size_t environment_count=0;
         if (options.role==NATIVE_APPLICATION) {

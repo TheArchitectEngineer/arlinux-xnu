@@ -1,14 +1,15 @@
 # App-driven compatibility
 
 The acceptance unit is a named, versioned, independently built app. Each directory
-under apps owns app.json, its real sources and journeys.json. The files declare
+under apps owns app.json, its source or original input and journeys.json. The files declare
 build inputs and user effects, never implementation-presence checklists. All
-ordinary apps compile against Apple's actual SDK. The runtime combines selected
+source-owned apps compile against Apple's actual SDK. The runtime combines selected
 pinned Apple userland with production Linux-backed adapters and replacements.
 apps/shared/Screen.h is fixture UI layout, never a runtime shim.
 
 | App | Stack / actual behavior | Required end-to-end result |
 | --- | --- | --- |
+| Calculator (unverified) | Apple's original binary/resources, resolved by bundle ID from the pinned firmware | Real 2 + 3 = 5; normal close/relaunch, clear then 7 + 8 = 15; no replacement app code |
 | Console | C / real dyld, libSystem, malloc, pthread, stdio | Interactive increment, genuine return 0, independent relaunch |
 | Foundation | Objective-C / Foundation collections, JSON, Unicode, exception unwind, timer/run loop | Computed result after real callbacks, console input and return 0 |
 | Process | C / 16 KiB private/shared mmap, fork, Mach task identity/ports, wait | Parent retains private 11 and sees shared 42 from actual child; each task owns its audit PID and receive port; child exits 37, parent reaps/unmaps and exits normally; a separate command exports/maps named memory, verifies alias/fork writes after port release and normal exit |

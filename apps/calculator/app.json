@@ -1,0 +1,10 @@
+{
+  "id": "calculator",
+  "name": "Calculator",
+  "kind": "application",
+  "pixelAppearance": "mixed",
+  "input": {
+    "kind": "firmware",
+    "bundleIdentifier": "com.apple.calculator"
+  }
+}

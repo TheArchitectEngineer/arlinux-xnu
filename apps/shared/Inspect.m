@@ -1,6 +1,10 @@
 #import "Inspect.h"
 #import <QuartzCore/QuartzCore.h>
 #include <stdio.h>
+#ifdef ARLINUX_PLATFORM_INSPECTION
+#include <stdlib.h>
+#include <string.h>
+#endif
 static NSMutableArray *elements;
 static NSMutableSet *visited;
 static UIWindow *current;
@@ -43,6 +47,12 @@ static void inspect(id object,unsigned depth) {
 static void snapshot(void) {
     static NSData *previous;
     UIView *root=observedRoot;
+#ifdef ARLINUX_PLATFORM_INSPECTION
+    if (!root) {
+        for (UIWindow *candidate in [UIApplication sharedApplication].windows)
+            if (!candidate.hidden && candidate.alpha>0.01) { root=candidate; if (candidate.isKeyWindow) break; }
+    }
+#endif
     UIWindow *window=[root isKindOfClass:UIWindow.class] ? (UIWindow *)root : root.window;
     if (!window || window.hidden) return;
     current=window;elements=[NSMutableArray new];visited=[NSMutableSet new];inspect(window,0);
@@ -67,7 +77,16 @@ void AppInspectionStart(UIView *root) {
         usingBlock:^(NSNotification *note) { (void)note;becameActive++; }];
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
         usingBlock:^(NSNotification *note) { (void)note;resignedActive++; }];
-    snapshot();
+    if (root) snapshot();
     NSTimer *timer=[NSTimer timerWithTimeInterval:0.2 repeats:YES block:^(NSTimer *timer) { (void)timer;snapshot(); }];
     [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
 }
+#ifdef ARLINUX_PLATFORM_INSPECTION
+/* Original binaries cannot call the fixture observer. Opt-in to the same
+ * read-only public UIKit traversal on its actual main loop, without changing
+ * their executable, delegate, controls or action dispatch. */
+__attribute__((constructor)) static void inspect_original_application(void) {
+    const char *enabled=getenv("ARLINUX_INSPECT_APPLICATION");
+    if (enabled && !strcmp(enabled,"1")) AppInspectionStart(nil);
+}
+#endif
