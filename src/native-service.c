@@ -97,8 +97,21 @@ static int service_program(const char *root,const char *service,char **output)
                     if(!resolved)error=n>=(int)sizeof(candidate) ? ENAMETOOLONG : errno;
                     else if(strncmp(resolved,canonical_root,strlen(canonical_root)) || resolved[strlen(canonical_root)]!='/') {
                         free(resolved);error=EPERM;
-                    } else if(found){free(resolved);error=EEXIST;}
-                    else {found=resolved;error=0;}
+                    } else if(found) {
+                        struct stat previous,current;
+                        if(stat(found,&previous) || stat(resolved,&current))error=errno;
+                        else if(previous.st_dev==current.st_dev && previous.st_ino==current.st_ino) {
+                            /* Firmware framework aliases may expose one bundle
+                             * through several paths. File identity, not glob
+                             * order or a preferred framework name, resolves it. */
+                            fprintf(stderr,"SESSION_SERVICE_BUNDLE_ALIAS service=%s first=%s alias=%s\n",service,found,resolved);
+                            error=0;
+                        } else {
+                            fprintf(stderr,"SESSION_SERVICE_BUNDLE_CONFLICT service=%s first=%s other=%s\n",service,found,resolved);
+                            error=EEXIST;
+                        }
+                        free(resolved);
+                    } else {found=resolved;error=0;}
                 }
                 free(executable);
             }
