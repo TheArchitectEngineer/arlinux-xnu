@@ -81,7 +81,7 @@ original QuartzCore does not imply that its Apple GPU/compositor backend works.
 The present software layer renderer is a starting point, not completed graphics
 compatibility.
 
-The candidate foreground HTTP boundary uses a public NSURLProtocol subclass in
+The foreground HTTP boundary uses a public NSURLProtocol subclass in
 the injected platform library, preserving original NSURLSession task/client and
 Foundation response/JSON semantics. Linux libcurl owns actual HTTP/HTTPS, host
 DNS and normal certificate validation on a host-TLS pthread started before guest
@@ -93,8 +93,10 @@ actual status, headers, bytes and errors; it owns redirect decisions. Background
 sessions, streamed request bodies, custom trust/authentication challenges and
 complete ATS/cookie/cache compatibility are not established. Insecure HTTP is
 limited to explicit arbitrary-load policy or explicitly allowed local names;
-unimplemented exception-domain rules fail closed. This is a runtime candidate
-awaiting app-journey verification, not a passing network claim. It does not
+unimplemented exception-domain rules fail closed. The foreground HTTP/JSON flow
+passes in two fresh process generations with real peer requests, visible pixels
+and normal exits. HTTPS, redirects and cancellation still need their own app
+journeys before compatibility is claimed. It does not
 implement NECP or arbitrary BSD sockets, WebKit networking or Apple services.
 
 The first transport attempt exposed a real CFRunLoopWakeUp send rejection:
@@ -105,8 +107,10 @@ and blocking receive continuations, copies them to an offered receive vector,
 and releases them with the message. Scalar receivers omit optional metadata;
 vector receivers get actual metadata or empty EOF. No success is returned for a
 discarded send. Auxiliary sizes are bounded to 16 KiB; full modern oversized
-receive/pseudo-receive behavior remains unverified. This change and the HTTP
-candidate still require the end-to-end network journey to pass.
+receive/pseudo-receive behavior remains unverified. The end-to-end HTTP flow now
+passes; byte-for-byte auxiliary receive semantics are not independently certified
+by a wakeup flow. Ownership fields add to the fixed kmsg allocation rather than
+reducing its original inline/preallocated-message capacity.
 
 The software backend's ios-rendering.m selects the original CAContext local
 constructor when UIKit requests its window context. It preserves original

@@ -83,7 +83,7 @@ took 156 s overall and 30 s in journeys.
 
 ## Complete collection and remaining failures
 
-Full run [39547510074](https://github.com/taowen/arlinux-xnu/actions/runs/39547510074),
+Earlier full baseline [39547510074](https://github.com/taowen/arlinux-xnu/actions/runs/39547510074),
 source **cd29bf9626899d583147a10a2f0214d53edf6ce3**, attempt 1, passed **13/16**
 journeys. The collection is still **failed**. Receipt
 **ad95702ad12daf4a283cf92a6c3518273d4308089d10c402804b49c465b26eec**
@@ -95,9 +95,9 @@ journeys pass in this full run. Concurrent relaunch passes all 29 steps; crash
 isolation and focus activation each pass all 22 steps. These scenarios do not
 establish arbitrary helper cleanup or background lifecycle behavior.
 
-| Remaining journey | Actual failure evidence / next boundary |
+| Capability | Current evidence / next boundary |
 | --- | --- |
-| Network | The real NSURLSession task resumes, completes with NSURLErrorDomain -1009 and updates the label to Network failed through the actual main queue. No request reaches the HTTP peer. Network.framework path evaluation reaches unsupported NECP (501/502); socket (97) failures observed here originate in ASL logging, not an HTTP connection. The Linux network path/transport boundary remains unimplemented. |
+| Network | Foreground HTTP/JSON now passes twice across normal close/new-process relaunch in the selected run below. General HTTPS, redirects, cancellation and background networking are not yet accepted. NECP and arbitrary BSD sockets remain unimplemented. |
 | Web | Original WebCore::IOSurface::maximumSize() reaches IOSurfaceClientGetPropertyMaximum and aborts because the IOSurface kernel service is absent. WebContent launch is also unimplemented. No DOM/helper/presentation acceptance. |
 | Share | The flow waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
 
@@ -114,24 +114,39 @@ and 48 files were verified. Queue generations are **5864/19727** and
 queue; overall feedback takes 142 s. This partial pass neither establishes the
 intermittent cause nor certifies the other apps with this changed source.
 
-The Network boundary above is verified in selected run
-[39549663365](https://github.com/taowen/arlinux-xnu/actions/runs/39549663365),
-source **de2b844953b4955ac61aceed4f1e434ae0fdeb38**, attempt 1, with process
-**5758/19129** (PID/startTicks). Receipt
-**9c277b68b7bb6854ebb0c2def15c25e9c6489e0c11cb35765f9e45383065e526**
-and all 25 files were verified. It fails 0/1 with no retry: actual source phase
-records reach submit, created, resumed, completion and main; the composed
-inspection contains Network failed and the HTTP peer log is empty. This rules
-out missing button/task/main delivery for this attempt, not intermittent queue
-failures elsewhere. Feedback takes 149 s overall / 21.614 s journey, including
-10.153 s diagnosis. It is diagnosis, not a network compatibility repair.
+Current selected run [39552858185](https://github.com/taowen/arlinux-xnu/actions/runs/39552858185),
+source **bbcea4052d92bff88e3a1c63a88764b38f2daa03**, attempt 1, passes **4/4**:
+Counter, Foundation, Swift and the strengthened Network journey. Receipt
+**b1d38e02bd75f2972047a703e3633eee859b7bda0d3c21e2deb8c7a41b6982e4**
+and 67 files were verified. Network processes **6163/19520** and **6211/19866**
+(PID/startTicks) each receive a real status 200 / 13-byte HTTP response through
+the Linux transport and original NSURLSession completion. Original JSON parsing
+and main-queue delivery produce Network: 42 in both composed screenshots;
+the real peer records two requests and both processes exit 0. Both label regions
+have SHA-256 **f644f4534ec9f43dced20328a20848908027283d18ce86692efbf40c4af929d4**;
+the second composed screenshot was also visually inspected. The 14-step Network
+journey takes 7.215 s; all four total 25.986 s, with 161 s overall feedback.
+This is a partial Linux result, not whole-suite, HTTPS or Android acceptance.
+
+The last completed full candidate,
+[39552256606](https://github.com/taowen/arlinux-xnu/actions/runs/39552256606), source
+**02fb54c6521a32b97cf9849fd6dee7445e224d2a**, regressed to **2/16**: extra kmsg
+ownership fields had reduced the original inline capacity, breaking real port
+preallocation and terminating shared sessions. Receipt
+**9470367e04640c6315b2b8c3b6dc2473ebcf0559aee1b6dae1113d5d7062d1c5**
+and 165 files were verified. The current correction adds auxiliary ownership
+storage to the allocation, preserving the original capacity; the four-app run
+above verifies that boundary again. Full revalidation of that same corrected
+runtime is [39553178774](https://github.com/taowen/arlinux-xnu/actions/runs/39553178774).
+At this update it is still running in toolchain preparation; do not replace its
+unknown result with the earlier 13/16 baseline or the selected 4/4 result.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
 pointer contacts, Alt-F4 and actual host keyboard text commits/deletion are
 implemented. Notes verifies basic keyboard text entry and persistence;
 scroll, IME composition, key repeat and multitouch remain unsupported. Scene
-resize/background behavior, networking, WebKit and extensions require further work.
+resize/background behavior, broader networking, WebKit and extensions require further work.
 No third-party IPA or Android acceptance has passed. The full goal remains active.
 
 The sole entry can select exact app journeys and scenarios through --case;
