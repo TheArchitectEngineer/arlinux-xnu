@@ -17,7 +17,17 @@ static void inspect(id object,unsigned depth) {
     BOOL view=[object isKindOfClass:UIView.class];
     if (view && ([(UIView *)object isHidden] || [(UIView *)object alpha]<0.01)) return;
     NSString *text=nil; BOOL interactive=NO;
-    if ([object isKindOfClass:UILabel.class]) text=[(UILabel *)object text];
+    if ([object isKindOfClass:UILabel.class]) {
+        text=[(UILabel *)object text];
+        /* Custom UIControls commonly render their title in a child UILabel.
+         * Read its actual control ancestry; do not classify every label as a
+         * passive result or duplicate a UIButton title already exported above. */
+        UIView *ancestor=[(UIView *)object superview];
+        while (ancestor && ![ancestor isKindOfClass:UIControl.class]) ancestor=ancestor.superview;
+        if ([ancestor isKindOfClass:UIButton.class] && [(UIButton *)ancestor titleForState:UIControlStateNormal].length)
+            text=nil;
+        else if (ancestor) interactive=[(UIControl *)ancestor isEnabled] && ancestor.userInteractionEnabled;
+    }
     else if ([object isKindOfClass:UIButton.class]) { text=[(UIButton *)object titleForState:UIControlStateNormal]; interactive=YES; }
     else if ([object isKindOfClass:UITextField.class]) { UITextField *field=object; text=field.text.length ? field.text : field.placeholder; interactive=YES; }
     else if ([object isAccessibilityElement]) { text=[object accessibilityLabel]; interactive=([object accessibilityTraits]&UIAccessibilityTraitButton)!=0; }
