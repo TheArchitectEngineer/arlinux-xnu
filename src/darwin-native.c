@@ -244,9 +244,11 @@ static int path_directory(char **path)
     }
     return AT_FDCWD;
 }
-static long guest_openat(int dirfd,unsigned long address,unsigned long flags)
+#include "darwin-storage.h"
+static long guest_openat(int dirfd,unsigned long address,unsigned long flags,unsigned long mode)
 {
-    /* The firmware is read-only. Unsupported flag semantics are explicit. */
+    /* Firmware/bundles are read-only; writes resolve beneath the app container.
+     * Unsupported flag semantics are explicit. */
     char buffer[4096],*path=buffer;
     long error=guest_path(address,buffer);
     if (error) return error;
@@ -255,7 +257,8 @@ static long guest_openat(int dirfd,unsigned long address,unsigned long flags)
     RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
     RAW(SYS_write,native_trace_fd,buffer,length,0,0,0);
     RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
-    if (flags & ~(D_O_NONBLOCK|D_O_NOFOLLOW|D_O_DIRECTORY|D_O_CLOEXEC|D_O_NOFOLLOW_ANY)) {
+    if ((flags&3)==3 || (flags & ~(D_O_WRONLY|D_O_RDWR|D_O_APPEND|D_O_CREAT|D_O_TRUNC|D_O_EXCL|
+            D_O_NONBLOCK|D_O_NOFOLLOW|D_O_DIRECTORY|D_O_CLOEXEC|D_O_NOFOLLOW_ANY))) {
         const char rejected[]="DARWIN_OPEN_UNSUPPORTED_FLAGS follows\n";
         RAW(SYS_write,native_trace_fd,rejected,sizeof(rejected)-1,0,0,0);
         trace_call(0,0,flags);
@@ -268,10 +271,24 @@ static long guest_openat(int dirfd,unsigned long address,unsigned long flags)
     int directory=(buffer[0]=='/' || dirfd==D_AT_FDCWD) ? path_directory(&path) : dirfd;
     trace_record("DARWIN_OPEN_DIRECTORY fd=0x",(unsigned long)(long)directory,0,flags);
     int options=O_RDONLY;
+    if(flags&D_O_WRONLY)options=O_WRONLY;
+    if(flags&D_O_RDWR)options=O_RDWR;
+    if(flags&D_O_APPEND)options|=O_APPEND;
+    if(flags&D_O_CREAT)options|=O_CREAT;
+    if(flags&D_O_TRUNC)options|=O_TRUNC;
+    if(flags&D_O_EXCL)options|=O_EXCL;
     if (flags&D_O_NONBLOCK) options|=O_NONBLOCK;
     if (flags&D_O_NOFOLLOW) options|=O_NOFOLLOW;
     if (flags&D_O_DIRECTORY) options|=O_DIRECTORY;
     if (flags&D_O_CLOEXEC) options|=O_CLOEXEC;
+    if(flags&(D_O_WRONLY|D_O_RDWR|D_O_CREAT|D_O_TRUNC|D_O_APPEND)) {
+        char relative[4096];
+        error=native_storage_path(directory,path,relative);if(error)return error;
+        struct open_how how={.flags=options,.mode=flags&D_O_CREAT ? mode&07777 : 0,
+            .resolve=RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS|
+                (flags&D_O_NOFOLLOW_ANY ? RESOLVE_NO_SYMLINKS : 0)};
+        return RAW(SYS_openat2,container_descriptor,relative,&how,sizeof(how),0,0);
+    }
     if (flags&D_O_NOFOLLOW_ANY) {
         /* XNU fcntl.h requires no symlink in any path component. Linux's
          * O_NOFOLLOW covers only the last component; openat2 owns this effect. */
@@ -282,15 +299,17 @@ static long guest_openat(int dirfd,unsigned long address,unsigned long flags)
 }
 /* XNU bsd/sys/stat.h __DARWIN_STRUCT_STAT64, ARM64 layout. statx avoids
  * depending on the host libc struct-stat ABI inside the TLS-free handler. */
-static long guest_stat(unsigned long argument,unsigned long destination,unsigned int kind)
+static long guest_stat(unsigned long argument,unsigned long destination,unsigned int kind,int dirfd,unsigned int flags)
 {
     char buffer[4096],*path=buffer;
     int directory,options=0;
     if (kind==D_SYS_FSTAT64) { directory=(int)argument; path=""; options=AT_EMPTY_PATH; }
     else {
         long error=guest_path(argument,buffer); if (error) return error;
-        directory=path_directory(&path);
-        if (kind==D_SYS_LSTAT64) options=AT_SYMLINK_NOFOLLOW;
+        if(path[0]!='/' && dirfd<0 && dirfd!=D_AT_FDCWD)return -EBADF;
+        directory=(path[0]=='/' || dirfd==D_AT_FDCWD) ? path_directory(&path) : dirfd;
+        if(flags&~D_AT_SYMLINK_NOFOLLOW)return -EINVAL;
+        if (kind==D_SYS_LSTAT64 || (flags&D_AT_SYMLINK_NOFOLLOW)) options=AT_SYMLINK_NOFOLLOW;
     }
     struct statx actual={0};
     long error=RAW(SYS_statx,directory,path,options,STATX_BASIC_STATS|STATX_BTIME,&actual,0);
@@ -770,10 +789,19 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case D_SYS_SYSCTL: result=native_sysctl(r); break;
     case D_SYS_CSOPS: case D_SYS_CSOPS_AUDITTOKEN: result=native_csops(r); break;
     case D_SYS_PROC_INFO: result=native_proc_info(r); break;
-    case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_openat(D_AT_FDCWD,r[0],r[1]); break;
-    case D_SYS_OPENAT: case D_SYS_OPENAT_NOCANCEL: result=guest_openat((int)r[0],r[1],r[2]); break;
+    case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_openat(D_AT_FDCWD,r[0],r[1],r[2]); break;
+    case D_SYS_OPENAT: case D_SYS_OPENAT_NOCANCEL: result=guest_openat((int)r[0],r[1],r[2],r[3]); break;
+    case D_SYS_MKDIR: result=native_storage_mkdir(D_AT_FDCWD,r[0],r[1]); break;
+    case D_SYS_MKDIRAT: result=native_storage_mkdir((int)r[0],r[1],r[2]); break;
+    case D_SYS_UNLINK: case D_SYS_RMDIR:
+        result=native_storage_unlink(D_AT_FDCWD,r[0],r[D_ARM64_SYSCALL_REGISTER]==D_SYS_RMDIR ? D_AT_REMOVEDIR : 0); break;
+    case D_SYS_UNLINKAT: result=native_storage_unlink((int)r[0],r[1],r[2]); break;
+    case D_SYS_RENAME: result=native_storage_rename(D_AT_FDCWD,r[0],D_AT_FDCWD,r[1]); break;
+    case D_SYS_RENAMEAT: result=native_storage_rename((int)r[0],r[1],(int)r[2],r[3]); break;
+    case D_SYS_FSYNC: case D_SYS_FSYNC_NOCANCEL: result=RAW(SYS_fsync,r[0],0,0,0,0,0); break;
+    case D_SYS_FSTATAT64: result=guest_stat(r[1],r[2],D_SYS_FSTATAT64,(int)r[0],r[3]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
-        result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor ||
+        result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor || (int)r[0]==container_descriptor ||
                 (native_trace_fd>2 && (int)r[0]==native_trace_fd)) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
     case D_SYS_PREAD: case D_SYS_PREAD_NOCANCEL: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
     case D_SYS_LSEEK: result=RAW(SYS_lseek,r[0],r[1],r[2],0,0,0); break;
@@ -788,7 +816,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         result=ipc_semaphore_wait(r[0],r[2] ? &timeout : NULL);
         break;
     }
-    case D_SYS_STAT64: case D_SYS_FSTAT64: case D_SYS_LSTAT64: result=guest_stat(r[0],r[1],r[D_ARM64_SYSCALL_REGISTER]); break;
+    case D_SYS_STAT64: case D_SYS_FSTAT64: case D_SYS_LSTAT64: result=guest_stat(r[0],r[1],r[D_ARM64_SYSCALL_REGISTER],D_AT_FDCWD,0); break;
     case D_SYS_GETATTRLIST:
         if(native_diagnose_syscalls)trace_getattrlist(r,uc->uc_mcontext.pc);
         result=native_getattrlist(r); break;
