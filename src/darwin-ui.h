@@ -16,6 +16,8 @@ static struct native_ui_state {
 } ui={.notify=-1};
 enum { NATIVE_CG_ALPHA_NONE_SKIP_FIRST=6, NATIVE_CG_BYTE_ORDER_32_LITTLE=2U<<12 };
 extern void darwin_objc_rect(void *object,void *selector,uint64_t message,uint64_t output[4]);
+extern uint64_t darwin_objc_double_bits(void *object,void *selector,uint64_t message);
+extern void darwin_ui_context_point_scale(void *context,uint64_t scale,uint64_t bits);
 extern void darwin_ui_context_flip(void *context,uint64_t translate,uint64_t scale,uint32_t height);
 void darwin_native_ui_api(const struct darwin_ui_api *api) { ui.api=*api; }
 static void *native_ui_selector(const char *name)
@@ -79,6 +81,13 @@ static void native_ui_frame(void *observer,uint64_t activity,void *info)
             if (((signed char (*)(void *,void *))(uintptr_t)ui.api.message)(window,native_ui_selector("isHidden"))) continue;
             void *layer=native_ui_object(window,"layer");
             if (!layer) continue;
+            void *screen=native_ui_object(window,"screen");
+            uint64_t scale_bits=screen ? darwin_objc_double_bits(screen,native_ui_selector("scale"),ui.api.message) : 0;
+            /* Validate positive finite IEEE-754 bits without using FP in this
+             * syscall runtime. The genuine UIKit scale remains authoritative. */
+            if (!scale_bits || scale_bits>>63 || (scale_bits&0x7ff0000000000000ULL)==0x7ff0000000000000ULL) {
+                trace_record("UI_INVALID_POINT_SCALE bits=0x",scale_bits,0,0);continue;
+            }
             native_ui_layout_description(window);
             if (ui.sequence<2) {
                 native_ui_geometry(window,"UI_WINDOW_BOUNDS object=0x");
@@ -87,7 +96,10 @@ static void native_ui_frame(void *observer,uint64_t activity,void *info)
                 uint64_t child_count=children ? ((uint64_t (*)(void *,void *))(uintptr_t)ui.api.message)(children,native_ui_selector("count")) : 0;
                 trace_record("UI_LAYER_CHILDREN count=0x",child_count,(uintptr_t)layer,(uintptr_t)children);
             }
+            ((void (*)(void *))(uintptr_t)ui.api.context_save)(ui.context[slot]);
+            darwin_ui_context_point_scale(ui.context[slot],ui.api.context_scale,scale_bits);
             ((void (*)(void *,void *,void *))(uintptr_t)ui.api.message)(layer,native_ui_selector("renderInContext:"),ui.context[slot]);
+            ((void (*)(void *))(uintptr_t)ui.api.context_restore)(ui.context[slot]);
             rendered++;
         }
         if (rendered) {

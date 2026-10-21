@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <math.h>
 #include <dlfcn.h>
 #include <mach/mach_time.h>
 #include "ios-platform-abi.h"
@@ -48,6 +49,16 @@ enum { AR_HID_HAND=3, AR_HID_RANGE=1, AR_HID_TOUCH=2, AR_HID_POSITION=4,
 static const struct arlinux_ios_platform_api *input_host;
 static UITouch *contact;
 static CGPoint contact_point;
+static CGPoint surface_point_in_window(UIWindow *window,const struct arlinux_ios_input_event *event)
+{
+    CGFloat scale=window.screen.scale;
+    if (!isfinite(scale) || scale<=0) {
+        fprintf(stderr,"IOS_INPUT_INVALID_SCREEN_SCALE\n");abort();
+    }
+    CGPoint screenPoint=CGPointMake(event->data.pointer.x_fixed/(256.0*scale),
+                                   event->data.pointer.y_fixed/(256.0*scale));
+    return [window convertPoint:screenPoint fromWindow:nil];
+}
 static unsigned int pointer_bindings;
 void arlinux_ios_pointer_diagnose(UITouch *touch,const char *stage);
 static void (*set_keyboard_attached)(Boolean,uint32_t);
@@ -206,7 +217,8 @@ static void input_tick(CFRunLoopTimerRef timer,void *context)
             if(pointer.data.pointer.phase==ARLINUX_IOS_POINTER_DOWN) {
                 if(contact)deliver_contact(UITouchPhaseCancelled,pointer.nanoseconds);
                 UIWindow *window=[UIApplication sharedApplication].keyWindow;
-                CGPoint point=[window convertPoint:CGPointMake(pointer.data.pointer.x_fixed/256.0,pointer.data.pointer.y_fixed/256.0) fromWindow:nil];
+                if (!window) continue;
+                CGPoint point=surface_point_in_window(window,&pointer);
                 UIView *view=[window hitTest:point withEvent:nil];
                 if(!window || !view)continue;
                 contact=[[UITouch alloc] init];[contact setWindow:window];[contact setTapCount:1];
@@ -214,7 +226,7 @@ static void input_tick(CFRunLoopTimerRef timer,void *context)
                 [contact setView:view];[contact _setIsFirstTouchForView:YES];
                 deliver_contact(UITouchPhaseBegan,pointer.nanoseconds);
             } else if(contact) {
-                contact_point=[contact.window convertPoint:CGPointMake(pointer.data.pointer.x_fixed/256.0,pointer.data.pointer.y_fixed/256.0) fromWindow:nil];
+                contact_point=surface_point_in_window(contact.window,&pointer);
                 UITouchPhase phase=pointer.data.pointer.phase==ARLINUX_IOS_POINTER_MOVE ? UITouchPhaseMoved :
                     pointer.data.pointer.phase==ARLINUX_IOS_POINTER_UP ? UITouchPhaseEnded : UITouchPhaseCancelled;
                 deliver_contact(phase,pointer.nanoseconds);

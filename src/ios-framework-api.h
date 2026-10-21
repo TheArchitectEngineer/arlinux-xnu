@@ -18,7 +18,9 @@
     X(IOS_CG_IMAGE,"_CGColorSpaceCreateDeviceRGB",color_space,0) \
     X(IOS_CG_IMAGE,"_CGBitmapContextCreate",bitmap_create,0) \
     X(IOS_CG_IMAGE,"_CGContextTranslateCTM",context_translate,0) \
-    X(IOS_CG_IMAGE,"_CGContextScaleCTM",context_scale,0)
+    X(IOS_CG_IMAGE,"_CGContextScaleCTM",context_scale,0) \
+    X(IOS_CG_IMAGE,"_CGContextSaveGState",context_save,0) \
+    X(IOS_CG_IMAGE,"_CGContextRestoreGState",context_restore,0)
 
 struct darwin_ui_api {
 #define IOS_DECLARE_IMPORT(image,symbol,field,data) uint64_t field;

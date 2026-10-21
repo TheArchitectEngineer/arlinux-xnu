@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "ios-platform-abi.h"
 
 @interface NSObject (ARLinuxSceneABI)
@@ -105,7 +106,11 @@ static ARLinuxSceneUpdater *updater;
 static void configure_settings(id settings,const struct arlinux_ios_window_state *window)
 {
     require_method([settings class],"setDeactivationReasons:","v24@0:8Q16",NO);
-    [settings setFrame:CGRectMake(0,0,window->width,window->height)];
+    CGFloat scale=UIScreen.mainScreen.scale;
+    if (!isfinite(scale) || scale<=0) unsupported("screen point scale");
+    /* Host surface geometry is in buffer pixels. FrontBoard scene frames are
+     * UIKit points, matching the real UIScreen's scale and logical bounds. */
+    [settings setFrame:CGRectMake(0,0,window->width/scale,window->height/scale)];
     /* A configured live surface remains in the foreground when another
      * window takes focus. Only the activation contribution changes. */
     [settings setForeground:YES];

@@ -17,6 +17,24 @@ container. Apple executable data stays runner-local.
 
 ## Original Calculator: Linux journey passes
 
+The first opt-in geometry run (39625694451, source c4f316f) confirms a
+1024x600-point window on a 512x300-point UIScreen with nativeBounds 1024x600 and
+scale/nativeScale 2. The original keypad views subclass UIView, not UIControl;
+they have identity transforms, no explicit mask, cornerRadius 48.25 and
+masksToBounds false. This proves a host-pixel/scene-point contract mismatch.
+The candidate fix converts scene dimensions and surface input through the real
+screen scale and applies that same scale during final software composition.
+It is generic display/input adaptation; no Calculator view or constant changes.
+The geometry run's receipt
+**dd12f5ba6d49461dc18753bb1a5eaf8bf571113afcc6f9d1f1ab66c950183ff0**
+and all 36 files were verified. A faithful result remains to be validated.
+
+The first same-binary Apple-reference attempt (39626499098, source 5c33c27)
+fails building the standalone observer because its link omitted CoreGraphics
+for CGRectZero. Neither target executed Calculator in that run. Both evidence
+receipts were verified (Linux 10 files, Apple reference 6). The link now declares
+CoreGraphics explicitly; no macOS comparison result is claimed.
+
 Rendering fidelity is **not accepted**: composed screenshots visibly show
 overlapping keypad backgrounds. The functional journey below proves actual
 calculations and lifecycle, not a faithful image. The real view frames are

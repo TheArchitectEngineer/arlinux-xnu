@@ -135,6 +135,27 @@ darwin_objc_rect:
     ldp x29,x30,[sp],#32
     ret
 .size darwin_objc_rect,.-darwin_objc_rect
+// Preserve a CGFloat getter's exact bits for the general-register-only runtime.
+.global darwin_objc_double_bits
+.hidden darwin_objc_double_bits
+.type darwin_objc_double_bits,%function
+darwin_objc_double_bits:
+    stp x29,x30,[sp,#-16]!
+    mov x29,sp
+    blr x2
+    fmov x0,d0
+    ldp x29,x30,[sp],#16
+    ret
+.size darwin_objc_double_bits,.-darwin_objc_double_bits
+// Fixed CoreGraphics ABI: (context, CGFloat x, CGFloat y), with x == y.
+.global darwin_ui_context_point_scale
+.hidden darwin_ui_context_point_scale
+.type darwin_ui_context_point_scale,%function
+darwin_ui_context_point_scale:
+    fmov d0,x2
+    fmov d1,x2
+    br x1
+.size darwin_ui_context_point_scale,.-darwin_ui_context_point_scale
 .global darwin_ui_context_flip
 .hidden darwin_ui_context_flip
 .type darwin_ui_context_flip,%function
