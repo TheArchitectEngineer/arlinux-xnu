@@ -1,9 +1,10 @@
 /* Host-side launch configuration. A helper never becomes a GUI application
  * merely because its parent exported WAYLAND_DISPLAY. */
 #pragma once
+#include <plist/plist.h>
 enum native_launch_role { NATIVE_CONSOLE, NATIVE_APPLICATION, NATIVE_SERVICE };
 struct native_launch_options {
-    const char *program,*dyld,*root,*container,*service_name,*service_instance,*service_index;
+    const char *program,*dyld,*root,*container,*group_root,*service_name,*service_instance,*service_index;
     enum native_launch_role role;
 };
 static struct native_launch_options native_launch_parse(int argc,char **argv)
@@ -12,13 +13,14 @@ static struct native_launch_options native_launch_parse(int argc,char **argv)
     int role_seen=0;
     for (int i=1;i<argc;i++) {
         const char *argument=argv[i];
-        if (!strcmp(argument,"--dyld") || !strcmp(argument,"--root") || !strcmp(argument,"--role") || !strcmp(argument,"--container") ||
+        if (!strcmp(argument,"--dyld") || !strcmp(argument,"--root") || !strcmp(argument,"--role") || !strcmp(argument,"--container") || !strcmp(argument,"--group-root") ||
             !strcmp(argument,"--service-name") || !strcmp(argument,"--service-instance") || !strcmp(argument,"--service-index")) {
             need(i+1<argc,"launch option requires a value");
             const char *value=argv[++i];
             if (!strcmp(argument,"--dyld")) { need(!options.dyld,"duplicate --dyld"); options.dyld=value; }
             else if (!strcmp(argument,"--root")) { need(!options.root,"duplicate --root"); options.root=value; }
             else if (!strcmp(argument,"--container")) { need(!options.container,"duplicate --container"); options.container=value; }
+            else if (!strcmp(argument,"--group-root")) { need(!options.group_root,"duplicate --group-root"); options.group_root=value; }
             else if (!strcmp(argument,"--service-name")) { need(!options.service_name,"duplicate --service-name"); options.service_name=value; }
             else if (!strcmp(argument,"--service-instance")) { need(!options.service_instance,"duplicate --service-instance"); options.service_instance=value; }
             else if (!strcmp(argument,"--service-index")) { need(!options.service_index,"duplicate --service-index"); options.service_index=value; }
@@ -69,4 +71,45 @@ static char *native_launch_container(const char *path)
     close(library);close(base);
     fprintf(stderr,"NATIVE_CONTAINER path=%s\n",canonical);
     return canonical;
+}
+static void native_launch_groups(const char *path,const struct darwin_code_metadata *code)
+{
+    if(!path)return;
+    char *canonical=realpath(path,NULL);
+    if(!canonical)die("canonical group storage root");
+    need(strcmp(canonical,"/") && strlen(canonical)<4096,"group root path");
+    int root=open(canonical,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+    if(root<0)die("open group storage root");
+    /* libplist parses the original XML blob; no app IDs or inferred grants.
+     * DER-only membership needs a decoder and remains unsupported here. */
+    plist_t metadata=NULL;
+    if(code->xml) {
+        need(code->xml_bytes>8 && code->xml_bytes<=1024*1024,"XML entitlement bounds");
+        plist_from_xml((const char *)code->xml+8,code->xml_bytes-8,&metadata);
+        need(metadata && plist_get_node_type(metadata)==PLIST_DICT,"invalid entitlement dictionary");
+    }
+    plist_t groups=metadata ? plist_dict_get_item(metadata,"com.apple.security.application-groups") : NULL;
+    if(groups) {
+        need(plist_get_node_type(groups)==PLIST_ARRAY && plist_array_get_size(groups)<=32,"application groups bounds");
+        for(uint32_t i=0;i<plist_array_get_size(groups);i++) {
+            plist_t item=plist_array_get_item(groups,i);
+            need(plist_get_node_type(item)==PLIST_STRING,"application group type");
+            char *name=NULL;plist_get_string_val(item,&name);
+            need(name && *name && strlen(name)<256 && strcmp(name,".") && strcmp(name,".."),"application group identifier");
+            for(const unsigned char *p=(const unsigned char *)name;*p;p++)
+                need((*p>='a' && *p<='z') || (*p>='A' && *p<='Z') || (*p>='0' && *p<='9') || *p=='.' || *p=='-' || *p=='_',
+                     "unsupported group identifier character");
+            int group=native_container_directory(root,name);
+            int library=native_container_directory(group,"Library");
+            close(native_container_directory(library,"Caches"));close(library);close(group);
+            char directory[4096];
+            int n=snprintf(directory,sizeof(directory),"%s/%s",canonical,name);
+            need(n>0 && (size_t)n<sizeof(directory),"group container path bounds");
+            need(!darwin_native_group_register(name,directory),"register application group storage");
+            fprintf(stderr,"NATIVE_GROUP_STORAGE identifier=%s path=%s\n",name,directory);
+            free(name);
+        }
+    }
+    if(metadata)plist_free(metadata);
+    close(root);free(canonical);
 }

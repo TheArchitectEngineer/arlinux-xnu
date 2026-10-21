@@ -7,7 +7,7 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api);
 void arlinux_ios_lifecycle_start(const struct arlinux_ios_platform_api *api);
 void arlinux_ios_rendering_start(void);
 void arlinux_ios_input_start(const struct arlinux_ios_platform_api *api);
-void arlinux_ios_filesystem_start(void);
+void arlinux_ios_filesystem_start(const struct arlinux_ios_platform_api *api);
 void arlinux_ios_network_start(const struct arlinux_ios_platform_api *api);
 void arlinux_ios_color_trace_start(void);
 __attribute__((constructor)) static void arlinux_ios_platform_start(void)
@@ -24,7 +24,7 @@ __attribute__((constructor)) static void arlinux_ios_platform_start(void)
         !api->attach || !api->read_window || !api->read_input || api->attach()) __builtin_trap();
     arlinux_ios_lifecycle_diagnose(api);
     arlinux_ios_color_trace_start();
-    arlinux_ios_filesystem_start();
+    arlinux_ios_filesystem_start(api);
     arlinux_ios_network_start(api);
     arlinux_ios_rendering_start();
     arlinux_ios_input_start(api);

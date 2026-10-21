@@ -173,5 +173,6 @@ static const struct arlinux_ios_platform_api native_ios_platform_api={
     .version=ARLINUX_IOS_PLATFORM_ABI_VERSION,.size=sizeof(struct arlinux_ios_platform_api),
     .attach=native_ios_platform_attach,.read_window=native_ios_window_read,
     .read_input=native_ios_input_read,.http_submit=native_http_submit,
-    .http_result=native_http_result,.http_release=native_http_release
+    .http_result=native_http_result,.http_release=native_http_release,
+    .group_path=native_group_path
 };

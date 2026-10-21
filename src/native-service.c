@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-struct caller_launch { char arguments[32768];const char *root,*dyld,*container,*service_index; };
+struct caller_launch { char arguments[32768];const char *root,*dyld,*container,*group_root,*service_index; };
 static int caller_launch_read(uint32_t pid,struct caller_launch *launch)
 {
     char path[64];struct stat caller,self;
@@ -32,11 +32,12 @@ static int caller_launch_read(uint32_t pid,struct caller_launch *launch)
     const char *last=launch->arguments+count;
     for(const char *arg=launch->arguments;arg<last;) {
         const char *value=arg+strlen(arg)+1;
-        if(!strcmp(arg,"--root") || !strcmp(arg,"--dyld") || !strcmp(arg,"--container") || !strcmp(arg,"--service-index")) {
+        if(!strcmp(arg,"--root") || !strcmp(arg,"--dyld") || !strcmp(arg,"--container") || !strcmp(arg,"--group-root") || !strcmp(arg,"--service-index")) {
             if(value>=last)return EINVAL;
             if(!strcmp(arg,"--root"))launch->root=value;
             if(!strcmp(arg,"--dyld"))launch->dyld=value;
             if(!strcmp(arg,"--container"))launch->container=value;
+            if(!strcmp(arg,"--group-root"))launch->group_root=value;
             if(!strcmp(arg,"--service-index"))launch->service_index=value;
             arg=value+strlen(value)+1;
         } else arg=value;
@@ -177,9 +178,12 @@ int native_service_spawn(uint32_t owner,uint32_t incarnation,const char *service
     char uuid[37];snprintf(uuid,sizeof(uuid),"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
         instance[0],instance[1],instance[2],instance[3],instance[4],instance[5],instance[6],instance[7],
         instance[8],instance[9],instance[10],instance[11],instance[12],instance[13],instance[14],instance[15]);
-    char *args[]={executable,"--role","service","--service-name",(char *)service,"--service-instance",uuid,
+    char *args[24]={executable,"--role","service","--service-name",(char *)service,"--service-instance",uuid,
         "--root",(char *)caller.root,"--dyld",(char *)caller.dyld,"--container",(char *)caller.container,
         "--service-index",(char *)caller.service_index,program,NULL};
+    if(caller.group_root) {
+        args[15]="--group-root";args[16]=(char *)caller.group_root;args[17]=program;args[18]=NULL;
+    }
     char prefix[PATH_MAX+64],server[64],provider[64];
     const char *directory=getenv("ARLINUX_DARLING_PREFIX");
     if(!directory || snprintf(prefix,sizeof(prefix),"ARLINUX_DARLING_PREFIX=%s",directory)>=(int)sizeof(prefix)) {

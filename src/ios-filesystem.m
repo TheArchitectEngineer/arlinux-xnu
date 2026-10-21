@@ -12,10 +12,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include "ios-platform-abi.h"
 
 typedef BOOL (*reachability_method)(NSURL *,SEL,NSError **);
 static reachability_method original_url,original_cfurl;
 static unsigned int observed;
+static const struct arlinux_ios_platform_api *storage;
+static NSURL *group_container(NSFileManager *manager,SEL selector,NSString *identifier)
+{
+    (void)manager;(void)selector;
+    const char *name=identifier.UTF8String;
+    if(!name)return nil;
+    char path[4096];
+    long result=storage->group_path(name,path,sizeof(path));
+    fprintf(stderr,"IOS_GROUP_CONTAINER status=%ld identifier=%.255s\n",result,name);
+    return result ? nil : [NSURL fileURLWithFileSystemRepresentation:path isDirectory:YES relativeToURL:nil];
+}
 
 static BOOL file_reachable(NSURL *url,SEL selector,NSError **error,reachability_method original)
 {
@@ -45,8 +57,16 @@ static BOOL url_reachable(NSURL *url,SEL selector,NSError **error)
 static BOOL cfurl_reachable(NSURL *url,SEL selector,NSError **error)
 {return file_reachable(url,selector,error,original_cfurl);}
 
-void arlinux_ios_filesystem_start(void)
+void arlinux_ios_filesystem_start(const struct arlinux_ios_platform_api *api)
 {
+    storage=api;
+    Method group=class_getInstanceMethod([NSFileManager class],@selector(containerURLForSecurityApplicationGroupIdentifier:));
+    const char *group_encoding=group ? method_getTypeEncoding(group) : NULL;
+    if(!api->group_path || !group_encoding || strcmp(group_encoding,"@24@0:8@16")) {
+        fprintf(stderr,"IOS_GROUP_BINDING_FAILED encoding=%s\n",group_encoding ? group_encoding : "<absent>");
+        abort();
+    }
+    method_setImplementation(group,(IMP)group_container);
     SEL selector=@selector(checkResourceIsReachableAndReturnError:);
     Method method=class_getInstanceMethod([NSURL class],selector);
     Class cfurl=objc_getClass("__NSCFURL");

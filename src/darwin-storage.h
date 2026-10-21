@@ -7,13 +7,26 @@ static long native_fd_path(int fd,char path[1024]);
 
 static long native_storage_path(int directory,const char *path,char relative[4096])
 {
-    if(container_descriptor<0)return -EROFS;
+    int base=container_descriptor;
+    const char *base_path=container_path;
+    size_t base_length=container_path_length;
     unsigned int n=0;
-    if(directory!=container_descriptor) {
-        char actual[1024];
-        long error=native_fd_path(directory,actual);if(error)return error;
-        size_t i=0;while(i<container_path_length && actual[i]==container_path[i])i++;
-        if(i!=container_path_length || (actual[i] && actual[i]!='/'))return -EROFS;
+    char actual[1024];
+    long error=native_fd_path(directory,actual);if(error)return error;
+    size_t i=0;
+    if(base>=0)while(i<base_length && actual[i]==base_path[i])i++;
+    if(base<0 || i!=base_length || (actual[i] && actual[i]!='/')) {
+        base=-1;
+        for(unsigned int g=0;g<native_group_count;g++) {
+            struct native_group *group=&native_groups[g];
+            i=0;while(i<group->path_length && actual[i]==group->path[i])i++;
+            if(i==group->path_length && (!actual[i] || actual[i]=='/')) {
+                base=group->descriptor;break;
+            }
+        }
+        if(base<0)return -EROFS;
+    }
+    {
         if(actual[i]=='/')i++;
         while(actual[i])relative[n++]=actual[i++];
         if(n)relative[n++]='/';
@@ -23,7 +36,7 @@ static long native_storage_path(int directory,const char *path,char relative[409
         relative[n++]=path[i];
     }
     relative[n]=0;
-    return 0;
+    return base;
 }
 
 static long native_storage_parent(int fd,unsigned long address,char relative[4096],char **name,int trim_directory_separator)
@@ -32,7 +45,7 @@ static long native_storage_parent(int fd,unsigned long address,char relative[409
     long error=guest_path(address,buffer);if(error)return error;
     if(buffer[0]!='/' && fd<0 && fd!=D_AT_FDCWD)return -EBADF;
     int directory=(buffer[0]=='/' || fd==D_AT_FDCWD) ? path_directory(&path) : fd;
-    error=native_storage_path(directory,path,relative);if(error)return error;
+    long base=native_storage_path(directory,path,relative);if(base<0)return base;
     if(trim_directory_separator) {
         unsigned int n=0;while(relative[n])n++;
         while(n && relative[n-1]=='/')relative[--n]=0;
@@ -44,7 +57,7 @@ static long native_storage_parent(int fd,unsigned long address,char relative[409
     if(last) {*last=0;*name=last+1;parent=relative;}
     struct open_how how={.flags=O_PATH|O_DIRECTORY|O_CLOEXEC,
         .resolve=RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS};
-    return RAW(SYS_openat2,container_descriptor,parent,&how,sizeof(how),0,0);
+    return RAW(SYS_openat2,base,parent,&how,sizeof(how),0,0);
 }
 
 static long native_storage_mkdir(int fd,unsigned long address,unsigned long mode)

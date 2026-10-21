@@ -114,6 +114,7 @@ int main(int argc,char **argv)
     const char *program=options.program;
     struct image im={0},dyld={0};
     load_image(program,&im,dynamic); map_guest(&im); rewrite_tls(&im);
+    native_launch_groups(options.group_root,&im.codesign);
     if (dynamic) {
         load_image(options.dyld,&dyld,1);
         need(dyld.filetype==7,"interpreter must be MH_DYLINKER");

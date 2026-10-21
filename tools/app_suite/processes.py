@@ -78,6 +78,8 @@ class Processes:
             raise RuntimeError('App is still running: ' + name)
         state = self.directory / ('state-' + name)
         state.mkdir(exist_ok=True)  # same state on relaunch; fresh for each case
+        groups=self.directory/'group-containers'
+        groups.mkdir(exist_ok=True)  # shared by peers in this case, survives relaunch
         number = sum(item['app'] == name for item in self.generations) + 1
         prefix = self.directory / f'{name}-{number}'
         stdout = prefix.with_suffix('.stdout').open('wb')
@@ -104,6 +106,7 @@ class Processes:
             str(ROOT / 'build/ios-input/dyld'), '--root', str(ROOT / 'build/ios-input/filesystem/root'),
             '--service-index',str(ROOT/'build/ios-input/xpc-services.plist'),
             '--container',str(state.resolve()),
+            '--group-root',str(groups.resolve()),
             str(binary)]
         if self.reference:
             binary=ROOT/'build/reference-apps'/(app['name']+'.app')/app['name']

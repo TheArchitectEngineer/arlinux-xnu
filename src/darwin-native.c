@@ -274,6 +274,7 @@ static long guest_path(unsigned long address,char *path)
     }
     return -ENAMETOOLONG; /* Linux ENAMETOOLONG, translated below */
 }
+#include "darwin-groups.h"
 static int path_directory(char **path)
 {
     /* Guest paths use one root namespace. Collapse repeated separators before
@@ -310,6 +311,16 @@ static int path_directory(char **path)
             if(**path=='/')(*path)++;
             if(!**path)*path=".";
             return container_descriptor;
+        }
+    }
+    for(unsigned int g=0;g<native_group_count;g++) {
+        struct native_group *group=&native_groups[g];
+        matched=0;
+        while(matched<group->path_length && (*path)[matched]==group->path[matched])matched++;
+        if(matched==group->path_length && (!(*path)[matched] || (*path)[matched]=='/')) {
+            *path+=matched;if(**path=='/')(*path)++;
+            if(!**path)*path=".";
+            return group->descriptor;
         }
     }
     if (root_descriptor>=0) {
@@ -357,11 +368,11 @@ static long guest_openat(int dirfd,unsigned long address,unsigned long flags,uns
     if (flags&D_O_CLOEXEC) options|=O_CLOEXEC;
     if(flags&(D_O_WRONLY|D_O_RDWR|D_O_CREAT|D_O_TRUNC|D_O_APPEND)) {
         char relative[4096];
-        error=native_storage_path(directory,path,relative);if(error)return error;
+        long base=native_storage_path(directory,path,relative);if(base<0)return base;
         struct open_how how={.flags=options,.mode=flags&D_O_CREAT ? mode&07777 : 0,
             .resolve=RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS|
                 (flags&D_O_NOFOLLOW_ANY ? RESOLVE_NO_SYMLINKS : 0)};
-        return RAW(SYS_openat2,container_descriptor,relative,&how,sizeof(how),0,0);
+        return RAW(SYS_openat2,base,relative,&how,sizeof(how),0,0);
     }
     if (flags&D_O_NOFOLLOW_ANY) {
         /* XNU fcntl.h requires no symlink in any path component. Linux's
@@ -889,7 +900,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case D_SYS_FSYNC: case D_SYS_FSYNC_NOCANCEL: result=RAW(SYS_fsync,r[0],0,0,0,0,0); break;
     case D_SYS_FSTATAT64: result=guest_stat(r[1],r[2],D_SYS_FSTATAT64,(int)r[0],r[3]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
-        result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor || (int)r[0]==container_descriptor ||
+        result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor || (int)r[0]==container_descriptor || native_group_descriptor((int)r[0]) ||
                 (native_trace_fd>2 && (int)r[0]==native_trace_fd) ||
                 (native_http_event>=0 && (int)r[0]==native_http_event)) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
     case D_SYS_PREAD: case D_SYS_PREAD_NOCANCEL: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
