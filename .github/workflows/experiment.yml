@@ -70,7 +70,7 @@ jobs:
         firmware_pid=$!
         trap 'kill "$firmware_pid" 2>/dev/null || true' EXIT
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends clang-18 cmake ccache ninja-build bison flex libbsd-dev lld-18 llvm-18 libwayland-dev libxkbcommon-dev wayland-protocols 7zip lldb-18 fuse3 unionfs-fuse libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev libcurl4-openssl-dev weston xvfb xdotool scrot python3-pil
+        sudo apt-get install -y --no-install-recommends clang-18 cmake ccache ninja-build bison flex libbsd-dev lld-18 llvm-18 libwayland-dev libxkbcommon-dev wayland-protocols 7zip lldb-18 fuse3 unionfs-fuse libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev libcurl4-openssl-dev libplist-dev weston xvfb xdotool scrot python3-pil
         wait "$firmware_pid"
         trap - EXIT
         grep '^APPLE_DOWNLOAD_TIMING ' build/results/firmware-download.log
@@ -152,7 +152,8 @@ jobs:
         ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native "${rpc_flags[@]}" -c src/macho-native.c -o build/native/macho-native.o
         ccache cc -Wall -Wextra -Werror -O2 -g -Ibuild/native -c build/native/xdg-shell-protocol.c -o build/native/xdg-shell-protocol.o
         ccache cc -Wall -Wextra -Werror -O2 -g -c src/native-http.c -o build/native/native-http.o
-        cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o build/native/native-http.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -lxkbcommon -lcurl -pthread -o build/native/macho-native
+        ccache cc -Wall -Wextra -Werror -O2 -g -c src/native-service.c -o build/native/native-service.o
+        cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o build/native/native-http.o build/native/native-service.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -lxkbcommon -lcurl -lplist-2.0 -pthread -o build/native/macho-native
     - name: Prepare real pinned iOS userland
       run: |-
         mkdir -p build/results

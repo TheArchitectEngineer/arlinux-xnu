@@ -97,6 +97,14 @@ int main(int argc,char **argv)
         return 1;
     }
     struct native_launch_options options=native_launch_parse(argc,argv);
+    if(options.service_name) {
+        char *end=NULL;const char *server=getenv("ARLINUX_SESSION_PID");
+        long parent=server ? strtol(server,&end,10) : 0;
+        need(server && *server && !*end && parent>0 && parent==getppid() &&
+             !prctl(PR_SET_PDEATHSIG,SIGKILL) && getppid()==parent,"service session lifetime");
+        fprintf(stderr,"NATIVE_SERVICE_INSTANCE name=%s instance=%s pid=%ld parent=%ld\n",
+            options.service_name,options.service_instance,(long)getpid(),parent);
+    }
     char *container=native_launch_container(options.container);
     int dynamic=options.dyld!=NULL;
     const char *root=options.root;
@@ -186,6 +194,12 @@ int main(int argc,char **argv)
             need(count>0 && (size_t)count<sizeof(injected),"platform library environment length");
             top=(top-count-1)&~15UL;
             memcpy((void *)top,injected,count+1); environments[environment_count++]=top;
+        }
+        if(options.service_name) {
+            char setting[256];int size=snprintf(setting,sizeof(setting),"XPC_SERVICE_NAME=%s",options.service_name);
+            need(size>0 && (size_t)size<sizeof(setting),"service environment length");
+            top=(top-size-1)&~15UL;memcpy((void *)top,setting,size+1);
+            environments[environment_count++]=top;
         }
         /* Explicit application storage, not the workstation's HOME. The real
          * CoreFoundation home-directory implementation honors CFFIXED_USER_HOME;

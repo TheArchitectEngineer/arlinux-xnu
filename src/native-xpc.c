@@ -1,5 +1,6 @@
 /* Host-TLS service thread only. Codec: pinned MIT libspc fork.
  * Connection/message rights remain in Darling/XNU. No guest libc is called. */
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +8,10 @@
 #include <sys/syscall.h>
 #include <poll.h>
 #include <errno.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <time.h>
+#include "native-service.h"
 #include "darwin-native.h"
 #include "darwin-machine.h"
 #include "datatypes.h"
@@ -110,6 +115,8 @@ static struct launch_bootstrap {
     struct launch_bootstrap *next;
 } *launch_bootstraps;
 static unsigned int launch_bootstrap_count;
+static void launch_instances_ready(struct launch_bootstrap *configuration);
+static void launch_instances_tick(void);
 static void launch_bootstrap_tick(void)
 {
     struct launch_bootstrap **slot=&launch_bootstraps;
@@ -165,7 +172,105 @@ static int launch_bootstrap_store(spc_dictionary_t *request,const char *name,con
     fprintf(stderr,"SESSION_BOOTSTRAP_STORED pid=%u incarnation=%u service=%s fields=%zu\n",
         entry->pid,entry->incarnation,entry->name,entry->configuration->num_items);
     launch_bootstrap_shape(entry->configuration);
+    launch_instances_ready(entry);
     return 0;
+}
+
+/* Instance UUIDs distinguish concurrent one-shot services of one application.
+ * Pending/started/exited are execution states, never connection readiness. */
+static struct service_instance {
+    uint32_t owner,incarnation,serial;
+    unsigned char uuid[16];
+    char *name;
+    int ownerfd,attempted,terminating;
+    uint64_t kill_after;
+    struct native_service_child child;
+    struct service_instance *next;
+} *service_instances;
+static unsigned int service_instance_count,service_instance_serial;
+static void launch_instance_start(struct service_instance *instance)
+{
+    if(instance->attempted)return;
+    instance->attempted=1;
+    int error=native_service_spawn(instance->owner,instance->incarnation,instance->name,instance->uuid,&instance->child);
+    if(error)fprintf(stderr,"SESSION_SERVICE_SPAWN_FAILED owner=%u incarnation=%u service=%s instance=%u errno=%d\n",
+        instance->owner,instance->incarnation,instance->name,instance->serial,error);
+    else fprintf(stderr,"SESSION_SERVICE_STARTED owner=%u incarnation=%u service=%s instance=%u pid=%ld start_ticks=%llu ready=false\n",
+        instance->owner,instance->incarnation,instance->name,instance->serial,(long)instance->child.pid,
+        (unsigned long long)instance->child.start_ticks);
+}
+static void launch_instances_ready(struct launch_bootstrap *configuration)
+{
+    for(struct service_instance *instance=service_instances;instance;instance=instance->next)
+        if(instance->owner==configuration->pid && instance->incarnation==configuration->incarnation &&
+           !strcmp(instance->name,configuration->name))launch_instance_start(instance);
+}
+static uint64_t launch_clock_ms(void)
+{
+    struct timespec now;if(clock_gettime(CLOCK_MONOTONIC,&now))abort();
+    return (uint64_t)now.tv_sec*1000+now.tv_nsec/1000000;
+}
+static void launch_instances_tick(void)
+{
+    struct service_instance **slot=&service_instances;
+    while(*slot) {
+        struct service_instance *instance=*slot;
+        struct pollfd owner={.fd=instance->ownerfd,.events=POLLIN};
+        int ready=poll(&owner,1,0);
+        if(ready<0 && errno==EINTR)continue;
+        if(ready<0 || (ready && !(owner.revents&POLLIN)))abort();
+        if(instance->child.pid) {
+            if(ready && !instance->terminating) {
+                if(syscall(SYS_pidfd_send_signal,instance->child.pidfd,SIGTERM,NULL,0) && errno!=ESRCH)abort();
+                instance->terminating=1;instance->kill_after=launch_clock_ms()+500;
+            } else if(instance->terminating==1 && launch_clock_ms()>=instance->kill_after) {
+                if(syscall(SYS_pidfd_send_signal,instance->child.pidfd,SIGKILL,NULL,0) && errno!=ESRCH)abort();
+                instance->terminating=2;
+            }
+            int status=0;pid_t child=waitpid(instance->child.pid,&status,WNOHANG);
+            if(child<0 && errno!=EINTR)abort();
+            if(child>0) {
+                fprintf(stderr,"SESSION_SERVICE_EXITED owner=%u incarnation=%u service=%s instance=%u pid=%ld start_ticks=%llu wait_status=%d owner_cleanup=%d\n",
+                    instance->owner,instance->incarnation,instance->name,instance->serial,(long)child,
+                    (unsigned long long)instance->child.start_ticks,status,instance->terminating!=0);
+                close(instance->child.pidfd);instance->child.pidfd=-1;instance->child.pid=0;
+            }
+        }
+        if(ready && !instance->child.pid) {
+            *slot=instance->next;service_instance_count--;
+            close(instance->ownerfd);free(instance->name);free(instance);continue;
+        }
+        slot=&instance->next;
+    }
+}
+static int launch_instance_lookup(spc_dictionary_t *request,const char *name,const uint32_t *audit)
+{
+    spc_dictionary_item_t *uuid=spc_dictionary_lookup(request,"instance");
+    if(!audit || !name || !*name || strlen(name)>=D_BOOTSTRAP_NAME_MAX ||
+       spc_dictionary_get_uint64(request,"handle")!=audit[5] ||
+       !uuid || uuid->value.type!=SPC_TYPE_UUID || !uuid->value.value.ptr ||
+       !darwin_native_host_process_matches(audit[5],audit[7]))return D_EINVAL;
+    launch_instances_tick();
+    struct service_instance *instance=service_instances;
+    while(instance && !(instance->owner==audit[5] && instance->incarnation==audit[7] &&
+          !strcmp(instance->name,name) && !memcmp(instance->uuid,uuid->value.value.ptr,16)))instance=instance->next;
+    if(!instance) {
+        if(service_instance_count==64)return D_ENOMEM;
+        instance=calloc(1,sizeof(*instance));if(!instance)return D_ENOMEM;
+        instance->ownerfd=syscall(SYS_pidfd_open,audit[5],0);instance->name=strdup(name);
+        if(instance->ownerfd<0 || !instance->name || !darwin_native_host_process_matches(audit[5],audit[7])) {
+            if(instance->ownerfd>=0)close(instance->ownerfd);
+            free(instance->name);free(instance);return D_ESRCH;
+        }
+        instance->owner=audit[5];instance->incarnation=audit[7];instance->serial=++service_instance_serial;
+        memcpy(instance->uuid,uuid->value.value.ptr,16);instance->child.pidfd=-1;
+        instance->next=service_instances;service_instances=instance;service_instance_count++;
+    }
+    for(struct launch_bootstrap *context=launch_bootstraps;context;context=context->next)
+        if(context->pid==instance->owner && context->incarnation==instance->incarnation && !strcmp(context->name,name))
+            launch_instance_start(instance);
+    /* A process having exec'd is not a checked-in XPC endpoint. */
+    return D_ENOTSUP;
 }
 
 int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
@@ -200,6 +305,10 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     int error=D_ENOTSUP;
     uint32_t port=0;
     if(set_bootstrap)error=launch_bootstrap_store(message->content,name,audit);
+    if(packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x324U &&
+       spc_dictionary_get_uint64(message->content,"type")==5 &&
+       spc_dictionary_get_uint64(message->content,"flags")==32)
+        error=launch_instance_lookup(message->content,name,audit);
     /* libspc connection.c: spc_domain_routine / spc_look_up_endpoint.
      * Only this process's default namespace is currently implemented. */
     /* Real __xpc_pipe_pack_message emits packed routine IDs but still uses
@@ -307,6 +416,7 @@ static void session_peer_destroy(struct processinfo_peer *peer)
 
 void arlinux_xpc_session_tick(void)
 {
+    launch_instances_tick();
     launch_bootstrap_tick();
     struct session_display **display_slot=&session_displays;
     while (*display_slot) {

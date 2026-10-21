@@ -157,7 +157,18 @@ initialization dictionary and Mach rights per audited caller PID/incarnation
 and service name, with a pidfd-backed lifetime. Replacing or retiring a context
 releases its real ownership. Its acknowledgement means configuration stored;
 it neither returns a connection port nor claims a helper was started. Actual
-instance-scoped service launch/check-in is still required.
+instance-scoped service check-in and usable connection remain required.
+
+The candidate Linux service launcher keys one-shot instances by audited caller,
+service and actual UUID. It resolves CFBundleIdentifier/CFBundleExecutable from
+read-only firmware XPC bundles with libplist and executes the original Mach-O
+through the same native launcher in the headless service role. Root, dyld and
+container come from the verified caller's real command line, not guest-provided
+paths. Only explicit session variables and XPC_SERVICE_NAME enter the child;
+host credentials are not inherited. pidfds, real exit status, caller-death
+termination and a parent-death signal own its process lifetime. Starting an ELF
+launcher or entering a Mach-O is not XPC readiness: instance lookup still fails
+until actual check-in/port handoff is implemented and the app effect passes.
 
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor
