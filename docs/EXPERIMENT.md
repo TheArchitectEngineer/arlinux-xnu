@@ -65,89 +65,64 @@ that a display difference is a rendering bug.
 
 ## Latest complete collection: failed, 17/20
 
-[Run 39688697924](https://github.com/taowen/arlinux-xnu/actions/runs/39688697924),
-source **16d1c860252439686cddba69afe1a6d39eba0bc0**, attempt 1, passes 17/20
-journeys, including both original Calculator phone cases. Receipt
-**86c3b7d185d0e1c7893c923823d8f2e6b6e13fe78e2f413452206426df70014a**
-and all 433 files were verified. Feedback was 388 s; journeys 237.5 s including
-42.0 s diagnosis. Canvas, Counter, Notes, Swift, Network, Workers, Console,
-Foundation, Process and all three cross-app scenarios pass.
+[Run 39690482740](https://github.com/taowen/arlinux-xnu/actions/runs/39690482740),
+source **463dc608a75f8e61c42bfe4cbe28394577ced15d**, attempt 1, passes 17/20
+journeys, including both original Calculator phone cases and Notes persistence
+after the shared-storage changes. Receipt
+**18a904b983a0b9bc651890d09e97a6b84c44aba28d255ede84c172fa99217ee5**
+and all 373 files were verified. Journeys take 225.4 s including 33.7 s diagnosis.
 
-- Canvas's source-owned button now stays within the corrected viewport; its
-  unchanged external-input red-to-green journey passes.
-- Web times out at first DOM/pixels. Earlier runs reached DOM but failed external
-  input to WebCount 1; startup is not deterministic.
-- Share still cannot show EchoExtension. Real extension discovery/launch and
-  payload/lifetime acceptance remain incomplete.
+- Web still times out at first DOM/pixels; earlier runs also failed external input.
+- Share cannot show EchoExtension; payload/helper-lifetime acceptance is incomplete.
+- Things input fails: archive.org port 443 times out through all retries. No
+  Things process runs in this full collection; this is not its 120-second trial.
 
-Things fails before its viewport at the same group-container force unwrap
-described below. No full 20-case result has passed. This full result precedes
-the explicit rejection of missing DER transmutation; that change has only a
-selected Things run, not a new complete collection result.
+Dispatch-to-completion is 917 s. Original-input preparation accounts for roughly
+548 s beyond actual journeys: curl gave each retry an independent long connect
+wait. Downloads now have one 185-second outer budget, 60 seconds per route, and
+explicit same-object mirrors obtained from Archive.org's item metadata. The
+actual download URL is retained; the pinned bytes/SHA-256 still gate extraction.
+This network failure is distinct from the original app's actual stall below.
+No complete 20-case run has passed. The later writev/statfs changes need fresh
+full regression. Android remains unverified.
 
-## Next original app
+## Things: original first UI, database initialization still incomplete
 
-The group-storage boundary in
-[run 39689862812](https://github.com/taowen/arlinux-xnu/actions/runs/39689862812),
-source **b444f95edf253fb3fbe6dfb9ded0de4a68c21ea6**, gets Things beyond the
-previous trap: original PID/start ticks 5849/28795 passes its real 375x667-point
-viewport and displays the original **Upgrading Database** modal with actual
-composed text/progress pixels. Receipt
+Things iPhone 3.17.1/build 31701001 and its bundled frameworks execute unchanged.
+The former ThingsCommon trap at VM 0x19ff30 force-unwrapped a nil Foundation
+group-container URL. The loader now parses original application-group membership
+with libplist; a shared Linux directory becomes a declared writable root, and
+the filesystem adapter returns its real URL. No Things identifier is hardcoded.
+
+[Run 39689862812](https://github.com/taowen/arlinux-xnu/actions/runs/39689862812),
+source **b444f95edf253fb3fbe6dfb9ded0de4a68c21ea6**, PID/start 5849/28795,
+passes the real 375x667-point viewport and composes the original **Upgrading
+Database** modal. Receipt
 **c7a56cc0b4ed319872c38b1fc9adba499018c34c78dccd5217a0cd854c24c366**
-and all 84 files were verified. Original declared group lookups return their
-real registered paths. Membership comes from XML metadata; no Things ID is
-hardcoded. The unchanged binary still fails to reach Inbox in 30 seconds, so
-create/edit/complete/reopen is not accepted.
+and all 84 files were verified. It does not reach Inbox in 30 seconds.
 
-The saved main thread is in CoreGraphics/vImage software composition and another
-thread is in UIKit's event-fetcher run loop; other live workers are waiting for
-kevents. The original group Sessions.json read returns ENOENT in fresh state.
-This does not establish a database failure or dispatch deadlock. The next run
-allows 120 seconds for the actual first database initialization while preserving
-the Inbox/pixel requirement and all task actions; it must distinguish slow cold
-startup from a persistent stall. Shared storage changed since the last full
-collection and requires fresh regression. DER conversion remains unimplemented.
+[Run 39691084207](https://github.com/taowen/arlinux-xnu/actions/runs/39691084207),
+source **74d2cf85728a951d627b22099451fd357abefada**, PID/start 5989/42062,
+still fails Inbox after 120.051 seconds; all 22 later task steps are blocked.
+Receipt **84b728e01f3700b1f1342bb7c784cc8d2af4a82549cb7a01973a8a82a20f51e8**
+and all 84 files were verified. The screenshot remains the upgrade modal.
+The saved main thread is in CoreGraphics/vImage composition and the other live
+guest workers are in event waits; this does not establish a dispatch deadlock.
 
-### Proven earlier failure mechanism
+Real Linux writev now preserves previously lost CoreFoundation diagnostics.
+The original stderr reports AppCenter SQLite open result 10 (I/O error) and
+unsupported entitlement loading. The saved original SQLite call chain requests
+unimplemented statfs64 (345). The current adapter now resolves this named path
+through a real descriptor and reuses the existing fstatfs64 mount/space packing;
+no successful database result is fabricated. Verification remains pending.
+Repeated later mmap errors exhausted the ordinary startup trace budget, so the
+existing mapper now retains eight actual failed mappings' arguments, paths and
+caller frames separately. Frequency alone does not identify the cause.
 
-Things iPhone 3.17.1/build 31701001 executes its original binary/frameworks in
-[run 39687337351](https://github.com/taowen/arlinux-xnu/actions/runs/39687337351),
-source **9247ddb92ac2d366d0cd9adc3d51bb4919b36e48**, attempt 1. Its first
-viewport step fails, blocking task actions. Receipt
-**4ab49a25d1e1dc98b8ab4c172a806f5804086a6d7cbac3bbd7915eb01c7da3a5**
-and all 83 files were verified. Original PID/start ticks: 5862/37632.
-
-The retained fault PC 0x3025ebf30 is ThingsCommon VM address 0x19ff30, a
-`brk #1`. Original code calls NSFileManager's
-`containerURLForSecurityApplicationGroupIdentifier:`; the saved x24 is its nil
-return, and the branch force-unwraps that missing URL. Actual signature metadata
-declares application groups. Unsupported csops queries are a dependency clue,
-not proof that supplying metadata alone will implement shared storage.
-
-The loader retains bounded original XML/DER entitlement blobs, and csops exposes
-those bytes with XNU's short-buffer protocol and PID/audit-incarnation checks.
-[Run 39688587964](https://github.com/taowen/arlinux-xnu/actions/runs/39688587964),
-source **16d1c860252439686cddba69afe1a6d39eba0bc0**, still traps at the same
-original instruction, PID/start 5924/54308. Receipt
-**f2af3aa181ad6c28380b1455074fe3b33f1819e2b39616303df4abdf043b3fa4**
-and 83 files were verified. Its actual DER queries receive an empty header:
-this IPA has XML but no DER. Apple's SecTask implementation requests DER without
-XML fallback; XNU normally transmutes it. The runtime now explicitly rejects
-this unimplemented conversion instead of reporting no entitlements. The same
-session records com.apple.containermanagerd lookup failures (1102), so metadata
-alone cannot supply shared storage. Targeted original consumer disassembly is
-included in the existing diagnosis of
-[run 39689159838](https://github.com/taowen/arlinux-xnu/actions/runs/39689159838),
-source **ef193d3c91ffaa844368478ac0953eae47437b27**, PID/start 5856/13656.
-Its receipt **ba1a0b861c06e3a7e516b15b867467f85f1ab6c8c53d653b5c12a7f5d1dc0cd9**
-and all 83 files were verified; the same original trap remains. The real
-Foundation method passes the group's UTF-8 name and a null error pointer into
-`container_create_or_lookup_app_group_path_by_app_group_identifier`, then wraps
-the returned C path in an NSURL and frees it. This supplies a reusable container
-boundary below Foundation; no need to modify Things' force unwrap or UIKit.
-
-No Apple signature validation or platform trust is asserted. DER conversion and
-shared storage remain Linux-backed boundaries, not app-specific fabricated
-grants or URLs. Exact input metadata/distribution
-limits are in APPS.md. Create/edit/complete/reopen remains unverified, as does
-the Apple-host IPA path. Source-owned fixtures cannot substitute for this goal.
+The signed IPA has XML but no DER entitlement blob. Native iOS SecTask requests
+DER without XML fallback; XML-to-DER conversion remains unsupported, explicitly
+reported rather than silently claiming no grants. Group preferences/keychain,
+DER-only group membership and last-member uninstall cleanup are also incomplete.
+Exact package URL/version/hash and distribution limits remain in APPS.md and
+apps/things/app.json. Create/edit/complete and data survival across normal
+close/reopen are unverified. No fixture can substitute for those requirements.

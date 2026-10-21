@@ -17,8 +17,9 @@ records SHA-1 5904cdb2ea7a4cca92e93fa138827d1f66eb677f, which matches the acquir
 bytes. The actual main executable is thin ARM64/subtype 0, cryptid 0, minimum
 iOS 12.1; its SHA-256 is
 **cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4**.
-These are input inspection results on Windows, not execution or compatibility
-acceptance. The pinned package is now declared in apps/things/app.json and
+Those metadata checks are input inspection results on Windows. Linux execution
+now displays the original database-upgrade UI but has not reached Inbox; see
+EXPERIMENT.md for the exact run/receipt. The package is declared in apps/things/app.json and
 its required offline task journey is unverified; initial UI targets must be
 confirmed from the actual app. The decrypted distribution is not verified against a vendor-signed
 original. The package remains outside Git and is not uploaded as evidence.
