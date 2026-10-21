@@ -82,7 +82,24 @@ near-white pixels out of 6,204. The candidate instead requires ink plus a majori
 of light pixels, using the complement of the existing ink threshold on both
 Linux and Apple hosts. Uniform blank frames still fail, and changed text still
 requires changed composed pixels. No direct callback/action or app-specific rule
-is introduced. External click, WebCount: 1 and normal close remain unaccepted.
+is introduced. External click, WebCount: 1 and normal close remained unaccepted in that run.
+
+Selected [run 39617863207](https://github.com/taowen/arlinux-xnu/actions/runs/39617863207),
+source **2588e77e3e4caba53eed9c889eca21e23e33c85c**, attempt 1, retains Canvas
+and Counter passes (2/3 partial). Receipt
+**44790e6c0a64330df031997a61ad52813a50c176cb983c2cf5683f89cfd5f863**
+and all 59 files were verified. Web **6042/53538** now passes real button
+observation and external click at **78,202**, but WebCount: 1 is not observed.
+Pointer delivery records a UIView on begin and nil on end; no DOM callback
+reports a changed value. Normal close remains blocked, and forced cleanup is
+not acceptance. Feedback is 199 s; journeys 56.6 s including 19.5 s diagnosis.
+
+The next input candidate builds the actual UIEvent/HID payload before calling
+UIKit hitTest:withEvent:, replacing its prior nil-event hit query for all apps.
+This is a routing correction to the shared input boundary, not a WebKit target
+substitution or direct DOM action. It still requires original event delivery,
+changed JS state/pixels and normal close to pass; its cause/effect is unproven
+until runner validation.
 
 This run's journeys take 67.8 s (diagnosis 21.7 s included); total feedback is
 534 s, including delayed GitHub finalization after execution/evidence upload.

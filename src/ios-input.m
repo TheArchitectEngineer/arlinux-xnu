@@ -139,6 +139,16 @@ static void deliver_contact(UITouchPhase phase,uint64_t time)
     if(!event) {fprintf(stderr,"IOS_INPUT_EVENT_UNAVAILABLE\n");abort();}
     [event _clearTouches];[event _setHIDEvent:hand];
     [event _setTimestamp:(double)time/1e9];
+    if(phase==UITouchPhaseBegan) {
+        /* Hit testing is part of this real event, not a geometry-only query.
+         * Framework views may inspect its HID payload/type when routing input. */
+        UIView *view=[contact.window hitTest:contact_point withEvent:event];
+        if(!view) {
+            fprintf(stderr,"IOS_POINTER_NO_TARGET x=%g y=%g\n",contact_point.x,contact_point.y);
+            CFRelease(hand);[contact release];contact=nil;return;
+        }
+        [contact setView:view];[contact _setIsFirstTouchForView:YES];
+    }
     [event _addTouch:contact forDelayedDelivery:NO];
     fprintf(stderr,"IOS_POINTER_DELIVER phase=%ld x=%g y=%g view=%s\n",(long)phase,
         contact_point.x,contact_point.y,class_getName(object_getClass(contact.view)));
@@ -202,11 +212,9 @@ static void input_tick(CFRunLoopTimerRef timer,void *context)
                 if(contact)deliver_contact(UITouchPhaseCancelled,pointer.nanoseconds);
                 UIWindow *window=[UIApplication sharedApplication].keyWindow;
                 CGPoint point=[window convertPoint:CGPointMake(pointer.data.pointer.x_fixed/256.0,pointer.data.pointer.y_fixed/256.0) fromWindow:nil];
-                UIView *view=[window hitTest:point withEvent:nil];
-                if(!window || !view)continue;
+                if(!window)continue;
                 contact=[[UITouch alloc] init];[contact setWindow:window];[contact setTapCount:1];
                 contact_point=point;[contact _setLocationInWindow:point resetPrevious:YES];
-                [contact setView:view];[contact _setIsFirstTouchForView:YES];
                 deliver_contact(UITouchPhaseBegan,pointer.nanoseconds);
             } else if(contact) {
                 contact_point=[contact.window convertPoint:CGPointMake(pointer.data.pointer.x_fixed/256.0,pointer.data.pointer.y_fixed/256.0) fromWindow:nil];
