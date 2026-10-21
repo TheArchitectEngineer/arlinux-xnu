@@ -297,6 +297,13 @@ class Processes:
                                '__fetch_xpcservice_info','__xpc_dictionary_create_bootstrap_copy'):
                     arguments+=['--lookup',image,symbol]
                 arguments+=['--list-symbols',image,'xpcservice']
+            if 'DARWIN_EXIT_FRAME ' in session_text and 'service=com.apple.WebKit.Networking ' in session_text:
+                # Run 39572965048 resolves the original exit branch to these
+                # two consumers, not an entitlement failure or missing launch.
+                image='/System/Library/Frameworks/WebKit.framework/WebKit'
+                for symbol in ('__ZN6WebKit29XPCServiceInitializerDelegate23getConnectionIdentifierERN3IPC10Connection10IdentifierE',
+                               '__ZN6WebKit29XPCServiceInitializerDelegate19getClientIdentifierERN3WTF6StringE'):
+                    arguments+=['--lookup',image,symbol]
             command(*arguments,capture_output=True)
         except (OSError,RuntimeError,subprocess.SubprocessError) as error:
             self.diagnostic['collectionErrors'].append('Service runtime symbolication: '+str(error))

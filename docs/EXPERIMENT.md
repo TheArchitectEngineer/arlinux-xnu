@@ -165,22 +165,23 @@ collections complete; the third child is explicitly omitted from attachment,
 with its actual fault records retained in session.log. No DOM, usable connection,
 normal helper retirement, third-party IPA or Android acceptance is claimed.
 
-Latest selected run [39571704771](https://github.com/taowen/arlinux-xnu/actions/runs/39571704771),
-source **7b4eac63c9351fe01eec5222e04a792a0b70a2dd**, attempt 1, passes Counter
+Latest selected run [39572965048](https://github.com/taowen/arlinux-xnu/actions/runs/39572965048),
+source **378110995c513d37e691ac45aa287aa61ed48612**, attempt 1, passes Counter
 and fails the same Web DOM step (1/2, partial). Receipt
-**e0ce5168e61604ab95b5a3289d3bf8c927f7d17a7930c8e0adf5aedf20a6b68e**
-and 45 evidence files were verified. App **5937/13061** shares owned session
-**5934/13056**. WebContent **5975/13528** and Networking **6014/14242**,
-**6071/14538** receive successful check-in replies carrying real receive rights
-and actual instance UUIDs. These producer records are not DOM acceptance.
-WebContent's original stack waits for its network-process connection;
-Networking instance 2 exits with wait status 256. The retained session also
-contains original exit frames after check-in. The next diagnosis must resolve
-those original consumers and inspect the live Networking process, rather than
-attaching only the first two started helpers (one already exited). Service-log
-symbolication must follow bounded attachments so exits during collection are
-included. Total feedback is 150 s; journeys take 34.726 s including 18.25 s of
-diagnosis. The previous full 14/16 result remains source-specific.
+**9666568eb7e32de489c57f3777bec488f3f5d847a08a62e7940690dc013445f4**
+and 46 evidence files were verified. App **5949/72390** shares owned session
+**5946/72385**. Original WebContent **5987/72860** waits for its network-process
+connection. Networking **6071/73627** receives the check-in grant, then exits
+with wait status 256. Its original exit stack now resolves to WebKit's
+XPCServiceInitializer<NetworkProcess>, return PC **0x1989112f4**. The same-cache
+instructions put that exit on failed getConnectionIdentifier/getClientIdentifier
+branches, after checkEntitlements. This proves original WebKit initialization
+has advanced beyond check-in; it is not a usable connection or DOM result.
+The live replacement Networking **6076/73866** is correctly attached, still in
+host cache instruction rewriting. Targeted reads of the two original identifier
+consumers are next; no identifier or successful return is synthesized.
+Total feedback is 157 s; journeys take 37.862 s including 21.556 s of diagnosis.
+The previous full 14/16 result remains source-specific.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
