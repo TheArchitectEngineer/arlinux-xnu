@@ -237,7 +237,7 @@ static void local_keyboard_start(id receiver,SEL selector)
 {
     (void)receiver; (void)selector;
     update_key_window();
-    fprintf(stderr,"IOS_INPUT_KEYBOARD_BACKEND backend=linux remote_service=false keyboard_delivery=false\n");
+    fprintf(stderr,"IOS_INPUT_KEYBOARD_BACKEND backend=linux remote_service=false text_input_route=UIKeyInput\n");
 }
 void arlinux_ios_input_start(const struct arlinux_ios_platform_api *api)
 {

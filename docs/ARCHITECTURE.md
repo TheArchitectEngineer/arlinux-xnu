@@ -260,17 +260,14 @@ supported private ABI; no claim of arbitrary iOS version support is made.
 
 ## Remaining replacement work
 
-- Establish application data-container ownership and writable guest filesystem
-  semantics. A fresh harness working directory alone does not implement a guest
-  container; the persistence journey is currently blocked before exercising it.
-- Implement the host-backed lifecycle contract above, then complete real Wayland
-  input and normal close propagation through the guest main
-  loop. The existing HID focus endpoint only supports discovery; actual operations
-  fail explicitly. It is not implemented focus/input.
-- Finish and validate the software renderer on the current iOS 16 input. Earlier
-  experiments showed text with missing controls; the current firmware has not
-  yet completed UIKit startup. Keep genuine app content; do not patch fixture
-  colors/actions to pass.
+- Extend private-container storage for further app-required operations; Notes
+  now verifies original Foundation atomic write and new-process readback.
+- Complete UIKit scene activation-state and geometry updates from real host
+  changes. Primary pointer input, basic text commits and normal close already
+  pass their recorded journeys; broader key/IME/multitouch behavior is pending.
+- Extend rendering coverage and evaluate real GPU-backed presentation. Original
+  UIKit text, controls, system colors and CPU drawing already pass on this input;
+  remote contexts, IOSurface/Metal and hardware acceleration remain unverified.
 - Implement application-requested service launch and lifecycle, then independently
   verify rights/identity cleanup after normal exit and crashes. The suite includes
   a real UIActivityViewController client and bundled share extension for this purpose.

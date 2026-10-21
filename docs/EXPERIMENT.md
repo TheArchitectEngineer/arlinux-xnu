@@ -42,6 +42,23 @@ to **2b551edea55b6c1d0d0e31dc6dd7945e4afadfd06cf65153ebcccabd8c2c93f5**,
 then repeats the reset/change after relaunch. Intermediate blank captures remain
 in evidence and do not satisfy the composed-pixel requirement.
 
+## Latest runtime check
+
+Run [39538728026](https://github.com/taowen/arlinux-xnu/actions/runs/39538728026),
+source **55f59cda896b87afac3497c1bfa930381aafad81**, checks Console, Foundation,
+Counter, Swift/UIKit, Notes and Web after exposing the actual guest VM page size
+through the Darwin legacy and named sysctl interfaces. The first five journeys
+pass again. Web no longer reports its earlier WTF::pageSize assertion, but fails
+when the shared session aborts at XPC_DESCRIPTOR_UNSUPPORTED on an OOL descriptor.
+Its later worker fault is retained; do not mistake it for the first failure or
+claim DOM/helper compatibility. Receipt
+**f7e7072613868381dffb518e52082d117e22ac9f8bcc3ce3d4e88d3f6be42108**
+and all 79 retained result files were verified against the producing log.
+This selected run took 152 s overall, 37 s in journeys. The full
+11/15 result below belongs to its recorded earlier source, not this subset.
+The next boundary is genuine XPC descriptor handling and application-requested
+helper/session lifetime, alongside remaining activation/network/fork work.
+
 ## Working adaptation boundaries
 
 Notes now passes its complete edit/save/reopen journey in selected run
