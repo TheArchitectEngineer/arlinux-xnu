@@ -6,9 +6,9 @@ and Foundation journeys pass on Linux. Notes also passes text entry, atomic save
 and new-process readback. Foreground Foundation HTTP now passes a real request,
 normal close and a second request from a new process. The full recovery run
 39621212426 passes 15/17 journeys after withdrawing an unsupported gesture
-binding. Web and Share remain incomplete. Original Calculator now launches
-and produces its genuine keypad in a renderer frame; actual composed
-presentation, calculation and close/relaunch remain unverified. Android remains
+binding. Web and Share remain incomplete. Apple's original Calculator binary
+now passes real composed display, external pointer calculation and normal
+close/relaunch on the Linux runner. Android remains
 unverified.** XNU, dyld and iOS userland may be
 adapted or replaced with Linux-backed services where application semantics are
 preserved. Running an unchanged kernel is not a requirement.
@@ -22,7 +22,7 @@ interfaces; reproducing the entire Apple service ecosystem is not the goal.
 
 The [app collection](docs/APPS.md) drives development. Source-owned fixtures
 and original-binary inputs each own a declaration and short journeys. Original
-Calculator is now an acceptance target, not a verified compatibility result.
+Calculator has a verified Linux journey; Clear/Things remain unverified targets.
 There is no all-purpose
 workbench, freestanding syscall probe, alternate IPC backend selector or separate
 kernel-boot experiment in the build. Required failures remain red.

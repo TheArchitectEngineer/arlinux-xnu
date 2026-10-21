@@ -15,7 +15,24 @@ sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16 build 20H392,
 Firmware and bundles are read-only; writes use each app's actual private Linux
 container. Apple executable data stays runner-local.
 
-## Original Calculator: launches and renders; interaction pending
+## Original Calculator: Linux journey passes
+
+[Run 39624570392](https://github.com/taowen/arlinux-xnu/actions/runs/39624570392),
+source **6a44e4466a65476500a70b3c8bd3b1b18d06c25a**, attempt 1, passes both
+Calculator and Counter. The original Calculator executable below remains
+unchanged. External Weston-seat pointer input performs **2 + 3 = 5** in real
+composed screenshots, exits normally with status 0, relaunches as a new process,
+clears and performs **7 + 8 = 15**, then closes with status 0 again.
+Process identities are **5793/17305 -> 5868/17807** (PID/start ticks).
+`006-observe.png` and `013-observe.png` retain composed results 5 and 15;
+the corresponding UIKit text, control geometry, pixel hashes, original logs
+and complete steps are in calculator--calculate-close-relaunch.json.
+Execution receipt **57e724ba87c27048c66f7fc6fc18634d597f112ed996adda1761e38efba34fea**
+and all 54 files were verified. Total feedback is 130 s; Calculator takes
+10.35 s, with no failure diagnosis. This is a **2/2 partial Linux run**, not
+the entire collection and not Android acceptance. Clear/Things remain unverified.
+
+### Input and earlier failed attempts
 
 [Run 39623164769](https://github.com/taowen/arlinux-xnu/actions/runs/39623164769),
 source **b1bd662268b199b98fd3930be36126fb6ecf0e52**, attempt 1, resolves
@@ -31,7 +48,7 @@ and custom-control child labels as passive text, making `0` ambiguous.
 Original PID/start ticks: **5933/40890**. Execution receipt
 **2ddd6c194eac3a6a38aa35b7ad84712931c686e217a33f4e82d03e2285ad120e**
 and all 23 files were verified. No calculation, normal close or relaunch has
-passed yet. A subsequent UIControl-ancestry classification candidate also
+passed in that earlier run. A subsequent UIControl-ancestry classification candidate also
 fails before input in run 39623814301 (Counter passes), and is withdrawn.
 That run's receipt **e536fa3a1893eae2a42d81037b877db740c9eadb700380fe4b03217456431d51**
 and all 41 files were verified. The journey now identifies the displayed result
