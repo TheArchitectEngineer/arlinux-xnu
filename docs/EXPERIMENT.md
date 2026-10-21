@@ -19,9 +19,9 @@ and two cross-app scenarios; selected runs never certify the whole collection.
 
 ## Current failed GUI effect
 
-Run [39515854314](https://github.com/taowen/arlinux-xnu/actions/runs/39515854314),
-source **4a7dbf7de41c17d87e24899b2d7ffcdda8e81031**, selected Counter. Receipt
-**276cfe1865e8b82407d73dc60dacb5978ff70eaf514620cf7488f821443ac6be**
+Run [39518111587](https://github.com/taowen/arlinux-xnu/actions/runs/39518111587),
+source **02d016dec9003714d2048ae9bc2d99cba115e869**, selected Counter. Receipt
+**11be997783cf98e3469ed6e1f47feb71e7ea325f2be3ce95d757893ff84ea0d2**
 and all 52 files were verified by build --wait --evidence. The process renders
 the original Counter label in actual composed pixels, but its button is still
 invisible. The click step fails its pixel requirement before submitting input;
@@ -50,12 +50,12 @@ nine later steps are blocked. No complete GUI journey is accepted.
   pixels. Static black resolves to alpha 1 and draws 2832 alpha pixels in the
   560 x 120 main label backing. Supplying a balanced UIKit graphics context and
   actual current traits did not fix this color lookup. Do not hardcode blue.
-- The loaded resolver is UIDynamicCatalogSystemColor
-  _resolvedColorWithTraitCollection: at 0x1896d6b44, with base catalog resolver
-  at 0x188de3c6c. FBSDisplayConfiguration exposes colorGamut/supported-color
-  getters; there is no observed mutable configuration class. Next inspect the
-  actual catalog resolver and display/trait input path, using the recorded
-  current-cache symbols/metadata rather than guessing a private selector.
+- The actual resolver calls CUIDesignLibrary, then its composite catalog.
+  The original call reports Cocoa error 256, underlying POSIX error 78 (Darwin
+  ENOSYS), for `/System/Library/PrivateFrameworks/CoreUI.framework/DesignLibrary-iOS.bundle/iOSRepositories/LightStandard.car`.
+  UIKit falls back to clearColor after that failed resource lookup. Next connect
+  the missing filesystem operation to its actual path, masks and caller chain;
+  changing the app's color or display gamut would hide this evidence.
 - Frame evidence now writes a temporary file and atomically publishes complete
   frames. This run's encoder passes; incomplete temporary files never replace
   the last completed frame. The failure summary samples four screenshots while

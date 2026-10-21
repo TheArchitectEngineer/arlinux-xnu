@@ -25,6 +25,19 @@ not establish the cause of a failure. It invokes no app
 actions or private framework lifecycle methods. This flag defaults off and is
 not forwarded to the Apple-host reference. It is diagnosis, not launch success.
 
+The same opt-in profile observes failing original CoreUI color lookups. Its
+typed forwarding wrapper keeps the original arguments, NSError pointer and
+return object, recording the real error domain/code, underlying error and path.
+It neither issues an extra color lookup nor substitutes a color. BSD ENOSYS
+also retains original arguments and caller frames once per syscall (at most 32
+distinct calls, with an explicit truncation marker). The symbolicator resolves
+those saved return addresses against the same cache without adding instruction
+dumps for every frame. Failed getattrlist calls record bounded path/attribute
+metadata for the first 32 calls; the guest output buffer is never read or changed.
+The failure summary includes eight syscall frequency entries and eight resource
+paths; full arguments, callers and truncation markers remain in runtimeLog.
+Frequency is not a root-cause verdict.
+
 ## Short feedback loop
 
 Use `./build.sh build --app counter --lifecycle-context --wait --evidence` for
@@ -82,6 +95,11 @@ passed the real Console and Foundation journeys in 149 seconds; the same command
 verified all 23 evidence files and exited zero. It remains explicitly partial.
 Firmware remains transient and fully
 hash-verified, and no Apple firmware/cache is uploaded for caching.
+
+Within firmware preparation, downloading the pinned firmware overlaps building
+the pinned APFS reader. Both commands must complete before input validation and
+extraction. APPLE_PREPARATION_TIMING records readerSeconds, downloadSeconds and
+parallelSeconds so an overlap claim can be compared with actual measurements.
 
 ## Start with the effect that failed
 

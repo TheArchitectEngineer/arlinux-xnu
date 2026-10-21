@@ -11,6 +11,8 @@ import plistlib
 import shutil
 import subprocess
 import struct
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 root = Path(__file__).resolve().parents[1]
 source = json.loads((root / 'sources.lock.json').read_text())['iosUserland']
@@ -35,24 +37,46 @@ def sha(path):
 
 reader = json.loads((root / 'sources.lock.json').read_text())['apfsReader']
 reader_source = output / 'apfs-source'
-reader_source.mkdir(exist_ok=True)
-run('git', 'init', reader_source)
-run('git', '-C', reader_source, 'fetch', '--depth', '1',
-    'https://github.com/' + reader['repository'] + '.git', reader['commit'])
-run('git', '-C', reader_source, 'checkout', '--detach', 'FETCH_HEAD')
-run('git', '-C', reader_source, 'submodule', 'update', '--init', '--recursive')
-for directory, expected in [(reader_source, reader['commit']),
-                            (reader_source / '3rdparty/lzfse', reader['lzfseCommit'])]:
-    actual_source = subprocess.check_output(['git', '-C', str(directory), 'rev-parse', 'HEAD'], text=True).strip()
-    if actual_source != expected:
-        raise SystemExit('APFS reader source mismatch: ' + actual_source)
 reader_build = output / 'apfs-build'
-run('cmake', '-S', reader_source, '-B', reader_build, '-DUSE_FUSE3=ON',
-    '-DCMAKE_C_COMPILER_LAUNCHER=ccache', '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache')
-run('cmake', '--build', reader_build, '--target', 'apfs-fuse', '-j2')
-
 archive = output / 'firmware.ipsw'
-run('curl', '--fail', '--location', '--retry', '3', '--output', archive, source['url'])
+
+
+def prepare_reader():
+    started=time.monotonic()
+    reader_source.mkdir(exist_ok=True)
+    run('git', 'init', reader_source)
+    run('git', '-C', reader_source, 'fetch', '--depth', '1',
+        'https://github.com/' + reader['repository'] + '.git', reader['commit'])
+    run('git', '-C', reader_source, 'checkout', '--detach', 'FETCH_HEAD')
+    run('git', '-C', reader_source, 'submodule', 'update', '--init', '--recursive')
+    for directory, expected in [(reader_source, reader['commit']),
+                                (reader_source / '3rdparty/lzfse', reader['lzfseCommit'])]:
+        actual_source = subprocess.check_output(['git', '-C', str(directory), 'rev-parse', 'HEAD'], text=True).strip()
+        if actual_source != expected:
+            raise RuntimeError('APFS reader source mismatch: ' + actual_source)
+    run('cmake', '-S', reader_source, '-B', reader_build, '-DUSE_FUSE3=ON',
+        '-DCMAKE_C_COMPILER_LAUNCHER=ccache', '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache')
+    run('cmake', '--build', reader_build, '--target', 'apfs-fuse', '-j2')
+    return time.monotonic()-started
+
+
+def download_firmware():
+    started=time.monotonic()
+    run('curl', '--fail', '--location', '--retry', '3', '--output', archive, source['url'])
+    return time.monotonic()-started
+
+
+# The source-owned APFS reader and pinned firmware download are independent.
+# Join both real commands before validation/extraction; neither a cached image
+# nor a detached background download can become an input after a failure.
+started=time.monotonic()
+with ThreadPoolExecutor(max_workers=2) as preparation:
+    reader_task=preparation.submit(prepare_reader)
+    firmware_task=preparation.submit(download_firmware)
+    reader_seconds=reader_task.result()
+    firmware_seconds=firmware_task.result()
+print('APPLE_PREPARATION_TIMING '+json.dumps({'readerSeconds':round(reader_seconds,3),
+    'downloadSeconds':round(firmware_seconds,3),'parallelSeconds':round(time.monotonic()-started,3)}),flush=True)
 if source.get('bytes') and archive.stat().st_size!=source['bytes']:
     raise SystemExit('Apple firmware byte size mismatch')
 actual = sha(archive)
