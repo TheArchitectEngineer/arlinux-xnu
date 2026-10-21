@@ -174,6 +174,9 @@ long darwin_native_memory(unsigned long size,int protection)
  * resolve inside the selected firmware root; only the explicit executable
  * retains its host path. This is path adaptation, not a security sandbox. */
 static int root_descriptor=-1,bundle_descriptor=-1;
+static int container_descriptor=-1;
+static char container_path[4096];
+static size_t container_path_length;
 static char bundle_path[4096];
 static size_t bundle_path_length;
 static uint64_t current_cache_base;
@@ -208,6 +211,17 @@ static int path_directory(char **path)
         if (**path=='/') (*path)++;
         if (!**path) *path=".";
         return bundle_descriptor;
+    }
+    if(container_descriptor>=0) {
+        if(**path!='/')return container_descriptor;
+        matched=0;
+        while(matched<container_path_length && (*path)[matched]==container_path[matched])matched++;
+        if(matched==container_path_length && (!(*path)[matched] || (*path)[matched]=='/')) {
+            *path+=matched;
+            if(**path=='/')(*path)++;
+            if(!**path)*path=".";
+            return container_descriptor;
+        }
     }
     if (root_descriptor>=0) {
         if (**path=='/') { (*path)++; if (!**path) *path="."; }
@@ -919,7 +933,7 @@ void darwin_native_connect(void)
     darling_prepare();
 }
 
-void darwin_native_prepare(const char *root,const char *program,uint64_t cache_base,const unsigned char uuid[16],uint32_t signature_bytes)
+void darwin_native_prepare(const char *root,const char *program,const char *container,uint64_t cache_base,const unsigned char uuid[16],uint32_t signature_bytes)
 {
     darwin_native_connect();
     native_signature_bytes=signature_bytes;
@@ -949,6 +963,15 @@ void darwin_native_prepare(const char *root,const char *program,uint64_t cache_b
     bundle_descriptor=open(*bundle_path ? bundle_path : "/",O_PATH|O_DIRECTORY|O_CLOEXEC);
     if (bundle_descriptor<0) { perror("application bundle directory"); exit(1); }
     free(absolute);
+    if(container) {
+        container_path_length=strlen(container);
+        if(!container_path_length || container_path_length>=sizeof(container_path)) {
+            fprintf(stderr,"Invalid application container path\n");exit(1);
+        }
+        memcpy(container_path,container,container_path_length+1);
+        container_descriptor=open(container_path,O_PATH|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+        if(container_descriptor<0) {perror("application container");exit(1);}
+    }
     if (root) {
         root_descriptor=open(root,O_PATH|O_DIRECTORY|O_CLOEXEC);
         if (root_descriptor<0) { perror("Darwin filesystem root"); exit(1); }

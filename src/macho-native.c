@@ -96,6 +96,7 @@ int main(int argc,char **argv)
         return 1;
     }
     struct native_launch_options options=native_launch_parse(argc,argv);
+    char *container=native_launch_container(options.container);
     int dynamic=options.dyld!=NULL;
     const char *root=options.root;
     long host=sysconf(_SC_PAGESIZE);
@@ -166,7 +167,10 @@ int main(int argc,char **argv)
         top=(top-token_count-1)&~15UL;
         memcpy((void *)top,token_parameter,token_count+1);uint64_t token_parameter_address=top;
         token=0;memset(token_parameter,0,sizeof(token_parameter));
-        uint64_t environment=0;
+        const char *container_names[]={"HOME","CFFIXED_USER_HOME","TMPDIR"};
+        const char *diagnostic_names[]={"DYLD_PRINT_LIBRARIES","DYLD_PRINT_SEGMENTS","ARLINUX_DIAGNOSE_LIFECYCLE"};
+        uint64_t environments[1+sizeof(container_names)/sizeof(*container_names)+sizeof(diagnostic_names)/sizeof(*diagnostic_names)];
+        size_t environment_count=0;
         if (options.role==NATIVE_APPLICATION) {
             /* Only the declared compatibility library enters guest envp;
              * host credentials/build environment are never copied wholesale. */
@@ -179,27 +183,34 @@ int main(int argc,char **argv)
             free(library);
             need(count>0 && (size_t)count<sizeof(injected),"platform library environment length");
             top=(top-count-1)&~15UL;
-            memcpy((void *)top,injected,count+1); environment=top;
+            memcpy((void *)top,injected,count+1); environments[environment_count++]=top;
+        }
+        /* Explicit application storage, not the workstation's HOME. The real
+         * CoreFoundation home-directory implementation honors CFFIXED_USER_HOME;
+         * no passwd identity or Apple container service is invented. */
+        if(container)for(size_t i=0;i<sizeof(container_names)/sizeof(*container_names);i++) {
+            char setting[8192];int count=snprintf(setting,sizeof(setting),"%s=%s%s",container_names[i],container,
+                !strcmp(container_names[i],"TMPDIR") ? "/tmp/" : "");
+            need(count>0 && (size_t)count<sizeof(setting),"container environment length");
+            top=(top-count-1)&~15UL;memcpy((void *)top,setting,count+1);
+            environments[environment_count++]=top;
         }
         /* Explicit read-only dyld diagnostics may enter the guest. Never copy
          * arbitrary host environment or credentials into the Apple process. */
-        const char *diagnostic_names[]={"DYLD_PRINT_LIBRARIES","DYLD_PRINT_SEGMENTS","ARLINUX_DIAGNOSE_LIFECYCLE"};
-        uint64_t diagnostics[sizeof(diagnostic_names)/sizeof(diagnostic_names[0])]={0};size_t diagnostic_count=0;
         for(size_t i=0;i<sizeof(diagnostic_names)/sizeof(diagnostic_names[0]);i++) {
             const char *value=getenv(diagnostic_names[i]);
             if(!value || strcmp(value,"1")) continue;
             char setting[64];int size=snprintf(setting,sizeof(setting),"%s=1",diagnostic_names[i]);
             need(size>0 && (size_t)size<sizeof(setting),"dyld diagnostic environment length");
             top=(top-size-1)&~15UL;memcpy((void *)top,setting,size+1);
-            diagnostics[diagnostic_count++]=top;
+            environments[environment_count++]=top;
         }
         /* Header/argc/argv, optional env, and three Apple strings. Count the
          * actual entries; stack alignment does not depend on magic slot totals. */
-        uint64_t initial[16];size_t count=0;
+        uint64_t initial[4+sizeof(environments)/sizeof(*environments)+1+4];size_t count=0;
         initial[count++]=im.header_address;initial[count++]=1;
         initial[count++]=name;initial[count++]=0;
-        if(environment)initial[count++]=environment;
-        for(size_t i=0;i<diagnostic_count;i++)initial[count++]=diagnostics[i];
+        for(size_t i=0;i<environment_count;i++)initial[count++]=environments[i];
         initial[count++]=0;
         initial[count++]=apple;initial[count++]=stack_parameter_address;
         initial[count++]=token_parameter_address;initial[count++]=0;
@@ -208,6 +219,6 @@ int main(int argc,char **argv)
     }
     /* Zeroed argc/argv/env/apple terminators for this freestanding entry. */
     fprintf(stderr,"NATIVE_DARWIN_ENTRY entry=%#" PRIx64 " host_page=%ld (Linux services, not XNU boot)\n",im.entry,host);
-    darwin_native_prepare(root,program,cache_base,im.uuid,im.signature_bytes);
+    darwin_native_prepare(root,program,container,cache_base,im.uuid,im.signature_bytes);
     darwin_native_enter(top,dynamic ? dyld.entry : im.entry);
 }

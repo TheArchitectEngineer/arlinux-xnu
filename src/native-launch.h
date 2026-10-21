@@ -3,7 +3,7 @@
 #pragma once
 enum native_launch_role { NATIVE_CONSOLE, NATIVE_APPLICATION, NATIVE_SERVICE };
 struct native_launch_options {
-    const char *program,*dyld,*root;
+    const char *program,*dyld,*root,*container;
     enum native_launch_role role;
 };
 static struct native_launch_options native_launch_parse(int argc,char **argv)
@@ -12,11 +12,12 @@ static struct native_launch_options native_launch_parse(int argc,char **argv)
     int role_seen=0;
     for (int i=1;i<argc;i++) {
         const char *argument=argv[i];
-        if (!strcmp(argument,"--dyld") || !strcmp(argument,"--root") || !strcmp(argument,"--role")) {
+        if (!strcmp(argument,"--dyld") || !strcmp(argument,"--root") || !strcmp(argument,"--role") || !strcmp(argument,"--container")) {
             need(i+1<argc,"launch option requires a value");
             const char *value=argv[++i];
             if (!strcmp(argument,"--dyld")) { need(!options.dyld,"duplicate --dyld"); options.dyld=value; }
             else if (!strcmp(argument,"--root")) { need(!options.root,"duplicate --root"); options.root=value; }
+            else if (!strcmp(argument,"--container")) { need(!options.container,"duplicate --container"); options.container=value; }
             else {
                 need(!role_seen,"duplicate --role"); role_seen=1;
                 if (!strcmp(value,"application")) options.role=NATIVE_APPLICATION;
@@ -31,5 +32,31 @@ static struct native_launch_options native_launch_parse(int argc,char **argv)
     need(options.program!=NULL,"missing ARM64 Mach-O program");
     need(!options.root || options.dyld,"--root requires --dyld");
     need(options.role==NATIVE_CONSOLE || options.root,"application/service requires an iOS root");
+    need(options.role!=NATIVE_APPLICATION || options.container,"application requires its explicit data container");
     return options;
+}
+static int native_container_directory(int parent,const char *name)
+{
+    if(mkdirat(parent,name,0700) && errno!=EEXIST)die("create application directory");
+    int fd=openat(parent,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+    if(fd<0)die("open application directory");
+    return fd;
+}
+static char *native_launch_container(const char *path)
+{
+    if(!path)return NULL;
+    char *canonical=realpath(path,NULL);
+    if(!canonical)die("canonical application container");
+    need(strlen(canonical)<4096 && strcmp(canonical,"/"),"application container path");
+    int base=open(canonical,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+    if(base<0)die("open application container");
+    int library=native_container_directory(base,"Library");
+    close(native_container_directory(base,"Documents"));
+    close(native_container_directory(base,"tmp"));
+    close(native_container_directory(library,"Caches"));
+    close(native_container_directory(library,"Preferences"));
+    close(native_container_directory(library,"Application Support"));
+    close(library);close(base);
+    fprintf(stderr,"NATIVE_CONTAINER path=%s\n",canonical);
+    return canonical;
 }
