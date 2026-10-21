@@ -87,7 +87,7 @@ static int darwin_error(long result)
     }
 }
 
-static int native_trace_fd=2,native_stop_on_fault,native_diagnose_syscalls;
+static int native_trace_fd=2,native_stop_on_fault,native_diagnose_syscalls,native_diagnose_mach_wakeups;
 static int native_secure_exec;
 static void native_trace_prepare(void)
 {
@@ -106,6 +106,7 @@ static void native_trace_prepare(void)
             fprintf(stderr,"Invalid inherited ARLinux trace descriptor\n"); exit(2);
         }
         native_trace_fd=(int)descriptor;
+        native_diagnose_mach_wakeups=1;
     }
     prepared=1;
 }

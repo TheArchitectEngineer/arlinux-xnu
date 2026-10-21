@@ -256,7 +256,7 @@ static long darling_mach_msg2(const unsigned long long *r)
        !(options&D_MACH_SEND_SYNC_OVERRIDE)) legacy_priority=(uint32_t)r[3];
     long result=0;
     struct native_mach_wakeup_observation *sent=NULL,*waited=NULL;
-    if(native_diagnose_syscalls) {
+    if(native_diagnose_mach_wakeups) {
         uint32_t header[6];
         if((effective_options&D_MACH_SEND_MSG) && send_size==sizeof(header) &&
            !guest_copy(header,message,sizeof(header),0) && !(header[0]&D_MACH_MSG_COMPLEX)) {
@@ -287,7 +287,7 @@ static long darling_mach_msg2(const unsigned long long *r)
         __atomic_fetch_add(&waited->waits_completed,1,__ATOMIC_RELAXED);
         __atomic_store_n(&waited->wait_result,result,__ATOMIC_RELAXED);
     }
-    if(native_diagnose_syscalls && !result && (effective_options&D_MACH_RCV_MSG) && receive_size>=24) {
+    if(native_diagnose_mach_wakeups && !result && (effective_options&D_MACH_RCV_MSG) && receive_size>=24) {
         uint32_t header[6];
         if(!guest_copy(header,receive ? receive : message,sizeof(header),0) &&
            header[1]==sizeof(header) && !(header[0]&D_MACH_MSG_COMPLEX)) {

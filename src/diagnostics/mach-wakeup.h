@@ -1,4 +1,4 @@
-/* Opt-in bounded observations of actual header-only Mach sends and pure
+/* Explicit trace-FD opt-in: bounded observations of actual header-only Mach sends and pure
  * receives. No payload, guest state, queue ownership or outcome is changed. */
 #pragma once
 struct native_mach_wakeup_observation {
@@ -11,7 +11,7 @@ static struct native_mach_wakeup_observation native_mach_wakeups[64];
 static unsigned int native_mach_wakeups_omitted;
 static struct native_mach_wakeup_observation *native_mach_wakeup(uint32_t port)
 {
-    if(!native_diagnose_syscalls || !port)return NULL;
+    if(!native_diagnose_mach_wakeups || !port)return NULL;
     for(unsigned int i=0;i<sizeof(native_mach_wakeups)/sizeof(*native_mach_wakeups);i++) {
         uint32_t value=__atomic_load_n(&native_mach_wakeups[i].port,__ATOMIC_ACQUIRE);
         if(!value && __atomic_compare_exchange_n(&native_mach_wakeups[i].port,&value,port,0,

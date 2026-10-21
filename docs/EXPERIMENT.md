@@ -140,10 +140,14 @@ The child exits 37, the parent reaps it, accepts external stdin and exits 0.
 The full run also passed this strengthened flow (parent **6097/17298**, child
 **6098/17543**). The selected run takes 125 s overall / 2.337 s journey.
 
-The child formerly kept cached parent task handles without creating the required
-rights in its own namespace. The fix reconnects the existing core, refreshes
-actual task/host/thread rights and libpthread registration, and registers the
-child's real COW dyld metadata. A pipe holds the parent until registration.
+The previous child failed at original MIG reply-port construction with
+MACH_SEND_INVALID_DATA (0x10000002), not MACH_SEND_INVALID_DEST. That identifies
+a child RPC/memory boundary failure, not a proven invalid destination right.
+The fix renews the child's exact-core memory-access authorization and sockets,
+refreshes actual task/host/thread rights and libpthread registration, and
+registers its real COW dyld metadata. A pipe holds the parent until registration.
+The complete boundary repair is verified; an isolated cause among those missing
+initialization steps has not been established.
 This proves the single-threaded pre-workqueue console boundary; live framework
 sessions/kqueues, multithreaded fork and arbitrary helper lifecycle remain
 unsupported. It is not an ordinary iOS application lifecycle claim.
