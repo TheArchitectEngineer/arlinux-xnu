@@ -139,19 +139,35 @@ synthetic DOM callback. No IOSurface driver, GPU allocation or Web pass is
 claimed. Targeted cache reads of the original configuration interfaces replaced
 unrelated standing QuartzCore dumps; the original fault/run-loop evidence stays.
 
-The session bootstrap-setting operation is now exercised in selected run
-[39556740329](https://github.com/taowen/arlinux-xnu/actions/runs/39556740329), source
-**d505268693c7b8d453a62e718bde6d2f3ed57eb9**, attempt 1. Receipt
-**95b202ebdf9b62edd1cee6af079a4c39dd69554ca708a7cb90640d5ea50043ed**
-and 39 files were verified. Counter passes; Web still fails the original DOM
-step (1/2). Process **6020/38599** sends actual WebContent/Networking bootstrap
-dictionaries; the session stores each under its audited lifetime and returns
-only the configuration acknowledgement, with no service port. Each contains
-_NSBundleEntry, OverrideLanguages and ContainerEnvironmentVariables. Only their
-names/types are logged; values and transferred rights remain private owned
-runtime data. Instance-scoped lookup still returns unsupported and no helper
-has been started. Context retirement is implemented but not yet independently
-verified by a user flow; it is not a helper-lifecycle acceptance result.
+Selected run [39560351656](https://github.com/taowen/arlinux-xnu/actions/runs/39560351656),
+source **39375c9e20b8a72c802ee03c6a980fa66a447791**, attempt 1, passes Counter
+but still fails Web's original DOM step (1/2). Receipt
+**dd958ddb716d2c17e5d236b1acba126696db92f4b48a9d510b471487cb814b61**
+and all 46 files were verified. App **6058/73088** (PID/startTicks) supplies
+its actual bootstrap dictionary; the session stores its owned values/rights
+without logging nested values. Initial helper resolution rejected duplicate
+bundle matches in run 39558975718. This run proves the matches are aliases of
+the same actual executable: device/inode identity resolves them without choosing
+by path order or service-specific rules. Distinct executable conflicts still fail.
+WebContent children **6099/73645**, **6118/73812**, and Networking child
+**6139/74134** run in the headless service role under session **6055**. All reach
+NATIVE_DARWIN_ENTRY and record original SIGTRAP faults. The existing stop-on-fault
+option now preserves them instead of allowing exit 133 before attachment.
+Original session and both WebContent LLDB collections complete; the third child
+is explicitly omitted from attachment, but its fault stack is retained in the
+session runtime log. Same-cache symbolication identifies WebContent's actual
+Gigacage::ensureGigacage call-once fault at 0x199315330, with the original fatal
+literal reporting failure to allocate gigacage memory. Networking reaches
+WebKit::XPCServiceMain -> xpc_main -> _xpc_copy_xpcservice_dictionary, whose
+original abort literal is "An XPC service cannot be launched directly".
+These identify virtual-address reservation and service launch-context boundaries,
+not evidence that arbitrary additional Apple daemons are required. The native
+allocator currently limits mappings to 4 GiB and its low-address heap; changing
+that policy needs correct pointer/address ownership, not a suppressed assertion.
+The session's original stack waits for real messages. No DOM, usable connection
+or helper-cleanup acceptance is claimed. Total feedback is 177 s; the journeys
+take 35.536 s including 20.713 s of diagnosis. Additional failure collection is
+measured cost, not a shorter feedback-time claim.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary

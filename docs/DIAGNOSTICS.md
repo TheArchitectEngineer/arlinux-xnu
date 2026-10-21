@@ -80,6 +80,11 @@ are marked unavailable; further helpers are explicitly counted as omitted.
 These attachments run after the failed effect and never count as service
 readiness or normal exit. Helpers that have not reached Mach-O entry may still
 be in host cache preparation; inspect the original stacks before adding IPC.
+The runner session explicitly enables the existing stop-on-fault option for its
+owned helpers, and the launcher forwards only that named diagnostic option.
+Their actual fault records in session.log are symbolicated against the same
+firmware cache. This preserves original exception stacks for attachment rather
+than replaying the helper or treating exit 133 as a service result.
 For native XPC reception, correlate XPC_OOL_RECEIVED with XPC_OOL_RELEASED and
 its actual deallocation status in the same session.log. XPC_DECODE_FAILED records
 the message ID, byte count and decoder errno; subsequent replies/requests and

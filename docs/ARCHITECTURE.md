@@ -173,8 +173,9 @@ service and actual UUID. It resolves CFBundleIdentifier/CFBundleExecutable from
 read-only firmware XPC bundles with libplist and executes the original Mach-O
 through the same native launcher in the headless service role. Root, dyld and
 container come from the verified caller's real command line, not guest-provided
-paths. Only explicit session variables and XPC_SERVICE_NAME enter the child;
-host credentials are not inherited. pidfds, real exit status, caller-death
+paths. Only explicit session variables, XPC_SERVICE_NAME and an explicitly
+enabled stop-on-fault diagnostic option enter the child; host credentials are
+not inherited. pidfds, real exit status, caller-death
 termination and a parent-death signal own its process lifetime. Starting an ELF
 launcher or entering a Mach-O is not XPC readiness: instance lookup still fails
 until actual check-in/port handoff is implemented and the app effect passes.
