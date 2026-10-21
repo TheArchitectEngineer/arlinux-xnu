@@ -319,7 +319,19 @@ static long darling_mach(unsigned long number,const unsigned long long *r)
     uint32_t port=0;
     int result;
     switch (number) {
-    case D_TRAP_MSG2: return darling_mach_msg2(r);
+    case D_TRAP_MSG2: {
+        long result=darling_mach_msg2(r);
+        if((r[1]&D_MACH_SEND_MSG) && result==D_MACH_SEND_INVALID_OPTIONS) {
+            static unsigned int errors;
+            unsigned int sequence=__atomic_fetch_add(&errors,1,__ATOMIC_RELAXED);
+            if(sequence<16) {
+                trace_record("DARLING_MSG2_INVALID_OPTIONS options=0x",r[1],r[4]>>32,result);
+                for(unsigned int i=2;i<8;i++)
+                    trace_record("DARLING_MSG2_PACKED index=0x",i,0,r[i]);
+            } else if(sequence==16)trace_record("DARLING_MSG2_ERRORS_TRUNCATED limit=0x",16,0,result);
+        }
+        return result;
+    }
     case D_TRAP_TASK_SELF: result=dserver_rpc_task_self_trap(&port); return result ? 0 : port;
     case D_TRAP_HOST_SELF: result=dserver_rpc_host_self_trap(&port); return result ? 0 : port;
     case D_TRAP_THREAD_SELF: return darling_thread_self();
