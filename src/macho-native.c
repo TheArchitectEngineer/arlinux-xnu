@@ -92,6 +92,7 @@ int main(int argc,char **argv)
         need(0,"session requires integrated Mach core");
 #endif
         darwin_native_connect();
+        darwin_native_session_diagnostics();
         need(!darwin_native_session_start(),"initialize independent session service");
         darwin_native_service_run(NULL);
         return 1;

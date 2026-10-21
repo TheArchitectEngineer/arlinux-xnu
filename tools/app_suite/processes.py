@@ -41,6 +41,17 @@ class Processes:
             raise RuntimeError(f'Shared compatibility session {self.session["pid"]} exited; inspect its retained session.log') from error
         if session_identity != self.session:
             raise RuntimeError('Shared compatibility session identity changed')
+        if not self.reference:
+            log=self.output/(self.case['id']+'--session')/'session.log'
+            with log.open('rb') as stream:
+                stream.seek(getattr(self,'session_fault_offset',0));new=stream.read()
+                self.session_fault_offset=stream.tell()
+            observed=getattr(self,'session_fault_tail',b'')+new
+            self.session_fault_tail=observed[-64:]
+            if b'SESSION_NATIVE_FAULT ' in observed:
+                self.session_fault_observed=True
+            if getattr(self,'session_fault_observed',False):
+                raise RuntimeError('Shared compatibility session faulted; collecting its original core threads')
         for name, item in self.processes.items():
             if item.get('faultObserved'):
                 self.diagnostic_target=name

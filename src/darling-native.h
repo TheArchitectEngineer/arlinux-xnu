@@ -110,7 +110,12 @@ static void darling_push_reply(int fd,const struct msghdr *reply,size_t size)
        size<sizeof(dserver_rpc_replyhdr_t) || size>reply->msg_iov[0].iov_len)
         darling_abort("invalid deferred reply envelope");
     int descriptors[DSERVER_RPC_REPLY_MAX_FD_COUNT+1];size_t count=0;
-    for(struct cmsghdr *item=CMSG_FIRSTHDR(reply);item;item=CMSG_NXTHDR((struct msghdr *)reply,item)) {
+    if(reply->msg_controllen && !reply->msg_control)darling_abort("missing deferred reply control");
+    /* CMSG_NXTHDR can call host libc; walk the bounded ancillary storage using
+     * pure layout arithmetic while Darwin owns the thread's TLS register. */
+    size_t offset=0;
+    while(reply->msg_controllen-offset>=sizeof(struct cmsghdr)) {
+        struct cmsghdr *item=(void *)((char *)reply->msg_control+offset);
         if(item->cmsg_level!=SOL_SOCKET || item->cmsg_type!=SCM_RIGHTS ||
            item->cmsg_len<CMSG_LEN(0) ||
            item->cmsg_len>(size_t)((char *)reply->msg_control+reply->msg_controllen-(char *)item))
@@ -119,6 +124,9 @@ static void darling_push_reply(int fd,const struct msghdr *reply,size_t size)
         if(bytes%sizeof(int) || bytes/sizeof(int)>DSERVER_RPC_REPLY_MAX_FD_COUNT-count)
             darling_abort("excess deferred reply descriptors");
         darling_copy(descriptors+count,CMSG_DATA(item),bytes);count+=bytes/sizeof(int);
+        size_t step=CMSG_ALIGN(item->cmsg_len);
+        if(step>reply->msg_controllen-offset)break;
+        offset+=step;
     }
     int pipe_ends[2];
     if(RAW(SYS_pipe2,pipe_ends,O_CLOEXEC,0,0,0,0))darling_abort("deferred reply pipe");

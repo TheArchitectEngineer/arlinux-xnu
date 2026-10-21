@@ -1047,6 +1047,25 @@ static void fault(int signal,siginfo_t *info,void *context)
     __builtin_unreachable();
 }
 
+
+static void session_fault(int signal,siginfo_t *info,void *context)
+{
+    const char label[]="SESSION_NATIVE_FAULT original session caller retained\n";
+    RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
+    fault(signal,info,context);
+}
+void darwin_native_session_diagnostics(void)
+{
+    /* The existing runner fault collector must cover its owned Mach core too.
+     * No guest TLS/filter/alternate stack is installed in native core threads. */
+    if(!native_stop_on_fault)return;
+    struct sigaction action={.sa_sigaction=session_fault,.sa_flags=SA_SIGINFO};
+    sigfillset(&action.sa_mask);
+    int failures[]={SIGSEGV,SIGILL,SIGBUS,SIGABRT,SIGTRAP,SIGFPE};
+    for(unsigned int i=0;i<sizeof(failures)/sizeof(failures[0]);i++)
+        if(sigaction(failures[i],&action,NULL)) {perror("session fault handler");exit(1);}
+}
+
 int darwin_native_dyld_info(uint64_t address,uint64_t length)
 {
     if(!address || !length || length>D_VM_MAX_ALLOCATION || address>=D_GUEST_COMMPAGE_RO ||

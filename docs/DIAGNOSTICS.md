@@ -306,3 +306,12 @@ Only this first observation gets the budget; subsequent input/effects use the
 normal deadline. Required structured text, composed ink/changed pixels, external
 click and normal close remain unchanged. Report actual effect duration; a longer
 budget never certifies a blank window or a surviving helper.
+
+The runner's opt-in fault retention also covers native threads in its owned
+shared session. SESSION_NATIVE_FAULT triggers the existing original session
+LLDB collection before cleanup, rather than losing a crashed core and collecting
+only secondary guest RPC failures. It changes no guest result or Mach request;
+resuming the handler still exits fatally. Runtime RPC ancillary iteration uses
+bounded layout arithmetic, avoiding an implicit host-libc CMSG_NXTHDR call while
+Darwin owns TLS. Deferred reply bodies and received FD ownership follow the
+integrated upstream server's push_reply/pipe-acknowledgement protocol.

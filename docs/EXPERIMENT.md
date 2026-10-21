@@ -138,18 +138,21 @@ first DOM observation a 45-second cold-start budget, retaining actual pixels,
 external input and normal-close requirements. Runner validation is pending.
 These are not GPU hardware acceleration, DOM or helper-lifecycle acceptance.
 
-Selected run [39601926927](https://github.com/taowen/arlinux-xnu/actions/runs/39601926927),
-source **9996fc2144aa600bf3b37d93a0f30d11cfea63ff**, attempt 1, passes Counter
-but fails Web after its explicit 45-second first-DOM budget (1/2, partial).
-Receipt **7426ae3af440aaeb9546f7573ec0d4f0b15f61affd7b2266aafbe864e95cebca**
-and 43 files were verified. App **5979/17318** shares owned session **5976/17313**;
-WebContent **6020/17594** exits 125 at the former deferred-reply fatal hook.
-The same boundary previously ended Networking in the full run. This run does
-not reach/certify the new buffer allocation. The candidate replaces the fatal
-hook with integrated Darling's real push_reply/pipe-acknowledgement protocol,
-preserving the original body and FD ownership for normal outer-call completion.
-Total feedback is 214 s; journeys take 69.801 s including 18.161 s of diagnosis.
-It remains a failed Web journey, not a timeout-only success. Validation pending.
+Selected run [39602625868](https://github.com/taowen/arlinux-xnu/actions/runs/39602625868),
+source **fb5d953460eb6ef9d9e613b61ba32ca4c93bf69a**, attempt 1, passes Counter
+but fails Web when its shared session exits (1/2, partial). Receipt
+**5d091aaaff3a156846d106739b1d489ac3bdc43180e1915cc4df79e4d4f21eb4**
+and 41 files were verified. App **6027/222430** uses session **6024**;
+WebContent's main TID **6065** successfully allocates the original **0x200100**
+byte nonvolatile purgeable buffer at **0xd92d64000**. Original deferred reply
+**0x26**, eight bytes with no FDs, is acknowledged by the server; the former
+unexpected-reply termination is passed in that observed path. This is not
+arbitrary nested-RPC/FD-transfer or rendering acceptance. The owned session then
+exits; app _start_wqthread failure is secondary and cannot explain the core exit.
+The candidate retains original native-session faults through the existing
+stop-on-fault and bounded LLDB path; it also removes implicit host-libc ancillary
+iteration from the RPC hook. Total feedback is 175 s; journeys take 38.858 s
+including 6.171 s of diagnosis. No DOM or helper-lifecycle acceptance.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
