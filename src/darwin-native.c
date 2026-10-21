@@ -137,6 +137,7 @@ static void trace_call(unsigned long number,unsigned long pc,unsigned long resul
 static unsigned long guest_next=D_GUEST_HEAP_START;
 static long native_guest_gap(unsigned long length)
 {
+    if(!length || length>D_GUEST_COMMPAGE_RO-D_GUEST_HEAP_START)return -ENOMEM;
     int fd=RAW(SYS_openat,AT_FDCWD,"/proc/self/maps",O_RDONLY|O_CLOEXEC,0,0,0);
     if(fd<0)return fd;
     char buffer[4096],prefix[64];size_t used=0;unsigned long candidate=D_GUEST_HEAP_START;
