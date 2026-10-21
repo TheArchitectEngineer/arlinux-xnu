@@ -88,7 +88,19 @@ ordinary application directories and could not resolve Calculator. Counter's
 complete click/close/relaunch still passed; its receipt and all 36 files were
 verified. Staged-app resolution corrects that actual input failure.
 
-## Latest full fixture recovery
+## Latest full collection
+
+[Run 39625147273](https://github.com/taowen/arlinux-xnu/actions/runs/39625147273),
+source **a0b74e0d0ebe9772c93376663373d97fb4efaedd**, attempt 1, passes
+**16/18** journeys including original Calculator. It remains failed: Share
+cannot display EchoExtension; Web times out at initial DOM/pixel observation
+(45.043 s) rather than reaching its later input step. No new fixture failure
+is observed, but Web startup is not established as deterministic.
+Execution receipt **e909581912938892457ce0506da9967135bb315265335e9bea5dc2c68a02075a**
+and all 357 files were verified. Feedback is 376 s, journeys 235.0 s including
+30.7 s diagnosis. This does not accept Calculator rendering fidelity.
+
+## Earlier full fixture recovery
 
 [Run 39621212426](https://github.com/taowen/arlinux-xnu/actions/runs/39621212426),
 source **f80aa41777cbb7ed00261e423bf7001c389db0a0**, attempt 1, restores

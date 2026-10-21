@@ -5,7 +5,7 @@ Linux/Android. **Counter and Swift/UIKit interaction, close/relaunch, Console
 and Foundation journeys pass on Linux. Notes also passes text entry, atomic save
 and new-process readback. Foreground Foundation HTTP now passes a real request,
 normal close and a second request from a new process. The full recovery run
-39621212426 passes 15/17 journeys after withdrawing an unsupported gesture
+39625147273 passes 16/18 journeys including original Calculator after withdrawing an unsupported gesture
 binding. Web and Share remain incomplete. Apple's original Calculator binary
 now passes real composed display, external pointer calculation and normal
 close/relaunch on the Linux runner. Its keypad visibly overlaps; rendering

@@ -7,6 +7,20 @@ source-owned apps compile against Apple's actual SDK. The runtime combines selec
 pinned Apple userland with production Linux-backed adapters and replacements.
 apps/shared/Screen.h is fixture UI layout, never a runtime shim.
 
+The next acquired original-binary candidate is Things iPhone 3.17.1/build
+31701001, bundle ID com.culturedcode.ThingsiPhone. Its community-decrypted IPA
+is 52,104,885 bytes, SHA-256
+**7e3d47be5a6e5bcc9a3f4972e452fd17c953e4cecaa11c2e9256212a46a203d8**,
+from [the archived package](https://archive.org/download/thingsi-phone-3.17.1-le-ti/ThingsiPhone_3.17.1_LeTi.ipa).
+The [community metadata cache](https://github.com/ipaarchive/ipaarchive.github.io/blob/main/data/url_cache/279.json.gz)
+records SHA-1 5904cdb2ea7a4cca92e93fa138827d1f66eb677f, which matches the acquired
+bytes. The actual main executable is thin ARM64/subtype 0, cryptid 0, minimum
+iOS 12.1; its SHA-256 is
+**cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4**.
+These are input inspection results on Windows, not execution or compatibility
+acceptance. The decrypted distribution is not verified against a vendor-signed
+original. The package remains outside Git and is not uploaded as evidence.
+
 | App | Stack / actual behavior | Required end-to-end result |
 | --- | --- | --- |
 | Calculator (Linux journey passed) | Apple's original binary/resources, resolved by bundle ID from the pinned firmware | Real 2 + 3 = 5; normal close/relaunch, clear then 7 + 8 = 15; no replacement app code |
