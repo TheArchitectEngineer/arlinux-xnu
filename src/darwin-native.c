@@ -809,7 +809,8 @@ static void dispatch(int signal, siginfo_t *info, void *context)
     case D_SYS_FSTATAT64: result=guest_stat(r[1],r[2],D_SYS_FSTATAT64,(int)r[0],r[3]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
         result=((int)r[0]==root_descriptor || (int)r[0]==bundle_descriptor || (int)r[0]==container_descriptor ||
-                (native_trace_fd>2 && (int)r[0]==native_trace_fd)) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
+                (native_trace_fd>2 && (int)r[0]==native_trace_fd) ||
+                (native_http_event>=0 && (int)r[0]==native_http_event)) ? -EBADF : RAW(SYS_close,r[0],0,0,0,0,0); break;
     case D_SYS_PREAD: case D_SYS_PREAD_NOCANCEL: result=RAW(SYS_pread64,r[0],r[1],r[2],r[3],0,0); break;
     case D_SYS_LSEEK: result=RAW(SYS_lseek,r[0],r[1],r[2],0,0,0); break;
     case D_SYS_SHARED_REGION_CHECK: /* Actual process-private cache mappings prepared before entry. */

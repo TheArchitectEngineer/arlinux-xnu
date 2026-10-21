@@ -75,6 +75,7 @@ static void transfer(struct native_http_slot *slot)
 #define OPTION(option,value) do {code=curl_easy_setopt(curl,option,value);if(code!=CURLE_OK)goto done;} while(0)
     OPTION(CURLOPT_URL,slot->url);
     OPTION(CURLOPT_PROTOCOLS_STR,"http,https");
+    OPTION(CURLOPT_SSLVERSION,(long)CURL_SSLVERSION_TLSv1_2);
     OPTION(CURLOPT_FOLLOWLOCATION,0L); /* Foundation owns redirects. */
     OPTION(CURLOPT_NOSIGNAL,1L);
     OPTION(CURLOPT_TIMEOUT_MS,(long)((slot->deadline_ns-ns+999999)/1000000));
@@ -82,8 +83,8 @@ static void transfer(struct native_http_slot *slot)
     OPTION(CURLOPT_WRITEFUNCTION,append_bytes);OPTION(CURLOPT_WRITEDATA,&body);
     OPTION(CURLOPT_HEADERFUNCTION,response_header);OPTION(CURLOPT_HEADERDATA,&headers);
     OPTION(CURLOPT_NOPROGRESS,0L);OPTION(CURLOPT_XFERINFOFUNCTION,cancelled);OPTION(CURLOPT_XFERINFODATA,slot);
-    if(slot->request_size) {
-        OPTION(CURLOPT_POSTFIELDS,slot->request_body);
+    if(slot->request_size || !strcmp(slot->method,"POST") || !strcmp(slot->method,"PUT") || !strcmp(slot->method,"PATCH")) {
+        OPTION(CURLOPT_POSTFIELDS,slot->request_size ? slot->request_body : "");
         OPTION(CURLOPT_POSTFIELDSIZE_LARGE,(curl_off_t)slot->request_size);
     }
     OPTION(CURLOPT_CUSTOMREQUEST,slot->method);
@@ -121,7 +122,14 @@ static void *http_worker(void *unused)
             }
         }
         struct pollfd wake={.fd=native_http_event,.events=POLLIN};
-        if(poll(&wake,1,100)>0){uint64_t value;(void)read(native_http_event,&value,sizeof(value));}
+        if(poll(&wake,1,100)>0) {
+            uint64_t value;ssize_t count;
+            do {count=read(native_http_event,&value,sizeof(value));}while(count<0 && errno==EINTR);
+            if(count!=(ssize_t)sizeof(value) && !(count<0 && errno==EAGAIN)) {
+                fprintf(stderr,"LINUX_HTTP_WAKE_FAILED bytes=%zd errno=%d\n",count,count<0 ? errno : 0);
+                return NULL;
+            }
+        }
     }
     return NULL;
 }
