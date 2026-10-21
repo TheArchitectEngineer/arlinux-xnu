@@ -65,63 +65,74 @@ that a display difference is a rendering bug.
 
 ## Latest complete collection: failed, 17/20
 
-[Run 39690482740](https://github.com/taowen/arlinux-xnu/actions/runs/39690482740),
-source **463dc608a75f8e61c42bfe4cbe28394577ced15d**, attempt 1, passes 17/20
-journeys, including both original Calculator phone cases and Notes persistence
-after the shared-storage changes. Receipt
-**18a904b983a0b9bc651890d09e97a6b84c44aba28d255ede84c172fa99217ee5**
-and all 373 files were verified. Journeys take 225.4 s including 33.7 s diagnosis.
+[Run 39694034223](https://github.com/taowen/arlinux-xnu/actions/runs/39694034223),
+source **ce07f6dbc482955e0da13d3764e3fb2de453cf84**, attempt 1, passes 17/20
+journeys after the shared-storage, vectored-write, statfs, guarded-I/O and record
+lock changes. Both original Calculator phone cases, Notes persistence and all
+previously passing fixture/session journeys remain passing. Receipt
+**05dcfb438b7e498fa8aefb2685e13789b27552384ac1c059873857dc187a48ca**
+and all 379 files were verified. Feedback is 490 s; journeys 341.5 s including
+41.1 s diagnosis. Android remains unverified.
 
-- Web still times out at first DOM/pixels; earlier runs also failed external input.
-- Share cannot show EchoExtension; payload/helper-lifetime acceptance is incomplete.
-- Things input fails: archive.org port 443 times out through all retries. No
-  Things process runs in this full collection; this is not its 120-second trial.
+- Things actually runs, displays its upgrade UI, and fails Inbox after 120 s.
+- Web reaches its original DOM/first pixels, but external input still fails
+  WebCount 1. Earlier runs intermittently missed first paint; this does not prove
+  that the new filesystem code repaired Web startup.
+- Share still cannot show EchoExtension; payload/helper-lifetime acceptance fails.
 
-Dispatch-to-completion is 917 s. Original-input preparation accounts for roughly
-548 s beyond actual journeys: curl gave each retry an independent long connect
-wait. Downloads now have one 185-second outer budget, 60 seconds per route, and
-explicit same-object mirrors obtained from Archive.org's item metadata. The
-actual download URL is retained; the pinned bytes/SHA-256 still gate extraction.
-This network failure is distinct from the original app's actual stall below.
-No complete 20-case run has passed. The later writev/statfs changes need fresh
-full regression. Android remains unverified.
+No complete 20-case run has passed. Later changes are read-only diagnostics and
+restore Things' ordinary 30-second first-Inbox wait after repeated 120-second
+runs retained the same modal. Inbox/pixels and all task/relaunch steps remain
+required. New observation success is never app success.
 
-## Things: original first UI, database initialization still incomplete
+## Things: first UI works; task database initialization remains unexplained
 
-[Run 39692498977](https://github.com/taowen/arlinux-xnu/actions/runs/39692498977),
-source **ec0706dfa01a26eb492d45d5b52ed6fcb4683c4a**, PID/start 6161/14232,
-executes Things iPhone 3.17.1/build 31701001 and its bundled frameworks unchanged.
-It passes the actual 375x667-point viewport and composes the original
-**Upgrading Database** modal, but fails Inbox after 120.194 seconds; all 22 later
-task steps are blocked. Receipt
-**a942c4f5bd0a765a7d02e381cabcb59811fcaddff158671127541aa7f0bc4ee0**
-and all 84 files were verified. The saved main thread is in CoreGraphics/vImage
-composition and other live guest workers are in event waits. This does not
-establish a dispatch deadlock.
+The latest selected run is
+[39694944246](https://github.com/taowen/arlinux-xnu/actions/runs/39694944246),
+source **fd62d33aada116678a8bb98057e1c52614d9e20b**, PID/start 6014/91271.
+It executes unchanged Things iPhone 3.17.1/build 31701001 and bundled frameworks,
+passes the actual 375x667-point viewport and displays **Upgrading Database**,
+but fails Inbox after 30.11 s; all 22 later task steps are blocked. Receipt
+**9524db79443aee2a6bd37276038df5043c7f393b9dd22ac465669b3f434f61fd**
+and all 84 files were verified. The actual UIKit sample reports active state,
+protectedDataAvailable=true, and no ongoing presentation/dismissal or transition
+coordinator on the root/child controllers. Those observations do not prove the
+cause of initialization's failure or describe every earlier startup instant.
 
-The former ThingsCommon trap force-unwrapped a nil group-container URL. The
-loader now parses original XML membership with libplist and registers actual
-shared Linux writable directories; Foundation resolves their real URLs. No
-Things identifier is hardcoded. Real writev preserves previously lost framework
-errors: AppCenter SQLite reports an open failure, and SecTask lacks DER data.
-The original SQLite statfs64 request now uses real mount/space metadata and no
-longer returns ENOSYS. SQLite advances to unsupported guarded_open_np (441),
-with AppCenter's database error changing from 10 to 14. This is file-I/O progress,
-not app success. Guarded calls now follow Darling's real-I/O, unenforced-guard
-policy, and access(W_OK) uses actual writable-root permissions; the original-app
-verification of those newer changes is pending.
+The saved main thread composes through CoreGraphics/vImage; live guest workers
+are in event waits. The existing LLDB collector now retains bounded actual
+workloop ownership and original IPA image metadata. Some workloop IDs have no
+readable label and the list is truncated; no dispatch-deadlock verdict follows.
+Static inspection locates the original THCDatabaseComponent.startUpgrade export,
+NSOperationQueue imports and Swift task creation/switch imports. The next task is
+to trace its actual startup/event/completion path, rather than fixing incidental
+SDK messages as if they explained the persistent upgrade screen.
 
-The same pinned IPA hash is verified after download from the declared official
-Archive.org storage mirror ia601807.us.archive.org. This run completes in 278 s,
-versus 538 s for the earlier writev run 39691084207; actual journeys remain about
-136-137 s. The input-preparation delay is removed in this observation, not a
-future network guarantee. Mapping failure arguments/callers also now retain an
-independent eight-request budget after successful startup mappings exhausted
-the old trace budget; their frequency is not a cause verdict.
+### Proven reusable boundary changes
 
-The IPA has XML but no DER entitlements. Native iOS SecTask requests DER without
-XML fallback; conversion remains explicitly unsupported. Group preferences,
-keychain, DER-only membership and last-member removal are also incomplete.
-Exact input URL/version/hash and distribution limits are in APPS.md and
-apps/things/app.json. Create/edit/complete and data survival across normal
-close/reopen remain unverified; no fixture can substitute for those requirements.
+The former ThingsCommon trap force-unwrapped a nil group-container URL. Original
+XML membership now registers real shared Linux writable roots; Foundation returns
+their actual URLs. No Things identifier is hardcoded. Linux writev preserves
+previously lost framework diagnostics. Named statfs64 uses real mount metadata;
+guarded file calls use Darling's real-I/O, unenforced-guard policy. access(W_OK)
+checks actual writable-root permissions. POSIX/OFD lock records translate to real
+Linux fcntl; the full run records successful OFD GETLK and SETLK operations.
+
+The original AppCenter SQLite SDK now creates a real 20,480-byte Logs.sqlite and
+its previous open-failure message disappears. This is the SDK database, not
+Things' task database; the main UI does not advance. File-mapping failures retain
+a separate eight-request argument/caller budget instead of being hidden by
+successful startup mappings. Their frequency is not a root-cause verdict.
+
+The identical IPA is obtained from declared official Archive.org storage mirrors
+and verified against its pinned size/SHA-256 before extraction. The actual URL is
+recorded. A 185-second total download budget replaces independent long retries
+that previously delayed a full run by roughly 548 s. Timing can still vary with
+the network; no binary is substituted or uploaded as evidence.
+
+XML-to-DER entitlement conversion remains explicitly unsupported; SecTask still
+reports it. Group preferences/keychain, DER-only membership and last-member
+removal are incomplete. Exact input URL/version/hash and distribution limits
+are in APPS.md and apps/things/app.json. Creating/editing/completing tasks and
+saved data across normal close/reopen are unverified. No fixture substitutes
+for these original-app requirements.

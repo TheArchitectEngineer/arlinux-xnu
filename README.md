@@ -5,7 +5,7 @@ Linux/Android. **Counter and Swift/UIKit interaction, close/relaunch, Console
 and Foundation journeys pass on Linux. Notes also passes text entry, atomic save
 and new-process readback. Foreground Foundation HTTP now passes a real request,
 normal close and a second request from a new process. The full recovery run
-39690482740 passes 17/20 journeys, including the Canvas layout correction;
+39694034223 passes 17/20 journeys, including the Canvas layout correction;
 Things, Web and Share remain incomplete. Apple's original Calculator binary passes
 real composed display, external pointer calculation and normal close/relaunch
 in iPhone-sized portrait and landscape Linux journeys. Its former key overlap
