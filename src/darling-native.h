@@ -104,6 +104,7 @@ static void darling_unblock(uint64_t *saved)
 /* The exact upstream generator output is built on the runner and consumed as
  * a system include, retaining upstream diagnostics policy for generated code. */
 #include <src/rpc.c>
+#include "diagnostics/mach-wakeup.h"
 
 static int darling_socket(void)
 {
@@ -254,9 +255,50 @@ static long darling_mach_msg2(const unsigned long long *r)
     if((effective_options&D_MACH_RCV_MSG) && (options&D_MACH_RCV_SYNC_WAIT) &&
        !(options&D_MACH_SEND_SYNC_OVERRIDE)) legacy_priority=(uint32_t)r[3];
     long result=0;
+    struct native_mach_wakeup_observation *sent=NULL,*waited=NULL;
+    if(native_diagnose_syscalls) {
+        uint32_t header[6];
+        if((effective_options&D_MACH_SEND_MSG) && send_size==sizeof(header) &&
+           !guest_copy(header,message,sizeof(header),0) && !(header[0]&D_MACH_MSG_COMPLEX)) {
+            sent=native_mach_wakeup(header[2]);
+            if(sent) {
+                __atomic_fetch_add(&sent->sends_started,1,__ATOMIC_RELAXED);
+                __atomic_store_n(&sent->message_id,header[5],__ATOMIC_RELAXED);
+                __atomic_store_n(&sent->send_tid,RAW(SYS_gettid,0,0,0,0,0,0),__ATOMIC_RELAXED);
+            }
+        }
+        if((effective_options&(D_MACH_SEND_MSG|D_MACH_RCV_MSG))==D_MACH_RCV_MSG) {
+            waited=native_mach_wakeup(receive_name);
+            if(waited)__atomic_fetch_add(&waited->waits_started,1,__ATOMIC_RELAXED);
+        }
+    }
     if(!receive_error || (options&D_MACH_SEND_MSG))
         result=dserver_rpc_mach_msg_overwrite((void *)message,effective_options,send_size,receive_size,
             receive_name,(uint32_t)r[7],legacy_priority,(void *)receive);
+    if(sent) {
+        __atomic_fetch_add(&sent->sends_completed,1,__ATOMIC_RELAXED);
+        __atomic_store_n(&sent->send_result,result,__ATOMIC_RELAXED);
+        if(result) {
+            __atomic_fetch_add(&sent->send_errors,1,__ATOMIC_RELAXED);
+            __atomic_store_n(&sent->last_error,result,__ATOMIC_RELAXED);
+        }
+    }
+    if(waited) {
+        __atomic_fetch_add(&waited->waits_completed,1,__ATOMIC_RELAXED);
+        __atomic_store_n(&waited->wait_result,result,__ATOMIC_RELAXED);
+    }
+    if(native_diagnose_syscalls && !result && (effective_options&D_MACH_RCV_MSG) && receive_size>=24) {
+        uint32_t header[6];
+        if(!guest_copy(header,receive ? receive : message,sizeof(header),0) &&
+           header[1]==sizeof(header) && !(header[0]&D_MACH_MSG_COMPLEX)) {
+            struct native_mach_wakeup_observation *entry=native_mach_wakeup(header[3]);
+            if(entry) {
+                __atomic_fetch_add(&entry->received,1,__ATOMIC_RELAXED);
+                __atomic_store_n(&entry->received_on,receive_name,__ATOMIC_RELAXED);
+                __atomic_store_n(&entry->receive_tid,RAW(SYS_gettid,0,0,0,0,0,0),__ATOMIC_RELAXED);
+            }
+        }
+    }
     if(!result && receive_error)result=receive_error;
     if(auxiliary && !receive_error && (options&D_MACH_RCV_MSG)) {
         /* ipc_kmsg_put_vector_to_user: a scalar/no-aux message produces an

@@ -123,6 +123,12 @@ class Processes:
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
             stderr=Path(item['stdout']).with_suffix('.stderr')
             if stderr.is_file():arguments.extend(['--stderr',stderr])
+            if (os.environ.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' and
+                'APP_WORKER_QUEUE stage=background' in Path(item['stdout']).read_text(errors='replace') and
+                'APP_WORKER_QUEUE stage=main' not in Path(item['stdout']).read_text(errors='replace')):
+                for symbol in ('_dispatch_main_q','_dispatch_get_main_queue_port_4CF',
+                    '_dispatch_main_queue_callback_4CF','_dispatch_runloop_queue_poke','_dispatch_main_queue_wakeup'):
+                    arguments.extend(['--lookup','/usr/lib/system/libdispatch.dylib',symbol])
             if 'fileSystemRepresentationWithPath:]: nil or empty path argument' in stderr.read_text(errors='replace'):
                 for symbol in ('_CheckSandboxAccess','-[TIImageCacheClient initWithLocalAccess:]'):
                     arguments.extend(['--lookup','/System/Library/PrivateFrameworks/TextInput.framework/TextInput',symbol])
@@ -164,6 +170,15 @@ class Processes:
         except (OSError,ValueError) as error:
             self.diagnostic['collectionErrors'].append('Runtime symbols unavailable: '+str(error))
             symbols=[]
+        if os.environ.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1':
+            commands.insert(-1,'target variable native_mach_wakeups native_mach_wakeups_omitted')
+            for record in symbols:
+                if record.get('symbol')!='_dispatch_main_q':continue
+                address=int(record['address'],16)
+                maps=Path(f'/proc/{pid}/maps').read_text()
+                if any(int(begin,16)<=address and address+128<=int(end,16) and permissions[:3]=='rw-'
+                       for begin,end,permissions in re.findall(r'^([0-9a-f]+)-([0-9a-f]+) ([-rwxps]{4}) ',maps,re.M)):
+                    commands.insert(-1,f'memory read --format x --size 8 --count 16 {address:#x}')
         if any('Atlas5Image2mlEv' in record.get('nearestSymbol','') and 'faultContext' in record for record in symbols):
             register=re.search(r'DARWIN_FAULT_REGISTER index=0x0*13 pc=\S+ result=(0x[0-9a-f]+)',runtime)
             if register:
