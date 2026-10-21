@@ -134,10 +134,13 @@ static void update_scene(const struct arlinux_ios_window_state *window)
             if(!before || !after || !diff || !context)unsupported("scene update inputs");
             fprintf(stderr,"IOS_SCENE_UPDATE_BEGIN pid=%u incarnation=%u active=%u width=%u height=%u\n",
                 next.pid,next.incarnation,!!(next.flags&ARLINUX_IOS_WINDOW_ACTIVE),next.width,next.height);
-            [owned_scene updater:updater didUpdateSettings:after withDiff:diff transitionContext:context completion:^(id error) {
-                if(error)unsupported("scene settings update completion");
+            [owned_scene updater:updater didUpdateSettings:after withDiff:diff transitionContext:context completion:^(id result) {
+                /* The update entry does not declare an NSError-out contract.
+                 * Retain its opaque completion value as evidence; delivery of
+                 * a callback is not proof that UIKit reached the desired state. */
                 applied_window=next;scene_update_pending=0;
-                fprintf(stderr,"IOS_SCENE_UPDATE_COMPLETION pid=%u active=%u\n",next.pid,!!(next.flags&ARLINUX_IOS_WINDOW_ACTIVE));
+                fprintf(stderr,"IOS_SCENE_UPDATE_COMPLETION pid=%u active=%u value=%p app_acceptance=false\n",
+                    next.pid,!!(next.flags&ARLINUX_IOS_WINDOW_ACTIVE),(void *)result);
             }];
         } @catch(NSException *exception) {log_scene_exception(exception);@throw;}
     }];

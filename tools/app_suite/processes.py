@@ -43,6 +43,7 @@ class Processes:
             raise RuntimeError('Shared compatibility session identity changed')
         for name, item in self.processes.items():
             if item.get('faultObserved'):
+                self.diagnostic_target=name
                 raise RuntimeError(f'{name} faulted; collecting original-process diagnosis')
             if not self.reference:
                 trace=Path(item['runtime'])
@@ -53,8 +54,10 @@ class Processes:
                     item['faultScanTail']=observed[-64:]
                     if b'DARWIN_FAULT signal=' in observed or b'DARLING_RPC_FATAL ' in observed:
                         item['faultObserved']=True
+                        self.diagnostic_target=name
                         raise RuntimeError(f'{name} faulted; collecting original-process diagnosis')
             if item['process'].poll() is not None and not item.get('expectedExit'):
+                self.diagnostic_target=name
                 raise RuntimeError(f'{name} exited unexpectedly: {item["process"].returncode}')
 
     def launch(self, name):
