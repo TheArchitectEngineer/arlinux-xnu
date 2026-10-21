@@ -97,7 +97,7 @@ establish arbitrary helper cleanup or background lifecycle behavior.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Network | No HTTP request reached the real local peer and Network 42 never appeared. Actual socket (97) and NECP (501/502) calls return ENOSYS; that alone does not prove which boundary prevented this request. Separate submission, task/completion and main delivery before choosing the adaptation. |
+| Network | The real NSURLSession task resumes, completes with NSURLErrorDomain -1009 and updates the label to Network failed through the actual main queue. No request reaches the HTTP peer. Network.framework path evaluation reaches unsupported NECP (501/502); socket (97) failures observed here originate in ASL logging, not an HTTP connection. The Linux network path/transport boundary remains unimplemented. |
 | Web | Original WebCore::IOSurface::maximumSize() reaches IOSurfaceClientGetPropertyMaximum and aborts because the IOSurface kernel service is absent. WebContent launch is also unimplemented. No DOM/helper/presentation acceptance. |
 | Share | The flow waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
 
@@ -113,6 +113,18 @@ and 48 files were verified. Queue generations are **5864/19727** and
 **5927/20124** (PID/startTicks). Journeys total 15.579 s, including 8.947 s for
 queue; overall feedback takes 142 s. This partial pass neither establishes the
 intermittent cause nor certifies the other apps with this changed source.
+
+The Network boundary above is verified in selected run
+[39549663365](https://github.com/taowen/arlinux-xnu/actions/runs/39549663365),
+source **de2b844953b4955ac61aceed4f1e434ae0fdeb38**, attempt 1, with process
+**5758/19129** (PID/startTicks). Receipt
+**9c277b68b7bb6854ebb0c2def15c25e9c6489e0c11cb35765f9e45383065e526**
+and all 25 files were verified. It fails 0/1 with no retry: actual source phase
+records reach submit, created, resumed, completion and main; the composed
+inspection contains Network failed and the HTTP peer log is empty. This rules
+out missing button/task/main delivery for this attempt, not intermittent queue
+failures elsewhere. Feedback takes 149 s overall / 21.614 s journey, including
+10.153 s diagnosis. It is diagnosis, not a network compatibility repair.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
