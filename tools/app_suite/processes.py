@@ -233,8 +233,20 @@ class Processes:
             log.read_text(errors='replace'),re.M)
         if not started:return
         try:
-            command(sys.executable,ROOT/'tools/symbolicate-cache.py',cache,log,
-                self.directory/'service-runtime.symbols.json',capture_output=True)
+            arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,log,
+                self.directory/'service-runtime.symbols.json']
+            session_text=log.read_text(errors='replace')
+            if 'BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=400002c7 ' in session_text or \
+               'BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=400002ce ' in session_text:
+                # Original helpers requested bootstrap/service metadata. Read
+                # their actual reply consumers before implementing wire keys;
+                # this is tied to that observed failure, not a symbol dump for
+                # every app or an invented managed-service flag.
+                image='/usr/lib/system/libxpc.dylib'
+                for symbol in ('_xpc_copy_bootstrap','__xpc_copy_xpcservice_dictionary'):
+                    arguments+=['--lookup',image,symbol]
+                arguments+=['--list-symbols',image,'xpcservice']
+            command(*arguments,capture_output=True)
         except (OSError,RuntimeError,subprocess.SubprocessError) as error:
             self.diagnostic['collectionErrors'].append('Service runtime symbolication: '+str(error))
         peers=[('session',self.session)]
