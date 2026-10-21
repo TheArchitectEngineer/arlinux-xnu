@@ -99,6 +99,75 @@ static int session_error_reply(mach_msg_header_t *header,void *output,size_t cap
     return 1;
 }
 
+/* A service's bootstrap dictionary is launch configuration, not a connection
+ * endpoint. Keep actual owned values/rights under the caller's audited lifetime;
+ * no process, successful lookup or ready service is invented by storing it. */
+static struct launch_bootstrap {
+    uint32_t pid,incarnation;
+    int pidfd;
+    char *name;
+    spc_dictionary_t *configuration;
+    struct launch_bootstrap *next;
+} *launch_bootstraps;
+static unsigned int launch_bootstrap_count;
+static void launch_bootstrap_tick(void)
+{
+    struct launch_bootstrap **slot=&launch_bootstraps;
+    while(*slot) {
+        struct launch_bootstrap *entry=*slot;
+        struct pollfd fd={.fd=entry->pidfd,.events=POLLIN};
+        int ready=poll(&fd,1,0);
+        if(ready<0 && errno==EINTR)continue;
+        if(ready<0 || (ready && !(fd.revents&POLLIN)))abort();
+        if(!ready){slot=&entry->next;continue;}
+        fprintf(stderr,"SESSION_BOOTSTRAP_RETIRED pid=%u incarnation=%u service=%s\n",
+            entry->pid,entry->incarnation,entry->name);
+        *slot=entry->next;launch_bootstrap_count--;
+        spc_dictionary_destroy(entry->configuration);close(entry->pidfd);free(entry->name);free(entry);
+    }
+}
+static void launch_bootstrap_shape(spc_dictionary_t *dictionary)
+{
+    /* Names/types only. Environment values, raw bodies and credentials never
+     * enter logs; the actual dictionary remains private in runtime memory. */
+    unsigned int count=0;
+    for(spc_dictionary_item_t *item=dictionary->items;item;item=item->next) {
+        if(count++==32){fprintf(stderr,"SESSION_BOOTSTRAP_FIELDS_TRUNCATED limit=32\n");break;}
+        fprintf(stderr,"SESSION_BOOTSTRAP_FIELD key=%.128s type=%x\n",item->key,item->value.type);
+    }
+}
+static int launch_bootstrap_store(spc_dictionary_t *request,const char *name,const uint32_t *audit)
+{
+    spc_dictionary_item_t *data=spc_dictionary_lookup(request,"bootstrap");
+    if(!audit || !audit[5] || !name || !*name || strlen(name)>=D_BOOTSTRAP_NAME_MAX ||
+       spc_dictionary_get_uint64(request,"type")!=5 ||
+       spc_dictionary_get_uint64(request,"handle")!=audit[5] ||
+       !data || data->value.type!=SPC_TYPE_DICT || !data->value.value.dict)return D_EINVAL;
+    launch_bootstrap_tick();
+    struct launch_bootstrap *entry=launch_bootstraps;
+    while(entry && !(entry->pid==audit[5] && entry->incarnation==audit[7] && !strcmp(entry->name,name)))entry=entry->next;
+    if(!darwin_native_host_process_matches(audit[5],audit[7]))return D_ESRCH;
+    if(!entry) {
+        if(launch_bootstrap_count==32)return D_ENOMEM;
+        entry=calloc(1,sizeof(*entry));if(!entry)return D_ENOMEM;
+        entry->pidfd=syscall(SYS_pidfd_open,audit[5],0);
+        entry->name=strdup(name);
+        if(entry->pidfd<0 || !entry->name || !darwin_native_host_process_matches(audit[5],audit[7])) {
+            if(entry->pidfd>=0)close(entry->pidfd);
+            free(entry->name);free(entry);return D_ESRCH;
+        }
+        entry->pid=audit[5];entry->incarnation=audit[7];
+        entry->next=launch_bootstraps;launch_bootstraps=entry;launch_bootstrap_count++;
+    }
+    if(entry->configuration)spc_dictionary_destroy(entry->configuration);
+    entry->configuration=data->value.value.dict;
+    data->value=spc_null_create(); /* Transfer codec ownership exactly once. */
+    fprintf(stderr,"SESSION_BOOTSTRAP_STORED pid=%u incarnation=%u service=%s fields=%zu\n",
+        entry->pid,entry->incarnation,entry->name,entry->configuration->num_items);
+    launch_bootstrap_shape(entry->configuration);
+    return 0;
+}
+
 int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
 {
     mach_msg_header_t *header=request;
@@ -120,7 +189,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
             fprintf(stderr,"BOOTSTRAP_XPC_FIELD key=%.128s type=%x value=%.512s\n",item->key,item->value.type,item->value.value.str);
         else fprintf(stderr,"BOOTSTRAP_XPC_FIELD key=%.128s type=%x\n",item->key,item->value.type);
     }
-    if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U) {
+    int set_bootstrap=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x2c6U;
+    if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U && !set_bootstrap) {
         /* Unknown interface routines keep the actual unsupported response. */
         fprintf(stderr,"BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=%x bytes=%u\n",header->msgh_id,header->msgh_size);
         /* Scalar routing fields are logged above; don't dump arbitrary OOL
@@ -129,6 +199,7 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     }
     int error=D_ENOTSUP;
     uint32_t port=0;
+    if(set_bootstrap)error=launch_bootstrap_store(message->content,name,audit);
     /* libspc connection.c: spc_domain_routine / spc_look_up_endpoint.
      * Only this process's default namespace is currently implemented. */
     /* Real __xpc_pipe_pack_message emits packed routine IDs but still uses
@@ -155,7 +226,7 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     spc_dictionary_set_uint64(reply,"rec_execcnt",incarnation);
     fprintf(stderr,"BOOTSTRAP_XPC_IDENTITY pid=%u incarnation=%u\n",requester,incarnation);
     spc_dictionary_set_int64(reply,"error",error);
-    if (!error) spc_dictionary_set_send_port(reply,"port",port);
+    if (!error && !set_bootstrap) spc_dictionary_set_send_port(reply,"port",port);
     spc_message_t response={.remote_port={header->msgh_remote_port,D_MACH_TYPE_MOVE_SEND_ONCE},
         .id=0x20000000,.content=reply};
     spc_mach_message_t *encoded=spc_serialize(&response);
@@ -236,6 +307,7 @@ static void session_peer_destroy(struct processinfo_peer *peer)
 
 void arlinux_xpc_session_tick(void)
 {
+    launch_bootstrap_tick();
     struct session_display **display_slot=&session_displays;
     while (*display_slot) {
         struct session_display *display=*display_slot;

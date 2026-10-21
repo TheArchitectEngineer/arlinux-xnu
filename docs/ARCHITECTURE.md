@@ -152,6 +152,13 @@ Web now reaches actual WebContent/Networking discovery rather than aborting in
 the IOSurface property queries; no DOM content has passed. Real helper launch,
 connection and retirement remain required under the Linux-owned session.
 
+The session's bootstrap-setting operation retains the actual codec-owned
+initialization dictionary and Mach rights per audited caller PID/incarnation
+and service name, with a pidfd-backed lifetime. Replacing or retiring a context
+releases its real ownership. Its acknowledgement means configuration stored;
+it neither returns a connection port nor claims a helper was started. Actual
+instance-scoped service launch/check-in is still required.
+
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor
 validation and final memory protections. Shared mappings follow XNU's existing
