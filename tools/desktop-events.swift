@@ -45,12 +45,16 @@ case "sample":
         context.draw(crop,in:CGRect(x:0,y:0,width:width,height:height))
     }
     var ink=0,white=0,red=0,green=0
+    var luminance=[Int](repeating:0,count:256)
     for i in stride(from:0,to:bytes.count,by:4) {
         let r=bytes[i],g=bytes[i+1],b=bytes[i+2]
+        luminance[(Int(r)*19595+Int(g)*38470+Int(b)*7471+32768)>>16]+=1
         if min(r,g,b)<220 { ink+=1 }; if min(r,g,b)>240 { white+=1 }
         if r>200 && g<70 && b<70 { red+=1 };if g>200 && r<70 && b<70 { green+=1 }
     }
-    try output(["pixels":width*height,"ink":ink,"white":white,"red":red,"green":green,
+    let occupied=luminance.indices.filter{luminance[$0]>=8}
+    let contrastSpan=occupied.isEmpty ? 0 : occupied.last!-occupied.first!
+    try output(["pixels":width*height,"ink":ink,"white":white,"red":red,"green":green,"contrastSpan":contrastSpan,
                 "sha256":SHA256.hash(data:Data(bytes)).map{String(format:"%02x",$0)}.joined()] as [String:Any])
 case "type":
     guard args.count==3 else { fatalError("Expected text") }

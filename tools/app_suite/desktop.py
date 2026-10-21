@@ -59,9 +59,11 @@ class Desktop:
         with Image.open(path) as image:
             if x<0 or y<0 or x+w>image.width or y+h>image.height:raise RuntimeError('Target is outside actual composed display')
             crop=image.convert('RGB').crop((x,y,x+w,y+h));pixels=list(crop.getdata())
+        occupied=[i for i,count in enumerate(crop.convert('L').histogram()) if count>=8]
         return {'pixels':len(pixels),'ink':sum(min(p)<220 for p in pixels),'white':sum(min(p)>240 for p in pixels),
                 'red':sum(p[0]>200 and p[1]<70 and p[2]<70 for p in pixels),
                 'green':sum(p[1]>200 and p[0]<70 and p[2]<70 for p in pixels),
+                'contrastSpan':occupied[-1]-occupied[0] if occupied else 0,
                 'sha256':hashlib.sha256(crop.tobytes()).hexdigest()}
 
     def observe(self,pattern,word=False,timeout_seconds=8,region=None):
@@ -96,12 +98,7 @@ class Desktop:
                 if self.apps[self.current].get('pixelAppearance')=='mixed':
                     # Original apps may have dark, colored or light surfaces.
                     # Require contrasting real pixels, not a particular theme.
-                    from PIL import Image
-                    with Image.open(path) as image:
-                        x,y,w,h=rect
-                        luminance=image.convert('L').crop((x,y,x+w,y+h)).histogram()
-                    occupied=[i for i,count in enumerate(luminance) if count>=8]
-                    painted=bool(occupied) and occupied[-1]-occupied[0]>=48
+                    painted=pixels['contrastSpan']>=48
                 if changed and painted:
                     self.painted[key]={'text':matches[0]['text'],'sha256':pixels['sha256']}
                     return {**matches[0],'screenRect':rect}
