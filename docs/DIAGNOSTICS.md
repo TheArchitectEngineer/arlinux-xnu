@@ -285,6 +285,12 @@ not replace calculation results or invoke control actions. Input preparation
 records the original bundle/version, actual Mach-O ISA/encryption/dependencies,
 executable and resource hashes; unsupported or unavailable inputs fail their
 own journey. No extracted Apple app is uploaded with products or evidence.
+With --lifecycle-context, that observer also retains one bounded visible view
+tree with screen/native bounds/scales, size classes, actual class ancestry,
+view transforms and layer geometry/clipping/contents properties. It changes
+no layout or drawing. Use APP_RENDER_GEOMETRY alongside the composed screenshot
+to distinguish a real layout overlap from lost masks/transforms in composition;
+calculation success alone does not certify rendering fidelity.
 Raw frame captures publish by atomic rename only after complete write/close.
 An interrupted temporary frame is explicitly unpublished and removed before
 encoding; the previous completed frame remains intact. Final published-frame

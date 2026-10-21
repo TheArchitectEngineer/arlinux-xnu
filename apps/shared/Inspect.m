@@ -2,6 +2,7 @@
 #import <QuartzCore/QuartzCore.h>
 #include <stdio.h>
 #ifdef ARLINUX_PLATFORM_INSPECTION
+#import <objc/runtime.h>
 #include <stdlib.h>
 #include <string.h>
 #endif
@@ -10,6 +11,44 @@ static NSMutableSet *visited;
 static UIWindow *current;
 static __weak UIView *observedRoot;
 static NSUInteger becameActive,resignedActive;
+#ifdef ARLINUX_PLATFORM_INSPECTION
+static NSArray *rect_values(CGRect rect) {
+    return @[@(rect.origin.x),@(rect.origin.y),@(rect.size.width),@(rect.size.height)];
+}
+static void collect_geometry(UIView *view,NSMutableArray *records,unsigned depth) {
+    if (depth>18 || records.count>=128 || view.hidden || view.alpha<0.01) return;
+    CALayer *layer=view.layer;CGAffineTransform transform=view.transform;
+    NSMutableArray *classes=[NSMutableArray new];
+    for (Class cls=view.class;cls && classes.count<8;cls=class_getSuperclass(cls))
+        [classes addObject:NSStringFromClass(cls)];
+    [records addObject:@{@"depth":@(depth),@"classes":classes,@"frame":rect_values(view.frame),
+        @"bounds":rect_values(view.bounds),@"transform":@[@(transform.a),@(transform.b),@(transform.c),@(transform.d),@(transform.tx),@(transform.ty)],
+        @"layerFrame":rect_values(layer.frame),@"layerBounds":rect_values(layer.bounds),
+        @"cornerRadius":@(layer.cornerRadius),@"masksToBounds":@(layer.masksToBounds),
+        @"maskClass":layer.mask ? NSStringFromClass(layer.mask.class) : @"<absent>",
+        @"maskBounds":rect_values(layer.mask ? layer.mask.bounds : CGRectZero),
+        @"contentsScale":@(layer.contentsScale),@"contentsRect":rect_values(layer.contentsRect),
+        @"contentsCenter":rect_values(layer.contentsCenter),@"contentsGravity":layer.contentsGravity ?: @"<absent>"}];
+    for (UIView *child in view.subviews) collect_geometry(child,records,depth+1);
+}
+static void observe_geometry(UIWindow *window) {
+    static BOOL recorded;
+    const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
+    if (recorded || !enabled || strcmp(enabled,"1")) return;
+    recorded=YES;
+    UIScreen *screen=window.screen;NSMutableArray *views=[NSMutableArray new];
+    collect_geometry(window,views,0);
+    NSDictionary *value=@{@"windowBounds":rect_values(window.bounds),
+        @"screenBounds":rect_values(screen.bounds),@"nativeBounds":rect_values(screen.nativeBounds),
+        @"screenScale":@(screen.scale),@"nativeScale":@(screen.nativeScale),
+        @"idiom":@([UIDevice currentDevice].userInterfaceIdiom),
+        @"horizontalSizeClass":@(window.traitCollection.horizontalSizeClass),
+        @"verticalSizeClass":@(window.traitCollection.verticalSizeClass),
+        @"views":views,@"viewLimit":@128,@"limitReached":@(views.count>=128)};
+    NSData *json=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:nil];
+    if (json) { fwrite("APP_RENDER_GEOMETRY ",1,20,stdout);fwrite(json.bytes,1,json.length,stdout);fputc('\n',stdout);fflush(stdout); }
+}
+#endif
 static void inspect(id object,unsigned depth) {
     if (!object || depth>18 || elements.count>300) return;
     NSValue *identity=[NSValue valueWithNonretainedObject:object];
@@ -55,6 +94,9 @@ static void snapshot(void) {
 #endif
     UIWindow *window=[root isKindOfClass:UIWindow.class] ? (UIWindow *)root : root.window;
     if (!window || window.hidden) return;
+#ifdef ARLINUX_PLATFORM_INSPECTION
+    observe_geometry(window);
+#endif
     current=window;elements=[NSMutableArray new];visited=[NSMutableSet new];inspect(window,0);
     CGRect bounds=window.bounds;
     UIApplicationState state=[UIApplication sharedApplication].applicationState;

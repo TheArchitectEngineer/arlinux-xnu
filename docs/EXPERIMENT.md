@@ -17,6 +17,15 @@ container. Apple executable data stays runner-local.
 
 ## Original Calculator: Linux journey passes
 
+Rendering fidelity is **not accepted**: composed screenshots visibly show
+overlapping keypad backgrounds. The functional journey below proves actual
+calculations and lifecycle, not a faithful image. The real view frames are
+about 111.94 points wide with adjacent X origins only about 100.5 points apart.
+That does not by itself identify a layout bug: original clipping, masks and
+transforms must be inspected before assigning the fault to layout or composition.
+No same-binary Apple-host comparison has run; the current reference pipeline
+does not yet acquire firmware apps on macOS.
+
 [Run 39624570392](https://github.com/taowen/arlinux-xnu/actions/runs/39624570392),
 source **6a44e4466a65476500a70b3c8bd3b1b18d06c25a**, attempt 1, passes both
 Calculator and Counter. The original Calculator executable below remains
