@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <sys/uio.h>
 #include <poll.h>
 #include <errno.h>
 #include "darwin-native.h"
@@ -30,17 +31,39 @@ static void session_validate_port_descriptors(const mach_msg_header_t *header,si
     uint32_t count;memcpy(&count,(const unsigned char *)header+sizeof(*header),sizeof(count));
     size_t offset=sizeof(*header)+sizeof(mach_msg_body_t);
     if (count>(length-offset)/sizeof(mach_msg_port_descriptor_t)) abort();
-    for (uint32_t i=0;i<count;i++,offset+=sizeof(mach_msg_port_descriptor_t)) {
+    int unsupported=0;
+    for (uint32_t i=0;i<count;i++) {
+        if(length-offset<sizeof(mach_msg_type_descriptor_t))abort();
         mach_msg_port_descriptor_t descriptor;
         memcpy(&descriptor,(const unsigned char *)header+offset,sizeof(descriptor));
         fprintf(stderr,"XPC_PORT_DESCRIPTOR index=%u type=%u disposition=%u port=%u\n",
             i,descriptor.type,descriptor.disposition,descriptor.name);
+        if(descriptor.type==MACH_MSG_OOL_DESCRIPTOR) {
+            if(length-offset<sizeof(mach_msg_ool_descriptor_t))abort();
+            mach_msg_ool_descriptor_t data;
+            memcpy(&data,(const unsigned char *)header+offset,sizeof(data));
+            /* Read only the received wire framing, never strings or arbitrary
+             * pointer targets. process_vm_readv reports invalid mappings
+             * instead of losing the original unsupported-message evidence. */
+            uint32_t prefix[4]={0};size_t bytes=data.size<sizeof(prefix) ? data.size : sizeof(prefix);
+            struct iovec local={prefix,bytes},remote={(void *)(uintptr_t)data.address,bytes};
+            long read=syscall(SYS_process_vm_readv,getpid(),&local,1,&remote,1,0);
+            fprintf(stderr,"XPC_OOL_DESCRIPTOR index=%u address=%llx bytes=%u copy=%u deallocate=%u prefixBytes=%ld prefix=%08x,%08x,%08x,%08x\n",
+                i,(unsigned long long)data.address,data.size,data.copy,data.deallocate,
+                read,prefix[0],prefix[1],prefix[2],prefix[3]);
+            offset+=sizeof(data);unsupported=1;continue;
+        }
         if (descriptor.type!=MACH_MSG_PORT_DESCRIPTOR ||
             (descriptor.disposition!=D_MACH_TYPE_MOVE_SEND &&
              descriptor.disposition!=D_MACH_TYPE_MOVE_SEND_ONCE)) {
             fprintf(stderr,"XPC_DESCRIPTOR_UNSUPPORTED\n");abort();
         }
+        offset+=sizeof(descriptor);
     }
+    uint32_t prefix[2]={0};size_t available=length-offset;
+    memcpy(prefix,(const unsigned char *)header+offset,available<sizeof(prefix) ? available : sizeof(prefix));
+    fprintf(stderr,"XPC_INLINE_FRAMING offset=%zu bytes=%zu prefix=%08x,%08x\n",offset,available,prefix[0],prefix[1]);
+    if(unsupported){fprintf(stderr,"XPC_DESCRIPTOR_UNSUPPORTED\n");abort();}
 }
 
 int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
