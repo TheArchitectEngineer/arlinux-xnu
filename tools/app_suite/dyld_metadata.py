@@ -32,9 +32,43 @@ def collect(target, info_address, runtime_path):
         return result
 
     def string(address):
+        if not address:return None
         data=read(address,min(1024,capacity(address)))
         if b'\0' not in data:raise ValueError('unbounded metadata string')
         return data.split(b'\0',1)[0].decode('utf-8',errors='replace')
+
+    # Host unwinding can stop inside an optimized SIGSYS adapter. Read its
+    # live kernel-owned ucontext using DWARF, then follow only actual readable
+    # ARM64 frame records. Never scan for plausible PCs or execute the guest.
+    try:
+        threads=target.FindFirstGlobalVariable('native_threads')
+        if not threads.IsValid():raise ValueError('runtime guest threads unavailable')
+        for index in range(threads.GetNumChildren()):
+            thread=threads.GetChildAtIndex(index)
+            if thread.GetChildMemberWithName('state').GetValueAsUnsigned()!=2:continue
+            context=thread.GetChildMemberWithName('diagnostic_syscall_context')
+            if not context.GetValueAsUnsigned():continue
+            machine=context.Dereference().GetChildMemberWithName('uc_mcontext')
+            if not machine.IsValid() or machine.GetError().Fail():raise ValueError('original syscall context unreadable')
+            tid=thread.GetChildMemberWithName('tid').GetValueAsUnsigned()
+            registers=machine.GetChildMemberWithName('regs')
+            pc=machine.GetChildMemberWithName('pc').GetValueAsUnsigned()
+            frame=registers.GetChildAtIndex(29).GetValueAsUnsigned()
+            lr=registers.GetChildAtIndex(30).GetValueAsUnsigned()
+            syscall=registers.GetChildAtIndex(16).GetValueAsUnsigned()
+            print(f'DARWIN_SYSCALL_CONTEXT pc={pc:#x} tid={tid} syscall={syscall:#x}')
+            print(f'DARWIN_SYSCALL_FRAME nr=0x0 pc={lr:#x} tid={tid}')
+            for depth in range(1,25):
+                if not frame or frame%16:break
+                try:parent,returned=struct.unpack('<QQ',read(frame,16))
+                except ValueError as error:
+                    print('DARWIN_SYSCALL_FRAME_UNAVAILABLE',tid,str(error));break
+                print(f'DARWIN_SYSCALL_FRAME nr={depth:#x} pc={returned:#x} tid={tid}')
+                if parent<=frame:break
+                frame=parent
+            else:print('DARWIN_SYSCALL_FRAME_TRUNCATED',tid,'limit=24')
+    except (ValueError,OverflowError) as error:
+        print('DARWIN_SYSCALL_CONTEXT_UNAVAILABLE',str(error))
 
     # Read runtime-owned workloop state through its real DWARF types, then the
     # guest queue label/serial offsets actually registered by libdispatch. No
@@ -58,7 +92,7 @@ def collect(target, info_address, runtime_path):
                 try:fields['guestSerial']=struct.unpack('<Q',read(guest+serial_offset,8))[0]
                 except ValueError as error:fields['serialUnavailable']=str(error)
             if guest and 0<label_offset<=1024:
-                try:fields['guestLabel']=string(struct.unpack('<Q',read(guest+label_offset,8))[0])[:256]
+                try:fields['guestLabel']=(string(struct.unpack('<Q',read(guest+label_offset,8))[0]) or '')[:256]
                 except ValueError as error:fields['labelUnavailable']=str(error)
             print('ORIGINAL_WORKLOOP_METADATA',json.dumps(fields))
             queue=node.GetChildMemberWithName('next')

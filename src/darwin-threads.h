@@ -14,6 +14,9 @@ struct native_thread {
     int launch_state;
     int retire_workqueue;
     int event_queue; uint64_t workloop_id; uint32_t special_reply_port;
+    /* Read-only debugger bridge while SIGSYS is active; absent outside the
+     * opt-in diagnostic profile. The kernel owns this original signal frame. */
+    ucontext_t *diagnostic_syscall_context;
 };
 _Static_assert(offsetof(struct native_thread,tid)==56,"native clone ABI");
 static struct native_thread native_threads[NATIVE_THREADS];

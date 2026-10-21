@@ -27,7 +27,8 @@ if args.lookup_bytes is not None and (not 4<=args.lookup_bytes<=4096 or args.loo
     parser.error('--lookup-bytes must be a multiple of 4 between 4 and 4096')
 trace=args.trace.read_text(errors='replace')
 if args.stderr:trace+='\n'+args.stderr.read_text(errors='replace')
-patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED|MMAP_FAILURE)_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
+patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED|MMAP_FAILURE|SYSCALL)_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
+          r'DARWIN_SYSCALL_CONTEXT pc=(0x[0-9a-fA-F]+)',
           r'NORMAL_RUNTIME_FAULT_PC (0x[0-9a-fA-F]+)',
           r'DARWIN_NATIVE_FAULT[^\n]*\nDARWIN_CALL nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)']
@@ -36,13 +37,15 @@ exception_returns={int(pc,16) for pc in re.findall(r'IOS_UNCAUGHT_EXCEPTION_FRAM
 frames=sorted(set(frames)|exception_returns)
 faults={int(pc,16) for pc in re.findall(r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
 returns={int(pc,16):int(index,16) for index,pc in re.findall(
-    r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED|MMAP_FAILURE)_FRAME nr=0x([0-9a-fA-F]+) pc=(0x[0-9a-fA-F]+)',trace)}
+    r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED|MMAP_FAILURE|SYSCALL)_FRAME nr=0x([0-9a-fA-F]+) pc=(0x[0-9a-fA-F]+)',trace)}
 returns.update({pc:0 for pc in exception_returns})
 unsupported_returns={int(pc,16) for pc in re.findall(
     r'DARWIN_UNIMPLEMENTED_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
 unsupported_returns.update(exception_returns)
 unsupported_returns.update(int(pc,16) for pc in re.findall(
     r'DARWIN_MMAP_FAILURE_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',trace))
+unsupported_returns.update(int(pc,16) for pc in re.findall(
+    r'DARWIN_SYSCALL_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',trace))
 stack_returns={int(pc,16) for index,pc in re.findall(r'frame #(\d+): (0x[0-9a-fA-F]+)',trace) if int(index)>0}
 def lookup_pc(pc):return pc-4 if (pc in returns or pc in stack_returns) and pc not in faults else pc
 fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(

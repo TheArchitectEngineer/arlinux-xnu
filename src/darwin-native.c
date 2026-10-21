@@ -526,7 +526,7 @@ static void trace_getattrlist(const unsigned long long *r,unsigned long pc)
         trace_record("DARWIN_GETATTRLIST_GROUP index=0x",i,pc,attributes[i]);
 }
 
-static void dispatch(int signal, siginfo_t *info, void *context)
+static void dispatch_impl(int signal, siginfo_t *info, void *context)
 {
     /* No errno, malloc, pthread, stdio or other host libc operation here.
      * Guest may have replaced TPIDR_EL0 with its own TSD base. */
@@ -1066,6 +1066,15 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         r[0] = result;
         uc->uc_mcontext.pstate &= ~CARRY;
     }
+}
+
+static void dispatch(int signal, siginfo_t *info, void *context)
+{
+    struct native_thread *thread=native_diagnose_syscalls ? native_current_thread() : NULL;
+    ucontext_t *previous=thread ? thread->diagnostic_syscall_context : NULL;
+    if(thread)__atomic_store_n(&thread->diagnostic_syscall_context,context,__ATOMIC_RELEASE);
+    dispatch_impl(signal,info,context);
+    if(thread)__atomic_store_n(&thread->diagnostic_syscall_context,previous,__ATOMIC_RELEASE);
 }
 
 static void trace_fault_maps(void)
