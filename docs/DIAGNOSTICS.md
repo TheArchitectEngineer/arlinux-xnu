@@ -272,6 +272,10 @@ and dyld's own library/segment logging. Only those two explicit diagnostic env
 switches are forwarded through the guest environment allowlist.
 
 Each original app generation has .stdout, .stderr and .runtime.log. The harness
+preserves CoreFoundation's actual vectored stderr writes through Linux writev,
+including short counts and real errors. Framework log messages are evidence,
+not a replacement for the corresponding process stack and app-visible effect.
+The harness
 passes an actual inherited trace descriptor to the runtime; guest writes to stderr
 remain on descriptor 2. Native per-syscall traces no longer split dyld diagnostics
 into tiny interleaved fragments. Host loader/Wayland diagnostics may still share
