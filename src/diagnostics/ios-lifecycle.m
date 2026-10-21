@@ -3,6 +3,7 @@
  * Method names in historical header dumps are only discovery hints. */
 #include <objc/runtime.h>
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -126,10 +127,49 @@ static void record_uncaught(NSException *exception)
      * A returned diagnostic callback does not handle or suppress the throw. */
     if(prior_uncaught)prior_uncaught(exception);
 }
+static int pointer_evidence_enabled;
+void arlinux_ios_pointer_diagnose(UITouch *touch,const char *stage)
+{
+    static unsigned int snapshots;
+    if(!pointer_evidence_enabled || !touch || snapshots++>=8)return;
+    if(snapshots==1) {
+        Class classes[]={[UITouch class],objc_getClass("UITouchesEvent")};
+        for(unsigned c=0;c<2;c++) {
+            unsigned count=0,shown=0;Method *methods=class_copyMethodList(classes[c],&count);
+            for(unsigned i=0;i<count;i++) {
+                const char *name=sel_getName(method_getName(methods[i]));
+                if(!strstr(name,"gesture") && !strstr(name,"Gesture") && !strstr(name,"_addTouch"))continue;
+                if(shown++==32){fprintf(stderr,"IOS_POINTER_METHODS_TRUNCATED class=%s\n",class_getName(classes[c]));break;}
+                fprintf(stderr,"IOS_POINTER_METHOD class=%s selector=%s types=%.256s\n",
+                    class_getName(classes[c]),name,method_getTypeEncoding(methods[i]));
+            }
+            free(methods);
+        }
+    }
+    UIView *view=touch.view;CGPoint point=view ? [touch locationInView:view] : CGPointZero;
+    fprintf(stderr,"IOS_POINTER_STATE stage=%s phase=%ld view=%s local=%g,%g gestures=%lu\n",
+        stage,(long)touch.phase,view ? class_getName(object_getClass(view)) : "<absent>",
+        point.x,point.y,(unsigned long)touch.gestureRecognizers.count);
+    unsigned depth=0,recognizers=0;
+    for(UIView *node=view;node && depth<8;node=node.superview,depth++) {
+        CGRect frame=node.frame,bounds=node.bounds;
+        fprintf(stderr,"IOS_POINTER_ANCESTOR depth=%u class=%s frame=%g,%g,%g,%g bounds=%g,%g,%g,%g enabled=%d gestures=%lu\n",
+            depth,class_getName(object_getClass(node)),frame.origin.x,frame.origin.y,frame.size.width,frame.size.height,
+            bounds.origin.x,bounds.origin.y,bounds.size.width,bounds.size.height,node.userInteractionEnabled,
+            (unsigned long)node.gestureRecognizers.count);
+        for(UIGestureRecognizer *gesture in node.gestureRecognizers) {
+            if(recognizers++>=24)break;
+            fprintf(stderr,"IOS_POINTER_RECOGNIZER depth=%u class=%s enabled=%d state=%ld cancel=%d delay_begin=%d delay_end=%d\n",
+                depth,class_getName(object_getClass(gesture)),gesture.enabled,(long)gesture.state,
+                gesture.cancelsTouchesInView,gesture.delaysTouchesBegan,gesture.delaysTouchesEnded);
+        }
+    }
+}
 void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
 {
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
     if (!enabled || strcmp(enabled,"1")) return;
+    pointer_evidence_enabled=1;
     /* Observe only actual UIKit dispatch. Forward the exact original arguments;
      * never call the app's selector or supply a missing action/event. */
     Class control=objc_getClass("UIControl");

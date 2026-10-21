@@ -178,6 +178,14 @@ the observed public state, real notification counts and PID/start identity;
 diagnosis targets the actual failed peer rather than whichever window was last
 focused. Resolved scene-updater symbol scans are removed from automatic failure
 collection; original-process stacks and fault symbolication remain.
+The same opt-in profile reads at most eight real pointer dispatch snapshots:
+actual touch/event gesture selectors, hit-view coordinates/ancestors and bounded
+recognizer state before/after original UIApplication dispatch. It invokes no
+gesture action and changes no recognizer state. On a pointer-related failure,
+the collector resolves the actual UITouchesEvent add/clear consumers from the
+same cache. A community selector hint must be confirmed on the pinned runtime;
+setGestureView: is absent here and cannot be a required input binding.
+
 These are observed facts, not an automatic root-cause verdict. Full logs and
 original-process stacks remain available. Compare dispatch-to-completion and
 job start offsets; compiler cache hits alone do not measure feedback latency.

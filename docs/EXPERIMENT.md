@@ -14,7 +14,7 @@ sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16 build 20H392,
 Firmware and bundles are read-only; writes use each app's actual private Linux
 container. Apple executable data stays runner-local.
 
-## Latest complete collection
+## Last working complete baseline
 
 [Run 39614075257](https://github.com/taowen/arlinux-xnu/actions/runs/39614075257),
 source **e5541829df527be52376c5120bca7cca3ba3f633**, attempt 1, passes **15/17**
@@ -103,12 +103,22 @@ external input. Receipt
 and all 80 files were verified. Journeys take 76.2 s, including 21.0 s diagnosis;
 total feedback is 202 s. The ineffective hit-test candidate is removed.
 
-The next candidate supplies UIKit's separate gesture routing view before the
-original UITouchesEvent collects recognizers, following
-[KIF's primary implementation](https://github.com/kif-framework/KIF/blob/master/Sources/KIF/Additions/UITouch-KIFAdditions.m).
-Its actual selector ABI is checked and actual recognizer counts are recorded.
-No recognizer, DOM callback or app action is invoked directly. External DOM
-count/pixel change and normal close still require runner acceptance.
+The gesture-view candidate is rejected by the pinned userland:
+[full run 39619598512](https://github.com/taowen/arlinux-xnu/actions/runs/39619598512),
+source **d1908f92c14ce5c4c490d439960280b397b10602**, attempt 1, regresses to
+**4/17**. Its required setGestureView: selector is absent on actual UITouch;
+input initialization aborts before any pointer is delivered. Receipt
+**33b9e1654f5e396898fd233ebf7f3e9eb769f620c9809d5acd218279a4245b69**
+and all 242 files were verified. This is an adapter regression, not an app fault.
+Feedback is 392 s; journeys 242.0 s including 128.2 s of diagnosis.
+
+The unsupported selector requirement and call are removed. The existing opt-in
+lifecycle profile now reads bounded actual touch/event gesture selectors, view
+geometry/ancestors, recognizer counts and states before/after original dispatch.
+The failure collector reads the actual _addTouch:forDelayedDelivery: and
+_clearTouches consumers. No recognizer/action is invoked or state rewritten.
+Recovery of the working baseline and the DOM effect remain unverified until
+the next original app flows run.
 
 This run's journeys take 67.8 s (diagnosis 21.7 s included); total feedback is
 534 s, including delayed GitHub finalization after execution/evidence upload.

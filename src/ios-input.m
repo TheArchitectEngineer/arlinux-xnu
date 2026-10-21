@@ -29,7 +29,6 @@ enum { AR_HID_HAND=3, AR_HID_RANGE=1, AR_HID_TOUCH=2, AR_HID_POSITION=4,
 @interface UITouch (ARLinuxPointer)
 - (void)setWindow:(UIWindow *)window;
 - (void)setView:(UIView *)view;
-- (void)setGestureView:(UIView *)view;
 - (void)setTapCount:(NSUInteger)count;
 - (void)setTimestamp:(NSTimeInterval)timestamp;
 - (void)setPhase:(UITouchPhase)phase;
@@ -50,6 +49,7 @@ static const struct arlinux_ios_platform_api *input_host;
 static UITouch *contact;
 static CGPoint contact_point;
 static unsigned int pointer_bindings;
+void arlinux_ios_pointer_diagnose(UITouch *touch,const char *stage);
 static void (*set_keyboard_attached)(Boolean,uint32_t);
 static BOOL keyboard_available;
 static int keyboard_state_known;
@@ -96,7 +96,6 @@ static void bind_pointer(void)
     const struct {Class cls;const char *selector,*types;} methods[]={
         {[UITouch class],"setWindow:","v24@0:8@16"},
         {[UITouch class],"setView:","v24@0:8@16"},
-        {[UITouch class],"setGestureView:","v24@0:8@16"},
         {[UITouch class],"setTapCount:","v24@0:8Q16"},
         {[UITouch class],"setTimestamp:","v24@0:8d16"},
         {[UITouch class],"setPhase:","v24@0:8q16"},
@@ -136,10 +135,6 @@ static void deliver_contact(UITouchPhase phase,uint64_t time)
     [contact setPhase:phase];[contact setTimestamp:(double)time/1e9];
     [contact _setLocationInWindow:contact_point resetPrevious:phase==UITouchPhaseBegan];
     [contact _setHidEvent:hand];
-    /* UIKit keeps the gesture routing view separately from the responder view.
-     * Follow KIF's touch construction before the original event collects its
-     * recognizers; no recognizer or application action is invoked directly. */
-    if(phase==UITouchPhaseBegan)[contact setGestureView:contact.view];
     UIApplication *app=[UIApplication sharedApplication];
     UIEvent *event=[app _touchesEvent];
     if(!event) {fprintf(stderr,"IOS_INPUT_EVENT_UNAVAILABLE\n");abort();}
@@ -149,7 +144,10 @@ static void deliver_contact(UITouchPhase phase,uint64_t time)
     fprintf(stderr,"IOS_POINTER_DELIVER phase=%ld x=%g y=%g view=%s gestures=%lu\n",(long)phase,
         contact_point.x,contact_point.y,class_getName(object_getClass(contact.view)),
         (unsigned long)contact.gestureRecognizers.count);
-    [app sendEvent:event];CFRelease(hand);
+    arlinux_ios_pointer_diagnose(contact,"before");
+    [app sendEvent:event];
+    arlinux_ios_pointer_diagnose(contact,"after");
+    CFRelease(hand);
     if(!touching) {[event _clearTouches];[contact release];contact=nil;}
 }
 static id<UIKeyInput> find_text_target(UIView *view,unsigned int depth)

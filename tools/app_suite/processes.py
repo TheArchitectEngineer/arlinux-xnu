@@ -231,8 +231,13 @@ class Processes:
             result = subprocess.run(args, stdout=log, stderr=subprocess.STDOUT, timeout=15)
         self.diagnostic.update(identity=live['identity'],status=result.returncode,
             target='failed-step app' if live['app']==target else 'surviving peer')
-        command(sys.executable,ROOT/'tools/symbolicate-cache.py',cache,
-                self.directory/'original-process.lldb.log',self.directory/'original-process.symbols.json',capture_output=True)
+        arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,
+                self.directory/'original-process.lldb.log',self.directory/'original-process.symbols.json']
+        if os.environ.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' and 'IOS_POINTER_DELIVER ' in Path(live['stdout']).with_suffix('.stderr').read_text(errors='replace'):
+            image='/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore'
+            for selector in ('_addTouch:forDelayedDelivery:','_clearTouches'):
+                arguments+=['--objc-method',image,'UITouchesEvent',selector]
+        command(*arguments,capture_output=True)
         self.diagnose_services(cache)
 
     def diagnose_services(self,cache):
