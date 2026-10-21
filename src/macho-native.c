@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include "darwin-native.h"
 #include "ios-platform-abi.h"
+#include "native-http.h"
 #ifdef ARLINUX_DARLING
 #include "../components/darling/session-core.h"
 #endif
@@ -120,6 +121,7 @@ int main(int argc,char **argv)
     if (native_framework_services_enabled)
         need(!darwin_native_session_join(),"join authenticated compatibility session");
     if (options.role==NATIVE_APPLICATION) {
+        need(!native_http_start(),"initialize Linux HTTP transport");
         native_display_open();
         need(native_display_enabled,"application requires a configured Wayland display");
     }

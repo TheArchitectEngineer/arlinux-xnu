@@ -345,6 +345,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 #include "darwin-psynch.h"
 #include "darwin-kqueue.h"
 #include "darwin-workqueue.h"
+#include "darwin-http.h"
 #include "darwin-ui.h"
 #include "darwin-fork.h"
 

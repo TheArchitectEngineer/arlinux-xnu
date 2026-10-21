@@ -81,6 +81,22 @@ original QuartzCore does not imply that its Apple GPU/compositor backend works.
 The present software layer renderer is a starting point, not completed graphics
 compatibility.
 
+The candidate foreground HTTP boundary uses a public NSURLProtocol subclass in
+the injected platform library, preserving original NSURLSession task/client and
+Foundation response/JSON semantics. Linux libcurl owns actual HTTP/HTTPS, host
+DNS and normal certificate validation on a host-TLS pthread started before guest
+entry. Sized platform API v5 submits copied requests and polls immutable results;
+no guest object/callback enters host libc. Eight bounded slots share one serial
+transport worker, with real timeouts/cancellation and explicit response release.
+Requests/responses are buffered to 16 MiB, headers to 64 KiB. Foundation receives
+actual status, headers, bytes and errors; it owns redirect decisions. Background
+sessions, streamed request bodies, custom trust/authentication challenges and
+complete ATS/cookie/cache compatibility are not established. Insecure HTTP is
+limited to explicit arbitrary-load policy or explicitly allowed local names;
+unimplemented exception-domain rules fail closed. This is a runtime candidate
+awaiting app-journey verification, not a passing network claim. It does not
+implement NECP or arbitrary BSD sockets, WebKit networking or Apple services.
+
 The software backend's ios-rendering.m selects the original CAContext local
 constructor when UIKit requests its window context. It preserves original
 context/layer behavior while avoiding a nonexistent Apple render server. Hosted
