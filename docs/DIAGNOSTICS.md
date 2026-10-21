@@ -31,6 +31,17 @@ real submit/background/main execution in the source-owned app. These stages
 localize delivery failures but never replace changed label/pixels and normal
 exit as acceptance.
 
+Explicit runtime tracing also keeps bounded observations of actual header-only
+Mach wakeup sends and receives: ports, thread IDs, counts and real results, with
+an omitted-entry count. It changes no messages or scheduling. On an original
+Workers delivery failure, the existing collector resolves matching-cache main
+queue symbols and reads at most two validated, writable non-executable metadata
+ranges alongside the original stacks. Optional metadata errors cannot suppress
+stack collection. A prior successful callback does not hide a later stall.
+Network's source-owned phase records distinguish task creation/resume, actual
+completion and main-queue delivery. They log status/error metadata, not payloads;
+only the HTTP peer record plus visible answer/pixels and normal exit pass.
+
 The same opt-in profile observes failing original CoreUI color lookups. Its
 typed forwarding wrapper keeps the original arguments, NSError pointer and
 return object, recording the real error domain/code, underlying error and path.
@@ -93,6 +104,11 @@ results and optionally downloads the safe execution artifact, verifying its
 receipt against the exact producer log and every retained file. For an existing
 run use `./build.sh report --run-id RUN_ID --job native-userland --evidence`.
 Verified evidence is isolated under build/runs/RUN_ID/attempt-N/ARTIFACT.
+Downloads enter a unique partial directory and become reusable only after full
+receipt/file verification. A damaged existing cache is preserved as unverified
+and fetched again from that exact run; it never triggers a replacement build.
+This recovery was exercised against the genuinely damaged cached evidence of
+run 39547510074, then all 239 freshly downloaded files were verified.
 
 APP_DIAGNOSIS records the first failed step, blocked steps, original process
 identity, screenshot paths/hashes and bounded runtime/window/session witnesses.

@@ -83,36 +83,36 @@ took 156 s overall and 30 s in journeys.
 
 ## Complete collection and remaining failures
 
-Full run [39545899351](https://github.com/taowen/arlinux-xnu/actions/runs/39545899351),
-source **4865c2f7b7b53cfb4aa3423200d28b82738f6f84**, attempt 1, passed **12/16**
+Full run [39547510074](https://github.com/taowen/arlinux-xnu/actions/runs/39547510074),
+source **cd29bf9626899d583147a10a2f0214d53edf6ce3**, attempt 1, passed **13/16**
 journeys. The collection is still **failed**. Receipt
-**891bf73bd2f2f4ab0f2c2bebf8b74618ab9fb0aceb79e3a6902584d3ed877cc8**
-and all 233 retained files were verified. This run took 319 s; the journey step took 187 s. Individual journeys total
-185.267 s, including 32.111 s of diagnosis.
+**ad95702ad12daf4a283cf92a6c3518273d4308089d10c402804b49c465b26eec**
+and all 239 retained files were verified. Individual journeys total 172.536 s,
+including 23.980 s of diagnosis.
 
-Console, Foundation, Counter, Swift and Notes pass. Canvas passes actual
-red-to-green repaint and normal close; Workers passes thread and mmap journeys,
-but its asynchronous queue journey fails in this run. Concurrent relaunch
-passes all 29 steps, with Counter surviving the
-other app's normal close/relaunch. Crash isolation passes all 22 steps: Counter
-remains usable after Workers is deliberately killed, and a new Workers process
-can interact and exit normally. Focus activation also passes all 22 steps in
-this full run. These scenarios do not establish arbitrary helper cleanup or background lifecycle behavior.
+Console, Foundation, Counter, Swift, Notes, Canvas, Process and all three Workers
+journeys pass in this full run. Concurrent relaunch passes all 29 steps; crash
+isolation and focus activation each pass all 22 steps. These scenarios do not
+establish arbitrary helper cleanup or background lifecycle behavior.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Network | The process no longer crashes on the fabricated OS-variant cache or thread-capacity failure. It times out without Network 42; actual NECP operations remain unsupported. No HTTP round trip has passed. |
-| Web | The guest page-size query and 32 KiB OOL dictionary decoding now work. Original WebCore::IOSurface::maximumSize() reaches IOSurfaceClientGetPropertyMaximum and aborts because the IOSurface kernel service is absent. Requests for com.apple.WebKit.WebContent also lack a launch implementation. No DOM/helper/presentation acceptance. |
-| Share | Real timed semaphore forwarding passes the earlier dispatch failure. The flow now waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
-| Workers queue | Times out without Queue 3. The actual app records submit and background value=3, but no main-stage execution. Investigate main-queue delivery/wakeup; button dispatch and background computation have been observed. No scheduling repair is claimed. |
+| Network | No HTTP request reached the real local peer and Network 42 never appeared. Actual socket (97) and NECP (501/502) calls return ENOSYS; that alone does not prove which boundary prevented this request. Separate submission, task/completion and main delivery before choosing the adaptation. |
+| Web | Original WebCore::IOSurface::maximumSize() reaches IOSurfaceClientGetPropertyMaximum and aborts because the IOSurface kernel service is absent. WebContent launch is also unimplemented. No DOM/helper/presentation acceptance. |
+| Share | The flow waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
 
-The runtime now forwards timed semaphore operations to the existing Darling
-implementation and creates workloop workers on actual epoll readiness instead
-of eagerly allocating one per registered queue. Idle workers enter original
-libpthread cleanup. Receipt-verified comparison against run 39543376499 retains
-unchanged passing cases and the three other failures. Process and queue journey
-definitions changed, so their comparison receives no progress verdict. The full
-result remains failed.
+Workers queue remains intermittent: earlier full run 39545899351 recorded actual
+submit/background value=3 but no main stage. No scheduling repair is claimed.
+The strengthened queue journey now requires two clicks, Queue 3 then Queue 6,
+normal exit, a fresh process, and the same two deliveries and normal exit again.
+Selected run [39548964193](https://github.com/taowen/arlinux-xnu/actions/runs/39548964193),
+source **5a3d835c43c37b4f469de8e696941bf9ccb6d785**, attempt 1, passes all three
+Workers journeys. Receipt
+**609a79057061c77b65e580258bc8d1e6f23419f9feac365560bcb9d36a3fad46**
+and 48 files were verified. Queue generations are **5864/19727** and
+**5927/20124** (PID/startTicks). Journeys total 15.579 s, including 8.947 s for
+queue; overall feedback takes 142 s. This partial pass neither establishes the
+intermittent cause nor certifies the other apps with this changed source.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
@@ -137,8 +137,8 @@ and 16 files were verified. Parent **6040/270974** and child **6045/271192**
 PID, and each allocates/releases its own receive port. Parent private memory
 stays 11 while the child's private write is 99; shared memory becomes 42.
 The child exits 37, the parent reaps it, accepts external stdin and exits 0.
-The full run also passed this strengthened flow (parent **6097/17298**, child
-**6098/17543**). The selected run takes 125 s overall / 2.337 s journey.
+Full run 39545899351 also passed this strengthened flow (parent **6097/17298**,
+child **6098/17543**). The selected run takes 125 s overall / 2.337 s journey.
 
 The previous child failed at original MIG reply-port construction with
 MACH_SEND_INVALID_DATA (0x10000002), not MACH_SEND_INVALID_DEST. That identifies

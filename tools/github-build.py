@@ -53,13 +53,25 @@ def collect_evidence(run):
             continue
         directory=ROOT/'build/runs'/str(run['runId'])/f"attempt-{run['attempt']}"/artifact
         expected=matches[0]['receiptSHA256']
-        if not directory.exists():
+        if directory.is_symlink() or not directory.parent.resolve().is_relative_to(ROOT.resolve()):
+            raise SystemExit('Evidence cache is outside the workspace or is a symlink')
+        count=None
+        if directory.exists():
+            try:count=verify_result_files(directory,expected,run)
+            except (OSError,ValueError,KeyError) as error:
+                rejected=directory.with_name(artifact+'.unverified-'+str(time.time_ns()))
+                directory.rename(rejected)
+                print(f'  Rejected cached evidence: {error}; preserved at {rejected}')
+        if count is None:
             directory.parent.mkdir(parents=True,exist_ok=True)
+            staging=directory.with_name(artifact+'.partial-'+str(time.time_ns()))
+            staging.mkdir()
             subprocess.run(['gh','run','download',str(run['runId']),'--repo',REPO,
-                '--name',artifact,'--dir',str(directory)],check=True,timeout=120)
-        try:count=verify_result_files(directory,expected,run)
-        except (OSError,ValueError,KeyError) as error:
-            raise SystemExit('Evidence verification failed: '+str(error)) from error
+                '--name',artifact,'--dir',str(staging)],check=True,timeout=120)
+            try:count=verify_result_files(staging,expected,run)
+            except (OSError,ValueError,KeyError) as error:
+                raise SystemExit(f'Fresh evidence verification failed: {error}; retained at {staging}') from error
+            staging.rename(directory)  # Only complete, hash-verified downloads become reusable.
         print(f'  Verified {artifact}: receipt plus {count} files; {directory}')
         result_path=directory/'apps/result.json'
         covered={entry['path'] for entry in json.loads((directory/'receipt.json').read_bytes())['files']}

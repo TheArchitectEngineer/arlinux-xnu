@@ -37,8 +37,9 @@ runtime and remain a separate future input.
 ## Independent execution and shared mechanisms
 
 Workers owns three short journeys, not one combined pass. Its queue journey
-requires background-to-main delivery and normal exit in two fresh process
-generations; neither execution can be retried or satisfied by the prior label. Each other app owns a
+requires two successive background-to-main deliveries (Queue 3 then Queue 6)
+and normal exit in each of two fresh process generations; neither execution can
+be retried or satisfied by the prior label. Each other app owns a
 single bounded user flow. apps/scenarios contains concurrent relaunch,
 crash-isolation and focus-activation flows using Counter and Workers. The common runner owns process,
 external desktop input, structured read-only UI state, screenshots, stdout for console apps, bounded diagnostics
