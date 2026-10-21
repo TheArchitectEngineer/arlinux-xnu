@@ -586,8 +586,14 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         }
         if (number==D_TRAP_VM_PROTECT) {
             if (r[0]!=CURRENT_TASK_PORT) r[0]=D_KERN_INVALID_TASK;
-            else if (r[3] || (r[4]&~(PROT_READ|PROT_WRITE))) r[0]=D_KERN_NOT_SUPPORTED;
-            else if ((r[1]&(D_GUEST_PAGE_SIZE-1)) || !r[2] || r[2]>D_VM_MAX_ALLOCATION) r[0]=D_KERN_INVALID_ARGUMENT;
+            /* Match integrated Darling duct-tape/src/memory.c: apply the
+             * real Linux protection for both forms. Linux has no independent
+             * Mach maximum-permission ceiling; trusted guest code can later
+             * request a different protection. This is not a sandbox promise. */
+            else if (r[4]&~(PROT_READ|PROT_WRITE)) r[0]=D_KERN_NOT_SUPPORTED;
+            else if ((r[1]&(D_GUEST_PAGE_SIZE-1)) || !r[2] || r[2]>D_VM_MAX_ALLOCATION ||
+                     r[1]<D_GUEST_PAGE_SIZE || r[1]>=D_GUEST_COMMPAGE_RO ||
+                     r[2]>D_GUEST_COMMPAGE_RO-r[1]) r[0]=D_KERN_INVALID_ARGUMENT;
             else r[0]=RAW(SYS_mprotect,r[1],(r[2]+(D_GUEST_PAGE_SIZE-1))&~(D_GUEST_PAGE_SIZE-1),r[4],0,0,0) ? D_KERN_INVALID_ADDRESS : D_KERN_SUCCESS;
             trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,r[0]);
             return;

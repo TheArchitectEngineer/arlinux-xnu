@@ -165,25 +165,25 @@ collections complete; the third child is explicitly omitted from attachment,
 with its actual fault records retained in session.log. No DOM, usable connection,
 normal helper retirement, third-party IPA or Android acceptance is claimed.
 
-Latest selected run [39598768767](https://github.com/taowen/arlinux-xnu/actions/runs/39598768767),
-source **82a26c6cf82e44392294aaa91b242fecaafb114b**, attempt 1, passes Counter
+Latest selected run [39599465978](https://github.com/taowen/arlinux-xnu/actions/runs/39599465978),
+source **502f95953f76c120305682ca8bbb2a7d4913648b**, attempt 1, passes Counter
 and fails Web DOM (1/2, partial). Receipt
-**9dfd1e96d96380251c49b0d77d39d2febc4184eb878a2b351ef78fd3b89070d3**
-and 47 evidence files were verified. App **6042/120511** shares owned session
-**6039/120506**; original WebContent **6082/120993**, Networking **6123/121687**
-and replacement **6183/121987** are retained by PID/start ticks.
-Targeted same-cache StackBounds code calls getrlimit(3, &limit) for the main
-thread, then loads limit.current without checking the result. The original
-pthread queries correctly return actual stored stack address/size; the runtime's
-unimplemented syscall 194 leaves StackBounds' local output uninitialized. This
-explains the anomalous lower bound in run 39589004917's original JSC VM trap;
-it is not evidence that the whole VM initialization now works.
-The candidate implements getrlimit from the real separately allocated guest main
-stack and Linux resource limits. It does not enlarge the stack, ignore the VM
-check or fabricate its output. Runner validation is pending.
-Networking separately exits in the connection/client identifier branch; no DOM
-or helper-lifecycle acceptance. Total feedback is 169 s; journeys take 38.797 s
-including 22.165 s of diagnosis. The previous full 14/16 result remains
+**6603c19740a263f24d59a76024101a1a53fe29c97678a04905f910dc8aa557a3**
+and 45 evidence files were verified. App **5977/19186** shares owned session
+**5974/19181**; WebContent **6016/19463**, Networking **6035/19871** and
+replacement **6045/19929** are retained by PID/start ticks.
+The actual getrlimit implementation removes syscall 194 ENOSYS and the earlier
+JSC VM stack-bound trap. Original VM construction advances to
+WTF::Config::permanentlyFreeze -> WTFCrashWithInfo (PC **0x199246b58**),
+whose actual source literal and branch identify vm_protect(set_maximum=true)
+returning KERN_NOT_SUPPORTED (**46**). The candidate applies real Linux page
+protection for this form, matching integrated Darling's memory adapter; it does
+not enforce a separate maximum-permission ceiling. Runner validation pending.
+Resolved pthread/StackBounds diagnostic lookups are removed; complete original
+fault stacks and unresolved networking identifier consumers remain collected.
+Networking still separately exits in its connection/client identifier branch.
+No DOM or helper-lifecycle acceptance. Total feedback is 168 s; journeys take
+37.701 s including 23.171 s of diagnosis. The previous full 14/16 result remains
 source-specific; the full goal remains active.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and

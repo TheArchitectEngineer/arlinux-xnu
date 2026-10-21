@@ -312,16 +312,6 @@ class Processes:
                 for symbol in ('__ZN6WebKit29XPCServiceInitializerDelegate23getConnectionIdentifierERN3IPC10Connection10IdentifierE',
                                '__ZN6WebKit29XPCServiceInitializerDelegate19getClientIdentifierERN3WTF6StringE'):
                     arguments+=['--lookup',image,symbol]
-            if 'service=com.apple.WebKit.WebContent ' in session_text:
-                # Retained run 39589004917 VM crash metadata contains stack
-                # boundaries; a later timed-out run need not hit the trap. Resolve
-                # original producers before changing stack geometry or TLS.
-                image='/usr/lib/system/libsystem_pthread.dylib'
-                for symbol in ('_pthread_get_stacksize_np','_pthread_get_stackaddr_np'):
-                    arguments+=['--lookup',image,symbol]
-                arguments+=['--lookup-fragment',
-                    '/System/Library/Frameworks/JavaScriptCore.framework/JavaScriptCore',
-                    'currentThreadStackBounds']
             command(*arguments,capture_output=True)
         except (OSError,RuntimeError,subprocess.SubprocessError) as error:
             self.diagnostic['collectionErrors'].append('Service runtime symbolication: '+str(error))

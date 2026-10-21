@@ -444,3 +444,10 @@ vector and getrlimit(RLIMIT_STACK) describe that mapping. Linux's unrelated host
 stack limit must not be exposed as this guest stack. Other supported Darwin
 resource IDs map explicitly to Linux prlimit64 with infinity conversion; invalid
 IDs and guest pointers retain actual errors. setrlimit is not implemented.
+
+Current-task vm_protect applies actual Linux read/write protection for both
+set_maximum forms, matching integrated Darling's duct-tape memory adapter. It
+does not maintain a separate Mach maximum-permission ceiling: trusted guest
+code can subsequently request writable protection. No sandbox or permanent
+anti-tampering guarantee is claimed. Executable protection remains unsupported
+on this direct trap path; real command failures are returned.
