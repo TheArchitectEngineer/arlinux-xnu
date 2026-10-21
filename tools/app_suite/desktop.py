@@ -83,7 +83,18 @@ class Desktop:
         x,y,w,h=target['screenRect'];x+=w//2;y+=h//2
         if self.reference:command(ROOT/'build/reference-tools/desktop-events','click',x,y)
         else:
-            command('xdotool','mousemove','--sync',x,y);command('xdotool','mousedown','1')
+            # --sync waits for movement, so a second click at the same actual
+            # coordinates can hang. Confirm the real pointer position instead.
+            command('xdotool','mousemove',x,y)
+            deadline=time.monotonic()+2
+            while True:
+                self.guard()
+                position=command('xdotool','getmouselocation','--shell',capture_output=True,text=True).stdout
+                fields=dict(line.split('=',1) for line in position.splitlines() if '=' in line)
+                if int(fields['X'])==x and int(fields['Y'])==y:break
+                if time.monotonic()>=deadline:raise RuntimeError('External pointer did not reach the actual target')
+                time.sleep(.02)
+            command('xdotool','mousedown','1')
             time.sleep(.08);command('xdotool','mouseup','1')
 
     def observe_pixels(self,step):
