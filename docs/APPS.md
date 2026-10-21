@@ -18,11 +18,14 @@ bytes. The actual main executable is thin ARM64/subtype 0, cryptid 0, minimum
 iOS 12.1; its SHA-256 is
 **cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4**.
 These are input inspection results on Windows, not execution or compatibility
-acceptance. The decrypted distribution is not verified against a vendor-signed
+acceptance. The pinned package is now declared in apps/things/app.json and
+its required offline task journey is unverified; initial UI targets must be
+confirmed from the actual app. The decrypted distribution is not verified against a vendor-signed
 original. The package remains outside Git and is not uploaded as evidence.
 
 | App | Stack / actual behavior | Required end-to-end result |
 | --- | --- | --- |
+| Things iPhone (unverified) | Pinned community-decrypted 3.17.1 IPA and its bundled frameworks | Create/edit a task, normal close/reopen with saved text, complete it and verify Logbook after another relaunch |
 | Calculator (Linux journey passed) | Apple's original binary/resources, resolved by bundle ID from the pinned firmware | Real 2 + 3 = 5; normal close/relaunch, clear then 7 + 8 = 15; no replacement app code |
 | Console | C / real dyld, libSystem, malloc, pthread, stdio | Interactive increment, genuine return 0, independent relaunch |
 | Foundation | Objective-C / Foundation collections, JSON, Unicode, exception unwind, timer/run loop | Computed result after real callbacks, console input and return 0 |

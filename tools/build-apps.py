@@ -61,11 +61,12 @@ def main():
     for app_id in sorted(selected):
         declaration=declarations[app_id]
         app=json.loads(declaration.read_text())
-        if app.get('input',{}).get('kind')=='firmware':
+        if app.get('input',{}).get('kind') in ('firmware','ipa'):
             # The Linux job resolves this exact bundle from its hash-verified
             # firmware mount. Apple executables never enter uploaded products.
-            products.append({**app,'build':'pending-firmware'})
-            print('APP_BUILD '+json.dumps({'id':app_id,'status':'pending-firmware'}),flush=True)
+            state='pending-'+app['input']['kind']
+            products.append({**app,'build':state})
+            print('APP_BUILD '+json.dumps({'id':app_id,'status':state}),flush=True)
             continue
         name=app['name']; bundle=OUT/(name+'.app'); bundle.mkdir()
         info={'CFBundleExecutable':name,'CFBundleIdentifier':'io.arlinux.'+name,
@@ -117,6 +118,6 @@ def main():
         print('APP_BUILD '+json.dumps({'id':app['id'],'status':record['build'],'error':record.get('error','').splitlines()[:2] if record.get('error') else None}),flush=True)
     (OUT/'products.json').write_text(json.dumps({'source':os.environ['GITHUB_SHA'],'selection':args.app,
         'runId':os.environ['GITHUB_RUN_ID'],'apps':products},indent=2)+'\n')
-    return 0 if all(app['build'] in ('passed','pending-firmware') for app in products) else 1
+    return 0 if all(app['build'] in ('passed','pending-firmware','pending-ipa') for app in products) else 1
 
 if __name__=='__main__': raise SystemExit(main())

@@ -95,7 +95,7 @@ class Processes:
         capture.mkdir()
         env['ARLINUX_CAPTURE_DIR'] = str(capture)
         app = self.apps[name]
-        if app.get('input',{}).get('kind')=='firmware':
+        if app.get('input',{}).get('kind') in ('firmware','ipa'):
             env['ARLINUX_INSPECT_APPLICATION']='1'
         if app['build'] != 'passed':
             raise RuntimeError('App input failed: '+name+'; '+app.get('error','inspect its build log'))

@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "cases": [{
+    "id": "offline-task-persistence",
+    "display": {"width":375,"height":667,"scale":2},
+    "steps": [
+      {"do":"launch","app":"things"},
+      {"do":"viewport","width":375,"height":667},
+      {"do":"see","text":"^Inbox$","timeoutSeconds":30},
+      {"do":"click","text":"^New To-Do$","target":"text"},
+      {"do":"type","text":"ARLinux task"},
+      {"do":"click","text":"^Done$","target":"text"},
+      {"do":"see","text":"^ARLinux task$"},
+      {"do":"click","text":"^ARLinux task$","target":"text"},
+      {"do":"type","text":" edited"},
+      {"do":"click","text":"^Done$","target":"text"},
+      {"do":"see","text":"^ARLinux task edited$"},
+      {"do":"close"},
+      {"do":"exit","app":"things"},
+      {"do":"launch","app":"things"},
+      {"do":"see","text":"^ARLinux task edited$"},
+      {"do":"click","text":"^Complete$","target":"text"},
+      {"do":"click","text":"^Logbook$","target":"text"},
+      {"do":"see","text":"^ARLinux task edited$"},
+      {"do":"close"},
+      {"do":"exit","app":"things"},
+      {"do":"launch","app":"things"},
+      {"do":"click","text":"^Logbook$","target":"text"},
+      {"do":"see","text":"^ARLinux task edited$"},
+      {"do":"close"},
+      {"do":"exit","app":"things"}
+    ]
+  }]
+}

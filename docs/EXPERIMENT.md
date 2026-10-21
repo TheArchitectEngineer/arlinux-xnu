@@ -4,7 +4,7 @@
 
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.
-The collection currently has 11 source-owned apps, original Calculator, 16 app
+The collection currently has 11 source-owned apps, original Calculator and Things, 17 app
 journeys and three cross-app scenarios. Android execution is unverified.
 
 The fixed input is iPhone10,1 (iPhone 8/A11), iOS 16.7.16 / 20H392,
@@ -88,6 +88,9 @@ phone cases and Canvas layout fix require a fresh full collection run.
 
 Things iPhone 3.17.1/build 31701001 has been acquired and inspected, not executed.
 Its exact package URL, hashes, architecture, encryption metadata and distribution
-limits are recorded in APPS.md. Next integrate that pinned IPA into the same
-runner input/launch path and validate actual create/edit/complete/reopen storage.
+limits are recorded in APPS.md. Its pinned IPA is now declared in the same
+runner input/launch path; actual create/edit/complete/reopen storage remains
+unverified. Input preparation preserves the package contents, validates archive
+safety and version/hash/ISA/encryption, and uses the shared bundle path. The
+Apple-host IPA path is explicitly unvalidated; no reference success is inferred.
 No source-owned fixture can substitute for this remaining goal requirement.
