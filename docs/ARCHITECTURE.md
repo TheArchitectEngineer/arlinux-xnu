@@ -479,8 +479,12 @@ it is not arbitrary concurrent VM conformance. Per-unmap registry retirement als
 remains incomplete; ambiguous/reused ranges fail rather than returning old backing.
 No empty capability, copied destination snapshot or unmapped-success reply counts
 as shared-memory behavior. Process named-memory alias/fork interaction passes on
-Linux; cross-independent-task port transfer and Web rendering remain unverified.
+Linux. The latest full run also transfers and maps the stream in independent
+original GPU helpers; Web rendering remains unverified.
 Aligned shared-range extraction can retain zero data offset; masked permissions
 intersect the actual source protection before conversion. Unaligned data-address
-extraction and other memory-entry modes remain unsupported. The flag extension passes the Process app flow and moves original WebContent
-past handle export; the GPU receiver still fails to map the transferred stream.
+extraction and other memory-entry modes remain unsupported. The flag extension passes the Process app flow and original cross-process stream
+mapping. GPU helpers consume CreateImageBuffer, then abort on Apple's missing
+IOSurface kernel service. The current candidate selects original WebKit software
+rendering features through WKPreferences before page construction; method/feature
+readback alone does not establish working drawing. No IOSurface driver is supplied.
