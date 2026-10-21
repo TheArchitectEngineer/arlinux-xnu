@@ -315,6 +315,14 @@ after the interrupted-writer failure in 39515278534.
 
 ## Runtime boundaries
 
+The existing original-process LLDB metadata read also reports at most sixteen
+actual runtime workloops: ownership, worker and priority fields from DWARF,
+plus guest queue labels/serials at offsets registered by real libdispatch.
+Unreadable metadata and truncation stay explicit. This helps distinguish a
+waiting application queue from an incidental SDK failure; it executes no guest
+code or queue action. Original IPA images now appear in the same dyld image
+metadata record as source-owned apps, without copying their binaries.
+
 When the original failed process actually requests com.apple.containermanagerd,
 its existing cache symbolication reads the Foundation group-container method and
 the corresponding libsystem_containermanager C boundary. The bounded disassembly

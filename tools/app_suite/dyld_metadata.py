@@ -36,6 +36,36 @@ def collect(target, info_address, runtime_path):
         if b'\0' not in data:raise ValueError('unbounded metadata string')
         return data.split(b'\0',1)[0].decode('utf-8',errors='replace')
 
+    # Read runtime-owned workloop state through its real DWARF types, then the
+    # guest queue label/serial offsets actually registered by libdispatch. No
+    # private app method, guessed object layout or synthetic queue is invoked.
+    try:
+        config=target.FindFirstGlobalVariable('native_dispatch_config')
+        queue=target.FindFirstGlobalVariable('native_kqueues')
+        if not config.IsValid() or not queue.IsValid():raise ValueError('runtime workloop symbols unavailable')
+        serial_offset=config.GetChildMemberWithName('serial_offset').GetValueAsUnsigned()
+        label_offset=config.GetChildMemberWithName('label_offset').GetValueAsUnsigned()
+        seen=set()
+        while queue.GetValueAsUnsigned() and len(seen)<16:
+            address=queue.GetValueAsUnsigned()
+            if address in seen:raise ValueError('cycle in original runtime workloop list')
+            seen.add(address);node=queue.Dereference()
+            if node.GetError().Fail():raise ValueError(str(node.GetError()))
+            fields={name:node.GetChildMemberWithName(name).GetValueAsUnsigned() for name in
+                    ('dynamic_id','worker','owner_tid','client_owner','priority','used')}
+            guest=fields['dynamic_id']
+            if guest and 0<serial_offset<=1024:
+                try:fields['guestSerial']=struct.unpack('<Q',read(guest+serial_offset,8))[0]
+                except ValueError as error:fields['serialUnavailable']=str(error)
+            if guest and 0<label_offset<=1024:
+                try:fields['guestLabel']=string(struct.unpack('<Q',read(guest+label_offset,8))[0])[:256]
+                except ValueError as error:fields['labelUnavailable']=str(error)
+            print('ORIGINAL_WORKLOOP_METADATA',json.dumps(fields))
+            queue=node.GetChildMemberWithName('next')
+        if queue.GetValueAsUnsigned():print('ORIGINAL_WORKLOOP_METADATA_TRUNCATED limit=16')
+    except (ValueError,OverflowError) as error:
+        print('ORIGINAL_WORKLOOP_METADATA_UNAVAILABLE',str(error))
+
     try:
         # LP64 offsets from the declared fields, including the notify-port and
         # reserved arrays. No Apple instructions or Mach-O headers are read.
@@ -51,7 +81,7 @@ def collect(target, info_address, runtime_path):
                 address,path,_=struct.unpack_from('<QQQ',entries,offset)
                 if not capacity(path):continue
                 name=string(path)
-                if '/build/apps/' in name:
+                if '/build/apps/' in name or '/build/ios-input/apps/' in name:
                     print('DYLD_OWNED_IMAGE',json.dumps(dict(address=hex(address),path=name)))
         if not 36<=compact_size<=32768:raise ValueError('compact metadata size outside bound')
         data=read(compact_address,compact_size)
