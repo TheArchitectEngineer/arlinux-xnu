@@ -68,48 +68,35 @@ The failure summary includes the actual fault PC's nearest symbol, displacement
 and bounded referenced literals from the same cache, with the full symbolication
 file retained. These literals are context rather than an automatic diagnosis.
 Scene stages and exceptions are retained separately so a later marker cannot
-overwrite the exception reason. Explicit lifecycle symbol lookups now use a
-4096-byte budget and report when that budget cuts the context short. Other
-investigations can select `--lookup-bytes` on the existing runner-side
-symbolicator; this does not broaden the default diagnostic catalogue.
-Validated in run
-[39509111323](https://github.com/taowen/arlinux-xnu/actions/runs/39509111323):
-146 seconds overall, 12.815 seconds of diagnosis, 20 evidence files verified.
-The same failed Counter effect remained red. Two loaded protocols/26 methods
-had no missing methods or raw encoding differences; the actual fault summary
-identified FBSBasicSceneAgent and the `_scene == scene` referenced assertion.
-The selected FBSScene initializer retained 2908 bytes without budget truncation.
-This demonstrates more useful evidence in one run, not proven sustained speedup.
+overwrite the exception reason. Targeted investigations can select
+`--lookup-bytes` on the existing runner-side symbolicator (up to 4096 bytes,
+with truncation reported). The resolved CoreUI color and CALayer storage
+investigations no longer cause standing private-function dumps on every
+Counter failure. Actual fault and original-process stack symbolication remain.
 
-Measured Counter lifecycle-diagnostic feedback: run
-[39503145757](https://github.com/taowen/arlinux-xnu/actions/runs/39503145757) took
-241 seconds; parallel run
-[39504112474](https://github.com/taowen/arlinux-xnu/actions/runs/39504112474) took
-158 seconds (34% shorter). Linux job start moved from second 79 to second 6;
-selected SDK compilation took 18 seconds. Both fail the same required GUI step.
-The new run separates 8.024 seconds of effect waiting from 12.297 seconds of
-original-process diagnosis. These are individual measured runs, not a latency
-promise; runner queues/network still vary. Follow-up run
-[39504697195](https://github.com/taowen/arlinux-xnu/actions/runs/39504697195)
-passed the real Console and Foundation journeys in 149 seconds; the same command
-verified all 23 evidence files and exited zero. It remains explicitly partial.
-Firmware remains transient and fully
-hash-verified, and no Apple firmware/cache is uploaded for caching.
+The default workstation report prints the failed effect, separate effect and
+diagnosis times, original identity, errors, syscall witnesses, resource paths
+and latest screenshot/pixel evidence. Complete APP_DIAGNOSIS observations remain
+in the saved report and producing job log; `--verbose` prints them unchanged.
+Neither screenshot capture nor acceptance checks are reduced by this display.
 
-Within firmware preparation, downloading the pinned firmware overlaps building
-the pinned APFS reader. Both commands must complete before input validation and
-extraction. APPLE_PREPARATION_TIMING records readerSeconds, downloadSeconds and
-parallelSeconds so an overlap claim can be compared with actual measurements.
-Run [39519310964](https://github.com/taowen/arlinux-xnu/actions/runs/39519310964)
-measured reader=19.652s, download=15.523s, overlap=19.652s (their observed sum
-would be 35.175s). The full three-app run took 167s, including queues, package
-installation and original-process diagnosis; this is not a 15.523s measured
-end-to-end improvement. Console/Foundation passed; Counter retained the same
-required pixel failure. All 64 evidence files were verified. Diagnosis took
-10.334s with no collection errors and actual symbolized ENOSYS caller frames.
+The workflow starts the declared firmware download while apt installs tools,
+then joins that same-run process before leaving toolchain setup. Download-only
+is an internal phase of the existing preparation script, not another build
+entry. APPLE_DOWNLOAD_TIMING explicitly reports unvalidated downloaded bytes;
+the preparation stage still checks their size and SHA-256 before extraction.
+Without an earlier download, preparation overlaps it with building the pinned
+APFS reader. APPLE_PREPARATION_TIMING records readerSeconds, downloadSeconds,
+parallelSeconds and downloadedBeforePreparation to distinguish the two paths.
 Decoder timeout/failure now has an explicit per-context status; it does not
 discard independent symbols. Runtime symbolication failure is recorded without
 skipping original-process LLDB collection.
+
+Runner setup declares the required packages with `--no-install-recommends`;
+optional distribution recommendations do not become implicit experiment inputs.
+Firmware remains transient and fully hash-verified; no Apple firmware/cache is
+uploaded for caching. Current measurements and acceptance are recorded once in
+[EXPERIMENT.md](EXPERIMENT.md); historical runs remain in Git and Actions.
 
 ## Start with the effect that failed
 

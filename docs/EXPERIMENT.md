@@ -19,11 +19,11 @@ and two cross-app scenarios; selected runs never certify the whole collection.
 
 ## Current failed GUI effect
 
-Run [39519310964](https://github.com/taowen/arlinux-xnu/actions/runs/39519310964),
-source **7ad52727e8558fce95b3f1b63164f265b7de776e**, selected Console, Counter
+Run [39520403966](https://github.com/taowen/arlinux-xnu/actions/runs/39520403966),
+source **ee8d441a229e9a738f78fa0f18365600c66d2865**, selected Console, Counter
 and Foundation. Receipt
-**3bac08b57b2557bd98f4279c9317c39479ab017198aa83d81ae7457119efc281**
-and all 64 files were verified by build --wait --evidence. The process renders
+**85f7a08226650d3dfc8a8d40b6021686621030b5d8babcbb4980020b8f10dd80**
+and all 66 files were verified by build --wait --evidence. The process renders
 the original Counter label in actual composed pixels, but its button is still
 invisible. The click step fails its pixel requirement before submitting input;
 nine later steps are blocked. No complete GUI journey is accepted.
@@ -70,6 +70,26 @@ nine later steps are blocked. No complete GUI journey is accepted.
 Session scene registration, complete workspace enumeration, compositor focus
 updates, input, host-process/remote endpoint support and normal close remain
 unfinished. No app/control callback is invoked by the harness or adapter.
+
+## Feedback measurements
+
+All three runs selected Console, Foundation and Counter with lifecycle context;
+Console/Foundation passed and Counter retained the same required pixel failure.
+
+| Run | Change | Dispatch to completion | Firmware preparation | Counter diagnosis |
+| --- | --- | --- | --- | --- |
+| [39519310964](https://github.com/taowen/arlinux-xnu/actions/runs/39519310964) | Baseline | 167s | 57s | 10.334s |
+| [39519911112](https://github.com/taowen/arlinux-xnu/actions/runs/39519911112) | Trim recommended packages and repeated private-code dumps | 169s | 59s | 13.432s |
+| [39520403966](https://github.com/taowen/arlinux-xnu/actions/runs/39520403966) | Also overlap firmware download with toolchain installation | 151s | 39s | 10.214s |
+
+The final download took 16.059s inside toolchain setup; subsequent preparation
+recorded downloadedBeforePreparation=true and still verified the complete
+firmware size/hash. The 151s total is about 10% below the baseline, a single-run
+comparison, not a sustained latency guarantee. Package/network/runner times vary;
+the first optimization alone did not improve overall latency. Default reporting
+now prints bounded evidence while retaining complete observations in the saved
+report and job log. Diagnostic collection had no errors; all actual screenshot,
+input, close and relaunch acceptance requirements remain unchanged.
 
 ## Verified regression and reference limits
 
