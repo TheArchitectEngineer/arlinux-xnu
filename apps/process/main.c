@@ -26,7 +26,7 @@ static int named_memory_command(void) {
         VM_PROT_READ|VM_PROT_WRITE|VM_PROT_IS_MASK|MAP_MEM_VM_SHARE|MAP_MEM_USE_DATA_ADDR,
         &entry,MACH_PORT_NULL);
     if(error){result=41;goto done;}
-    error=vm_map(mach_task_self(),&alias,size,0,VM_FLAGS_ANYWHERE,entry,0,FALSE,
+    error=vm_map(mach_task_self(),&alias,size,0,VM_FLAGS_ANYWHERE|VM_FLAGS_RETURN_DATA_ADDR,entry,0,FALSE,
         VM_PROT_READ|VM_PROT_WRITE,VM_PROT_READ|VM_PROT_WRITE,VM_INHERIT_SHARE);
     if(error){result=42;goto done;}
     initial=*(volatile int *)(uintptr_t)alias;

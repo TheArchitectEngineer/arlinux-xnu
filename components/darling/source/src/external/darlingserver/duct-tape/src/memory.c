@@ -758,13 +758,14 @@ kern_return_t mach_vm_map_external(vm_map_t target_map, mach_vm_offset_t* addres
         (cur_protection & ~VM_PROT_ALL) || (max_protection & ~VM_PROT_ALL) ||
         (cur_protection & ~max_protection)) return KERN_INVALID_ARGUMENT;
     if (copy || mask > PAGE_MASK || (offset & PAGE_MASK) ||
-        (flags & ~(VM_FLAGS_ANYWHERE | VM_FLAGS_OVERWRITE | VM_FLAGS_ALIAS_MASK))) return KERN_NOT_SUPPORTED;
+        (flags & ~(VM_FLAGS_ANYWHERE | VM_FLAGS_OVERWRITE | VM_FLAGS_ALIAS_MASK | VM_FLAGS_RETURN_DATA_ADDR))) return KERN_NOT_SUPPORTED;
     uint64_t length = mach_vm_round_page(initial_size);
     bool fixed = !(flags & VM_FLAGS_ANYWHERE);
     if (fixed && ((*address & PAGE_MASK) || *address > UINT64_MAX - length)) return KERN_INVALID_ARGUMENT;
     dtape_memory_flags_t memory_flags = fixed ? dtape_memory_flag_fixed : dtape_memory_flag_none;
     if (flags & VM_FLAGS_OVERWRITE) memory_flags |= dtape_memory_flag_overwrite;
     if (!IP_VALID(port)) {
+        if (flags & VM_FLAGS_RETURN_DATA_ADDR) return KERN_NOT_SUPPORTED;
         if (port != IP_NULL || offset) return KERN_INVALID_ARGUMENT;
         uintptr_t mapped = dtape_hooks->task_allocate_pages(target_map->dtape_task->context,
             dtape_byte_count_to_page_count_round_up(length), cur_protection, fixed ? *address : 0, memory_flags);
@@ -778,7 +779,11 @@ kern_return_t mach_vm_map_external(vm_map_t target_map, mach_vm_offset_t* addres
         vm_named_entry_t entry = (vm_named_entry_t)ip_get_kobject(port);
         /* Port lock protects its live, immutable kobject metadata. Retain the
          * shared descriptor before unlocking; never sleep on a mutex here. */
-        if (entry->dtape_descriptor && offset <= entry->size && length <= entry->size - offset &&
+        /* Aligned exports have data_offset zero, so the actual mapping base
+         * is also the requested data address. Never discard a nonzero offset. */
+        if (entry->dtape_descriptor &&
+            (!(flags & VM_FLAGS_RETURN_DATA_ADDR) || !entry->data_offset) &&
+            offset <= entry->size && length <= entry->size - offset &&
             !(max_protection & ~entry->protection)) {
             descriptor = entry->dtape_descriptor; dtape_map_shared_descriptor_retain(descriptor);
             backing_offset = entry->offset + offset;

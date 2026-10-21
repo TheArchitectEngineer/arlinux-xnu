@@ -219,3 +219,16 @@ still produces no DOM acceptance. Receiving the message does not establish the
 receiver mapped the stream or that rendering works. Next diagnostics read the
 actual map request and same-cache SharedMemory::map consumer; the stale standing
 preference probes are removed. No extra Apple service is implemented.
+
+Mapping diagnosis [39612506271](https://github.com/taowen/arlinux-xnu/actions/runs/39612506271),
+source **40cf6caff0d1e972bb57bec532d150e63e0d7771**, attempt 1, remains 0/1
+partial (Web). Receipt
+**da8ed718f8523f8ed6b252c18cb3348360b41fa1abbffe26a8e16e787809a336**
+and all 124 files were verified. Actual GPU map request is 2,097,408 bytes,
+mask/offset/copy zero, current/maximum protection 3, inheritance 2 and flags
+**0x100001** (ANYWHERE | RETURN_DATA_ADDR). The original same-cache map consumer
+confirms those arguments. The rejection is the unsupported data-address flag,
+not an excessive maximum protection. The current candidate accepts this flag
+only for named entries with zero data offset; anonymous and unaligned cases
+remain unsupported. The existing Process alias command also requests it. Runner
+validation is pending; no receiver mapping or webpage pass is claimed yet.
