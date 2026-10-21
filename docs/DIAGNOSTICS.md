@@ -75,9 +75,11 @@ not check-in; its PID/start ticks and original execution log distinguish spawn
 from a working service. The full session log retains every instance.
 If a failed journey has actual SESSION_SERVICE_STARTED records, the same
 original-process collector also reads bounded stacks from its owning session
-and at most two original helper PID/start-tick identities. Reused/exited PIDs
+and at most two live original helper PID/start-tick identities, preferring the
+latest live instance of each distinct service. Reused/exited PIDs
 are marked unavailable; further helpers are explicitly counted as omitted.
-These attachments run after the failed effect and never count as service
+Service-log symbolication follows these attachments to include exits during
+collection. These attachments run after the failed effect and never count as service
 readiness or normal exit. Helpers that have not reached Mach-O entry may still
 be in host cache preparation; inspect the original stacks before adding IPC.
 The runner session explicitly enables the existing stop-on-fault option for its

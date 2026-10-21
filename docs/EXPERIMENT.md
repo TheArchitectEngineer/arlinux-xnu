@@ -118,7 +118,7 @@ observation; one full pass does not prove its isolated cause or general repair.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Web | Latest selected run below passes actual bootstrap/service metadata and JavaScriptCore suspension/resume. Original helpers wait in NSRunLoop; service check-in 0x325 and the client connection remain unsupported. No DOM or helper-lifecycle acceptance. |
+| Web | Latest selected run below passes actual bootstrap/service metadata and JavaScriptCore suspension/resume. Real service queue/check-in handoff is implemented; the original network connection still fails. No DOM or helper-lifecycle acceptance. |
 | Share | Process 6058/26678 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
 
 Selected run [39555581254](https://github.com/taowen/arlinux-xnu/actions/runs/39555581254),
@@ -165,28 +165,22 @@ collections complete; the third child is explicitly omitted from attachment,
 with its actual fault records retained in session.log. No DOM, usable connection,
 normal helper retirement, third-party IPA or Android acceptance is claimed.
 
-Latest selected run [39569601749](https://github.com/taowen/arlinux-xnu/actions/runs/39569601749),
-source **a422b45684c63f4c55e2c8119d5f824d1ecea726**, attempt 1, passes Counter
-and fails the same original Web DOM step (1/2, partial). Receipt
-**208ad544ee83470fd8c094ea2e706e929b1c8f311c938ecd0ceae10b402efd08**
-and 46 files were verified. App **5956/33565**, WebContent **5993/34044** and
-**6013/34215**, and Networking **6019/34221** share owned session **5953/33560**.
-The actual XPCService metadata replies contain five fields for WebContent and
-four for Networking. Original consumers pass the former direct-launch rejection
-and issue actual check-in requests 0x325 (type 6, handle 0, flags 0, service name).
-Earlier child exit signal 43 was traced in run 39567204970 to real JavaScriptCore
-scavenger -> stop_allocator -> thread_suspend, not attributed to check-in failure.
-The native client now uses Darling's real suspension RPC/state path. Multiple
-BEGIN/RESUMED pairs complete in these original processes; their collected main
-stack continues in original NSRunLoop/CFRunLoop, with the scavenger in its timed
-wait. No fatal fault/exit is observed in the retained session interval. This
-supports that actual allocator path, not general thread-state conformance.
-Check-in still returns unsupported; no empty endpoint, fake ready flag or DOM
-callback is supplied. Exact matching resolves one bootstrap check-in wrapper
-and two connection check-in functions; reply extraction also needs the actual
-bootstrap_check_in3/interface-routine consumers, not a guessed dictionary key.
-Total feedback is 170 s; journeys take 37.521 s including 20.914 s of diagnosis.
-The previous full 14/16 result remains source-specific.
+Latest selected run [39571704771](https://github.com/taowen/arlinux-xnu/actions/runs/39571704771),
+source **7b4eac63c9351fe01eec5222e04a792a0b70a2dd**, attempt 1, passes Counter
+and fails the same Web DOM step (1/2, partial). Receipt
+**e0ce5168e61604ab95b5a3289d3bf8c927f7d17a7930c8e0adf5aedf20a6b68e**
+and 45 evidence files were verified. App **5937/13061** shares owned session
+**5934/13056**. WebContent **5975/13528** and Networking **6014/14242**,
+**6071/14538** receive successful check-in replies carrying real receive rights
+and actual instance UUIDs. These producer records are not DOM acceptance.
+WebContent's original stack waits for its network-process connection;
+Networking instance 2 exits with wait status 256. The retained session also
+contains original exit frames after check-in. The next diagnosis must resolve
+those original consumers and inspect the live Networking process, rather than
+attaching only the first two started helpers (one already exited). Service-log
+symbolication must follow bounded attachments so exits during collection are
+included. Total feedback is 150 s; journeys take 34.726 s including 18.25 s of
+diagnosis. The previous full 14/16 result remains source-specific.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary

@@ -203,8 +203,11 @@ paths. Only explicit session variables, XPC_SERVICE_NAME and an explicitly
 enabled stop-on-fault diagnostic option enter the child; host credentials are
 not inherited. pidfds, real exit status, caller-death
 termination and a parent-death signal own its process lifetime. Starting an ELF
-launcher or entering a Mach-O is not XPC readiness: instance lookup still fails
-until actual check-in/port handoff is implemented and the app effect passes.
+launcher or entering a Mach-O is not XPC readiness. Instance lookup creates a
+real Mach queue only for a validated firmware service. Check-in transfers its
+unique receive right to the audited child, preserving the actor send reference
+for subsequent lookups. Queued messages remain in the kernel during startup.
+Child/owner failure retires the endpoint; a successful handoff is not an app effect.
 The bootstrap-copy candidate returns the caller's original dictionary and
 actual 32-byte kernel audit token only to its owned child PID/incarnation. The
 session retains the original objects/send rights; reply descriptors copy send
@@ -214,8 +217,9 @@ connection or a fabricated managed-service identity.
 Service-metadata replies resolve the caller's actual selected firmware bundle
 and return its XPCService plist with the validated identifier, only to the
 owned child PID/incarnation. Scalar/container values retain their actual types;
-unknown types, depth/node limits and oversized replies fail. This does not
-allocate a service endpoint or complete check-in/connection handoff.
+unknown types, depth/node limits and oversized replies fail. Metadata is frozen
+from the validated bundle when the instance is created. Metadata and endpoint
+transfer do not certify the original client/helper connection or DOM rendering.
 
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor
