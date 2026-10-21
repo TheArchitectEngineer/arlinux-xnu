@@ -12,6 +12,7 @@ struct native_thread {
     uint64_t workqueue,stack_low;
     uint32_t priority;
     int launch_state;
+    int retire_workqueue;
     int event_queue; uint64_t workloop_id; uint32_t special_reply_port;
 };
 _Static_assert(offsetof(struct native_thread,tid)==56,"native clone ABI");
@@ -136,6 +137,7 @@ static long native_thread_create_impl(const unsigned long long *r,const sigset_t
             RAW(SYS_munmap,memory,D_THREAD_RUNTIME_STACK_SIZE,0,0,0,0); thread->state=0; return alternate;
         }
         thread->launch_state=0;
+        thread->retire_workqueue=0;
         thread->runtime_memory=memory; thread->runtime_top=memory+D_THREAD_RUNTIME_STACK_SIZE;
         thread->signal_memory=alternate; thread->guest_sp=r[2]; thread->pthread=r[3];
         thread->function=r[0]; thread->argument=r[1]; thread->flags=r[4];

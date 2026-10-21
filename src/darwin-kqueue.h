@@ -648,14 +648,14 @@ static uint64_t native_event_buffer(struct native_thread *thread)
 {
     return thread->pthread-D_GUEST_PAGE_SIZE+D_KQUEUE_BUFFER_OFFSET;
 }
-static long native_event_collect(struct native_kqueue *queue,struct native_thread *thread,uint64_t buffer)
+static long native_event_collect(struct native_kqueue *queue,struct native_thread *thread,uint64_t buffer,int timeout)
 {
     /* The allocated page below pthread contains the event array followed by
      * actual Mach message storage. It stays alive until this worker returns. */
     uint64_t address=native_event_buffer(thread)+D_KQUEUE_BATCH*sizeof(struct darwin_kevent_qos);
     if (address>thread->pthread) return -EINVAL;
     struct native_kevent_data data={.address=address,.remaining=thread->pthread-address,.stack=1};
-    return native_kqueue_collect(queue,buffer,D_KQUEUE_BATCH,-1,&data);
+    return native_kqueue_collect(queue,buffer,D_KQUEUE_BATCH,timeout,&data);
 }
 static __attribute__((noreturn)) void native_event_worker_start(struct native_thread *thread)
 {
@@ -668,7 +668,7 @@ static __attribute__((noreturn)) void native_event_worker_start(struct native_th
         __atomic_store_n(&queue->owner_tid,thread->tid,__ATOMIC_RELEASE);
     }
     long count;
-    do { count=queue ? native_event_collect(queue,thread,buffer) : -EBADF; } while (count==-EINTR);
+    do { count=queue ? native_event_collect(queue,thread,buffer,-1) : -EBADF; } while (count==-EINTR);
     if (count<=0) { RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0); __builtin_unreachable(); }
     const char label[]="DARWIN_EVENT_DELIVERY queue-id/count/tid follows\n";
     RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
@@ -691,7 +691,21 @@ static long native_event_worker_return(const unsigned long long *r)
     uint64_t buffer=r[1] ? r[1] : native_event_buffer(thread);
     long result=native_kqueue_changes(queue,r[1],r[2],buffer,D_KQUEUE_BATCH,NULL);
     if (result) return result;
-    do { result=native_event_collect(queue,thread,buffer); } while (result==-EINTR);
+    /* Cache a drained worker briefly for bursts, then use libpthread's actual
+     * exit upcall. Keeping one parked thread forever per historical workloop
+     * exhausts the process even after all those queues become idle. */
+    enum { WORKLOOP_IDLE_MILLISECONDS=1000 };
+    do { result=native_event_collect(queue,thread,buffer,WORKLOOP_IDLE_MILLISECONDS); } while (result==-EINTR);
+    if(!result) {
+        native_kqueue_lock();
+        if(queue->client_owner==thread->port)native_kqueue_owner(queue,0);
+        __atomic_store_n(&queue->owner_tid,0,__ATOMIC_RELEASE);thread->retire_workqueue=1;
+        __atomic_store_n(&queue->worker,0,__ATOMIC_RELEASE);
+        long error=native_kqueue_arm(queue);
+        native_kqueue_unlock();
+        trace_record("DARWIN_EVENT_WORKER_RETIRE id=0x",queue->dynamic_id,thread->tid,error);
+        if(error)return error;
+    }
     return result;
 }
 static long native_kqueue_start_worker(struct native_kqueue *queue,const sigset_t *mask)

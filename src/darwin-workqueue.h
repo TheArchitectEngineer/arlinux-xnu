@@ -148,7 +148,7 @@ static int native_workqueue_resume(ucontext_t *uc,long result)
     uint64_t buffer=r[1] ? r[1] : native_event_buffer(thread);
     uint64_t flags=thread->flags|D_WQ_REUSE;
     int count=D_WQ_EXIT_NKEVENT;
-    if (operation!=D_WQ_RETURN) {
+    if (operation!=D_WQ_RETURN && !thread->retire_workqueue) {
         flags|=thread->workloop_id ? D_WQ_WORKLOOP : D_WQ_KEVENT|D_WQ_EVENT_MANAGER;
         count=result;
     } else buffer=0;
