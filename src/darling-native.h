@@ -8,7 +8,7 @@ static int darling_active;
 #include <darlingserver/rpc.h>
 #include <darlingserver/rpc-supplement.h>
 static struct sockaddr_un darling_address;
-static struct { int tid,fd; } darling_clients[32];
+static struct { int tid,fd; } darling_clients[D_NATIVE_GUEST_THREAD_CAPACITY+D_NATIVE_SERVICE_THREADS];
 static int darling_socket(void);
 static void *darling_copy(void *destination,const void *source,size_t size)
 {
@@ -30,8 +30,13 @@ static void darling_abort(const char *operation)
     /* Keep the original client threads for the existing opt-in fault collector
      * when a service rejects a request. Otherwise exit_group loses the caller
      * that was awaiting this reply. This remains a fatal journey failure. */
+    const char fatal[]="DARLING_RPC_FATAL original caller retained for diagnosis\n";
+    RAW(SYS_write,native_trace_fd,fatal,sizeof(fatal)-1,0,0,0);
+    /* RPC can hold an all-signals-blocked mask. A pending SIGABRT followed by
+     * exit_group can lose this caller before collection. SIGSTOP is synchronous
+     * and unblockable; resume still executes the actual fatal exit below. */
     if (native_stop_on_fault)
-        RAW(SYS_tgkill,RAW(SYS_getpid,0,0,0,0,0,0),RAW(SYS_gettid,0,0,0,0,0,0),SIGABRT,0,0,0);
+        RAW(SYS_kill,RAW(SYS_getpid,0,0,0,0,0,0),SIGSTOP,0,0,0,0);
     RAW(SYS_exit_group,D_RUNTIME_FATAL_EXIT,0,0,0,0,0);
     __builtin_unreachable();
 }
@@ -101,9 +106,9 @@ static void darling_unblock(uint64_t *saved)
 static int darling_socket(void)
 {
     int tid=RAW(SYS_gettid,0,0,0,0,0,0);
-    for (unsigned int i=0;i<32;i++)
+    for (unsigned int i=0;i<sizeof(darling_clients)/sizeof(*darling_clients);i++)
         if (__atomic_load_n(&darling_clients[i].tid,__ATOMIC_ACQUIRE)==tid) return darling_clients[i].fd;
-    for (unsigned int i=0;i<32;i++) {
+    for (unsigned int i=0;i<sizeof(darling_clients)/sizeof(*darling_clients);i++) {
         int unused=0;
         if (!__atomic_compare_exchange_n(&darling_clients[i].tid,&unused,tid,0,__ATOMIC_ACQ_REL,__ATOMIC_RELAXED)) continue;
         int fd=RAW(SYS_socket,AF_UNIX,SOCK_DGRAM|SOCK_CLOEXEC,0,0,0,0);
@@ -121,7 +126,7 @@ static int darling_socket(void)
 static void darling_thread_close(void)
 {
     int tid=RAW(SYS_gettid,0,0,0,0,0,0);
-    for (unsigned int i=0;i<32;i++) if (darling_clients[i].tid==tid) {
+    for (unsigned int i=0;i<sizeof(darling_clients)/sizeof(*darling_clients);i++) if (darling_clients[i].tid==tid) {
         if (dserver_rpc_explicit_checkout(darling_clients[i].fd,-1,0)) darling_abort("thread checkout");
         RAW(SYS_close,darling_clients[i].fd,0,0,0,0,0);
         __atomic_store_n(&darling_clients[i].tid,0,__ATOMIC_RELEASE);

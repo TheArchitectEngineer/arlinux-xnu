@@ -4,7 +4,7 @@
  * No host libc/TLS operation occurs after guest entry. */
 #pragma once
 #include <linux/futex.h>
-#define NATIVE_THREADS 32
+#define NATIVE_THREADS D_NATIVE_GUEST_THREAD_CAPACITY
 struct native_thread {
     uint64_t runtime_top,guest_sp,pthread,port,function,argument,flags;
     int tid,state; /* tid offset 56 is used by the clone trampoline. */

@@ -1,5 +1,8 @@
 #pragma once
 #include <stdint.h>
+/* Guest pthread slots plus the one native Mach-service thread created by the
+ * launcher. Transport bookkeeping must cover both, not fail one thread early. */
+enum { D_NATIVE_GUEST_THREAD_CAPACITY=32, D_NATIVE_SERVICE_THREADS=1 };
 
 long darwin_native_memory(unsigned long size,int protection);
 void darwin_native_connect(void);

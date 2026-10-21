@@ -51,7 +51,7 @@ class Processes:
                         stream.seek(item.get('faultScanOffset',0));new=stream.read();item['faultScanOffset']=stream.tell()
                     observed=item.get('faultScanTail',b'')+new
                     item['faultScanTail']=observed[-64:]
-                    if b'DARWIN_FAULT signal=' in observed:
+                    if b'DARWIN_FAULT signal=' in observed or b'DARLING_RPC_FATAL ' in observed:
                         item['faultObserved']=True
                         raise RuntimeError(f'{name} faulted; collecting original-process diagnosis')
             if item['process'].poll() is not None and not item.get('expectedExit'):
