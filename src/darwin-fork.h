@@ -9,7 +9,7 @@ static long native_fork(int *is_child)
 #ifdef ARLINUX_DARLING
     struct native_thread *current=native_current_thread();
     if(!darling_active || current!=native_threads || native_bootstrap_port ||
-       ui.control || workqueue_opened)return -ENOTSUP;
+       ui.control || workqueue_opened || native_kqueues)return -ENOTSUP;
     for(unsigned int i=1;i<NATIVE_THREADS;i++)
         if(__atomic_load_n(&native_threads[i].state,__ATOMIC_ACQUIRE)>=2 &&
            __atomic_load_n(&native_threads[i].tid,__ATOMIC_ACQUIRE))return -ENOTSUP;

@@ -258,7 +258,15 @@ original UIKit's HangTracer allocation during reactivation without patching that
 framework; it does not establish working fork/Mach task inheritance.
 Guest allocations stay in the low-address range required by this Objective-C
 ABI; host signal stacks may use host addresses. Real fork/COW, wait and thread
-join must not be replaced by success values. Unknown calls fail. A single CPU
+join must not be replaced by success values. The single-threaded, pre-workqueue
+console fork boundary now creates a genuine Linux COW child, closes only its
+inherited RPC references, checks in with the existing Mach core, and acquires its
+own task/host/thread rights. Original libpthread may register its child callbacks
+again. A real pipe holds the parent until child registration completes; failure
+kills/reaps that child. Dyld metadata points to the child's inherited COW storage.
+The Mach core owns task special-port inheritance; arbitrary parent receive rights
+are not copied. Live framework sessions, native kqueues and multithreaded fork
+quiescence remain unsupported and fail before clone. Unknown calls fail. A single CPU
 is enforced with Linux affinity before threads start and is reported consistently.
 
 Raw Linux syscalls use the allowed assembly site. Guest callbacks use no host

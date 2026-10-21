@@ -11,7 +11,7 @@ apps/shared/Screen.h is fixture UI layout, never a runtime shim.
 | --- | --- | --- |
 | Console | C / real dyld, libSystem, malloc, pthread, stdio | Interactive increment, genuine return 0, independent relaunch |
 | Foundation | Objective-C / Foundation collections, JSON, Unicode, exception unwind, timer/run loop | Computed result after real callbacks, console input and return 0 |
-| Process | C / 16 KiB mmap, fork/COW, wait | Parent retains 11 while actual child exits 37; return and unmap |
+| Process | C / 16 KiB private/shared mmap, fork, Mach task identity/ports, wait | Parent retains private 11 and sees shared 42 from actual child; each task owns its audit PID and receive port; child exits 37, parent reaps/unmaps and exits normally |
 | Counter | Traditional Objective-C / UIKit app delegate, label, system button | Real pointer -> Count 1, normal close, fresh Count 0 |
 | Notes | Objective-C / text input, Foundation document URLs, atomic UTF-8 file write | Typed note saved, visible text survives close/relaunch |
 | Workers | Objective-C / UIKit plus pthread, mmap and dispatch | Separate thread, memory and asynchronous queue journeys, results visible |
