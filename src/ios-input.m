@@ -1,6 +1,7 @@
 /* Linux input -> original UIKit hit testing/event dispatch. The platform owns
  * contacts; UIKit owns controls/actions. No test harness calls into this path.
- * Private event construction follows the KIF community's measured selectors;
+ * Private event construction follows the KIF community's measured selectors
+ * (https://github.com/kif-framework/KIF);
  * no fake GSEvent layout, accessibility switch or control callback is used.
  */
 #import <UIKit/UIKit.h>

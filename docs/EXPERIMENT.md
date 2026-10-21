@@ -7,7 +7,8 @@ and Linux-backed platform services. Counter must show real UIKit content,
 respond to external input with changed state/pixels, close normally and relaunch
 interactively. Console/Foundation and Swift/UIKit are independent regressions;
 the existing app collection and multi-process scenarios remain required.
-No complete Linux GUI, third-party IPA or Android acceptance has passed.
+Basic Linux GUI flows below pass; the full collection, third-party IPA and
+Android acceptance remain incomplete.
 
 sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16 build 20H392,
 6,035,280,776 bytes, SHA-256
@@ -17,84 +18,66 @@ executable data stays runner-local. Compilation/execution use hosted runners
 through build.sh. The collection has 11 source-owned apps, 13 short journeys
 and two cross-app scenarios; selected runs never certify the whole collection.
 
-## Current failed GUI effect
+## Verified basic app flows
 
-Run [39524469630](https://github.com/taowen/arlinux-xnu/actions/runs/39524469630),
-source **9511fd0e77ccaa519978648278c192d8f112823e**, selected Console, Foundation
-and Counter. Receipt
-**bb23988b3836a36dcb65719dba4ae33ece91dafb4bc7bb3508da1d1fee9a6f42**
-and all 38 files were verified by build --wait --evidence. Console and Foundation
-passed. Counter's original label and blue Increment button appear in actual
-composed pixels. Its external click was submitted, but Count remained 0; eight
-later close/relaunch steps are blocked. No full GUI journey is accepted.
+Run [39530266534](https://github.com/taowen/arlinux-xnu/actions/runs/39530266534),
+source **a81c909075056764ac65c4a1fa2df7d8268b7ff7**, attempt 1, passed Console,
+Foundation, Counter and Swift/UIKit in the ordinary non-diagnostic path.
+This is a **partial collection**, not full-suite or Android acceptance.
+Receipt **05826d17d82fc7aeb33a7561f30c603398cddce67a5df0b32e2f732c00dbf10d**
+and all 55 retained files were verified against the producing log and SHA-256.
 
-- The original FBSScene agent path launches UIKit; local CAContext and CPU
-  CALayer backing preserve original drawing/layout/delegation. Actual resilient
-  file mappings load Helvetica/SFUI instead of LastResort glyphs.
-- Expanding getattrlist, filesystem enumeration and policy-query support did
-  not change the failed button pixels. Original CoreUI catalog initialization
-  first calls NSURL checkResourceIsReachableAndReturnError:. That advisory
-  check is now backed by real Linux stat, retaining URL objects, subsequent
-  opens and original CoreUI parsing. LightStandard.car is actually reachable;
-  original systemBlueColor resolves and draws. No color is substituted.
-- The button target now contains 419 nonwhite pixels instead of zero. The
-  failed-after-click screenshot SHA-256 is
-  **22789c0d44af252ce045ca030b2363bab2f291d421fa2a06412ecc5fab6e0cc6**.
-  The screenshot visibly shows the label and original blue button.
-- Actual loaded UITouchesEvent methods _clearTouches and
-  _addTouch:forDelayedDelivery: were measured; their absence on UIEvent alone
-  was not evidence that UIKit lacked these operations. The implementation now
-  queues actual Wayland primary-pointer transitions and constructs real
-  IOHID/UITouch events for UIKit dispatch on its main loop. This next source
-  requires hosted end-to-end verification; it has not demonstrated input yet.
-- Host close now enters original UIApplication termination; normal exit and
-  interactive relaunch likewise remain unverified. Focus/activation updates,
-  keyboard/multitouch, complete workspace enumeration and other session/process
-  capabilities remain unfinished. The harness never invokes app/control actions.
-- The ineffective NSError factory/initializer observers are removed. No new
-  filesystem property or syscall is added to chase the former color failure.
+| App | Actual verified effect |
+| --- | --- |
+| Counter | Original UIKit label and blue button; external click changes Count 0 to 1 and its pixels; normal exit 0; new process resets to 0, accepts another external click to 1, normal exit 0 |
+| Swift/UIKit | External Deal click computes 6 through Swift generics/closure/Objective-C action dispatch; pixels change; normal exit 0; new process resets to 0 and closes normally |
+| Console | Real allocation/thread computation, external stdin, normal exit and independent relaunch |
+| Foundation | Original Unicode JSON objects, exception unwind, actual NSTimer computation, external input and normal exit |
 
-## Feedback measurements
+Counter identities are PID/startTicks **5705/13315** and **5751/13680**;
+Swift identities are **5803/14533** and **5845/14858**. Counter's original label
+region hash changes from
+**4b468bb8438044978505d8866114b3afa2ad4a000bdb36179513a4c8f39cab8a**
+to **2b551edea55b6c1d0d0e31dc6dd7945e4afadfd06cf65153ebcccabd8c2c93f5**,
+then repeats the reset/change after relaunch. Intermediate blank captures remain
+in evidence and do not satisfy the composed-pixel requirement.
 
-All three runs selected Console, Foundation and Counter with lifecycle context;
-Console/Foundation passed and Counter retained the same required pixel failure.
+## Working adaptation boundaries
 
-| Run | Change | Dispatch to completion | Firmware preparation | Counter diagnosis |
-| --- | --- | --- | --- | --- |
-| [39519310964](https://github.com/taowen/arlinux-xnu/actions/runs/39519310964) | Baseline | 167s | 57s | 10.334s |
-| [39519911112](https://github.com/taowen/arlinux-xnu/actions/runs/39519911112) | Trim recommended packages and repeated private-code dumps | 169s | 59s | 13.432s |
-| [39520403966](https://github.com/taowen/arlinux-xnu/actions/runs/39520403966) | Also overlap firmware download with toolchain installation | 151s | 39s | 10.214s |
+- Genuine FBSScene agent creation enters original UIKit launch. Local CAContext
+  and CPU CALayer backing preserve original layout/text/drawing. Actual resilient
+  file mappings load Helvetica/SFUI. This is software composition, not GPU proof.
+- NSURL file reachability uses real Linux stat and real Cocoa/POSIX errors;
+  original CoreUI resource parsing produces systemBlueColor. Extra filesystem
+  metadata support alone had not fixed that failure. No fixed color is supplied.
+- Actual Wayland seat pointer transitions enter a per-process bounded queue.
+  The guest main loop creates IOHID/UITouch events, uses original hit testing and
+  UIApplication event dispatch. The harness sends only external desktop input.
+- Host Alt-F4/xdg-close enters original UIApplication termination. Counter and
+  Swift verify normal process exits and fresh identities. The input harness
+  checks actual pointer coordinates rather than waiting for movement when the
+  pointer is already at its target.
+- Ineffective NSError-construction observers are removed; original-process
+  fault/unsupported-call/LLDB evidence remains available. Historical diagnosis
+  failures and their repairs remain in Git/Actions rather than a growing diary.
 
-The final download took 16.059s inside toolchain setup; subsequent preparation
-recorded downloadedBeforePreparation=true and still verified the complete
-firmware size/hash. The 151s total is about 10% below the baseline, a single-run
-comparison, not a sustained latency guarantee. Package/network/runner times vary;
-the first optimization alone did not improve overall latency. Default reporting
-now prints bounded evidence while retaining complete observations in the saved
-report and job log. Diagnostic collection had no errors; all actual screenshot,
-input, close and relaunch acceptance requirements remain unchanged.
+## Remaining scope and next experiment
 
-## Verified regression and reference limits
+Run the complete 11-app, 13-journey collection and both multi-process scenarios
+against the same adapters. Storage persistence/text input, networking, WebKit,
+extension processes, concurrent focus and crash isolation are not certified by
+these four passes. Primary-pointer contacts and Alt-F4 are implemented; keyboard
+text, scroll and multitouch are not. Session lifecycle focus updates, complete
+workspace enumeration and broader process cleanup still require work.
+No third-party IPA or Android acceptance has passed. The goal remains active.
 
-The same run passed Console and Foundation (fullSuite=false); Counter failed
-separately. Original-process diagnosis returned status 0 with no collection
-errors. Console covers real allocation, computing pthread,
-external stdin, normal exit and a fresh relaunch. Foundation covers Unicode JSON,
-exception unwind, NSTimer computation and normal exit. Swift/UIKit has no passing Linux
-journey and must be included after Counter startup progresses.
-
-Earlier loader/Mach/runtime repairs retain actual file identities, mapped
-trampoline code, message rights and synchronous wake behavior. They do not prove
-GUI effects. The removed legacy FrontBoard wire serializer is not restored.
-[Architecture](ARCHITECTURE.md) owns selective replacement boundaries;
-[diagnostics](DIAGNOSTICS.md) owns the shortened feedback procedure and measurements.
-Historical source/run/receipt details remain in Git and Actions, not this handoff.
+The successful selected run took **135 s** from dispatch to completion, including
+queues; the real app journeys took **22 s**. These are measurements, not a latency
+guarantee. Firmware remains transient, hash-verified and runner-local.
 
 Apple-host reference run
-[39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593),
-source 31cdc44086cf2acb681b396ec1ba6b06830d84dd, passed Console, Counter,
-Foundation and SwiftCards (partial collection). External Counter input changed
-actual UIKit text and composed pixels; close/relaunch restored the initial hash.
-Its relied-upon receipts/files were verified. This remains a behavior reference,
-not Linux or Android acceptance. No OCR, AI recognition or injected app/control
-actions establish acceptance.
+[39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593)
+previously passed the same four-app subset with native desktop events. It remains
+a behavior reference, not evidence of Linux/Android capability. Architecture and
+diagnostics procedures live in their own documents; no OCR, model recognition,
+readiness marker or direct app/control action establishes acceptance here.

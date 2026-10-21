@@ -74,17 +74,17 @@ constructor when UIKit requests its window context. It preserves original
 context/layer behavior while avoiding a nonexistent Apple render server. Hosted
 run 39514010952 confirms original UIKit text in composed pixels. ios-input.m owns actual
 UIKit key-window focus locally instead of exporting the local scene token to
-Apple's remote keyboard arbiter. Host input and keyboard delivery remain to be
-verified. A primary Wayland pointer bridge is now implemented for verification.
+Apple's remote keyboard arbiter. Primary Wayland pointer input, normal close and relaunch pass Counter and
+Swift/UIKit journeys. Text input is not implemented.
 The backend replaces CALayer's default `_display`
 storage with a CPU bitmap/CGImage and keeps original public display delegation,
 layerWillDraw and drawInContext behavior. It supplies a balanced UIKit graphics
 context and the actual view's current-trait drawing environment; real dynamic
 system-blue output is verified. CoreGraphics/CALayer still compose actual app
 content into the Wayland surface. No IOSurface driver is advertised. The latest
-verified frame shows the real Counter label and blue button, but external input
-has not yet changed its state and no full GUI journey has passed. Remote context
-sharing is unsupported.
+verified frame shows the real Counter label and blue button. External clicks
+change app state and composed pixels, including after a fresh-process relaunch.
+Remote context sharing is unsupported.
 
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor
@@ -130,17 +130,17 @@ requires cancellation rather than a synthetic successful click. The guest
 main-loop adapter constructs real IOHID/UITouch events and sends them through
 UIKit hit testing and UIApplication sendEvent:. Only primary-pointer contacts
 are implemented, not keyboard, scroll or multitouch. The host-close flag now
-enters original UIApplication termination. These new input/close paths require
-end-to-end verification. The guest ios-lifecycle.m attempts real scene construction on its main
+enters original UIApplication termination. Counter and Swift/UIKit verify these paths end to end; no full collection
+or Android claim follows. The guest ios-lifecycle.m attempts real scene construction on its main
 loop using the specification's actual settings/client/transition classes and
 host-derived process/geometry identity. It supplies a local updater and enters
 FBSScene's genuine agent creation notification. That path binds the agent to
 its scene before its original event handler dispatches into UIKit. The removed
 direct UIApplication workspace callback skipped that required binding. The
-software rendering boundary now produces actual Counter label pixels; a full
-GUI journey has not passed. Session scene registration, complete
+software rendering boundary produces original Counter/Swift content and actual
+input changes. Their complete selected GUI journeys pass. Session scene registration, complete
 workspace enumeration, focus updates, host-process/remote endpoint support,
-input/normal-close acceptance remain unfinished. Unsupported operations fail visibly.
+broader input/normal-close coverage remain unfinished. Unsupported operations fail visibly.
 
 Use the existing injected platform library as the adaptation seam. Inspect the
 real UIKit/FrontBoard startup path to choose the narrowest framework-facing
@@ -168,6 +168,7 @@ app-specific exception is evidence to revisit the boundary, not a new policy.
 | components/darling | Shared Mach core and genuine cross-task ports/messages/VM operations | A second competing port-ownership implementation |
 | native-xpc.c | Audited peer identity/incarnation, registered displays, bootstrap and required service transport | UIKit policy or legacy FrontBoard lifecycle emulation |
 | ios-scene-token.m | Immutable local scene identity/copy/equality without a remote Apple endpoint | Encoding a fake remote capability |
+| ios-input.m | Actual host contacts, UIKit hit testing and original event dispatch | Control actions or invented successful input |
 | ios-filesystem.m | Linux-backed file URL reachability with real errors | Replacing resource parsers or returning unconditional success |
 | ios-lifecycle.m | Guest main-loop scene construction and framework-facing lifecycle adaptation | App delegate/control callbacks or acceptance decisions |
 | ios-platform.c / ios-platform-abi.h | Real dyld library constructor and versioned private platform attachment | Bootstrap lookup side effects or calling frameworks from syscall signals |
