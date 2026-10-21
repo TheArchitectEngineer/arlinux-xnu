@@ -102,6 +102,7 @@
  *	port, this fields could be deleted once we remove ip_prealloc.
  */
 
+struct arlinux_ipc_aux { void *bytes; mach_msg_size_t size; };
 struct ipc_kmsg {
 	struct ipc_kmsg            *ikm_next;        /* next message on port/discard queue */
 	struct ipc_kmsg            *ikm_prev;        /* prev message on port/discard queue */
@@ -128,8 +129,7 @@ struct ipc_kmsg {
 	mach_msg_qos_t             ikm_qos_override; /* qos override on this kmsg */
 	mach_msg_filter_id         ikm_filter_policy_id; /* Sandbox-specific policy id used for message filtering */
 	/* Opaque mach_msg2 auxiliary bytes, owned by this queued message. */
-	void                     *arlinux_aux;
-	mach_msg_size_t           arlinux_aux_size;
+	struct arlinux_ipc_aux     arlinux_aux;
 };
 #define ikm_prealloc ikm_u.ikmu_prealloc
 #define ikm_data ikm_u.ikmu_data
@@ -155,7 +155,9 @@ struct ipc_kmsg {
  *	IKM_SAVED_KMSG_SIZE includes overhead; IKM_SAVED_MSG_SIZE doesn't.
  */
 extern zone_t ipc_kmsg_zone;
-#define IKM_SAVED_KMSG_SIZE     256
+/* Preserve the original inline-message capacity, including preallocated port
+ * messages. Extra ownership fields must not consume its original 256 bytes. */
+#define IKM_SAVED_KMSG_SIZE     (256 + sizeof(struct arlinux_ipc_aux))
 #define IKM_SAVED_MSG_SIZE      ikm_less_overhead(IKM_SAVED_KMSG_SIZE)
 
 #define ikm_prealloc_inuse_port(kmsg)                                   \

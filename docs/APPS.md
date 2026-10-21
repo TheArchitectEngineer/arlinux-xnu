@@ -16,7 +16,7 @@ apps/shared/Screen.h is fixture UI layout, never a runtime shim.
 | Notes | Objective-C / text input, Foundation document URLs, atomic UTF-8 file write | Typed note saved, visible text survives close/relaunch |
 | Workers | Objective-C / UIKit plus pthread, mmap and dispatch | Separate thread, memory and asynchronous queue journeys, results visible |
 | Canvas | Objective-C / UIView drawRect, CoreGraphics colors and geometry | Real red pixels, click -> real green pixels, normal close |
-| Network | Objective-C / NSURLSession, HTTP, JSON, main queue | Genuine socket request logged by local HTTP peer plus visible answer 42 |
+| Network | Objective-C / NSURLSession, HTTP, JSON, main queue | Two genuine HTTP requests recorded across normal close/new-process relaunch, each with visible answer 42 |
 | Web | Objective-C / WKWebView, WebKit helper/rendering, JavaScript, DOM | Actual DOM click changes WebCount 0 -> 1 in composed pixels |
 | SwiftCards | Swift 5 language / UIKit, generics, closures, Objective-C action dispatch | Real Deal click computes 6; close/relaunch resets state |
 | Share | Objective-C / UIActivityViewController, NSItemProvider, NSExtensionContext | App requests bundled iOS sharing extension; payload round trip, independent PID, retirement/restart |

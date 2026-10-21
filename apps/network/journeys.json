@@ -28,6 +28,33 @@
         {
           "do": "exit",
           "app": "network"
+        },
+        {
+          "do": "launch",
+          "app": "network"
+        },
+        {
+          "do": "see",
+          "text": "^Offline$"
+        },
+        {
+          "do": "click",
+          "text": "^Fetch$"
+        },
+        {
+          "do": "see",
+          "text": "Network: ?42"
+        },
+        {
+          "do": "http-request",
+          "minimum": 2
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "network"
         }
       ]
     }

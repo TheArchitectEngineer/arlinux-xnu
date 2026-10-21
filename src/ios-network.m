@@ -136,8 +136,10 @@ static NSInteger url_error(uint32_t error)
                 stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
             headers[name]=headers[name] ? [NSString stringWithFormat:@"%@, %@",headers[name],value] : value;
         }
+        NSString *version=[[raw componentsSeparatedByString:@" "] firstObject];
+        if(![version hasPrefix:@"HTTP/"]){[self fail:NSURLErrorCannotParseResponse transport:0];return;}
         NSHTTPURLResponse *response=[[[NSHTTPURLResponse alloc] initWithURL:self.request.URL
-            statusCode:result.status HTTPVersion:@"HTTP/1.1" headerFields:headers] autorelease];
+            statusCode:result.status HTTPVersion:version headerFields:headers] autorelease];
         NSString *location=[response valueForHTTPHeaderField:@"Location"];
         if(location && (result.status==301 || result.status==302 || result.status==303 || result.status==307 || result.status==308)) {
             NSMutableURLRequest *redirect=[[self.request mutableCopy] autorelease];
@@ -147,9 +149,13 @@ static NSInteger url_error(uint32_t error)
                 [redirect setValue:nil forHTTPHeaderField:@"Content-Length"];
                 [redirect setValue:nil forHTTPHeaderField:@"Content-Type"];
             }
-            if(![redirect.URL.host isEqualToString:self.request.URL.host] ||
+            NSInteger oldPort=self.request.URL.port ? self.request.URL.port.integerValue :
+                ([self.request.URL.scheme.lowercaseString isEqualToString:@"https"] ? 443 : 80);
+            NSInteger newPort=redirect.URL.port ? redirect.URL.port.integerValue :
+                ([redirect.URL.scheme.lowercaseString isEqualToString:@"https"] ? 443 : 80);
+            if(![redirect.URL.host.lowercaseString isEqualToString:self.request.URL.host.lowercaseString] ||
                ![redirect.URL.scheme isEqualToString:self.request.URL.scheme] ||
-               ![redirect.URL.port isEqual:self.request.URL.port]) {
+               newPort!=oldPort) {
                 [redirect setValue:nil forHTTPHeaderField:@"Authorization"];
                 [redirect setValue:nil forHTTPHeaderField:@"Cookie"];
             }

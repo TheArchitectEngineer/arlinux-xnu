@@ -42,7 +42,12 @@ class Case(Processes,Desktop):
         elif action == 'http-start':
             self.http=HttpFixture(self.directory);self.http.start()
         elif action == 'http-request':
-            if not self.http or not self.http.received(): raise RuntimeError('No real HTTP request reached fixture')
+            minimum=step.get('minimum',1)
+            if type(minimum) is not int or minimum<1:raise RuntimeError('HTTP request minimum must be a positive integer')
+            count=sum(item['path']=='/value.json' for item in self.http.requests) if self.http else 0
+            self.steps[-1]['requestsObserved']=count
+            if not self.http or not self.http.received(minimum):
+                raise RuntimeError(f'HTTP peer received {count} matching requests; required {minimum}')
         elif action == 'pixels':
             self.observe_pixels(step)
         elif action == 'see':

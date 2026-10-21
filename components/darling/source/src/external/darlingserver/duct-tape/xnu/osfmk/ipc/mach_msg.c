@@ -556,10 +556,10 @@ mach_msg_overwrite_trap(
 			    header.size != args->send_aux_size || header.reserved) {
 				ipc_kmsg_free(kmsg); return MACH_SEND_INVALID_DATA;
 			}
-			kmsg->arlinux_aux = kalloc(args->send_aux_size);
-			if (!kmsg->arlinux_aux) { ipc_kmsg_free(kmsg); return MACH_SEND_NO_BUFFER; }
-			kmsg->arlinux_aux_size = args->send_aux_size;
-			if (copyin(args->send_aux, kmsg->arlinux_aux, args->send_aux_size)) {
+			kmsg->arlinux_aux.bytes = kalloc(args->send_aux_size);
+			if (!kmsg->arlinux_aux.bytes) { ipc_kmsg_free(kmsg); return MACH_SEND_NO_BUFFER; }
+			kmsg->arlinux_aux.size = args->send_aux_size;
+			if (copyin(args->send_aux, kmsg->arlinux_aux.bytes, args->send_aux_size)) {
 				ipc_kmsg_free(kmsg); return MACH_SEND_INVALID_DATA;
 			}
 		}

@@ -192,8 +192,8 @@ static long darling_mach_msg2(const unsigned long long *r)
      * eight packed arguments, unlike legacy mach_msg_overwrite's flat ABI.
      * Ordinary canonical-buffer calls use the same real Darling queues and
      * MIG kobjects. This trusted-input runtime does not enforce Apple's CFI
-     * routing policy. Vectors may carry a normal message and receive an empty
-     * auxiliary data. The internal RPC retains opaque auxiliary bytes in the
+     * routing policy. Vectors may carry a normal message and auxiliary data.
+     * The internal RPC retains opaque auxiliary bytes in the
      * real queued kmsg; separate-header sends still fail. */
     static unsigned int traces;
     int diagnostic=__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT;

@@ -1346,10 +1346,10 @@ void
 ipc_kmsg_free(
 	ipc_kmsg_t      kmsg)
 {
-	if (kmsg->arlinux_aux) {
-		kfree(kmsg->arlinux_aux, kmsg->arlinux_aux_size);
-		kmsg->arlinux_aux = NULL;
-		kmsg->arlinux_aux_size = 0;
+	if (kmsg->arlinux_aux.bytes) {
+		kfree(kmsg->arlinux_aux.bytes, kmsg->arlinux_aux.size);
+		kmsg->arlinux_aux.bytes = NULL;
+		kmsg->arlinux_aux.size = 0;
 	}
 	mach_msg_size_t size = kmsg->ikm_size;
 	ipc_port_t port;
@@ -2514,12 +2514,12 @@ ipc_kmsg_put(
 	thread_t receiver = current_thread();
 	if (mr == MACH_MSG_SUCCESS && receiver->ith_knote == ITH_KNOTE_NULL && receiver->arlinux_rcv_aux) {
 		struct { uint32_t size, reserved; } eof = {0, 0};
-		if (kmsg->arlinux_aux_size > receiver->arlinux_rcv_aux_size) {
-			uint32_t required = kmsg->arlinux_aux_size;
+		if (kmsg->arlinux_aux.size > receiver->arlinux_rcv_aux_size) {
+			uint32_t required = kmsg->arlinux_aux.size;
 			mr = copyout(&required, receiver->arlinux_rcv_aux, sizeof(required)) ?
 			    MACH_RCV_INVALID_DATA : MACH_RCV_TOO_LARGE;
-		} else if (copyout(kmsg->arlinux_aux ? kmsg->arlinux_aux : &eof,
-		    receiver->arlinux_rcv_aux, kmsg->arlinux_aux ? kmsg->arlinux_aux_size : sizeof(eof))) {
+		} else if (copyout(kmsg->arlinux_aux.bytes ? kmsg->arlinux_aux.bytes : &eof,
+		    receiver->arlinux_rcv_aux, kmsg->arlinux_aux.bytes ? kmsg->arlinux_aux.size : sizeof(eof))) {
 			mr = MACH_RCV_INVALID_DATA;
 		}
 	}
