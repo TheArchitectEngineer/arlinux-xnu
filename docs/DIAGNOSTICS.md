@@ -322,6 +322,11 @@ Unreadable metadata and truncation stay explicit. This helps distinguish a
 waiting application queue from an incidental SDK failure; it executes no guest
 code or queue action. Original IPA images now appear in the same dyld image
 metadata record as source-owned apps, without copying their binaries.
+The opt-in original-app UIKit observer also reads at most sixteen actual view
+controllers and their public presentation/transition-coordinator state. It does
+not load absent views, change animation policy, invoke app actions or complete
+transitions. This distinguishes a persistent presentation transition from an
+application initialization wait without treating either as a proven cause.
 
 When the original failed process actually requests com.apple.containermanagerd,
 its existing cache symbolication reads the Foundation group-container method and

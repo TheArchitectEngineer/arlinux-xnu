@@ -5,6 +5,7 @@
 #import <objc/runtime.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #endif
 static NSMutableArray *elements;
 static NSMutableSet *visited;
@@ -47,6 +48,23 @@ static void observe_geometry(UIWindow *window) {
         @"views":views,@"viewLimit":@128,@"limitReached":@(views.count>=128)};
     NSData *json=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:nil];
     if (json) { fwrite("APP_RENDER_GEOMETRY ",1,20,stdout);fwrite(json.bytes,1,json.length,stdout);fputc('\n',stdout);fflush(stdout); }
+}
+static void collect_controllers(UIViewController *controller,NSMutableArray *records,unsigned depth) {
+    if(!controller || depth>8 || records.count>=16)return;
+    NSMutableDictionary *record=[@{@"class":NSStringFromClass(controller.class),@"depth":@(depth),
+        @"beingPresented":@(controller.isBeingPresented),@"beingDismissed":@(controller.isBeingDismissed),
+        @"viewLoaded":@(controller.isViewLoaded),@"viewInWindow":@(controller.viewIfLoaded.window!=nil)} mutableCopy];
+    id<UIViewControllerTransitionCoordinator> transition=controller.transitionCoordinator;
+    if(transition) {
+        double duration=transition.transitionDuration,percent=transition.percentComplete;
+        record[@"transition"]=@{@"animated":@(transition.isAnimated),@"interactive":@(transition.isInteractive),
+            @"cancelled":@(transition.isCancelled),@"initiallyInteractive":@(transition.initiallyInteractive),
+            @"duration":isfinite(duration) ? @(duration) : [NSNull null],
+            @"percentComplete":isfinite(percent) ? @(percent) : [NSNull null]};
+    }
+    [records addObject:record];
+    for(UIViewController *child in controller.childViewControllers)collect_controllers(child,records,depth+1);
+    collect_controllers(controller.presentedViewController,records,depth+1);
 }
 #endif
 static void inspect(id object,unsigned depth) {
@@ -102,8 +120,16 @@ static void snapshot(void) {
     UIApplicationState state=[UIApplication sharedApplication].applicationState;
     NSString *stateName=state==UIApplicationStateActive ? @"active" :
         state==UIApplicationStateInactive ? @"inactive" : @"background";
-    NSDictionary *value=@{@"viewport":@[@(bounds.size.width),@(bounds.size.height)],@"elements":elements,
-        @"applicationState":stateName,@"activationNotifications":@{@"didBecomeActive":@(becameActive),@"willResignActive":@(resignedActive)}};
+    NSMutableDictionary *value=[@{@"viewport":@[@(bounds.size.width),@(bounds.size.height)],@"elements":elements,
+        @"applicationState":stateName,@"activationNotifications":@{@"didBecomeActive":@(becameActive),@"willResignActive":@(resignedActive)}} mutableCopy];
+#ifdef ARLINUX_PLATFORM_INSPECTION
+    const char *diagnose=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
+    if(diagnose && !strcmp(diagnose,"1")) {
+        NSMutableArray *controllers=[NSMutableArray new];collect_controllers(window.rootViewController,controllers,0);
+        value[@"controllers"]=controllers;value[@"controllerLimitReached"]=@(controllers.count>=16);
+        value[@"animationsEnabled"]=@([UIView areAnimationsEnabled]);
+    }
+#endif
     NSData *json=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:nil];
     if (json && ![json isEqual:previous]) {
         fwrite("APP_INSPECTION ",1,15,stdout);fwrite(json.bytes,1,json.length,stdout);fputc('\n',stdout);fflush(stdout);previous=json;
