@@ -63,14 +63,14 @@ comparison, not a pixel-equivalence baseline. The new phone viewport gate has
 not passed on macOS. An arbitrary desktop-shaped iPhone app cannot establish
 that a display difference is a rendering bug.
 
-## Latest complete collection before Things: failed, 17/19
+## Latest complete collection: failed, 17/20
 
-[Run 39687118653](https://github.com/taowen/arlinux-xnu/actions/runs/39687118653),
-source **d87ec6731af2fcc83e112625070329ae6b0a0d94**, attempt 1, passes 17/19
+[Run 39688697924](https://github.com/taowen/arlinux-xnu/actions/runs/39688697924),
+source **16d1c860252439686cddba69afe1a6d39eba0bc0**, attempt 1, passes 17/20
 journeys, including both original Calculator phone cases. Receipt
-**9903e0e46e913b55d905c8c0b8ccccf757aa3b4f4943e8097ba1a706a9286e37**
-and all 362 files were verified. Feedback was 360 s; journeys 225.7 s including
-34.3 s diagnosis. Canvas, Counter, Notes, Swift, Network, Workers, Console,
+**86c3b7d185d0e1c7893c923823d8f2e6b6e13fe78e2f413452206426df70014a**
+and all 433 files were verified. Feedback was 388 s; journeys 237.5 s including
+42.0 s diagnosis. Canvas, Counter, Notes, Swift, Network, Workers, Console,
 Foundation, Process and all three cross-app scenarios pass.
 
 - Canvas's source-owned button now stays within the corrected viewport; its
@@ -80,8 +80,10 @@ Foundation, Process and all three cross-app scenarios pass.
 - Share still cannot show EchoExtension. Real extension discovery/launch and
   payload/lifetime acceptance remain incomplete.
 
-Things adds a twentieth case after this run. No current full 20-case result
-has passed; selected original-app runs do not certify the collection.
+Things fails before its viewport at the same group-container force unwrap
+described below. No full 20-case result has passed. This full result precedes
+the explicit rejection of missing DER transmutation; that change has only a
+selected Things run, not a new complete collection result.
 
 ## Next original app
 
@@ -111,7 +113,15 @@ XML fallback; XNU normally transmutes it. The runtime now explicitly rejects
 this unimplemented conversion instead of reporting no entitlements. The same
 session records com.apple.containermanagerd lookup failures (1102), so metadata
 alone cannot supply shared storage. Targeted original consumer disassembly is
-included in the next failing journey's existing diagnosis.
+included in the existing diagnosis of
+[run 39689159838](https://github.com/taowen/arlinux-xnu/actions/runs/39689159838),
+source **ef193d3c91ffaa844368478ac0953eae47437b27**, PID/start 5856/13656.
+Its receipt **ba1a0b861c06e3a7e516b15b867467f85f1ab6c8c53d653b5c12a7f5d1dc0cd9**
+and all 83 files were verified; the same original trap remains. The real
+Foundation method passes the group's UTF-8 name and a null error pointer into
+`container_create_or_lookup_app_group_path_by_app_group_identifier`, then wraps
+the returned C path in an NSURL and frees it. This supplies a reusable container
+boundary below Foundation; no need to modify Things' force unwrap or UIKit.
 
 No Apple signature validation or platform trust is asserted. DER conversion and
 shared storage remain Linux-backed boundaries, not app-specific fabricated
