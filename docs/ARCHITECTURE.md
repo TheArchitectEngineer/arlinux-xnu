@@ -437,3 +437,10 @@ Primary execution references: [tawcroot](https://github.com/taowen/tawc), import
 Darling/XNU code, [Apple TSD](https://github.com/apple-oss-distributions/xnu/blob/1b191cb58250d0705d8a51287127505aa4bc0789/libsyscall/os/tsd.h),
 [Wayland](https://wayland.freedesktop.org/docs/html/apa.html), and
 [iOS app extensions](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/ExtensionScenarios.html).
+
+Main-thread stack limits share the launcher's actual allocation identity. The
+launcher allocates/registers its guest main stack once; both the Apple main_stack
+vector and getrlimit(RLIMIT_STACK) describe that mapping. Linux's unrelated host
+stack limit must not be exposed as this guest stack. Other supported Darwin
+resource IDs map explicitly to Linux prlimit64 with infinity conversion; invalid
+IDs and guest pointers retain actual errors. setrlimit is not implemented.

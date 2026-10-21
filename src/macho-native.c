@@ -141,10 +141,11 @@ int main(int argc,char **argv)
         need(!pthread_detach(service),"detach native Mach service thread");
     }
     uint64_t cache_base=root ? load_native_cache(root) : 0;
-    long stack_address=darwin_native_memory(1024*1024,PROT_READ|PROT_WRITE);
+    const unsigned int stack_size=1024*1024;
+    long stack_address=darwin_native_main_stack(stack_size);
     if ((unsigned long)stack_address>=(unsigned long)-4095) { errno=-stack_address; die("guest stack"); }
     void *stack=(void *)stack_address;
-    uint64_t top=((uintptr_t)stack+1024*1024-128)&~15UL;
+    uint64_t top=((uintptr_t)stack+stack_size-128)&~15UL;
     if (dynamic) {
         size_t length=strlen(program)+1;
         need(length<4096,"program path too long");
@@ -166,7 +167,7 @@ int main(int argc,char **argv)
         char stack_parameter[192],token_parameter[64];
         int stack_count=snprintf(stack_parameter,sizeof(stack_parameter),
             "main_stack=%#" PRIx64 ",%#x,%#" PRIx64 ",%#x",
-            (uint64_t)stack_address+1024*1024,1024*1024,(uint64_t)stack_address,1024*1024);
+            (uint64_t)stack_address+stack_size,stack_size,(uint64_t)stack_address,stack_size);
         need(stack_count>0 && (size_t)stack_count<sizeof(stack_parameter),"main stack parameter length");
         top=(top-stack_count-1)&~15UL;
         memcpy((void *)top,stack_parameter,stack_count+1);uint64_t stack_parameter_address=top;

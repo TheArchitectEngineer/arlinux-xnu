@@ -8,6 +8,7 @@ long darwin_clone_callback(uint64_t stack,void (*callback)(void *),void *argumen
 extern char darwin_clone_callback_return[];
 
 long darwin_native_memory(unsigned long size,int protection);
+long darwin_native_main_stack(unsigned long size);
 void darwin_native_connect(void);
 int darwin_native_dyld_info(uint64_t address,uint64_t length);
 int darwin_native_services_enabled(void);

@@ -22,6 +22,7 @@ enum darwin_bootstrap {
 
 enum darwin_syscall {
     D_SYS_EXIT = 1,
+    D_SYS_GETRLIMIT = 194,
     D_SYS_FORK = 2,
     D_SYS_READ = 3,
     D_SYS_WRITE = 4,
@@ -423,3 +424,12 @@ struct darwin_fchecklv {
     int64_t file_start;
     uint64_t error_message_size,error_message;
 };
+
+/* XNU bsd/sys/resource.h: resource identifiers and LP64 rlim_t wire values. */
+enum darwin_resource_limit {
+    D_RLIMIT_CPU=0,D_RLIMIT_FSIZE=1,D_RLIMIT_DATA=2,D_RLIMIT_STACK=3,
+    D_RLIMIT_CORE=4,D_RLIMIT_AS=5,D_RLIMIT_MEMLOCK=6,D_RLIMIT_NPROC=7,
+    D_RLIMIT_NOFILE=8,D_RLIMIT_COUNT=9,D_RLIMIT_POSIX_FLAG=0x1000
+};
+#define D_RLIM_INFINITY UINT64_C(0x7fffffffffffffff)
+struct darwin_rlimit { uint64_t current,maximum; };

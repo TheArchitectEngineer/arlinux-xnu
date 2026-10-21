@@ -12,6 +12,7 @@
 #endif
 #include <errno.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 #include <sys/auxv.h>
 #include <stddef.h>
 #include <signal.h>
@@ -234,6 +235,15 @@ static long anonymous_aligned(unsigned long size,int protection,unsigned long ma
 long darwin_native_memory(unsigned long size,int protection)
 {
     return anonymous_aligned(size,protection,PAGE16-1);
+}
+
+static uint64_t native_main_stack_size;
+long darwin_native_main_stack(unsigned long size)
+{
+    if(native_main_stack_size || !size || (size&(PAGE16-1)))return -EINVAL;
+    long address=darwin_native_memory(size,PROT_READ|PROT_WRITE);
+    if((unsigned long)address<(unsigned long)-4095)native_main_stack_size=size;
+    return address;
 }
 
 /* Read-only filesystem access for genuine dyld dependencies. Darwin paths
@@ -852,6 +862,7 @@ static void dispatch(int signal, siginfo_t *info, void *context)
         result=RAW(SYS_faccessat,directory,path,r[1],0,0,0);
         break;
     }
+    case D_SYS_GETRLIMIT: result=native_getrlimit(r); break;
     case D_SYS_SYSCTLBYNAME: result=native_sysctlbyname(r); break;
     case D_SYS_SYSCTL: result=native_sysctl(r); break;
     case D_SYS_CSOPS: case D_SYS_CSOPS_AUDITTOKEN: result=native_csops(r); break;

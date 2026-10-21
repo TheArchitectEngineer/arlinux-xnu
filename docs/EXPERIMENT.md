@@ -165,27 +165,25 @@ collections complete; the third child is explicitly omitted from attachment,
 with its actual fault records retained in session.log. No DOM, usable connection,
 normal helper retirement, third-party IPA or Android acceptance is claimed.
 
-Latest selected run [39589004917](https://github.com/taowen/arlinux-xnu/actions/runs/39589004917),
-source **66377b31d7b7244c8e5f8c22781f1fec8d495169**, attempt 1, passes Counter
-and fails the same Web DOM step (1/2, partial). Receipt
-**ab3fded0ae98fbec216b1948b71ea9f4df01a2d6bd7657a9a054ba3647bfe527**
-and 47 evidence files were verified. App **5996/39571** shares owned session
-**5993/39566**. WebContent **6035/39853** now has original IPC::Connection
-message dispatch -> WebProcess::initializeWebProcess -> WebCore::commonVMSlow ->
-JSC::VM construction in its retained fault stack. This is evidence of actual
-client/helper message consumption beyond the receive-grant producer marker.
-VM construction traps at **0x19a37c2d8**, with original crash metadata including
-stack boundary **0x300100000** and anomalous bound **0xffff55003a506270**.
-The root cause is not yet established; next read original pthread stack-query
-and StackBounds consumers before changing TLS, stack sizing or checks.
-Networking **6057/40269** separately exits with wait status 256 in the original
-getConnectionIdentifier/getClientIdentifier failure branch. Same-cache code
-confirms real server-port extraction and nonempty client-identifier checks;
-which check failed is unproven. Replacement **6066/40330** is retained too.
-Failure collection now chooses live distinct services and symbolizes the closed
-session log after retirement, preserving the previously missed late VM fault.
-Total feedback is 166 s; journeys take 38.927 s including 23.338 s of diagnosis.
-No DOM or helper-lifecycle acceptance. The previous full 14/16 result remains
+Latest selected run [39598768767](https://github.com/taowen/arlinux-xnu/actions/runs/39598768767),
+source **82a26c6cf82e44392294aaa91b242fecaafb114b**, attempt 1, passes Counter
+and fails Web DOM (1/2, partial). Receipt
+**9dfd1e96d96380251c49b0d77d39d2febc4184eb878a2b351ef78fd3b89070d3**
+and 47 evidence files were verified. App **6042/120511** shares owned session
+**6039/120506**; original WebContent **6082/120993**, Networking **6123/121687**
+and replacement **6183/121987** are retained by PID/start ticks.
+Targeted same-cache StackBounds code calls getrlimit(3, &limit) for the main
+thread, then loads limit.current without checking the result. The original
+pthread queries correctly return actual stored stack address/size; the runtime's
+unimplemented syscall 194 leaves StackBounds' local output uninitialized. This
+explains the anomalous lower bound in run 39589004917's original JSC VM trap;
+it is not evidence that the whole VM initialization now works.
+The candidate implements getrlimit from the real separately allocated guest main
+stack and Linux resource limits. It does not enlarge the stack, ignore the VM
+check or fabricate its output. Runner validation is pending.
+Networking separately exits in the connection/client identifier branch; no DOM
+or helper-lifecycle acceptance. Total feedback is 169 s; journeys take 38.797 s
+including 22.165 s of diagnosis. The previous full 14/16 result remains
 source-specific; the full goal remains active.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and

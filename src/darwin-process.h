@@ -284,3 +284,28 @@ static long native_fcntl(const unsigned long long *r)
     }
     return status;
 }
+
+/* WTF's original main-thread StackBounds reads this output immediately. The
+ * Linux host stack is unrelated to our separately mapped guest main stack. */
+static long native_getrlimit(const unsigned long long *r)
+{
+    uint64_t resource=r[0]&~(uint64_t)D_RLIMIT_POSIX_FLAG;
+    if(resource>=D_RLIMIT_COUNT)return -EINVAL;
+    struct darwin_rlimit value;
+    if(resource==D_RLIMIT_STACK) {
+        if(!native_main_stack_size)return -EINVAL;
+        value.current=value.maximum=native_main_stack_size;
+    } else {
+        static const int host_resources[D_RLIMIT_COUNT]={
+            RLIMIT_CPU,RLIMIT_FSIZE,RLIMIT_DATA,RLIMIT_STACK,RLIMIT_CORE,
+            RLIMIT_AS,RLIMIT_MEMLOCK,RLIMIT_NPROC,RLIMIT_NOFILE};
+        /* Linux prlimit64 has two uint64_t fields, independently of libc's
+         * rlim_t. Keep the host and guest infinity encodings separate. */
+        uint64_t host[2];
+        long error=RAW(SYS_prlimit64,0,host_resources[resource],0,host,0,0);
+        if(error)return error;
+        value.current=host[0]>D_RLIM_INFINITY ? D_RLIM_INFINITY : host[0];
+        value.maximum=host[1]>D_RLIM_INFINITY ? D_RLIM_INFINITY : host[1];
+    }
+    return guest_copy(&value,r[1],sizeof(value),1);
+}
