@@ -12,9 +12,16 @@ def prepare_firmware_app(app):
     root=ROOT/'build/ios-input/filesystem/root'
     firmware=json.loads((ROOT/'build/results/apple-input.json').read_text())
     matches=[]
-    for pattern in ('Applications/*.app/Info.plist','System/Applications/*.app/Info.plist'):
+    # Removable system apps can be staged for installation on first device
+    # boot. Resolve their real bundle metadata too; do not require SpringBoard
+    # installation or infer a path from the app's display name.
+    app['inputSearch']=[]
+    for pattern in ('Applications/*.app/Info.plist','System/Applications/*.app/Info.plist',
+                    'private/var/staged_system_apps/*.app/Info.plist'):
         for path in root.glob(pattern):
             info=plistlib.loads(path.read_bytes())
+            app['inputSearch'].append({'path':path.relative_to(root).as_posix(),
+                                       'bundleIdentifier':info.get('CFBundleIdentifier')})
             if info.get('CFBundleIdentifier')==app['input']['bundleIdentifier']:
                 matches.append((path.parent,info))
     if len(matches)!=1:

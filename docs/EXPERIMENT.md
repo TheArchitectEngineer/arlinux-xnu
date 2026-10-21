@@ -129,8 +129,9 @@ lifecycle profile now reads bounded actual touch/event gesture selectors, view
 geometry/ancestors, recognizer counts and states before/after original dispatch.
 The failure collector reads the actual _addTouch:forDelayedDelivery: and
 _clearTouches consumers. No recognizer/action is invoked or state rewritten.
-Recovery of the working baseline and the DOM effect remain unverified until
-the next original app flows run.
+Run 39621212426 verifies recovery of the 15/17 fixture baseline; the DOM input
+effect still fails. Original Calculator has its own required journey and is
+not covered by that recovery result.
 
 This run's journeys take 67.8 s (diagnosis 21.7 s included); total feedback is
 534 s, including delayed GitHub finalization after execution/evidence upload.

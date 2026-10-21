@@ -276,6 +276,15 @@ into tiny interleaved fragments. Host loader/Wayland diagnostics may still share
 .stderr; neither stream alone is an acceptance oracle. Source-owned apps export read-only
 UIKit/DOM state; GUI acceptance additionally requires actual composed pixels.
 No OCR or AI recognizer is used.
+Original firmware apps use the same read-only UIKit observer, compiled into
+the injected platform library and explicitly enabled by the runner. It samples
+visible windows on the genuine main loop; the app binary and resources are
+unchanged. A mixed-theme pixel policy requires actual luminance contrast in
+the observed element rectangle, plus changed pixels for changed text. It does
+not replace calculation results or invoke control actions. Input preparation
+records the original bundle/version, actual Mach-O ISA/encryption/dependencies,
+executable and resource hashes; unsupported or unavailable inputs fail their
+own journey. No extracted Apple app is uploaded with products or evidence.
 Raw frame captures publish by atomic rename only after complete write/close.
 An interrupted temporary frame is explicitly unpublished and removed before
 encoding; the previous completed frame remains intact. Final published-frame
