@@ -29,6 +29,7 @@ enum darwin_syscall {
     D_SYS_ACCESS = 33, D_SYS_READ_NOCANCEL = 396, D_SYS_WRITE_NOCANCEL = 397,
     D_SYS_PROC_INFO = 336, D_SYS_SYSCTLBYNAME = 274, D_SYS_SYSCTL = 202,
     D_SYS_FSGETPATH = 427,
+    D_SYS_GETATTRLIST = 220, /* XNU bsd/kern/syscalls.master, bsd/sys/attr.h. */
     D_SYS_CSOPS = 169, D_SYS_CSOPS_AUDITTOKEN = 170,
     D_SYS_CLOSE = 6,
     D_SYS_WAIT4 = 7,

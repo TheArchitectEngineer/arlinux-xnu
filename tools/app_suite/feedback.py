@@ -31,6 +31,33 @@ def witnesses(path,prefixes):
                     if line.startswith(prefix):found[prefix]=line.strip()[:512]
     return list(found.values())
 
+def unimplemented_calls(runtime):
+    """Observed ENOSYS counts and bounded original callers, not cause ranking."""
+    if not runtime.is_file():return {}
+    text=runtime.read_text(errors='replace');counts={};callers={};active={}
+    path=runtime.with_suffix('.symbols.json')
+    symbols={item['pc']:item for item in json.loads(path.read_text()) if 'pc' in item} if path.is_file() else {}
+    for line in text.splitlines():
+        call=re.match(r'DARWIN_CALL nr=(0x[0-9a-f]+) pc=\S+ result=0xffffffffffffffda\b',line)
+        if call:
+            number=int(call[1],16);counts[number]=counts.get(number,0)+1
+        start=re.match(r'DARWIN_UNIMPLEMENTED nr=(0x[0-9a-f]+).* tid=(0x[0-9a-f]+)',line)
+        if start:active[start[2]]=int(start[1],16)
+        frame=re.match(r'DARWIN_UNIMPLEMENTED_FRAME nr=\S+ pc=(0x[0-9a-f]+).* tid=(0x[0-9a-f]+)',line)
+        if frame and frame[2] in active:
+            frames=callers.setdefault(active[frame[2]],[])
+            if len(frames)<4:
+                pc=hex(int(frame[1],16));record=symbols.get(pc,{})
+                frames.append({'pc':pc,**{key:record[key] for key in ('image','nearestSymbol','displacement') if key in record}})
+    selected=sorted(counts,key=lambda number:(-counts[number],number))[:8]
+    paths=list(dict.fromkeys(re.findall(r'^DARWIN_GETATTRLIST_PATH (/[^\n]+)',text,re.MULTILINE)))
+    return {'distinctSyscalls':len(counts),'calls':[
+        {'number':number,'count':counts[number],'originalCallers':callers.get(number,[])} for number in selected],
+        'omittedSyscalls':max(0,len(counts)-len(selected)),
+        'getattrlistPaths':paths[-8:],'getattrlistPathsOmitted':max(0,len(paths)-8),
+        'note':'ENOSYS frequency is observation, not proof of the failed effect cause; full arguments and callers remain in runtimeLog'}
+
+
 def failure_summary(result,output):
     case=result['id'];directory=output/case
     failed=next((step for step in result.get('steps',[]) if step['status']=='failed'),{})
@@ -51,6 +78,7 @@ def failure_summary(result,output):
             'runtimeLog':str(runtime.relative_to(output)),
             'stderr':str(stderr.relative_to(output)),
             'faultContexts':fault_contexts(runtime),
+            'unimplementedSyscalls':unimplemented_calls(runtime),
             'observed':witnesses(runtime,('DARWIN_FAULT signal=','DARWIN_NATIVE_FAULT','DARLING_RPC_ERROR ',
                 'UI_PLATFORM_IMPORTS_UNAVAILABLE','UI_RUNLOOP_OBSERVER_INSTALLED','UI_LAYER_FRAME sequence='))+
                 witnesses(stderr,('IOS_HOST_WINDOW ','WAYLAND_BACKEND_READY ','WAYLAND_TOPLEVEL_FOCUS ',

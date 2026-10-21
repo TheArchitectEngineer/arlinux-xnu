@@ -23,14 +23,16 @@ args=parser.parse_args()
 if args.lookup_bytes is not None and (not 4<=args.lookup_bytes<=4096 or args.lookup_bytes%4):
     parser.error('--lookup-bytes must be a multiple of 4 between 4 and 4096')
 trace=args.trace.read_text(errors='replace')
-patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT)_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
+patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED)_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'NORMAL_RUNTIME_FAULT_PC (0x[0-9a-fA-F]+)',
           r'DARWIN_NATIVE_FAULT[^\n]*\nDARWIN_CALL nr=\S+ pc=(0x[0-9a-fA-F]+)',
           r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)']
 frames=sorted({int(pc,16) for pattern in patterns for pc in re.findall(pattern,trace)})
 faults={int(pc,16) for pc in re.findall(r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
 returns={int(pc,16):int(index,16) for index,pc in re.findall(
-    r'DARWIN_(?:EXIT|FAULT)_FRAME nr=0x([0-9a-fA-F]+) pc=(0x[0-9a-fA-F]+)',trace)}
+    r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED)_FRAME nr=0x([0-9a-fA-F]+) pc=(0x[0-9a-fA-F]+)',trace)}
+unsupported_returns={int(pc,16) for pc in re.findall(
+    r'DARWIN_UNIMPLEMENTED_FRAME nr=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
 stack_returns={int(pc,16) for index,pc in re.findall(r'frame #(\d+): (0x[0-9a-fA-F]+)',trace) if int(index)>0}
 def lookup_pc(pc):return pc-4 if (pc in returns or pc in stack_returns) and pc not in faults else pc
 fault_arguments=[(int(index,16),int(value,16)) for index,value in re.findall(
@@ -105,9 +107,9 @@ with CacheSymbols(args.cache) as cache:
             record={'pc':hex(pc),'image':image['name'],'imageAddress':hex(image['address'])}
             if address!=pc:record.update(lookupAddress=hex(address),note='Saved return address; symbolize its actual ARM64 call instruction')
             if nearest:record.update(nearestSymbol=nearest[1],symbolAddress=hex(nearest[0]),displacement=address-nearest[0])
-            if pc in faults or (pc in returns and returns[pc]<=3) or (nearest and 'display' in nearest[1].lower()):
+            if pc in faults or (pc not in unsupported_returns and ((pc in returns and returns[pc]<=3) or (nearest and 'display' in nearest[1].lower()))):
                 record['faultContext']=cache.fault_context(image,address,symbols)
-            elif 'UIKitCore.framework/' in image['name'] or 'GraphicsServices.framework/' in image['name']:
+            elif pc not in unsupported_returns and ('UIKitCore.framework/' in image['name'] or 'GraphicsServices.framework/' in image['name']):
                 record['waitContext']=cache.fault_context(image,address,symbols)
             records.append(record)
     for pc in frames:

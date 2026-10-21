@@ -86,7 +86,7 @@ static int darwin_error(long result)
     }
 }
 
-static int native_trace_fd=2,native_stop_on_fault;
+static int native_trace_fd=2,native_stop_on_fault,native_diagnose_syscalls;
 static void native_trace_prepare(void)
 {
     /* Host-TLS setup only. Keep syscall tracing out of the guest's stderr so
@@ -95,6 +95,8 @@ static void native_trace_prepare(void)
     if (prepared) return;
     const char *stop=getenv("ARLINUX_STOP_ON_FAULT");
     native_stop_on_fault=stop && !strcmp(stop,"1");
+    const char *diagnose=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
+    native_diagnose_syscalls=diagnose && !strcmp(diagnose,"1");
     const char *value=getenv("ARLINUX_TRACE_FD");
     if (value) {
         char *end=NULL; long descriptor=strtol(value,&end,10);
@@ -304,6 +306,55 @@ static void trace_guest_frames(const char *tag,const unsigned long long *r)
         if (pair[0]<=frame) break;
         frame=pair[0];
     }
+}
+
+/* Opt-in observation only: preserve the failing return and original arguments.
+ * Record caller chains once per BSD syscall, rather than waiting for a crash
+ * after a framework has converted ENOSYS into a generic NSError. */
+static void trace_unimplemented(const unsigned long long *r,unsigned long pc)
+{
+    static unsigned long seen[16];
+    static unsigned int count;
+    unsigned long number=r[D_ARM64_SYSCALL_REGISTER];
+    if (number>=1024) return;
+    unsigned long bit=1UL<<(number%64);
+    if (__atomic_fetch_or(&seen[number/64],bit,__ATOMIC_RELAXED)&bit) return;
+    unsigned int index=__atomic_fetch_add(&count,1,__ATOMIC_RELAXED);
+    if (index>=32) {
+        if (index==32) trace_record("DARWIN_UNIMPLEMENTED_TRUNCATED limit=0x",32,pc,number);
+        return;
+    }
+    trace_record("DARWIN_UNIMPLEMENTED nr=0x",number,pc,-ENOSYS);
+    for (unsigned int i=0;i<6;i++)
+        trace_record("DARWIN_UNIMPLEMENTED_ARGUMENT index=0x",i,number,r[i]);
+    trace_guest_frames("DARWIN_UNIMPLEMENTED_FRAME nr=0x",r);
+}
+
+static void trace_getattrlist(const unsigned long long *r,unsigned long pc)
+{
+    static unsigned int count;
+    unsigned int index=__atomic_fetch_add(&count,1,__ATOMIC_RELAXED);
+    if (index>=32) {
+        if (index==32) trace_record("DARWIN_GETATTRLIST_TRUNCATED limit=0x",32,pc,0);
+        return;
+    }
+    char path[4096];
+    long error=guest_path(r[0],path);
+    trace_record("DARWIN_GETATTRLIST_PATH status=0x",error,pc,r[4]);
+    if (!error) {
+        const char label[]="DARWIN_GETATTRLIST_PATH ";
+        unsigned int length=0; while (path[length]) length++;
+        RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
+        RAW(SYS_write,native_trace_fd,path,length,0,0,0);
+        RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
+    }
+    /* XNU attrlist: two uint16_t header fields followed by five uint32_t
+     * attribute groups. Copy bounded metadata, never the caller's output. */
+    uint32_t attributes[6];
+    error=guest_copy(attributes,r[1],sizeof(attributes),0);
+    trace_record("DARWIN_GETATTRLIST_ATTRIBUTES status=0x",error,pc,r[3]);
+    if (!error) for (unsigned int i=0;i<6;i++)
+        trace_record("DARWIN_GETATTRLIST_GROUP index=0x",i,pc,attributes[i]);
 }
 
 static void dispatch(int signal, siginfo_t *info, void *context)
@@ -762,6 +813,11 @@ static void dispatch(int signal, siginfo_t *info, void *context)
             __asm__ volatile("mrs %0,tpidr_el0" : "=r"(result));
         } else result = -ENOSYS;
         break;
+    }
+    if (native_diagnose_syscalls && !bsd_error && result==-ENOSYS) {
+        if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_GETATTRLIST)
+            trace_getattrlist(r,uc->uc_mcontext.pc);
+        trace_unimplemented(r,uc->uc_mcontext.pc);
     }
     trace_call(r[D_ARM64_SYSCALL_REGISTER],uc->uc_mcontext.pc,bsd_error ? -result : result);
     if (bsd_error) {
