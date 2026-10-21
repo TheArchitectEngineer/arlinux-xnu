@@ -1,0 +1,27 @@
+{
+  "id": "focus-activation",
+  "steps": [
+    {"do": "launch", "app": "counter"},
+    {"do": "see", "text": "Counter.*Count: ?0"},
+    {"do": "application-state", "app": "counter", "state": "active", "notifications": {"didBecomeActive": 1}},
+    {"do": "launch", "app": "workers"},
+    {"do": "see", "text": "Workers"},
+    {"do": "application-state", "app": "workers", "state": "active", "notifications": {"didBecomeActive": 1}},
+    {"do": "application-state", "app": "counter", "state": "inactive", "notifications": {"willResignActive": 1}},
+    {"do": "focus", "app": "counter"},
+    {"do": "application-state", "app": "counter", "state": "active", "notifications": {"didBecomeActive": 2}},
+    {"do": "application-state", "app": "workers", "state": "inactive", "notifications": {"willResignActive": 1}},
+    {"do": "click", "text": "^Increment$"},
+    {"do": "see", "text": "Count: ?1"},
+    {"do": "focus", "app": "workers"},
+    {"do": "application-state", "app": "workers", "state": "active", "notifications": {"didBecomeActive": 2}},
+    {"do": "close"},
+    {"do": "exit", "app": "workers"},
+    {"do": "focus", "app": "counter"},
+    {"do": "application-state", "app": "counter", "state": "active", "notifications": {"didBecomeActive": 3}},
+    {"do": "click", "text": "^Increment$"},
+    {"do": "see", "text": "Count: ?2"},
+    {"do": "close"},
+    {"do": "exit", "app": "counter"}
+  ]
+}

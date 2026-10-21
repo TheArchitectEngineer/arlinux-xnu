@@ -144,7 +144,8 @@ class Processes:
             except (RuntimeError,OSError,subprocess.SubprocessError) as error:
                 self.diagnostic['collectionErrors'].append(str(error))
                 # Independent original-process stacks must still be collected.
-        candidates = sorted(self.processes.values(), key=lambda item: item['app'] != self.current)
+        target=getattr(self,'diagnostic_target',self.current)
+        candidates = sorted(self.processes.values(), key=lambda item: item['app'] != target)
         live = next((item for item in candidates if item['process'].poll() is None), None)
         if not live:
             return

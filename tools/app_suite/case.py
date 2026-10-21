@@ -47,6 +47,20 @@ class Case(Processes,Desktop):
             self.observe_pixels(step)
         elif action == 'see':
             self.observe(step['text'])
+        elif action == 'application-state':
+            deadline=time.monotonic()+8
+            while True:
+                self.guard();observed=self.inspection(name)
+                self.steps[-1]['observedApplicationState']={
+                    'app':name,'identity':self.processes[name]['identity'],
+                    **({key:observed.get(key) for key in ('applicationState','activationNotifications')} if observed else {})}
+                if observed and observed.get('applicationState')==step['state'] and all(
+                    observed.get('activationNotifications',{}).get(key,0)>=minimum
+                    for key,minimum in step.get('notifications',{}).items()):break
+                if time.monotonic()>=deadline:
+                    self.diagnostic_target=name
+                    raise RuntimeError('Application state/notifications did not reach '+name+' '+step['state'])
+                time.sleep(.1)
         elif action == 'click':
             target = self.observe(step['text'], word=True)
             self.click_target(target)

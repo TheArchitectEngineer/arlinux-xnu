@@ -16,8 +16,8 @@ class Desktop:
         self.observations.append(observation)
         return path
 
-    def inspection(self):
-        item=self.processes[self.current]
+    def inspection(self,name=None):
+        item=self.processes[name or self.current]
         events=[]
         for line in Path(item['stdout']).read_text(errors='replace').splitlines():
             if line.startswith('APP_INSPECTION '):

@@ -5,6 +5,7 @@ static NSMutableArray *elements;
 static NSMutableSet *visited;
 static UIWindow *current;
 static __weak UIView *observedRoot;
+static NSUInteger becameActive,resignedActive;
 static void inspect(id object,unsigned depth) {
     if (!object || depth>18 || elements.count>300) return;
     NSValue *identity=[NSValue valueWithNonretainedObject:object];
@@ -46,7 +47,11 @@ static void snapshot(void) {
     if (!window || window.hidden) return;
     current=window;elements=[NSMutableArray new];visited=[NSMutableSet new];inspect(window,0);
     CGRect bounds=window.bounds;
-    NSDictionary *value=@{@"viewport":@[@(bounds.size.width),@(bounds.size.height)],@"elements":elements};
+    UIApplicationState state=[UIApplication sharedApplication].applicationState;
+    NSString *stateName=state==UIApplicationStateActive ? @"active" :
+        state==UIApplicationStateInactive ? @"inactive" : @"background";
+    NSDictionary *value=@{@"viewport":@[@(bounds.size.width),@(bounds.size.height)],@"elements":elements,
+        @"applicationState":stateName,@"activationNotifications":@{@"didBecomeActive":@(becameActive),@"willResignActive":@(resignedActive)}};
     NSData *json=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:nil];
     if (json && ![json isEqual:previous]) {
         fwrite("APP_INSPECTION ",1,15,stdout);fwrite(json.bytes,1,json.length,stdout);fputc('\n',stdout);fflush(stdout);previous=json;
@@ -55,7 +60,14 @@ static void snapshot(void) {
 }
 void AppInspectionStart(UIView *root) {
     observedRoot=root;
-    static BOOL started; if (started) return;started=YES;snapshot();
+    static BOOL started; if (started) return;started=YES;
+    /* Read actual UIKit notifications; never post notifications or invoke
+     * application/delegate methods to make a journey's expected state. */
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil
+        usingBlock:^(NSNotification *note) { (void)note;becameActive++; }];
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
+        usingBlock:^(NSNotification *note) { (void)note;resignedActive++; }];
+    snapshot();
     NSTimer *timer=[NSTimer timerWithTimeInterval:0.2 repeats:YES block:^(NSTimer *timer) { (void)timer;snapshot(); }];
     [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
 }

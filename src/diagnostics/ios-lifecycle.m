@@ -76,6 +76,8 @@ static int lifecycle_method(const char *name)
         strstr(name,"Display") || strstr(name,"display") ||
         strstr(name,"Frame") || strstr(name,"frame") ||
         strstr(name,"Foreground") || strstr(name,"foreground") ||
+        strstr(name,"Deactivation") || strstr(name,"deactivation") ||
+        strstr(name,"Background") || strstr(name,"background") || strstr(name,"Diff") || strstr(name,"diff") ||
         strstr(name,"Orientation") || strstr(name,"orientation") ||
         strstr(name,"Connection") || strstr(name,"Focus") || strstr(name,"focus") ||
         strstr(name,"Color") || strstr(name,"color") || strstr(name,"Gamut") || strstr(name,"gamut") || strstr(name,"trait") ||
@@ -150,6 +152,7 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
         "_UIRemoteKeyboards","FBSWorkspace","FBSScene","FBSBasicSceneAgent","FBSSceneParameters","FBSMutableSceneParameters",
         "FBSSceneIdentity","FBSSceneIdentityToken","FBSSceneDefinition","FBSMutableSceneDefinition",
         "FBSSceneSpecification","FBSSceneSettings","FBSMutableSceneSettings",
+        "FBSSceneSettingsDiff","UIApplicationSceneSettingsDiff","BSSettingsDiff",
         "FBSSceneClientSettings","FBSMutableSceneClientSettings","FBSSceneTransitionContext",
         "UIApplicationSceneSpecification","UIApplicationSceneSettings",
         "UIMutableApplicationSceneSettings","UIApplicationSceneClientSettings",
