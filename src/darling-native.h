@@ -193,8 +193,8 @@ static long darling_mach_msg2(const unsigned long long *r)
      * Ordinary canonical-buffer calls use the same real Darling queues and
      * MIG kobjects. This trusted-input runtime does not enforce Apple's CFI
      * routing policy. Vectors may carry a normal message and receive an empty
-     * aux EOF. Nonempty auxiliary sends and separate-header sends still fail;
-     * the legacy core cannot carry their data, so it must not discard it. */
+     * auxiliary data. The internal RPC retains opaque auxiliary bytes in the
+     * real queued kmsg; separate-header sends still fail. */
     static unsigned int traces;
     int diagnostic=__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT;
     if(diagnostic) trace_record("DARLING_MSG2_BEGIN options=0x",r[1],r[4]>>32,r[2]>>32);
@@ -204,7 +204,8 @@ static long darling_mach_msg2(const unsigned long long *r)
         (vector && (routing&D_MACH64_SEND_KOBJECT)) ||
         (routing && (routing&(routing-1)))) return D_MACH_SEND_INVALID_OPTIONS;
     uint32_t options=r[1],send_size=r[2]>>32,receive_size=r[6],receive_name=r[5]>>32;
-    uint64_t message=r[0],receive=0,auxiliary=0;long receive_error=0;
+    uint64_t message=r[0],receive=0,auxiliary=0,send_auxiliary=0;
+    uint32_t auxiliary_size=0,send_auxiliary_size=0;long receive_error=0;
     if(vector) {
         uint32_t send_count=send_size,receive_count=receive_size;
         uint32_t count=send_count>receive_count ? send_count : receive_count;
@@ -218,12 +219,19 @@ static long darling_mach_msg2(const unsigned long long *r)
         receive_size=vectors[0].receive_size;
         if((options&D_MACH_SEND_MSG) && (!send_count || !message || send_size<24 || (send_size&3)))
             return !message ? D_MACH_SEND_INVALID_DATA : D_MACH_SEND_MSG_TOO_SMALL;
-        if((options&D_MACH_SEND_MSG) && send_count==2 && vectors[1].send_size)
-            return D_MACH_SEND_INVALID_OPTIONS;
+        if((options&D_MACH_SEND_MSG) && send_count==2 && vectors[1].send_size) {
+            struct darwin_msg_aux_header header;
+            send_auxiliary=vectors[1].data;send_auxiliary_size=vectors[1].send_size;
+            if(send_auxiliary_size<sizeof(header) || send_auxiliary_size>16384 ||
+               guest_copy(&header,send_auxiliary,sizeof(header),0) ||
+               header.size!=send_auxiliary_size || header.reserved)return D_MACH_SEND_INVALID_DATA;
+            if(diagnostic)trace_record("DARLING_MSG2_AUX_SEND bytes=0x",send_auxiliary_size,0,0);
+        }
         if(options&D_MACH_RCV_MSG) {
             if(!receive_count)receive_error=D_MACH_RCV_INVALID_ARGUMENTS;
             if(receive_count==2) {
                 auxiliary=vectors[1].receive_address ? vectors[1].receive_address : vectors[1].data;
+                auxiliary_size=vectors[1].receive_size;
                 if(!auxiliary || vectors[1].receive_size<sizeof(struct darwin_msg_aux_header))
                     receive_error=D_MACH_RCV_INVALID_ARGUMENTS;
             }
@@ -274,7 +282,9 @@ static long darling_mach_msg2(const unsigned long long *r)
     }
     if(!receive_error || (options&D_MACH_SEND_MSG))
         result=dserver_rpc_mach_msg_overwrite((void *)message,effective_options,send_size,receive_size,
-            receive_name,(uint32_t)r[7],legacy_priority,(void *)receive);
+            receive_name,(uint32_t)r[7],legacy_priority,(void *)receive,
+            (void *)send_auxiliary,send_auxiliary_size,receive_error ? NULL : (void *)auxiliary,
+            receive_error ? 0 : auxiliary_size);
     if(sent) {
         __atomic_fetch_add(&sent->sends_completed,1,__ATOMIC_RELAXED);
         __atomic_store_n(&sent->send_result,result,__ATOMIC_RELAXED);
@@ -300,16 +310,8 @@ static long darling_mach_msg2(const unsigned long long *r)
         }
     }
     if(!result && receive_error)result=receive_error;
-    if(auxiliary && !receive_error && (options&D_MACH_RCV_MSG)) {
-        /* ipc_kmsg_put_vector_to_user: a scalar/no-aux message produces an
-         * actual zero-size EOF header in an offered auxiliary receive buffer.
-         * Every accepted send uses the legacy no-aux core; payload aux sends
-         * are rejected above, so no incoming auxiliary data can be lost here. */
-        struct darwin_msg_aux_header eof={0};
-        if(!result && guest_copy(&eof,auxiliary,sizeof(eof),1))result=D_MACH_RCV_INVALID_DATA;
-        else if(result==D_MACH_RCV_TOO_LARGE && (options&D_MACH_RCV_LARGE) &&
-                guest_copy(&eof.size,auxiliary,sizeof(eof.size),1))result=D_MACH_RCV_INVALID_DATA;
-    }
+    /* Auxiliary copyout and EOF belong to the exact received kmsg in the core,
+     * not an unconditional zero written over the real receiver's metadata. */
     if(diagnostic)
         trace_record("DARLING_MSG2 options=0x",r[1],r[4]>>32,result);
     return result;
@@ -338,7 +340,8 @@ static long darling_mach(unsigned long number,const unsigned long long *r)
     case D_TRAP_REPLY_PORT: result=dserver_rpc_mach_reply_port(&port); return result ? 0 : port;
     case D_TRAP_SPECIAL_REPLY_PORT: result=dserver_rpc_thread_get_special_reply_port(&port); return result ? 0 : port;
     case D_TRAP_MSG: case D_TRAP_MSG_OVERWRITE: {
-        result=dserver_rpc_mach_msg_overwrite((void *)r[0],r[1],r[2],r[3],r[4],r[5],r[6],number==D_TRAP_MSG_OVERWRITE ? (void *)r[7] : NULL);
+        result=dserver_rpc_mach_msg_overwrite((void *)r[0],r[1],r[2],r[3],r[4],r[5],r[6],
+            number==D_TRAP_MSG_OVERWRITE ? (void *)r[7] : NULL,NULL,0,NULL,0);
         /* Observe genuine QuartzCore requests/replies after kernel copyout.
          * Bounded header read only; never call a guest method or alter rights. */
         if (!result && (r[1]&D_MACH_RCV_MSG)) {

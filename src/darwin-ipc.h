@@ -42,7 +42,7 @@ static int native_inherit_bootstrap(void)
     header->bits=D_MACH_TYPE_COPY_SEND|(D_MACH_TYPE_MAKE_SEND_ONCE<<8);
     header->size=36; header->remote=CURRENT_TASK_PORT; header->local=reply;
     header->id=D_MIG_TASK_GET_SPECIAL_PORT; message[7]=1; message[8]=D_TASK_BOOTSTRAP_PORT;
-    int error=dserver_rpc_mach_msg_overwrite(message,D_MACH_SEND_MSG|D_MACH_RCV_MSG,36,sizeof(message),reply,0,0,NULL);
+    int error=dserver_rpc_mach_msg_overwrite(message,D_MACH_SEND_MSG|D_MACH_RCV_MSG,36,sizeof(message),reply,0,0,NULL,NULL,0,NULL,0);
     dserver_rpc_mach_port_mod_refs(CURRENT_TASK_PORT,reply,D_PORT_RIGHT_RECEIVE,-1);
     if (error || !(header->bits&D_MACH_MSG_COMPLEX) || header->size!=40 || message[6]!=1 || !message[7]) return -1;
     native_bootstrap_port=message[7]; return 0;
@@ -544,7 +544,7 @@ int darwin_native_host_child(uint32_t pid,uint32_t parent)
 int darwin_native_host_send(void *message,uint32_t size)
 {
 #ifdef ARLINUX_DARLING
-    if (darling_active) return dserver_rpc_mach_msg_overwrite(message,D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT,size,0,0,100,0,NULL);
+    if (darling_active) return dserver_rpc_mach_msg_overwrite(message,D_MACH_SEND_MSG|D_MACH_SEND_TIMEOUT,size,0,0,100,0,NULL,NULL,0,NULL,0);
 #endif
     (void)message; (void)size; return D_KERN_NOT_SUPPORTED;
 }
@@ -628,7 +628,7 @@ void *darwin_native_service_run(void *unused)
         if (native_session_manager) arlinux_xpc_session_tick();
         unsigned char request[IPC_BYTES+256]; uint32_t response[IPC_BYTES/4];
         int status=dserver_rpc_mach_msg_overwrite(request,D_MACH_RCV_MSG|(3U<<24)|
-            (native_session_manager ? D_MACH_RCV_TIMEOUT : 0),0,sizeof(request),set,100,0,NULL);
+            (native_session_manager ? D_MACH_RCV_TIMEOUT : 0),0,sizeof(request),set,100,0,NULL,NULL,0,NULL,0);
         if (native_session_manager && status==D_MACH_RCV_TIMED_OUT) continue;
         if (status) { trace_call(0,0,status); darling_abort("receive display service request"); }
         struct ipc_header *header=(void *)request,*out=(void *)response;
@@ -644,7 +644,7 @@ void *darwin_native_service_run(void *unused)
         int processinfo=arlinux_xpc_session(request,header->size,response,sizeof(response),native_session_ports,set,requester);
         if (!processinfo) continue;
         if (processinfo>0) {
-            status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL);
+            status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL,NULL,0,NULL,0);
             if (status) darling_abort("send process-info reply");
             continue;
         }
@@ -718,7 +718,7 @@ void *darwin_native_service_run(void *unused)
                 }
             }
         }
-        status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL);
+        status=dserver_rpc_mach_msg_overwrite(response,D_MACH_SEND_MSG,out->size,0,0,0,0,NULL,NULL,0,NULL,0);
         if (held_port) darwin_native_host_port_refs(held_port,-1);
         /* The source mapping remains ours (deallocate=0); XNU owns its snapshot
          * after successful send. No host mapping is exposed as a fake copyout. */

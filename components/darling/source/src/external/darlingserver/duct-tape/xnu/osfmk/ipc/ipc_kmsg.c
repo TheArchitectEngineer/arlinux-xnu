@@ -1346,6 +1346,11 @@ void
 ipc_kmsg_free(
 	ipc_kmsg_t      kmsg)
 {
+	if (kmsg->arlinux_aux) {
+		kfree(kmsg->arlinux_aux, kmsg->arlinux_aux_size);
+		kmsg->arlinux_aux = NULL;
+		kmsg->arlinux_aux_size = 0;
+	}
 	mach_msg_size_t size = kmsg->ikm_size;
 	ipc_port_t port;
 
@@ -2502,6 +2507,24 @@ ipc_kmsg_put(
 	} else {
 		mr = MACH_MSG_SUCCESS;
 	}
+	/* Main message/rights use their original copyout. Auxiliary bytes remain
+	 * attached to that same kmsg, never a port-name side table or fake reply.
+	 * A legacy receiver without an auxiliary vector discards optional metadata,
+	 * as with scalar mach_msg2. A vector receives actual bytes or empty EOF. */
+	thread_t receiver = current_thread();
+	if (mr == MACH_MSG_SUCCESS && receiver->ith_knote == ITH_KNOTE_NULL && receiver->arlinux_rcv_aux) {
+		struct { uint32_t size, reserved; } eof = {0, 0};
+		if (kmsg->arlinux_aux_size > receiver->arlinux_rcv_aux_size) {
+			uint32_t required = kmsg->arlinux_aux_size;
+			mr = copyout(&required, receiver->arlinux_rcv_aux, sizeof(required)) ?
+			    MACH_RCV_INVALID_DATA : MACH_RCV_TOO_LARGE;
+		} else if (copyout(kmsg->arlinux_aux ? kmsg->arlinux_aux : &eof,
+		    receiver->arlinux_rcv_aux, kmsg->arlinux_aux ? kmsg->arlinux_aux_size : sizeof(eof))) {
+			mr = MACH_RCV_INVALID_DATA;
+		}
+	}
+	receiver->arlinux_rcv_aux = 0;
+	receiver->arlinux_rcv_aux_size = 0;
 
 	KERNEL_DEBUG_CONSTANT(MACHDBG_CODE(DBG_MACH_IPC, MACH_IPC_KMSG_LINK) | DBG_FUNC_NONE,
 	    (rcv_addr >= VM_MIN_KERNEL_AND_KEXT_ADDRESS ||

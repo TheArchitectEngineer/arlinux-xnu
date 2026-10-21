@@ -97,6 +97,17 @@ unimplemented exception-domain rules fail closed. This is a runtime candidate
 awaiting app-journey verification, not a passing network claim. It does not
 implement NECP or arbitrary BSD sockets, WebKit networking or Apple services.
 
+The first transport attempt exposed a real CFRunLoopWakeUp send rejection:
+options 0x500000011 specify a two-vector message, and the native adapter rejected
+nonempty auxiliary data. The candidate internal Mach RPC now carries bounded
+opaque auxiliary bytes into the actual kmsg, preserves ownership across queueing
+and blocking receive continuations, copies them to an offered receive vector,
+and releases them with the message. Scalar receivers omit optional metadata;
+vector receivers get actual metadata or empty EOF. No success is returned for a
+discarded send. Auxiliary sizes are bounded to 16 KiB; full modern oversized
+receive/pseudo-receive behavior remains unverified. This change and the HTTP
+candidate still require the end-to-end network journey to pass.
+
 The software backend's ios-rendering.m selects the original CAContext local
 constructor when UIKit requests its window context. It preserves original
 context/layer behavior while avoiding a nonexistent Apple render server. Hosted

@@ -318,6 +318,10 @@ calls = [
 		('timeout', 'uint32_t'),
 		('priority', 'uint32_t'),
 		('rcv_msg', 'void*', 'uint64_t'),
+		('send_aux', 'void*', 'uint64_t'),
+		('send_aux_size', 'uint32_t'),
+		('rcv_aux', 'void*', 'uint64_t'),
+		('rcv_aux_size', 'uint32_t'),
 	], [], XNU_TRAP_CALL | XNU_TRAP_NOPREFIX | ALLOW_INTERRUPTIONS),
 
 	('mach_port_deallocate', [

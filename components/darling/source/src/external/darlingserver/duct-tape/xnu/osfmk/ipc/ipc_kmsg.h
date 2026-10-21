@@ -127,6 +127,9 @@ struct ipc_kmsg {
 	ipc_object_copyin_flags_t  ikm_flags;
 	mach_msg_qos_t             ikm_qos_override; /* qos override on this kmsg */
 	mach_msg_filter_id         ikm_filter_policy_id; /* Sandbox-specific policy id used for message filtering */
+	/* Opaque mach_msg2 auxiliary bytes, owned by this queued message. */
+	void                     *arlinux_aux;
+	mach_msg_size_t           arlinux_aux_size;
 };
 #define ikm_prealloc ikm_u.ikmu_prealloc
 #define ikm_data ikm_u.ikmu_data

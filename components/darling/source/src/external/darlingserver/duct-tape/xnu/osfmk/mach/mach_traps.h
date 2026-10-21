@@ -443,6 +443,11 @@ struct mach_msg_overwrite_trap_args {
 	PAD_ARG_(mach_msg_priority_t, priority);
 	PAD_ARG_8
 	    PAD_ARG_(user_addr_t, rcv_msg); /* Unused on mach_msg_trap */
+	/* ARLinux internal RPC extension, not a guest legacy-trap ABI change. */
+	PAD_ARG_(user_addr_t, send_aux);
+	PAD_ARG_(mach_msg_size_t, send_aux_size);
+	PAD_ARG_(user_addr_t, rcv_aux);
+	PAD_ARG_(mach_msg_size_t, rcv_aux_size);
 };
 extern mach_msg_return_t mach_msg_trap(
 	struct mach_msg_overwrite_trap_args *args);

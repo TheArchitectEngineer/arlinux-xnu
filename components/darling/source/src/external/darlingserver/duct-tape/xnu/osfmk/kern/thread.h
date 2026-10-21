@@ -652,6 +652,9 @@ struct thread {
 	    thread_bitfield_unused:12;
 
 	mach_port_name_t        ith_voucher_name;
+	/* Retained across genuine receive continuations; next RPC replaces them. */
+	mach_vm_address_t       arlinux_rcv_aux;
+	mach_msg_size_t         arlinux_rcv_aux_size;
 	ipc_voucher_t           ith_voucher;
 #if CONFIG_IOSCHED
 	void                   *decmp_upl;

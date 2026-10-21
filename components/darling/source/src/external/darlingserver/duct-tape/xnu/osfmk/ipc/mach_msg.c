@@ -84,6 +84,7 @@
 #include <kern/ipc_mig.h>
 #include <kern/task.h>
 #include <kern/thread.h>
+#include <kern/kalloc.h>
 #include <kern/sched_prim.h>
 #include <kern/exception.h>
 #include <kern/misc_protos.h>
@@ -527,6 +528,14 @@ mach_msg_overwrite_trap(
 	vm_map_t map = current_map();
 
 	/* Only accept options allowed by the user */
+	/* ARLinux internal RPC offers optional mach_msg2 buffers. The saved receive
+	 * address stays with the actual Mach thread across blocking continuations. */
+	current_thread()->arlinux_rcv_aux = 0;
+	current_thread()->arlinux_rcv_aux_size = 0;
+	if ((args->send_aux_size && (args->send_aux_size < 8 || args->send_aux_size > 16384)) ||
+	    (args->rcv_aux && args->rcv_aux_size < 8)) {
+		return MACH_SEND_INVALID_DATA;
+	}
 	option &= MACH_MSG_OPTION_USER;
 
 	if (option & MACH_SEND_MSG) {
@@ -540,6 +549,19 @@ mach_msg_overwrite_trap(
 		if (mr != MACH_MSG_SUCCESS) {
 			KDBG(MACHDBG_CODE(DBG_MACH_IPC, MACH_IPC_KMSG_INFO) | DBG_FUNC_END, mr);
 			return mr;
+		}
+		if (args->send_aux_size) {
+			struct { uint32_t size, reserved; } header;
+			if (copyin(args->send_aux, &header, sizeof(header)) ||
+			    header.size != args->send_aux_size || header.reserved) {
+				ipc_kmsg_free(kmsg); return MACH_SEND_INVALID_DATA;
+			}
+			kmsg->arlinux_aux = kalloc(args->send_aux_size);
+			if (!kmsg->arlinux_aux) { ipc_kmsg_free(kmsg); return MACH_SEND_NO_BUFFER; }
+			kmsg->arlinux_aux_size = args->send_aux_size;
+			if (copyin(args->send_aux, kmsg->arlinux_aux, args->send_aux_size)) {
+				ipc_kmsg_free(kmsg); return MACH_SEND_INVALID_DATA;
+			}
 		}
 
 		KERNEL_DEBUG_CONSTANT(MACHDBG_CODE(DBG_MACH_IPC, MACH_IPC_KMSG_LINK) | DBG_FUNC_NONE,
@@ -568,6 +590,8 @@ mach_msg_overwrite_trap(
 
 	if (option & MACH_RCV_MSG) {
 		thread_t self = current_thread();
+		self->arlinux_rcv_aux = args->rcv_aux;
+		self->arlinux_rcv_aux_size = args->rcv_aux_size;
 		ipc_space_t space = current_space();
 		ipc_object_t object;
 		ipc_mqueue_t mqueue;
