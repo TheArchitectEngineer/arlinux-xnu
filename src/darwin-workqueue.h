@@ -61,6 +61,8 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
     if (!workqueue_start_callback) return -EINVAL;
     if (r[D_ARM64_SYSCALL_REGISTER]==D_SYS_WORKQ_OPEN) {
         if (!workqueue_registered) return -EINVAL;
+        long result=native_event_dispatch_start(original_mask);
+        if(result)return result;
         workqueue_opened=1;
         return 0;
     }

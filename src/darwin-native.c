@@ -1044,13 +1044,14 @@ void darwin_native_prepare(const char *root,const char *program,const char *cont
         sigreturn[1] != D_ARM64_INSN_SVC_0) {
         fprintf(stderr,"Unsupported ARM64 signal-return trampoline\n"); exit(1);
     }
-    uintptr_t sites[]={(uintptr_t)darwin_raw_return,(uintptr_t)(sigreturn+2),(uintptr_t)darwin_clone_return};
-    struct sock_filter code[3+5*3+1];
+    uintptr_t sites[]={(uintptr_t)darwin_raw_return,(uintptr_t)(sigreturn+2),(uintptr_t)darwin_clone_return,
+        (uintptr_t)darwin_clone_callback_return};
+    struct sock_filter code[3+5*(sizeof(sites)/sizeof(*sites))+1];
     size_t count=0;
     code[count++]=(struct sock_filter)BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,arch));
     code[count++]=(struct sock_filter)BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,AUDIT_ARCH_AARCH64,1,0);
     code[count++]=(struct sock_filter)BPF_STMT(BPF_RET|BPF_K,SECCOMP_RET_KILL_PROCESS);
-    for (unsigned int i=0;i<3;i++) {
+    for (unsigned int i=0;i<sizeof(sites)/sizeof(*sites);i++) {
         code[count++]=(struct sock_filter)BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer));
         code[count++]=(struct sock_filter)BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K,(uint32_t)sites[i],0,3);
         code[count++]=(struct sock_filter)BPF_STMT(BPF_LD|BPF_W|BPF_ABS,offsetof(struct seccomp_data,instruction_pointer)+4);

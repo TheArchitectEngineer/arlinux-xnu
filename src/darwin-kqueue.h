@@ -25,6 +25,20 @@ static struct native_kqueue *native_kqueues;
 static int native_kqueue_mutex,workqueue_kqueue=-1;
 static unsigned int native_kevent_errors;
 static unsigned int native_workloop_cancels;
+static int native_event_dispatch_fd=-1,native_event_dispatch_state;
+static uint64_t native_event_dispatch_mask;
+/* A workloop is not a permanently allocated thread. Arm its real epoll
+ * descriptor; one TLS-free native waiter starts a bound worker only when
+ * Linux reports pending events. Existing workers keep their drain ownership. */
+static long native_kqueue_arm(struct native_kqueue *queue)
+{
+    if(native_event_dispatch_fd<0 || !queue->used || __atomic_load_n(&queue->client_owner,__ATOMIC_ACQUIRE) ||
+       __atomic_load_n(&queue->worker,__ATOMIC_ACQUIRE))return 0;
+    struct epoll_event event={.events=EPOLLIN|EPOLLONESHOT,.data.ptr=queue};
+    long result=RAW(SYS_epoll_ctl,native_event_dispatch_fd,EPOLL_CTL_MOD,queue->fd,&event,0,0);
+    if(result==-ENOENT)result=RAW(SYS_epoll_ctl,native_event_dispatch_fd,EPOLL_CTL_ADD,queue->fd,&event,0,0);
+    return result;
+}
 static void native_kqueue_lock(void)
 {
     while (__atomic_exchange_n(&native_kqueue_mutex,1,__ATOMIC_ACQUIRE))
@@ -43,6 +57,10 @@ static void native_kqueue_owner(struct native_kqueue *queue,uint32_t port)
     __atomic_store_n(&queue->client_owner,port,__ATOMIC_RELEASE);
     __atomic_fetch_add(&queue->ownership_epoch,1,__ATOMIC_RELEASE);
     RAW(SYS_futex,&queue->ownership_epoch,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
+    if(!port) {
+        long error=native_kqueue_arm(queue);
+        if(error)trace_record("DARWIN_EVENT_ARM_ERROR status=0x",-error,queue->dynamic_id,queue->fd);
+    }
 }
 static void native_event_owner_exit(uint64_t port)
 {
@@ -711,8 +729,70 @@ static long native_kqueue_start_worker(struct native_kqueue *queue,const sigset_
     RAW(SYS_futex,&queue->worker,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
     return result;
 }
+static void native_event_dispatcher(void *argument)
+{
+    uint64_t mask=*(uint64_t *)argument;
+    if(RAW(SYS_rt_sigprocmask,SIG_SETMASK,&mask,0,8,0,0))darling_abort("readiness signal mask");
+    trace_record("DARWIN_EVENT_DISPATCHER tid=0x",RAW(SYS_gettid,0,0,0,0,0,0),native_event_dispatch_fd,0);
+    for(;;) {
+        struct epoll_event events[D_KQUEUE_BATCH];
+        long count=RAW(SYS_epoll_pwait,native_event_dispatch_fd,events,D_KQUEUE_BATCH,-1,0,8);
+        if(count==-EINTR)continue;
+        if(count<0)darling_abort("wait for real workloop readiness");
+        for(long i=0;i<count;i++) {
+            struct native_kqueue *queue=events[i].data.ptr;
+            if(!queue->used || __atomic_load_n(&queue->client_owner,__ATOMIC_ACQUIRE) ||
+               __atomic_load_n(&queue->worker,__ATOMIC_ACQUIRE))continue;
+            long result;
+            unsigned int deferred=0;
+            do {
+                /* The clone helper and worker inherit the caller's actual
+                 * syscall filter. No glibc, guest TLS or framework call is
+                 * made by this native dispatcher. Kernel masks are 8 bytes. */
+                result=native_kqueue_start_worker(queue,(const sigset_t *)&mask);
+                if(result==-EAGAIN) {
+                    if(!deferred++)trace_record("DARWIN_EVENT_WORKER_DEFERRED id=0x",queue->dynamic_id,0,result);
+                    struct timespec delay={.tv_nsec=10000000};
+                    RAW(SYS_nanosleep,&delay,0,0,0,0,0);
+                }
+            } while(result==-EAGAIN);
+            if(result) {
+                trace_record("DARWIN_EVENT_WORKER_ERROR id=0x",queue->dynamic_id,queue->fd,result);
+                darling_abort("start ready workloop worker");
+            }
+        }
+    }
+}
+static long native_event_dispatch_start(const sigset_t *mask)
+{
+    int expected=0;
+    while(!__atomic_compare_exchange_n(&native_event_dispatch_state,&expected,1,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) {
+        if(expected==2)return 0;
+        RAW(SYS_futex,&native_event_dispatch_state,FUTEX_WAIT_PRIVATE,1,0,0,0);expected=0;
+    }
+    long fd=RAW(SYS_epoll_create1,EPOLL_CLOEXEC,0,0,0,0,0);
+    long memory=-ENOMEM,result=fd;
+    if(fd>=0) {
+        memory=RAW(SYS_mmap,0,D_THREAD_RUNTIME_STACK_SIZE,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+        result=memory;
+        if((unsigned long)memory<(unsigned long)-4095) {
+            native_event_dispatch_fd=fd;
+            __builtin_memcpy(&native_event_dispatch_mask,mask,8);
+            result=darwin_clone_callback(memory+D_THREAD_RUNTIME_STACK_SIZE,native_event_dispatcher,&native_event_dispatch_mask);
+        }
+    }
+    if(result<0) {
+        if((unsigned long)memory<(unsigned long)-4095)RAW(SYS_munmap,memory,D_THREAD_RUNTIME_STACK_SIZE,0,0,0,0);
+        if(fd>=0)RAW(SYS_close,fd,0,0,0,0,0);
+        native_event_dispatch_fd=-1;
+    }
+    __atomic_store_n(&native_event_dispatch_state,result<0 ? 0 : 2,__ATOMIC_RELEASE);
+    RAW(SYS_futex,&native_event_dispatch_state,FUTEX_WAKE_PRIVATE,INT32_MAX,0,0,0);
+    return result<0 ? result : 0;
+}
 static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
 {
+    (void)mask;
     if (r[7]&~(D_KEVENT_IMMEDIATE|D_KEVENT_ERROR_EVENTS|D_KEVENT_STACK_DATA|D_KEVENT_WORKQ)) return -ENOTSUP;
     if (r[4]>D_KQUEUE_WATCHES) return -EINVAL;
     struct native_kevent_data data;
@@ -735,7 +815,7 @@ static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
     long result=native_kqueue_changes(queue,r[1],r[2],r[3],r[4],NULL);
     if (result) return result;
     if (r[7]&D_KEVENT_WORKQ) {
-        result=native_kqueue_start_worker(queue,mask);
+        result=native_kqueue_arm(queue);
         if (result) return result;
     }
     if (r[7]&D_KEVENT_ERROR_EVENTS) return 0;
@@ -748,6 +828,7 @@ static long native_kevent_qos(const unsigned long long *r,const sigset_t *mask)
  * workloop control syscall. */
 static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
 {
+    (void)mask;
     unsigned long flags=r[7];
     if (!(flags&D_KEVENT_WORKLOOP) ||
         (flags&~(unsigned long)(D_KEVENT_WORKLOOP|D_KEVENT_IMMEDIATE|D_KEVENT_ERROR_EVENTS|D_KEVENT_STACK_DATA|
@@ -785,7 +866,7 @@ static long native_kevent_id(const unsigned long long *r,const sigset_t *mask)
         if (guest_copy(&event,r[1],sizeof(event),0)) return -EFAULT;
         if (event.qos) __atomic_store_n(&queue->priority,(uint32_t)event.qos&D_PTHREAD_PRIORITY_MASK,__ATOMIC_RELEASE);
     }
-    result=native_kqueue_start_worker(queue,mask);
+    result=native_kqueue_arm(queue);
     if (result) return result;
     if (flags&D_KEVENT_ERROR_EVENTS) return 0;
     result=native_kqueue_collect(queue,r[3],r[4],(flags&D_KEVENT_IMMEDIATE) ? 0 : -1,&data);

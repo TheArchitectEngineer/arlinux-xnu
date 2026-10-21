@@ -73,6 +73,34 @@ darwin_clone_return:
     brk #1
 .size darwin_clone_thread,.-darwin_clone_thread
 
+// Native readiness helper, not a Darwin pthread. Its callback uses only the
+// raw syscall site, owns this separate stack and lives until process exit.
+.global darwin_clone_callback
+.hidden darwin_clone_callback
+.type darwin_clone_callback,%function
+darwin_clone_callback:
+    sub x9,x0,#16
+    stp x1,x2,[x9]
+    mov x1,x9
+    mov x2,xzr
+    mov x3,xzr
+    mov x4,xzr
+    movz x0,#0x0f00
+    movk x0,#0x5,lsl #16
+    mov x8,#220
+    svc #0
+.global darwin_clone_callback_return
+.hidden darwin_clone_callback_return
+darwin_clone_callback_return:
+    cbz x0,1f
+    ret
+1:  ldp x9,x0,[sp]
+    msr tpidr_el0,xzr
+    mov x29,xzr
+    blr x9
+    brk #1
+.size darwin_clone_callback,.-darwin_clone_callback
+
 .global darwin_thread_enter
 .hidden darwin_thread_enter
 .type darwin_thread_enter,%function
