@@ -75,6 +75,15 @@ copying and CPU costs: hardware acceleration and zero-copy are not established.
 | Private services and device/privilege policy | Only required behavior; replace expensive dependencies | App-visible effects; no requirement to recreate SpringBoard/launchd wholesale |
 | Web content | Evaluate original WebKit reuse and a host-backed engine boundary | Real navigation, scripting and embedding; neither path is implemented by this decision |
 
+WebKit's WebContent and Networking helpers are browser-engine workers, not
+prerequisites for every UIKit app. Original helper reuse is a bounded experiment:
+retain engine semantics if a small Linux-owned launch/IPC/display boundary makes
+them usable. Do not reproduce an expanding Apple service hierarchy to preserve
+their bootstrap protocol. If that dependency dominates, move the replacement
+boundary up to the web-view platform implementation. A host WebKit port still
+needs WKWebView object/callback, JavaScript bridge, storage and embedded-input
+semantics; displaying a separate browser window would not satisfy the contract.
+
 Wayland does not implement UIKit scenes, event delivery, text layout, CoreGraphics
 or Metal. The adapter must bridge those responsibilities explicitly. Retaining
 original QuartzCore does not imply that its Apple GPU/compositor backend works.

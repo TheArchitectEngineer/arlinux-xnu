@@ -221,3 +221,40 @@ class Processes:
             target='failed-step app' if live['app']==target else 'surviving peer')
         command(sys.executable,ROOT/'tools/symbolicate-cache.py',cache,
                 self.directory/'original-process.lldb.log',self.directory/'original-process.symbols.json',capture_output=True)
+        self.diagnose_services(cache)
+
+    def diagnose_services(self,cache):
+        # A real helper has started, but the app still lacks its requested
+        # effect. Inspect those original workers and their owning session;
+        # app-only stacks cannot distinguish loading from a service wait.
+        log=self.output/(self.case['id']+'--session')/'session.log'
+        if not log.is_file():return
+        started=re.findall(r'^SESSION_SERVICE_STARTED owner=(\d+) incarnation=(\d+) service=(\S+) instance=(\d+) pid=(\d+) start_ticks=(\d+) ',
+            log.read_text(errors='replace'),re.M)
+        if not started:return
+        peers=[('session',self.session)]
+        for owner,incarnation,service,instance,pid,ticks in started[:2]:
+            peers.append(('service-'+instance,{'pid':int(pid),'startTicks':int(ticks),
+                'executable':str(ROOT/'build/native/macho-native')}))
+        observations=[]
+        for name,expected in peers:
+            record={'kind':name,'identity':expected};observations.append(record)
+            try:
+                if identity(expected['pid'])!=expected:
+                    record['unavailable']='original process identity changed';continue
+                prefix=self.directory/name
+                path=prefix.with_suffix('.lldb.log')
+                with path.open('wb') as stream:
+                    args=['sudo','-n','timeout','--kill-after=1','6','lldb-18','--batch',
+                        '--attach-pid',str(expected['pid'])]
+                    for action in ('settings set auto-confirm true','thread backtrace all --count 16',
+                                   'register read pc sp x0 x1 x2 x3','process detach'):
+                        args+=['-o',action]
+                    result=subprocess.run(args,stdout=stream,stderr=subprocess.STDOUT,timeout=9)
+                record.update(status=result.returncode,log=str(path.relative_to(self.output)))
+                command(sys.executable,ROOT/'tools/symbolicate-cache.py',cache,path,
+                    prefix.with_suffix('.symbols.json'),capture_output=True)
+            except (OSError,RuntimeError,subprocess.SubprocessError) as error:
+                record['collectionError']=str(error)
+        self.diagnostic['serviceProcesses']=observations
+        self.diagnostic['serviceProcessesOmitted']=max(0,len(started)-2)

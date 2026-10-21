@@ -69,6 +69,17 @@ session owns actual initialization dictionaries and their rights under audited
 PID/incarnation and pidfd lifetime; logs omit nested environment values. A
 successful bootstrap-setting reply reports stored configuration, not process
 launch, connection readiness or service functionality.
+The failure summary also retains bounded actual service resolution conflicts,
+spawn errors and child start/exit witnesses from session.log. A child start is
+not check-in; its PID/start ticks and original execution log distinguish spawn
+from a working service. The full session log retains every instance.
+If a failed journey has actual SESSION_SERVICE_STARTED records, the same
+original-process collector also reads bounded stacks from its owning session
+and at most two original helper PID/start-tick identities. Reused/exited PIDs
+are marked unavailable; further helpers are explicitly counted as omitted.
+These attachments run after the failed effect and never count as service
+readiness or normal exit. Helpers that have not reached Mach-O entry may still
+be in host cache preparation; inspect the original stacks before adding IPC.
 For native XPC reception, correlate XPC_OOL_RECEIVED with XPC_OOL_RELEASED and
 its actual deallocation status in the same session.log. XPC_DECODE_FAILED records
 the message ID, byte count and decoder errno; subsequent replies/requests and
