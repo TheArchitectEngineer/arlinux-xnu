@@ -598,6 +598,13 @@ int darwin_native_host_port_deallocate(uint32_t port)
 #endif
     (void)port; return D_KERN_NOT_SUPPORTED;
 }
+int darwin_native_host_memory_deallocate(uint64_t address,uint64_t size)
+{
+#ifdef ARLINUX_DARLING
+    if(darling_active)return dserver_rpc_mach_vm_deallocate(CURRENT_TASK_PORT,address,size);
+#endif
+    (void)address;(void)size;return D_KERN_NOT_SUPPORTED;
+}
 void *darwin_native_service_run(void *unused)
 {
     (void)unused;

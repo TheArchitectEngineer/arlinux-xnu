@@ -5,7 +5,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/syscall.h>
-#include <sys/uio.h>
 #include <poll.h>
 #include <errno.h>
 #include "darwin-native.h"
@@ -24,46 +23,80 @@ int mach_port_addref(mach_port_t port,mach_port_right_t right)
 int fileport_makeport(int fd,mach_port_t *port)
 { (void)fd; (void)port; return D_ENOTSUP; }
 
-static void session_validate_port_descriptors(const mach_msg_header_t *header,size_t length)
+/* The kernel owns descriptor copyin/copyout. This receiver borrows the actual
+ * delivered byte span while libspc constructs owned values, then releases OOL
+ * mappings. No synthetic Mach message or extra full-payload copy is needed. */
+static spc_message_t *session_deserialize(mach_msg_header_t *header,size_t length)
 {
-    if (!(header->msgh_bits&MACH_MSGH_BITS_COMPLEX)) return;
-    if (length<sizeof(*header)+sizeof(mach_msg_body_t)) abort();
-    uint32_t count;memcpy(&count,(const unsigned char *)header+sizeof(*header),sizeof(count));
-    size_t offset=sizeof(*header)+sizeof(mach_msg_body_t);
-    if (count>(length-offset)/sizeof(mach_msg_port_descriptor_t)) abort();
-    int unsupported=0;
-    for (uint32_t i=0;i<count;i++) {
-        if(length-offset<sizeof(mach_msg_type_descriptor_t))abort();
-        mach_msg_port_descriptor_t descriptor;
-        memcpy(&descriptor,(const unsigned char *)header+offset,sizeof(descriptor));
-        fprintf(stderr,"XPC_PORT_DESCRIPTOR index=%u type=%u disposition=%u port=%u\n",
-            i,descriptor.type,descriptor.disposition,descriptor.name);
-        if(descriptor.type==MACH_MSG_OOL_DESCRIPTOR) {
-            if(length-offset<sizeof(mach_msg_ool_descriptor_t))abort();
-            mach_msg_ool_descriptor_t data;
-            memcpy(&data,(const unsigned char *)header+offset,sizeof(data));
-            /* Read only the received wire framing, never strings or arbitrary
-             * pointer targets. process_vm_readv reports invalid mappings
-             * instead of losing the original unsupported-message evidence. */
-            uint32_t prefix[4]={0};size_t bytes=data.size<sizeof(prefix) ? data.size : sizeof(prefix);
-            struct iovec local={prefix,bytes},remote={(void *)(uintptr_t)data.address,bytes};
-            long read=syscall(SYS_process_vm_readv,getpid(),&local,1,&remote,1,0);
-            fprintf(stderr,"XPC_OOL_DESCRIPTOR index=%u address=%llx bytes=%u copy=%u deallocate=%u prefixBytes=%ld prefix=%08x,%08x,%08x,%08x\n",
-                i,(unsigned long long)data.address,data.size,data.copy,data.deallocate,
-                read,prefix[0],prefix[1],prefix[2],prefix[3]);
-            offset+=sizeof(data);unsupported=1;continue;
-        }
-        if (descriptor.type!=MACH_MSG_PORT_DESCRIPTOR ||
-            (descriptor.disposition!=D_MACH_TYPE_MOVE_SEND &&
-             descriptor.disposition!=D_MACH_TYPE_MOVE_SEND_ONCE)) {
-            fprintf(stderr,"XPC_DESCRIPTOR_UNSUPPORTED\n");abort();
-        }
-        offset+=sizeof(descriptor);
+    if(length<sizeof(*header) || header->msgh_size!=length)return NULL;
+    size_t offset=sizeof(*header),count=0,port_count=0,memory_count=0;
+    if(header->msgh_bits&MACH_MSGH_BITS_COMPLEX) {
+        if(length-offset<sizeof(mach_msg_body_t))return NULL;
+        mach_msg_body_t body;memcpy(&body,(char *)header+offset,sizeof(body));
+        offset+=sizeof(body);count=body.msgh_descriptor_count;
+        if(count>(length-offset)/sizeof(mach_msg_port_descriptor_t))return NULL;
     }
-    uint32_t prefix[2]={0};size_t available=length-offset;
-    memcpy(prefix,(const unsigned char *)header+offset,available<sizeof(prefix) ? available : sizeof(prefix));
-    fprintf(stderr,"XPC_INLINE_FRAMING offset=%zu bytes=%zu prefix=%08x,%08x\n",offset,available,prefix[0],prefix[1]);
-    if(unsupported){fprintf(stderr,"XPC_DESCRIPTOR_UNSUPPORTED\n");abort();}
+    spc_port_t *ports=calloc(count ? count : 1,sizeof(*ports));
+    mach_msg_ool_descriptor_t *memory=calloc(count ? count : 1,sizeof(*memory));
+    if(!ports || !memory){free(ports);free(memory);return NULL;}
+    int error=0;
+    for(size_t i=0;i<count;i++) {
+        if(length-offset<sizeof(mach_msg_type_descriptor_t)){error=EINVAL;break;}
+        const unsigned char *descriptor=(const unsigned char *)header+offset;
+        unsigned int type=descriptor[11];
+        if(type==MACH_MSG_PORT_DESCRIPTOR) {
+            mach_msg_port_descriptor_t port;memcpy(&port,descriptor,sizeof(port));
+            if(port.disposition!=D_MACH_TYPE_MOVE_SEND && port.disposition!=D_MACH_TYPE_MOVE_SEND_ONCE) {
+                fprintf(stderr,"XPC_PORT_DISPOSITION_UNSUPPORTED type=%u\n",port.disposition);
+                abort(); /* Receive-right adoption is not implemented. */
+            }
+            ports[port_count++]=(spc_port_t){port.name,port.disposition};
+            offset+=sizeof(port);
+        } else if(type==MACH_MSG_OOL_DESCRIPTOR || type==D_MACH_MSG_OOL_VOLATILE_DESCRIPTOR) {
+            if(length-offset<sizeof(*memory)){error=EINVAL;break;}
+            memcpy(memory+memory_count,descriptor,sizeof(*memory));
+            fprintf(stderr,"XPC_OOL_RECEIVED index=%zu bytes=%u copy=%u\n",i,memory[memory_count].size,memory[memory_count].copy);
+            memory_count++;offset+=sizeof(*memory);
+        } else {
+            fprintf(stderr,"XPC_DESCRIPTOR_UNSUPPORTED type=%u\n",type);abort();
+        }
+    }
+    const void *payload=(const unsigned char *)header+offset;
+    size_t bytes=length-offset;
+    if(!error && memory_count) {
+        if(memory_count!=1 || bytes || memory[0].size>D_XPC_MAX_PAYLOAD_BYTES)error=ENOTSUP;
+        else {payload=(const void *)(uintptr_t)memory[0].address;bytes=memory[0].size;}
+    }
+    spc_message_t *message=error ? NULL : spc_deserialize_payload(header,payload,bytes,ports,port_count,&error);
+    /* The codec clears every adopted right, including on a decode failure. */
+    for(size_t i=0;i<port_count;i++)if(ports[i].name)mach_port_deallocate(mach_task_self(),ports[i].name);
+    for(size_t i=0;i<memory_count;i++)if(memory[i].size) {
+        int status=darwin_native_host_memory_deallocate(memory[i].address,memory[i].size);
+        fprintf(stderr,"XPC_OOL_RELEASED bytes=%u status=%d\n",memory[i].size,status);
+        if(status)abort(); /* A real resource-ownership failure, not success. */
+    }
+    free(ports);free(memory);
+    if(!message)fprintf(stderr,"XPC_DECODE_FAILED id=%x bytes=%zu error=%d\n",header->msgh_id,bytes,error);
+    return message;
+}
+static int session_error_reply(mach_msg_header_t *header,void *output,size_t capacity,const uint32_t *audit)
+{
+    if(!header->msgh_remote_port)return 0;
+    if(MACH_MSGH_BITS_REMOTE(header->msgh_bits)!=D_MACH_TYPE_MOVE_SEND_ONCE)abort();
+    spc_dictionary_t *dictionary=spc_dictionary_create();
+    spc_dictionary_set_int64(dictionary,"error",D_ENOTSUP);
+    if(audit) {
+        spc_dictionary_set_uint64(dictionary,"req_pid",audit[5]);
+        spc_dictionary_set_uint64(dictionary,"rec_execcnt",audit[7]);
+    }
+    spc_message_t response={.remote_port={header->msgh_remote_port,D_MACH_TYPE_MOVE_SEND_ONCE},
+        .id=0x20000000,.content=dictionary};
+    spc_mach_message_t *encoded=spc_serialize(&response);
+    if(!encoded || encoded->header.msgh_size>capacity)abort();
+    encoded->header.msgh_voucher_port=0;
+    memcpy(output,encoded,encoded->header.msgh_size);
+    free(encoded);spc_dictionary_destroy(dictionary);
+    return 1;
 }
 
 int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
@@ -71,16 +104,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     mach_msg_header_t *header=request;
     int packed_routine=((uint32_t)header->msgh_id&0xffff0000U)==0x40000000U;
     if (header->msgh_id!=0x10000000 && !packed_routine) return 0;
-    /* The selected upstream decoder ignores OOL descriptors. Do not silently
-     * pass them through it. Its fatal malformed-input behavior remains visible
-     * for this trusted-firmware experiment; arbitrary peers are unsupported. */
-    if (header->msgh_size<32) {
-        fprintf(stderr,"BOOTSTRAP_XPC_UNSUPPORTED bits=%x size=%u\n",header->msgh_bits,header->msgh_size);
-        abort();
-    }
-    session_validate_port_descriptors(header,header->msgh_size);
-    spc_message_t *message=spc_deserialize(request);
-    if (!message) { fprintf(stderr,"BOOTSTRAP_XPC_INVALID\n"); abort(); }
+    spc_message_t *message=session_deserialize(header,header->msgh_size);
+    if(!message)return session_error_reply(header,output,capacity,audit);
     uint64_t subsystem=spc_dictionary_get_uint64(message->content,"subsystem");
     uint64_t routine=spc_dictionary_get_uint64(message->content,"routine");
     const char *name=spc_dictionary_get_string(message->content,"name");
@@ -88,14 +113,18 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
         (unsigned long long)subsystem,(unsigned long long)routine,name ? name : "<absent>");
     for (spc_dictionary_item_t *item=message->content->items;item;item=item->next) {
         if (item->value.type==SPC_TYPE_UINT64 || item->value.type==SPC_TYPE_INT64)
-            fprintf(stderr,"BOOTSTRAP_XPC_FIELD key=%s type=%x value=%llu\n",item->key,item->value.type,
+            fprintf(stderr,"BOOTSTRAP_XPC_FIELD key=%.128s type=%x value=%llu\n",item->key,item->value.type,
                 (unsigned long long)item->value.value.u64);
+        else if(item->value.type==SPC_TYPE_STRING &&
+                (!strcmp(item->key,"name") || !strcmp(item->key,"path") || !strcmp(item->key,"origin") || !strcmp(item->key,"identifier")))
+            fprintf(stderr,"BOOTSTRAP_XPC_FIELD key=%.128s type=%x value=%.512s\n",item->key,item->value.type,item->value.value.str);
+        else fprintf(stderr,"BOOTSTRAP_XPC_FIELD key=%.128s type=%x\n",item->key,item->value.type);
     }
     if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U) {
         /* Unknown interface routines keep the actual unsupported response. */
         fprintf(stderr,"BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=%x bytes=%u\n",header->msgh_id,header->msgh_size);
-        fprintf(stdout,"BOOTSTRAP_XPC_UNIMPLEMENTED_DICTIONARY id=%x\n",header->msgh_id);
-        spc_dump(message->content);fflush(stdout);
+        /* Scalar routing fields are logged above; don't dump arbitrary OOL
+         * payloads or nested environment dictionaries. */
         spc_message_destroy(message);return 0;
     }
     int error=D_ENOTSUP;
@@ -291,9 +320,8 @@ int arlinux_xpc_session(void *request,size_t length,void *output,size_t capacity
     if (length<32 || (header->msgh_id!=0x10000000 && header->msgh_id!=0x40000000)) {
         fprintf(stderr,"PROCESSINFO_MESSAGE_UNSUPPORTED\n"); abort();
     }
-    session_validate_port_descriptors(header,length);
-    spc_message_t *message=spc_deserialize(request);
-    if (!message) abort();
+    spc_message_t *message=session_deserialize(header,length);
+    if(!message)return session_error_reply(header,output,capacity,NULL);
     if (peer->service==D_SESSION_HIDFOCUS) {
         /* Diagnostic transport only: retain the authentic NSXPC invocation
          * before implementing focus behavior. Never reply with a fabricated

@@ -34,6 +34,9 @@ static uint32_t darling_task_port=0x103U,darling_host_port=0x203U;
 #define D_KQUEUE_BATCH 16
 #define D_KQUEUE_BUFFER_OFFSET 512
 #define D_DIAGNOSTIC_REQUEST_LIMIT 64
+/* Bound allocation/decoding of received XPC dictionaries independently of the
+ * small Mach envelope; their actual byte stream can arrive out of line. */
+#define D_XPC_MAX_PAYLOAD_BYTES (16UL * 1024 * 1024)
 #define D_PSYNCH_WAIT_OBJECTS 512
 /* Compatibility policy: sample actual Linux MemAvailable once per second. */
 #define D_MEMORY_SAMPLE_SECONDS 1

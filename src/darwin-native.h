@@ -16,6 +16,7 @@ int darwin_native_session_join(void);
 void *darwin_native_service_run(void *);
 int darwin_native_host_port_refs(uint32_t port,int delta);
 int darwin_native_host_port_deallocate(uint32_t port);
+int darwin_native_host_memory_deallocate(uint64_t address,uint64_t size);
 uint32_t darwin_native_host_task(void);
 int darwin_native_host_identity(uint32_t *pid,uint32_t *incarnation);
 /* Private mapping adapter: the original getter's LR identifies its one audited
