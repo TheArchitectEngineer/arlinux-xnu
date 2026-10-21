@@ -134,7 +134,7 @@ static void trace_call(unsigned long number,unsigned long pc,unsigned long resul
  * much higher automatic mmap placement. The atomic cursor also reserves
  * disjoint ranges before future concurrent allocation is enabled. */
 static unsigned long guest_next=D_GUEST_HEAP_START;
-static long anonymous_aligned(unsigned long size,int protection,unsigned long mask)
+static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned long mask,int shared)
 {
     /* Ordinary guest anonymous allocations do not provide adapted code.
      * File mappings and trusted server copy operations have separate callers. */
@@ -148,7 +148,7 @@ static long anonymous_aligned(unsigned long size,int protection,unsigned long ma
         unsigned long requested=__atomic_fetch_add(&guest_next,size+alignment,__ATOMIC_RELAXED);
         if (requested>=D_GUEST_COMMPAGE || size+alignment>D_GUEST_COMMPAGE-requested) return -ENOMEM;
         raw=RAW(SYS_mmap,requested,size+alignment,protection,
-                MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
+                (shared ? MAP_SHARED : MAP_PRIVATE)|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
         if (raw==-EEXIST) continue; /* Preserve existing mappings, choose another range. */
         if ((unsigned long)raw >= (unsigned long)-4095) return raw;
         if ((unsigned long)raw!=requested) {
@@ -165,6 +165,10 @@ static long anonymous_aligned(unsigned long size,int protection,unsigned long ma
         __builtin_unreachable();
     }
     return (long)base;
+}
+static long anonymous_aligned(unsigned long size,int protection,unsigned long mask)
+{
+    return anonymous_aligned_mapping(size,protection,mask,0);
 }
 
 long darwin_native_memory(unsigned long size,int protection)
