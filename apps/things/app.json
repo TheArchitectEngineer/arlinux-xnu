@@ -7,6 +7,10 @@
   "input": {
     "kind": "ipa",
     "url": "https://archive.org/download/thingsi-phone-3.17.1-le-ti/ThingsiPhone_3.17.1_LeTi.ipa",
+    "mirrors": [
+      "https://ia601807.us.archive.org/26/items/thingsi-phone-3.17.1-le-ti/ThingsiPhone_3.17.1_LeTi.ipa",
+      "https://ia801807.us.archive.org/26/items/thingsi-phone-3.17.1-le-ti/ThingsiPhone_3.17.1_LeTi.ipa"
+    ],
     "bytes": 52104885,
     "sha256": "7e3d47be5a6e5bcc9a3f4972e452fd17c953e4cecaa11c2e9256212a46a203d8",
     "bundleIdentifier": "com.culturedcode.ThingsiPhone",

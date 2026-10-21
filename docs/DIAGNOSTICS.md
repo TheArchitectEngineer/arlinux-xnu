@@ -10,6 +10,8 @@ The default failure collection symbolizes original stacks and records the live
 process. Original IPA downloads have a shared retry budget and a 185-second
 outer deadline; an unavailable input fails that app and does not silently choose
 another binary or hold the collection for four independent three-minute waits.
+Declared mirrors name the same pinned object and share this budget; size/hash
+validation is unchanged, and input provenance records the actual download URL.
 Do not attach a standing catalogue of private-service symbol dumps to
 every failure. Use explicit targeted cache lookups only for the current failed
 effect. Production framework adaptation is allowed; the diagnostic harness must

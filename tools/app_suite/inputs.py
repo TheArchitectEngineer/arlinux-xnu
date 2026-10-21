@@ -7,6 +7,7 @@ import shutil
 import stat
 import struct
 import subprocess
+import time
 import zipfile
 from pathlib import Path
 from .context import ROOT,sha
@@ -103,12 +104,21 @@ def prepare_bundle(app,original,info,root,origin,destination=None,platform_libra
 def prepare_ipa_app(app):
     declared=app['input'];directory=ROOT/'build/ipa-input'/app['id']
     directory.mkdir(parents=True,exist_ok=False);archive=directory/'app.ipa'
-    # The retry budget must bound the original-input phase, not multiply a
-    # three-minute timeout four times before unrelated journeys can start.
-    # The outer deadline also covers curl's final in-flight retry.
-    subprocess.run(['curl','--fail','--location','--retry','3','--connect-timeout','15',
-                    '--max-time','60','--retry-max-time','120',
-                    '--output',str(archive),declared['url']],check=True,timeout=185)
+    # Mirrors name the same fixed object, never a substitute app/version. Each
+    # route has a wall deadline and all routes share one total budget. Validate
+    # bytes/hash before extraction even when a mirror succeeds.
+    deadline=time.monotonic()+185;errors=[];download_url=None
+    for url in [*declared.get('mirrors',[]),declared['url']]:
+        remaining=deadline-time.monotonic()
+        if remaining<=0:break
+        try:
+            subprocess.run(['curl','--fail','--location','--retry','1','--connect-timeout','10',
+                            '--max-time','60','--retry-max-time','45',
+                            '--output',str(archive),url],check=True,timeout=min(60,remaining))
+        except subprocess.SubprocessError as error:
+            errors.append(str(error));continue
+        download_url=url;break
+    if download_url is None:raise RuntimeError('IPA download routes failed within shared budget: '+'; '.join(errors))
     if archive.stat().st_size!=declared['bytes'] or sha(archive)!=declared['sha256']:
         raise RuntimeError('IPA size/SHA-256 mismatch')
     unpacked=directory/'extracted';unpacked.mkdir();seen=set()
@@ -138,7 +148,7 @@ def prepare_ipa_app(app):
     firmware=json.loads((ROOT/'sources.lock.json').read_text())['iosUserland']
     def version(value):return tuple(int(part) for part in value.split('.'))
     if version(info['MinimumOSVersion'])>version(firmware['version']):raise RuntimeError('IPA requires a newer iOS userland')
-    prepare_bundle(app,original,info,unpacked,{'url':declared['url'],'archiveBytes':declared['bytes'],
+    prepare_bundle(app,original,info,unpacked,{'url':declared['url'],'downloadURL':download_url,'archiveBytes':declared['bytes'],
         'archiveSHA256':declared['sha256'],'minimumOSVersion':info['MinimumOSVersion']})
 
 
