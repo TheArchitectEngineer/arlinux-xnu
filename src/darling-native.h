@@ -323,7 +323,14 @@ static long darling_mach(unsigned long number,const unsigned long long *r)
         return result;
     }
     case D_TRAP_SEMAPHORE_SIGNAL: return dserver_rpc_semaphore_signal(r[0]);
+    case D_TRAP_SEMAPHORE_SIGNAL_ALL: return dserver_rpc_semaphore_signal_all(r[0]);
     case D_TRAP_SEMAPHORE_WAIT: return dserver_rpc_semaphore_wait(r[0]);
+    case D_TRAP_SEMAPHORE_WAIT_SIGNAL: return dserver_rpc_semaphore_wait_signal(r[0],r[1]);
+    /* The imported XNU/RPC ABI takes separate uint32 seconds/nanoseconds.
+     * Use the same owned Mach semaphore and real timed wait, not a sleep or
+     * successful placeholder for libdispatch's timeout path. */
+    case D_TRAP_SEMAPHORE_TIMEDWAIT: return dserver_rpc_semaphore_timedwait(r[0],r[1],r[2]);
+    case D_TRAP_SEMAPHORE_TIMEDWAIT_SIGNAL: return dserver_rpc_semaphore_timedwait_signal(r[0],r[1],r[2],r[3]);
     case D_TRAP_TIMER_CREATE: result=dserver_rpc_mk_timer_create(&port); return result ? 0 : port;
     case D_TRAP_TIMER_DESTROY: return dserver_rpc_mk_timer_destroy(r[0]);
     case D_TRAP_TIMER_ARM: return dserver_rpc_mk_timer_arm(r[0],r[1]);
