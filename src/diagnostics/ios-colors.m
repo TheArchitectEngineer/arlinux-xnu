@@ -11,14 +11,14 @@ typedef id (*color_lookup)(id,SEL,long long,long long,long long,long long,long l
 static color_lookup original_lookup;
 typedef id (*error_factory)(id,SEL,id,NSInteger,id);
 static error_factory original_error;
+static error_factory original_error_init;
 static unsigned int error_samples;
 static int collecting_error;
-static id traced_error(id cls,SEL selector,id domain,NSInteger code,id info)
+static void observe_error(id domain,NSInteger code)
 {
-    id result=original_error(cls,selector,domain,code,info);
     if(collecting_error || error_samples>=8 ||
         !(([domain isEqual:NSPOSIXErrorDomain] && code==78) ||
-          ([domain isEqual:NSCocoaErrorDomain] && code==256)))return result;
+          ([domain isEqual:NSCocoaErrorDomain] && code==256)))return;
     collecting_error=1;error_samples++;
     fprintf(stderr,"IOS_FILE_ERROR sample=%u domain=%s code=%ld\n",error_samples,
         [domain UTF8String],(long)code);
@@ -27,6 +27,17 @@ static id traced_error(id cls,SEL selector,id domain,NSInteger code,id info)
         fprintf(stderr,"IOS_FILE_ERROR_FRAME index=%lu pc=0x%llx\n",(unsigned long)i,
             [frames[i] unsignedLongLongValue]);
     collecting_error=0;
+}
+static id traced_error(id cls,SEL selector,id domain,NSInteger code,id info)
+{
+    id result=original_error(cls,selector,domain,code,info);
+    observe_error(domain,code);
+    return result;
+}
+static id traced_error_init(id instance,SEL selector,id domain,NSInteger code,id info)
+{
+    id result=original_error_init(instance,selector,domain,code,info);
+    observe_error(domain,code);
     return result;
 }
 static id traced_lookup(id cls,SEL selector,long long name,long long design,long long palette,
@@ -57,6 +68,12 @@ void arlinux_ios_color_trace_start(void)
         method_setImplementation(error_method,(IMP)traced_error);
     } else fprintf(stderr,"IOS_FILE_ERROR_TRACE_UNAVAILABLE types=%s\n",
         error_method ? method_getTypeEncoding(error_method) : "<absent>");
+    Method error_init=class_getInstanceMethod([NSError class],@selector(initWithDomain:code:userInfo:));
+    if(error_init && !strcmp(method_getTypeEncoding(error_init),"@40@0:8@16q24@32")) {
+        original_error_init=(error_factory)method_getImplementation(error_init);
+        method_setImplementation(error_init,(IMP)traced_error_init);
+    } else fprintf(stderr,"IOS_FILE_ERROR_INIT_TRACE_UNAVAILABLE types=%s\n",
+        error_init ? method_getTypeEncoding(error_init) : "<absent>");
     Class cls=objc_getClass("CUIDesignLibrary");
     const char *name="colorWithName:designSystem:palette:colorScheme:contrast:styling:displayGamut:error:";
     Method method=cls ? class_getClassMethod(cls,sel_registerName(name)) : NULL;

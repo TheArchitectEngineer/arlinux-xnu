@@ -28,11 +28,16 @@ not forwarded to the Apple-host reference. It is diagnosis, not launch success.
 The same opt-in profile observes failing original CoreUI color lookups. Its
 typed forwarding wrapper keeps the original arguments, NSError pointer and
 return object, recording the real error domain/code, underlying error and path.
-It neither issues an extra color lookup nor substitutes a color. BSD ENOSYS
+It neither issues an extra color lookup nor substitutes a color.
+The profile also observes the original NSError factory and initializer for
+POSIX 78/Cocoa 256 and retains at most eight original caller stacks. No observed
+stack means those entry points did not capture the failure, not that no error
+was constructed. The current targeted CoreUI lookup follows catalog loading,
+not a standing dump of every color method. BSD ENOSYS
 also retains original arguments and caller frames once per syscall (at most 32
 distinct calls, with an explicit truncation marker). The symbolicator resolves
 those saved return addresses against the same cache without adding instruction
-dumps for every frame. Failed getattrlist calls record bounded path/attribute
+dumps for every frame. Getattrlist calls record bounded path/attribute
 metadata for the first 32 calls; the guest output buffer is never read or changed.
 The failure summary includes eight syscall frequency entries and eight resource
 paths; full arguments, callers and truncation markers remain in runtimeLog.

@@ -28,6 +28,31 @@ unchanged Apple binary. Preserve complex shared semantics when that saves work;
 replace platform dependencies when reproducing their Apple implementation would
 cost more. A whole framework need not be retained or replaced as one unit.
 
+Prefer a native, in-process adaptation at the lowest shared boundary that still
+avoids reproducing Apple platform machinery. Keep Objective-C objects, resource
+parsers, layout and event semantics above that boundary. Back file access,
+windows, input and process ownership with actual Linux capabilities below it.
+Cross-process Mach transport is for real cross-process consumers, not a required
+round trip for every local platform operation. Never substitute a successful
+result for an operation whose app-visible effect is required.
+
+An unsupported syscall is a diagnostic observation, not a work queue. Establish
+its causal connection to a failing app effect before expanding the adapter.
+In run 39523544166, resource metadata and filesystem queries succeeded but the
+Counter button remained invisible with the same frame hash and CoreUI file-read
+error. These ABI additions have not demonstrated progress on that GUI failure.
+Locate the actual file-read rejection before adding more filesystem properties;
+consider adapting the shared Foundation/CoreFoundation file-loading boundary if
+it avoids Apple-specific volume/service dependencies while retaining original
+data objects and CoreUI resource parsing. That boundary is a candidate, not yet
+a verified solution. Do not replace the resource with a fixed color or app rule.
+
+Use multiple independent app journeys to check reuse. A boundary should solve a
+shared capability without app names, firmware offsets or per-app patches. Native
+execution avoids instruction interpretation; shared buffers and batched host
+events can avoid unnecessary IPC/copies. Current software composition still has
+copying and CPU costs: hardware acceleration and zero-copy are not established.
+
 | Capability | Preferred implementation | Required observable effect |
 | --- | --- | --- |
 | Objective-C/Swift, Foundation objects and serialization | Original userland where usable | Real language/object behavior across independent apps |
@@ -67,6 +92,14 @@ ignore-MEDIA rule; resilient executable mappings are explicitly unsupported.
 The real Helvetica/SFUI files now map successfully and original text renders
 instead of LastResort glyphs. This is common mmap behavior, not a font-name fix.
 
+File resource metadata uses the same Linux object as actual reads. The
+getattrlist adapter holds an O_PATH descriptor, reads statx/fstatfs and packs
+the XNU four-byte attribute ABI with actual returned masks. Missing birth time,
+Finder metadata, data-protection flags and other Apple-only fields stay absent;
+ctime is never substituted for birth time. Unsupported non-mask requests fail.
+Filesystem enumeration exposes only the declared root/bundle filesystems, using
+the same fd-backed statfs metadata; no Apple filesystem identity is invented.
+
 ### Lifecycle boundary and next implementation
 
 The previous implementation encoded legacy FrontBoard launch/scene events in
@@ -91,10 +124,9 @@ loop using the specification's actual settings/client/transition classes and
 host-derived process/geometry identity. It supplies a local updater and enters
 FBSScene's genuine agent creation notification. That path binds the agent to
 its scene before its original event handler dispatches into UIKit. The removed
-direct UIApplication workspace callback skipped that required binding. Hosted
-run 39510013762 passes the prior agent invariant and reaches real client-settings
-updates, then rejects an unsupported render-service request (40203). No useful
-app content or full GUI journey has passed. Session scene registration, complete
+direct UIApplication workspace callback skipped that required binding. The
+software rendering boundary now produces actual Counter label pixels; a full
+GUI journey has not passed. Session scene registration, complete
 workspace enumeration, focus updates, host-process/remote endpoint support,
 input and normal close remain unfinished. Unsupported operations fail visibly.
 

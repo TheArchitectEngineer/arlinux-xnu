@@ -19,11 +19,10 @@ and two cross-app scenarios; selected runs never certify the whole collection.
 
 ## Current failed GUI effect
 
-Run [39520403966](https://github.com/taowen/arlinux-xnu/actions/runs/39520403966),
-source **ee8d441a229e9a738f78fa0f18365600c66d2865**, selected Console, Counter
-and Foundation. Receipt
-**85f7a08226650d3dfc8a8d40b6021686621030b5d8babcbb4980020b8f10dd80**
-and all 66 files were verified by build --wait --evidence. The process renders
+Run [39523544166](https://github.com/taowen/arlinux-xnu/actions/runs/39523544166),
+source **0a0528edfee5283ff3df787aad956a7cc7f977fb**, selected Counter. Receipt
+**53ca2fa7234003a83c5de509a6360ebaf16c35aec0e37af4305c290df8c94dea**
+and all 53 files were verified by build --wait --evidence. The process renders
 the original Counter label in actual composed pixels, but its button is still
 invisible. The click step fails its pixel requirement before submitting input;
 nine later steps are blocked. No complete GUI journey is accepted.
@@ -55,10 +54,16 @@ nine later steps are blocked. No complete GUI journey is accepted.
   The original call reports Cocoa error 256, underlying POSIX error 78 (Darwin
   ENOSYS), for `/System/Library/PrivateFrameworks/CoreUI.framework/DesignLibrary-iOS.bundle/iOSRepositories/LightStandard.car`.
   UIKit falls back to clearColor after that failed resource lookup. The same
-  actual path now appears in failing getattrlist (220), with five attribute
+  actual path appears in successful getattrlist (220), with five attribute
   groups recorded: common=0xd03fde0d, volume=0, directory=5, file=1, fork=0x40.
-  Next implement the required filesystem metadata contract from the XNU ABI;
-  changing the app's color or display gamut would hide this evidence.
+  File metadata, declared filesystem enumeration, no-Seatbelt queries and
+  invalid-volume-attribute packing now return their Linux-backed results, but
+  the composed frame is unchanged (SHA-256
+  0f4856ad6a56f5189249b94c7c76af2e8d6cd3fa0ba1f2d50d48517953202e07).
+  No nearby ENOSYS or actual resource open establishes the read rejection.
+  NSError's factory observer captured no construction stack. Next follow the
+  actual catalog initializer and error initializer to choose a shared file-read
+  adaptation boundary; do not add unrelated syscalls or hardcode a color.
 - Frame evidence now writes a temporary file and atomically publishes complete
   frames. This run's encoder passes; incomplete temporary files never replace
   the last completed frame. The failure summary samples four screenshots while
