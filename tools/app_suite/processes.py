@@ -140,10 +140,15 @@ class Processes:
             if 'unsupported bootstrap trust predicate layout' in Path(item['stdout']).with_suffix('.stderr').read_text(errors='replace'):
                 arguments.append('--bootstrap-context')
             if 'unable to locate IOSurface kernel service' in Path(item['stdout']).with_suffix('.stderr').read_text(errors='replace'):
-                arguments.extend(['--lookup-bytes','4096'])
-                for symbol in ('__Z29init_max_renderable_iosurfacePv','_CABackingStoreUpdate_',
-                    '__ZL29CABackingStorePrepareUpdates_P14CABackingStoremmjjjyPN2CA14GenericContextEP11UpdateState'):
-                    arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore',symbol])
+                # The original Web fault reaches its maximum-surface query,
+                # before any surface allocation. Resolve that actual boundary,
+                # including WebCore's own platform-configuration setter.
+                arguments.extend(['--lookup-bytes','1024'])
+                for symbol in ('__ZN7WebCore9IOSurface11maximumSizeEv',
+                               '__ZN7WebCore9IOSurface14setMaximumSizeENS_7IntSizeE'):
+                    arguments.extend(['--lookup','/System/Library/PrivateFrameworks/WebCore.framework/WebCore',symbol])
+                for symbol in ('_IOSurfaceGetPropertyMaximum','_IOSurfaceClientGetPropertyMaximum'):
+                    arguments.extend(['--lookup','/System/Library/Frameworks/IOSurface.framework/IOSurface',symbol])
             try:
                 result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
                 runtime.with_suffix('.symbolication.log').write_bytes(result.stdout+result.stderr)
