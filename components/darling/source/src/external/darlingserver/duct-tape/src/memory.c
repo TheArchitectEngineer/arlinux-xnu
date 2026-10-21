@@ -563,7 +563,17 @@ kern_return_t mach_vm_allocate_kernel(vm_map_t map, mach_vm_offset_t* addr, mach
 };
 
 kern_return_t _mach_make_memory_entry(vm_map_t target_map, memory_object_size_t* size, memory_object_offset_t offset, vm_prot_t permission, ipc_port_t* object_handle, ipc_port_t parent_entry) {
-	dtape_stub_unsafe();
+	/* An unsupported application request must not abort the shared Mach
+	 * session. Linux-backed named entries are not implemented yet: return
+	 * the real capability error, never a success with a placeholder port. */
+	if (target_map == VM_MAP_NULL) {
+		return KERN_INVALID_TASK;
+	}
+	if (!size || !object_handle || !*size) {
+		return KERN_INVALID_ARGUMENT;
+	}
+	*object_handle = IP_NULL;
+	return KERN_NOT_SUPPORTED;
 };
 
 kern_return_t mach_memory_entry_access_tracking(ipc_port_t entry_port, int* access_tracking, uint32_t* access_tracking_reads, uint32_t* access_tracking_writes) {

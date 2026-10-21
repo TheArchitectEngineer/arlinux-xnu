@@ -138,21 +138,21 @@ first DOM observation a 45-second cold-start budget, retaining actual pixels,
 external input and normal-close requirements. Runner validation is pending.
 These are not GPU hardware acceleration, DOM or helper-lifecycle acceptance.
 
-Selected run [39602625868](https://github.com/taowen/arlinux-xnu/actions/runs/39602625868),
-source **fb5d953460eb6ef9d9e613b61ba32ca4c93bf69a**, attempt 1, passes Counter
-but fails Web when its shared session exits (1/2, partial). Receipt
-**5d091aaaff3a156846d106739b1d489ac3bdc43180e1915cc4df79e4d4f21eb4**
-and 41 files were verified. App **6027/222430** uses session **6024**;
-WebContent's main TID **6065** successfully allocates the original **0x200100**
-byte nonvolatile purgeable buffer at **0xd92d64000**. Original deferred reply
-**0x26**, eight bytes with no FDs, is acknowledged by the server; the former
-unexpected-reply termination is passed in that observed path. This is not
-arbitrary nested-RPC/FD-transfer or rendering acceptance. The owned session then
-exits; app _start_wqthread failure is secondary and cannot explain the core exit.
-The candidate retains original native-session faults through the existing
-stop-on-fault and bounded LLDB path; it also removes implicit host-libc ancillary
-iteration from the RPC hook. Total feedback is 175 s; journeys take 38.858 s
-including 6.171 s of diagnosis. No DOM or helper-lifecycle acceptance.
+Selected run [39603490048](https://github.com/taowen/arlinux-xnu/actions/runs/39603490048),
+source **73316e84825455390854277d2ac58ec39400e401**, attempt 1, passes Counter
+but fails Web at an original native-session fault (1/2, partial). Receipt
+**260c2e5cdde052849e598ece931b6e68bbbcc5afe09b60c4cb4c7f0985a096e0**
+and 47 files were verified. Bounded LLDB preserves session thread #2's actual
+abort -> dtape_stub_log -> _mach_make_memory_entry -> generated Mach VM server
+-> ipc_kobject_server -> real Mach message dispatch. This identifies the shared
+session exit; it is not explained by the secondary app workqueue failure in the
+previous run. Anonymous allocation and acknowledged deferred replies advance
+original execution to named-memory export, which is still unimplemented.
+The candidate returns KERN_NOT_SUPPORTED/no port instead of aborting the shared
+core. This contains an unsupported application request; it does not implement
+named/shared memory or certify Web rendering. True Linux shared backing and
+capability/mapping lifetime remain required. Total feedback is 185 s; journeys
+take 59.168 s including 23.375 s of diagnosis. Full regression is pending.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary

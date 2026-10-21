@@ -464,3 +464,10 @@ pipe acknowledgement proves the server copied the body before the generated
 buffer can be reused. Original received FDs close after transfer; interrupt_exit
 lets the server deliver the saved outer reply normally. No fabricated reply or
 parallel client-side reply queue is introduced.
+
+Named-memory export (_mach_make_memory_entry) is still unsupported: it returns
+KERN_NOT_SUPPORTED and no port, rather than aborting the shared Mach session.
+WebKit's rendering stream reaches this real boundary. Anonymous allocation alone
+is not shared memory; a future Linux-backed named entry must retain common
+backing, actual rights transfer, mapping and lifetime across independent tasks.
+Do not substitute an empty capability or a copied snapshot for shared writes.
