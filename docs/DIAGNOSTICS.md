@@ -41,6 +41,12 @@ metadata for the first 32 calls; the guest output buffer is never read or change
 The failure summary includes eight syscall frequency entries and eight resource
 paths; full arguments, callers and truncation markers remain in runtimeLog.
 Frequency is not a root-cause verdict.
+For native XPC reception, correlate XPC_OOL_RECEIVED with XPC_OOL_RELEASED and
+its actual deallocation status in the same session.log. XPC_DECODE_FAILED records
+the message ID, byte count and decoder errno; subsequent replies/requests and
+the original app stack identify whether the session survived. Only routing
+metadata is logged, never raw OOL bodies or nested environment dictionaries.
+Successful decoding/release does not establish service, helper or app success.
 The same opt-in profile records an uncaught NSException's actual name, reason
 and at most 24 original throw-stack addresses. It chains the previous uncaught
 handler and preserves normal termination. Those frames are symbolicated from

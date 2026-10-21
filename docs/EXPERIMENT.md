@@ -42,23 +42,6 @@ to **2b551edea55b6c1d0d0e31dc6dd7945e4afadfd06cf65153ebcccabd8c2c93f5**,
 then repeats the reset/change after relaunch. Intermediate blank captures remain
 in evidence and do not satisfy the composed-pixel requirement.
 
-## Latest runtime check
-
-Run [39538728026](https://github.com/taowen/arlinux-xnu/actions/runs/39538728026),
-source **55f59cda896b87afac3497c1bfa930381aafad81**, checks Console, Foundation,
-Counter, Swift/UIKit, Notes and Web after exposing the actual guest VM page size
-through the Darwin legacy and named sysctl interfaces. The first five journeys
-pass again. Web no longer reports its earlier WTF::pageSize assertion, but fails
-when the shared session aborts at XPC_DESCRIPTOR_UNSUPPORTED on an OOL descriptor.
-Its later worker fault is retained; do not mistake it for the first failure or
-claim DOM/helper compatibility. Receipt
-**f7e7072613868381dffb518e52082d117e22ac9f8bcc3ce3d4e88d3f6be42108**
-and all 79 retained result files were verified against the producing log.
-This selected run took 152 s overall, 37 s in journeys. The full
-11/15 result below belongs to its recorded earlier source, not this subset.
-The next boundary is genuine XPC descriptor handling and application-requested
-helper/session lifetime, alongside remaining activation/network/fork work.
-
 ## Working adaptation boundaries
 
 Notes now passes its complete edit/save/reopen journey in selected run
@@ -93,13 +76,21 @@ took 156 s overall and 30 s in journeys.
   fault/unsupported-call/LLDB evidence remains available. Historical diagnosis
   failures and their repairs remain in Git/Actions rather than a growing diary.
 
+- The pinned libspc fork **654ecfd5fb9ffbea2e86242bc4d87cf83a274459** now
+  decodes bounded inline/OOL dictionary spans with owned values and transferred
+  rights. Web's actual 32,768-byte CPX5 body was decoded, then released through
+  the real Mach VM deallocation RPC with status 0. The session continued handling
+  later requests. Unknown bootstrap operations remain unsupported; no helper
+  launch is claimed. Decoder changes live in the public fork, not a build patch.
+  The temporary raw framing probe was removed after establishing this layout.
+
 ## Complete collection and remaining failures
 
-Full run [39538117840](https://github.com/taowen/arlinux-xnu/actions/runs/39538117840),
-source **45c9b1f54025bb66d5fd5fec9f0b3abeb8c4a3d4**, attempt 1, passed **11/15**
+Full run [39540314048](https://github.com/taowen/arlinux-xnu/actions/runs/39540314048),
+source **407a575403fd1196d1ed720c0ba62e2d4e113c35**, attempt 1, passed **11/15**
 journeys. The collection is still **failed**. Receipt
-**78f3b512556e4a57e8e2c545166a0e668c335aa9da436659eda120b82c13b635**
-and all 218 retained files were verified. This run took 295 s; app journeys 167 s.
+**c890f3ce9a6b26db155fdbff8afe730e44d8c95757d288def0a4f5d43f62a393**
+and all 205 retained files were verified. This run took 279 s; app journeys 142 s.
 
 Alongside the four basic apps, Canvas passes actual red-to-green repaint and
 normal close; Workers passes independent thread, mmap and asynchronous queue
@@ -112,7 +103,7 @@ cleanup or UIKit scene activation-state transitions.
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
 | Network | The process no longer crashes on the fabricated OS-variant cache or thread-capacity failure. It times out without Network 42; actual NECP operations remain unsupported. No HTTP round trip has passed. |
-| Web | Original fault arguments identify WTF::pageSize() during JavaScriptCore initialization, immediately after a failed system query. Investigate the guest page-size query, consistent with WebKit PageBlock.cpp, before assuming a JIT failure. No DOM output accepted. |
+| Web | The guest page-size query and 32 KiB OOL dictionary decoding now work. Original WebCore::IOSurface::maximumSize() reaches IOSurfaceClientGetPropertyMaximum and aborts because the IOSurface kernel service is absent. Requests for com.apple.WebKit.WebContent also lack a launch implementation. No DOM/helper/presentation acceptance. |
 | Share | Real timed semaphore forwarding passes the earlier dispatch failure. The flow now waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
 | Process | Child-side MIG reply-port construction fails after fork. Fork/session/rights inheritance needs implementation; this console capability is not an ordinary iOS app lifecycle claim. |
 
@@ -136,20 +127,8 @@ reports require both runs' verified receipts and unchanged journey definitions.
 Selected runs remain partial. Feedback measurements belong to the exact run,
 not a latency guarantee; firmware stays transient, hash-verified and runner-local.
 
-Tooling verification run
-[39536560764](https://github.com/taowen/arlinux-xnu/actions/runs/39536560764),
-source **4f6b591e209f25b583cf6a1bb724efeff748fd12**, selected only Notes,
-Workers queue and concurrent relaunch, compiling Counter/Notes/Workers. It took
-175 s overall and 62 s in journeys, versus 315/171 s for the full baseline.
-This saves unrelated work, not an equivalent full-suite speedup. Both receipts
-and all retained files were verified; the selected artifact has 69 files.
-Concurrent relaunch passed; Notes failed at the same CoreEmoji assertion.
-Workers queue passed in the baseline but timed out here despite pointer
-begin/end delivery to its UIButton. Its original-process stacks are retained;
-the cause remains unresolved. The runtime source was unchanged by this tooling
-commit, so this is a changed result, not evidence that selection introduced a
-runtime defect. Twelve omitted journeys are explicitly untested. The comparison
-correctly preserves both failures and writes their effect/diagnostic timings.
+The previously observed Workers queue timeout is retained in run 39536560764;
+it did not recur in the latest full run and is not declared universally fixed.
 
 Apple-host reference run
 [39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593)

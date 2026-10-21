@@ -36,6 +36,18 @@ Cross-process Mach transport is for real cross-process consumers, not a required
 round trip for every local platform operation. Never substitute a successful
 result for an operation whose app-visible effect is required.
 
+XPC dictionary decoding is maintained in the pinned libspc fork. The native
+receiver supplies the actual bounded inline span or single OOL CPX5 body; both
+use the same decoder. Nested objects have checked byte/count/depth bounds and
+return an error instead of terminating the service on a value decoding failure.
+The decoder adopts transferred send rights into owned values and releases
+unconsumed rights. The receiver releases the delivered OOL mapping through real
+Mach VM deallocation after decoding, without copying an extra full body.
+Received OOL bodies are limited to 16 MiB by the native receiver. OOL port arrays,
+receive-right adoption and arbitrary descriptor forms are still unsupported;
+this is not a general untrusted-peer XPC implementation. Decoding a bootstrap
+request does not implement the requested service operation or helper launch.
+
 An unsupported syscall is a diagnostic observation, not a work queue. Establish
 its causal connection to a failing app effect before expanding the adapter.
 In run 39523544166, resource metadata and filesystem queries succeeded but the

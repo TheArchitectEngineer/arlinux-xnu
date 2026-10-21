@@ -1,4 +1,4 @@
-/* Darwin LP64 message ABI for the unmodified community codec on Linux.
+/* Darwin LP64 message ABI for the pinned community codec fork on Linux.
  * Layout source: XNU osfmk/mach/message.h. This is not a second Mach backend. */
 #pragma once
 #include <stddef.h>
