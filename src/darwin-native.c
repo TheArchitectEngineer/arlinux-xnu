@@ -970,6 +970,7 @@ int darwin_native_dyld_info(uint64_t address,uint64_t length)
 #ifdef ARLINUX_DARLING
     if(darling_active) {
         int result=dserver_rpc_set_dyld_info(address,length);
+        if(!result) {darling_dyld_address=address;darling_dyld_length=length;}
         trace_record("DARLING_DYLD_INFO bytes=0x",length,address,result);
         return result;
     }

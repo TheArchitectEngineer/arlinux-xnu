@@ -10,7 +10,7 @@
         },
         {
           "do": "stdout",
-          "text": "Process COW: 11 child: 37"
+          "text": "Process COW: 11 shared: 42 child: 37"
         },
         {
           "do": "stdin",

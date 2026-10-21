@@ -9,6 +9,7 @@ static int darling_active;
 #include <darlingserver/rpc-supplement.h>
 static struct sockaddr_un darling_address;
 static int darling_server_pid,darling_fork_checkin;
+static uint64_t darling_dyld_address,darling_dyld_length;
 static struct { int tid,fd; } darling_clients[D_NATIVE_GUEST_THREAD_CAPACITY+D_NATIVE_SERVICE_THREADS];
 static int darling_socket(void);
 static void *darling_copy(void *destination,const void *source,size_t size)
@@ -156,6 +157,10 @@ static void darling_after_fork(void)
     if(dserver_rpc_task_self_trap(&darling_task_port) || !darling_task_port ||
        dserver_rpc_host_self_trap(&darling_host_port) || !darling_host_port)
         darling_abort("child task/host self");
+    /* Real fork preserves the interpreter's COW mappings and metadata address.
+     * Register that storage for the new task, never the parent's task handle. */
+    if(darling_dyld_address && dserver_rpc_set_dyld_info(darling_dyld_address,darling_dyld_length))
+        darling_abort("child interpreter metadata");
 }
 static void darling_prepare(void)
 {

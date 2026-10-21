@@ -28,6 +28,9 @@ static long native_fork(int *is_child)
         darling_after_fork();
         native_threads[0].port=darling_thread_self();
         trace_record("DARWIN_FORK_CHILD pid=0x",native_threads[0].tid,CURRENT_TASK_PORT,native_threads[0].port);
+        uint64_t ticks=0;uint32_t parent=0;
+        if(native_proc_start(native_threads[0].tid,&ticks,&parent))darling_abort("child process identity");
+        trace_record("DARWIN_FORK_CHILD_IDENTITY pid=0x",native_threads[0].tid,ticks,parent);
         unsigned char byte=1;long written;
         do {written=RAW(SYS_write,ready[1],&byte,1,0,0,0);}while(written==-EINTR);
         RAW(SYS_close,ready[1],0,0,0,0,0);
