@@ -41,7 +41,7 @@ Calculator now has independent iPhone 8 portrait (375x667 points at 2x) and
 landscape (667x375 points at 2x) flows. The runner resizes its real nested
 compositor to the corresponding pixel dimensions before app launch; each flow
 must observe the expected UIKit viewport. Other journeys restore their normal
-desktop geometry. These phone profiles are pending validation. An Apple-host
+desktop geometry. Both phone profiles passed on Linux in run 39686613898. An Apple-host
 reference must also satisfy its actual viewport step; merely recording a
 requested profile does not certify that macOS applied it.
 In particular fork is not an ordinary iOS App Store lifecycle requirement. They

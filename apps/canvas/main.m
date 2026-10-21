@@ -17,7 +17,7 @@
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
     (void)app; (void)options; UIView *view; self.window=Screen(@"Canvas",&view); self.result=Label(view,@"Red",80);
     self.art=[[ArtView alloc] initWithFrame:CGRectMake(30,140,240,100)]; [view addSubview:self.art];
-    Button(view,@"Paint",self,@selector(paint:),280); [self.window makeKeyAndVisible]; AppInspectionStart(self.window); return YES;
+    Button(view,@"Paint",self,@selector(paint:),MIN(280,view.bounds.size.height-55)); [self.window makeKeyAndVisible]; AppInspectionStart(self.window); return YES;
 }
 - (void)paint:(id)sender { (void)sender; self.art.alternate=YES; [self.art setNeedsDisplay]; self.result.text=@"Green"; }
 @end
