@@ -239,8 +239,8 @@ class Processes:
             session_text=log.read_text(errors='replace')
             if 'BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=40000325 ' in session_text:
                 image='/usr/lib/system/libxpc.dylib'
-                arguments+=['--lookup-fragment',image,'__xpc_check_in',
-                    '--list-symbols',image,'check_in']
+                arguments+=['--lookup-fragment',image,'__xpc_bootstrap_routine_check_in',
+                    '--lookup-fragment',image,'__xpc_connection_check_in']
             if 'BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=400002c7 ' in session_text or \
                'BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=400002ce ' in session_text:
                 # Original helpers requested bootstrap/service metadata. Read
