@@ -97,6 +97,42 @@ def api(endpoint):
     return result.stdout
 
 
+def print_observation(line):
+    """Bound terminal output only; report.json retains the original observation."""
+    if not line.startswith('APP_DIAGNOSIS '):
+        print('  '+line);return
+    try:entry=json.loads(line[len('APP_DIAGNOSIS '):])
+    except ValueError:
+        print('  '+line);return
+    failed=entry.get('failedStep',{})
+    print(f"  APP_DIAGNOSIS {entry.get('id')}: {failed.get('do')} {failed.get('reason')}")
+    print(f"    effect={failed.get('seconds')}s diagnosis={failed.get('diagnosticSeconds')}s blocked={entry.get('blockedSteps')} infrastructureFailure={entry.get('infrastructureFailure')}")
+    for process in entry.get('processes',[]):
+        print(f"    Process {process.get('app')} generation={process.get('generation')} identity={json.dumps(process.get('identity'))}")
+        print(f"    Logs: {process.get('runtimeLog')}; {process.get('stderr')}")
+        for fault in process.get('faultContexts',[]):
+            print('    Fault: '+json.dumps(fault))
+        for observed in process.get('observed',[]):
+            if re.search(r'FAILED|FAULT|EXCEPTION|UNSUPPORTED|Assertion failed:',observed):
+                print('    Observed: '+observed)
+        missing=process.get('unimplementedSyscalls',{})
+        for call in missing.get('calls',[]):
+            callers=[frame.get('nearestSymbol',frame.get('pc')) for frame in call.get('originalCallers',[])[:2]]
+            print(f"    ENOSYS nr={call.get('number')} count={call.get('count')} first callers={callers}")
+        if missing.get('omittedSyscalls'):
+            print(f"    Other ENOSYS syscall numbers: {missing['omittedSyscalls']} (full report retained)")
+        for resource in missing.get('getattrlistPaths',[]):print('    getattrlist path: '+resource)
+    screenshots=entry.get('screenshots',[])
+    if screenshots:
+        last=screenshots[-1]
+        print(f"    Screenshot: {last.get('screenshot')} sha256={last.get('sha256')}")
+        measured=next((shot for shot in reversed(screenshots) if 'pixels' in shot),None)
+        if measured:print('    Last measured target: '+json.dumps({key:measured[key] for key in ('screenRect','pixels') if key in measured}))
+    for observed in entry.get('sessionObserved',[]):print('    Session observed: '+observed)
+    print('    Collection: '+json.dumps(entry.get('diagnostic')))
+    print(f"    Full journey: {entry.get('fullJourney')}; full diagnosis remains in the saved report (--verbose prints raw observations)")
+
+
 def report(run_id, job_name, verbose=False):
     """Read existing execution evidence; never dispatch or execute a guest."""
     run = json.loads(api('actions/runs/' + run_id))
@@ -194,10 +230,11 @@ def report(run_id, job_name, verbose=False):
             lines = [re.sub(r'^[^\t]+\t[^\t]+\t', '', line) for line in lines]
         lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
         markers=('APP_BUILD ','APP_CASE ','APP_DIAGNOSIS ','APP_SUITE ','APP_INPUT_VERIFIED ','APP_INPUT_HANDOFF ',
-                 'COMPILER_CACHE_STATS ','EXPERIMENT_RECEIPT ')
+                 'COMPILER_CACHE_STATS ','APPLE_PREPARATION_TIMING ','EXPERIMENT_RECEIPT ')
         item['observations']=[line for line in lines if line.startswith(markers)]
         for line in (lines if verbose else item['observations']):
-            print('  '+line)
+            if verbose:print('  '+line)
+            else:print_observation(line)
         # An uncaught failure can have no application markers (e.g. compiler
         # error). Preserve actionable Actions errors instead of a blank report.
         item['errors'] = [line for line in lines if line.startswith('##[error]') or

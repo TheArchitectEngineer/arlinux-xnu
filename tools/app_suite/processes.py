@@ -117,11 +117,6 @@ class Processes:
         for item in self.processes.values():
             runtime = Path(item['runtime'])
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
-            if self.environment.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1':
-                arguments.extend(['--lookup-bytes','4096'])
-                for selector in ('compositeCatalogForDesignSystem:colorScheme:contrast:styling:error:',
-                    'colorWithName:palette:displayGamut:error:'):
-                    arguments.extend(['--lookup-selector','/System/Library/PrivateFrameworks/CoreUI.framework/CoreUI',selector])
             if 'DARLING_UNHANDLED_SERVICE_INLINE' in runtime.read_text(errors='replace'):
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZL14query_displaysv'])
                 arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore','__ZN2CA7Display7Display6updateEv'])
@@ -131,10 +126,6 @@ class Processes:
                 arguments.extend(['--lookup-bytes','4096'])
                 for symbol in ('__Z29init_max_renderable_iosurfacePv','_CABackingStoreUpdate_',
                     '__ZL29CABackingStorePrepareUpdates_P14CABackingStoremmjjjyPN2CA14GenericContextEP11UpdateState'):
-                    arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore',symbol])
-            if 'IOS_RENDER_CPU_BACKING ' in Path(item['stdout']).with_suffix('.stderr').read_text(errors='replace'):
-                arguments.extend(['--lookup-bytes','4096'])
-                for symbol in ('-[CALayer display]','-[CALayer _display]'):
                     arguments.extend(['--lookup','/System/Library/Frameworks/QuartzCore.framework/QuartzCore',symbol])
             try:
                 result=subprocess.run(list(map(str,arguments)),capture_output=True,timeout=15)
