@@ -41,6 +41,7 @@ void arlinux_xpc_session_tick(void);
 int arlinux_session_display(void *request,unsigned long length,const uint32_t *audit);
 
 int darwin_native_host_receive_create(uint32_t *port);
+int darwin_native_host_endpoint_create(uint32_t *port);
 int darwin_native_host_send(void *message,uint32_t size);
 int darwin_native_host_process_matches(uint32_t pid,uint32_t incarnation);
 int darwin_native_host_child(uint32_t pid,uint32_t parent);

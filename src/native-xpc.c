@@ -185,18 +185,31 @@ static struct service_instance {
     unsigned char uuid[16];
     char *name;
     int ownerfd,attempted,terminating;
+    uint32_t endpoint;
+    int owns_receive;
+    plist_t configuration;
     uint64_t kill_after;
     struct native_service_child child;
     struct service_instance *next;
 } *service_instances;
 static unsigned int service_instance_count,service_instance_serial;
+static void launch_endpoint_close(struct service_instance *instance)
+{
+    if(!instance->endpoint)return;
+    if(instance->owns_receive && darwin_native_host_receive_destroy(instance->endpoint))abort();
+    if(darwin_native_host_port_deallocate(instance->endpoint))abort();
+    instance->endpoint=0;instance->owns_receive=0;
+}
 static void launch_instance_start(struct service_instance *instance)
 {
     if(instance->attempted)return;
     instance->attempted=1;
     int error=native_service_spawn(instance->owner,instance->incarnation,instance->name,instance->uuid,&instance->child);
-    if(error)fprintf(stderr,"SESSION_SERVICE_SPAWN_FAILED owner=%u incarnation=%u service=%s instance=%u errno=%d\n",
-        instance->owner,instance->incarnation,instance->name,instance->serial,error);
+    if(error) {
+        fprintf(stderr,"SESSION_SERVICE_SPAWN_FAILED owner=%u incarnation=%u service=%s instance=%u errno=%d\n",
+            instance->owner,instance->incarnation,instance->name,instance->serial,error);
+        launch_endpoint_close(instance);
+    }
     else fprintf(stderr,"SESSION_SERVICE_STARTED owner=%u incarnation=%u service=%s instance=%u pid=%ld start_ticks=%llu ready=false\n",
         instance->owner,instance->incarnation,instance->name,instance->serial,(long)instance->child.pid,
         (unsigned long long)instance->child.start_ticks);
@@ -236,16 +249,18 @@ static void launch_instances_tick(void)
                     instance->owner,instance->incarnation,instance->name,instance->serial,(long)child,
                     (unsigned long long)instance->child.start_ticks,status,instance->terminating!=0);
                 close(instance->child.pidfd);instance->child.pidfd=-1;instance->child.pid=0;
+                launch_endpoint_close(instance);
             }
         }
         if(ready && !instance->child.pid) {
             *slot=instance->next;service_instance_count--;
+            launch_endpoint_close(instance);plist_free(instance->configuration);
             close(instance->ownerfd);free(instance->name);free(instance);continue;
         }
         slot=&instance->next;
     }
 }
-static int launch_instance_lookup(spc_dictionary_t *request,const char *name,const uint32_t *audit)
+static int launch_instance_lookup(spc_dictionary_t *request,const char *name,const uint32_t *audit,uint32_t *port)
 {
     spc_dictionary_item_t *uuid=spc_dictionary_lookup(request,"instance");
     if(!audit || !name || !*name || strlen(name)>=D_BOOTSTRAP_NAME_MAX ||
@@ -264,15 +279,27 @@ static int launch_instance_lookup(spc_dictionary_t *request,const char *name,con
             if(instance->ownerfd>=0)close(instance->ownerfd);
             free(instance->name);free(instance);return D_ESRCH;
         }
+        int status=native_service_metadata(audit[5],audit[7],name,&instance->configuration);
+        if(!status)status=darwin_native_host_endpoint_create(&instance->endpoint);
+        if(status) {
+            fprintf(stderr,"SESSION_SERVICE_PENDING_FAILED owner=%u service=%s status=%d\n",audit[5],name,status);
+            if(instance->configuration)plist_free(instance->configuration);
+            close(instance->ownerfd);free(instance->name);free(instance);
+            return status==ENOENT ? D_ENOENT : D_ENOTSUP;
+        }
+        instance->owns_receive=1;
         instance->owner=audit[5];instance->incarnation=audit[7];instance->serial=++service_instance_serial;
         memcpy(instance->uuid,uuid->value.value.ptr,16);instance->child.pidfd=-1;
         instance->next=service_instances;service_instances=instance;service_instance_count++;
+        fprintf(stderr,"SESSION_SERVICE_PENDING owner=%u incarnation=%u service=%s instance=%u source_receive=%u\n",
+            instance->owner,instance->incarnation,name,instance->serial,instance->endpoint);
     }
     for(struct launch_bootstrap *context=launch_bootstraps;context;context=context->next)
         if(context->pid==instance->owner && context->incarnation==instance->incarnation && !strcmp(context->name,name))
             launch_instance_start(instance);
-    /* A process having exec'd is not a checked-in XPC endpoint. */
-    return D_ENOTSUP;
+    if(!instance->endpoint || darwin_native_host_port_refs(instance->endpoint,1))return D_ESRCH;
+    *port=instance->endpoint; /* Separate send reference held through the actual lookup reply. */
+    return 0;
 }
 
 /* Return the actual caller-supplied initialization dictionary only to a real
@@ -354,20 +381,36 @@ static int service_metadata_reply(spc_dictionary_t *request,const uint32_t *audi
     struct service_instance *child=service_instances;
     while(child && !(child->child.pid==(pid_t)audit[5] && (uint32_t)child->child.start_ticks==audit[7]))child=child->next;
     if(!child)return D_ESRCH;
-    plist_t configuration=NULL;
-    int status=native_service_metadata(child->owner,child->incarnation,child->name,&configuration);
-    if(status) {
-        fprintf(stderr,"SESSION_SERVICE_METADATA_FAILED pid=%u service=%s errno=%d\n",audit[5],child->name,status);
-        return status==ESRCH ? D_ESRCH : D_ENOTSUP;
-    }
+    if(!darwin_native_host_process_matches(child->owner,child->incarnation))return D_ESRCH;
     unsigned int budget=1024;spc_value_t value;
-    int error=service_metadata_value(configuration,&value,0,&budget);plist_free(configuration);
+    int error=service_metadata_value(child->configuration,&value,0,&budget);
     if(error)return error;
     spc_dictionary_set_string(reply,"identifier",child->name);
     spc_dictionary_set_value(reply,"xpcservice-dict",value);
     fprintf(stderr,"SESSION_SERVICE_METADATA_REPLY pid=%u incarnation=%u service=%s fields=%zu\n",
         audit[5],audit[7],child->name,value.value.dict->num_items);
     return 0;
+}
+static int service_checkin_reply(spc_dictionary_t *request,const uint32_t *audit,spc_dictionary_t *reply,
+                                 struct service_instance **grant)
+{
+    const char *name=spc_dictionary_get_string(request,"name");
+    if(!audit || !name || spc_dictionary_get_uint64(request,"type")!=6 ||
+       spc_dictionary_get_uint64(request,"flags") || spc_dictionary_get_uint64(request,"handle") ||
+       !darwin_native_host_process_matches(audit[5],audit[7]))return D_EINVAL;
+    struct service_instance *child=service_instances;
+    while(child && !(child->child.pid==(pid_t)audit[5] && (uint32_t)child->child.start_ticks==audit[7] &&
+          !strcmp(child->name,name)))child=child->next;
+    if(!child || !darwin_native_host_process_matches(child->owner,child->incarnation))return D_ESRCH;
+    if(!child->endpoint || !child->owns_receive)return D_EBUSY;
+    void *uuid=malloc(sizeof(child->uuid));if(!uuid)return D_ENOMEM;
+    memcpy(uuid,child->uuid,sizeof(child->uuid));
+    spc_dictionary_set_value(reply,"instance",(spc_value_t){.type=SPC_TYPE_UUID,.value.ptr=uuid});
+    /* The receive right is unique. Borrow it through serialization; the real
+     * Mach send transfers it, without manufacturing another receive reference. */
+    spc_dictionary_set_value(reply,"port",(spc_value_t){.type=SPC_TYPE_RECV_PORT,
+        .value.port={child->endpoint,D_MACH_TYPE_MOVE_RECEIVE}});
+    *grant=child;return 0;
 }
 
 int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
@@ -394,7 +437,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     int set_bootstrap=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x2c6U;
     int copy_bootstrap=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x2c7U;
     int copy_service=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x2ceU;
-    if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U && !set_bootstrap && !copy_bootstrap && !copy_service) {
+    int check_in=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x325U;
+    if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U && !set_bootstrap && !copy_bootstrap && !copy_service && !check_in) {
         /* Unknown interface routines keep the actual unsupported response. */
         fprintf(stderr,"BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=%x bytes=%u\n",header->msgh_id,header->msgh_size);
         /* Scalar routing fields are logged above; don't dump arbitrary OOL
@@ -409,7 +453,7 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     if(packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x324U &&
        spc_dictionary_get_uint64(message->content,"type")==5 &&
        spc_dictionary_get_uint64(message->content,"flags")==32)
-        error=launch_instance_lookup(message->content,name,audit);
+        error=launch_instance_lookup(message->content,name,audit,&port);
     /* libspc connection.c: spc_domain_routine / spc_look_up_endpoint.
      * Only this process's default namespace is currently implemented. */
     /* Real __xpc_pipe_pack_message emits packed routine IDs but still uses
@@ -425,7 +469,9 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
         else error=darwin_native_system_lookup(name,type,flags,&port);
     }
     spc_dictionary_t *reply=spc_dictionary_create();
+    struct service_instance *grant=NULL;
     if(copy_service)error=service_metadata_reply(message->content,audit,reply);
+    if(check_in)error=service_checkin_reply(message->content,audit,reply,&grant);
     /* The genuine non-PID-1 bootstrap path authenticates its requester echo
      * against the requester's current audit PID/incarnation. The kernel audit
      * trailer identifies the requesting task across processes; never echo this
@@ -443,11 +489,12 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
         borrowed=spc_dictionary_lookup(reply,"bootstrap");
         spc_dictionary_set_data(reply,"creator",context->creator,sizeof(context->creator));
     }
-    if (!error && !set_bootstrap && !copy_bootstrap && !copy_service) spc_dictionary_set_send_port(reply,"port",port);
+    if (!error && !set_bootstrap && !copy_bootstrap && !copy_service && !check_in) spc_dictionary_set_send_port(reply,"port",port);
     spc_message_t response={.remote_port={header->msgh_remote_port,D_MACH_TYPE_MOVE_SEND_ONCE},
         .id=0x20000000,.content=reply};
     spc_mach_message_t *encoded=spc_serialize(&response);
     if(borrowed)borrowed->value=spc_null_create(); /* Context keeps its original owned objects/rights. */
+    if(grant)spc_dictionary_lookup(reply,"port")->value=spc_null_create();
     int unsupported_copy=0;
     if(context && encoded && (encoded->header.msgh_bits&MACH_MSGH_BITS_COMPLEX)) {
         mach_msg_body_t *body=(void *)((char *)encoded+sizeof(mach_msg_header_t));
@@ -460,7 +507,7 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
             ports[i].disposition=D_MACH_TYPE_COPY_SEND;
         }
     }
-    if((context || copy_service) && (!encoded || encoded->header.msgh_size>capacity || unsupported_copy)) {
+    if((context || copy_service || check_in) && (!encoded || encoded->header.msgh_size>capacity || unsupported_copy)) {
         free(encoded);spc_dictionary_destroy(reply);spc_message_destroy(message);
         return session_error_reply(header,output,capacity,audit);
     }
@@ -469,9 +516,17 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
      * This host service has no voucher to transfer. */
     encoded->header.msgh_voucher_port=MACH_PORT_NULL;
     memcpy(output,encoded,encoded->header.msgh_size);
+    if(grant) {
+        /* The caller sends this reply immediately and invalidates the whole
+         * session on send failure. There is no intervening actor mutation. */
+        grant->owns_receive=0;
+        fprintf(stderr,"SESSION_SERVICE_RECEIVE_GRANT pid=%u incarnation=%u service=%s instance=%u source_receive=%u\n",
+            audit[5],audit[7],grant->name,grant->serial,grant->endpoint);
+    }
     if(context)fprintf(stderr,"SESSION_BOOTSTRAP_COPY_REPLY pid=%u incarnation=%u creator=%u service=%s\n",
         audit[5],audit[7],context->pid,context->name);
-    fprintf(stderr,"BOOTSTRAP_XPC_REPLY error=%d port=%u bytes=%u\n",error,port,encoded->header.msgh_size);
+    fprintf(stderr,"BOOTSTRAP_XPC_REPLY error=%d port=%u bytes=%u receive_grant=%d\n",
+        error,grant ? grant->endpoint : port,encoded->header.msgh_size,grant!=NULL);
     free(encoded);
     spc_dictionary_destroy(reply);
     *held_port=port; /* Keep lookup's send reference through the actual send. */

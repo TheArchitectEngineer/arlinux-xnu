@@ -532,6 +532,20 @@ int darwin_native_host_receive_create(uint32_t *port)
 #endif
     (void)port; return D_KERN_NOT_SUPPORTED;
 }
+int darwin_native_host_endpoint_create(uint32_t *port)
+{
+#ifdef ARLINUX_DARLING
+    if(darling_active) {
+        uint32_t receive=0;
+        int status=dserver_rpc_mach_port_allocate(CURRENT_TASK_PORT,D_PORT_RIGHT_RECEIVE,&receive);
+        if(status)return status;
+        status=dserver_rpc_mach_port_insert_right(CURRENT_TASK_PORT,receive,receive,D_MACH_TYPE_MAKE_SEND);
+        if(status){darwin_native_host_receive_destroy(receive);return status;}
+        *port=receive;return 0;
+    }
+#endif
+    (void)port;return D_KERN_NOT_SUPPORTED;
+}
 int darwin_native_host_child(uint32_t pid,uint32_t parent)
 {
 #ifdef ARLINUX_DARLING
