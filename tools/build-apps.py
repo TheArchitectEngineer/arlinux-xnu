@@ -10,6 +10,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
+from app_suite.selection import select
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'build/apps'
@@ -27,12 +28,13 @@ def command(*args):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app',default='all')
+    parser.add_argument('--case',help='Exact comma-separated journey IDs; compile only their app dependencies')
     args=parser.parse_args()
     if sys.platform!='darwin' or platform.machine() not in ('arm64','x86_64') or os.environ.get('GITHUB_ACTIONS')!='true':
         raise SystemExit('App compilation requires a hosted macOS SDK runner through build.sh')
     declarations={json.loads(path.read_text())['id']:path for path in sorted((ROOT/'apps').glob('*/app.json'))}
-    selected=set(declarations) if args.app=='all' else set(args.app.split(','))
-    if not selected or not selected<=set(declarations):parser.error('Unknown app selection')
+    try:selected,_,_,_=select(ROOT,args.app,args.case)
+    except ValueError as error:parser.error(str(error))
     OUT.mkdir(parents=True,exist_ok=False)
     sdk=command('xcrun','--sdk','iphoneos','--show-sdk-path').decode().strip()
     firmware=json.loads((ROOT/'sources.lock.json').read_text())['iosUserland']

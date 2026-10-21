@@ -55,6 +55,23 @@ binds the producer receipt digest and run attempt; source/run/attempt plus every
 product hash are checked before execution. No older app binaries are reused.
 The default `all` still builds/runs the full collection and cross-app scenarios.
 
+For one worker behavior or cross-app scenario, use `--case` with exact IDs from
+`./build.sh cases`. Dispatch, SDK compilation and execution share one selector:
+only the chosen journeys' app dependencies are built, including scenario peers.
+`--app` can restrict the allowed apps; a conflicting case is rejected. Any case
+selection is partial, even when all named cases pass. Each retained APP_CASE
+reports total journey time, effect time and diagnosis time separately. Normal
+close, screenshots and fresh state are unchanged.
+
+`--baseline-run RUN_ID` on report or build --wait compares two completed runs.
+It verifies both receipts and result hashes before comparing shared cases,
+reports fixes/regressions and failed-step movement only for unchanged journey
+definitions, and keeps omitted cases explicitly untested in that selection.
+Failure reasons and diagnosis/total durations remain visible; reaching a later
+step is not a passing journey or a root-cause claim. The comparison is saved
+beside the current run report. This avoids rereading two large logs to find
+whether a common boundary improved another app or regressed an existing flow.
+
 `--wait` follows the exact dispatch URL, never another run with the same commit.
 Job/step transitions and completed-job failures are shown while the run is live.
 Observation failures keep following that run without redispatch. It then reports

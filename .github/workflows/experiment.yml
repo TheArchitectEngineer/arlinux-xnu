@@ -6,6 +6,10 @@ name: iOS app collection
         description: all, or comma-separated app IDs (partial run)
         default: all
         type: string
+      case:
+        description: Optional exact comma-separated journey IDs; only their apps are built
+        default: ''
+        type: string
       reference:
         description: Also run the same app inputs on the Apple-host reference
         default: false
@@ -32,7 +36,8 @@ jobs:
     - name: Build selected source-owned iOS apps with the Apple SDK
       env:
         APP_SELECTION: ${{ inputs.app }}
-      run: python3 tools/build-apps.py --app "$APP_SELECTION"
+        CASE_SELECTION: ${{ inputs.case }}
+      run: python3 tools/build-apps.py --app "$APP_SELECTION" --case "$CASE_SELECTION"
     - name: Record app products
       id: products_receipt
       if: always()
@@ -195,8 +200,9 @@ jobs:
     - name: Run independent app-owned user journeys
       env:
         APP_SELECTION: ${{ inputs.app }}
+        CASE_SELECTION: ${{ inputs.case }}
         ARLINUX_DIAGNOSE_LIFECYCLE: ${{ inputs.lifecycle_context && '1' || '0' }}
-      run: python3 tools/run-apps.py --app "$APP_SELECTION"
+      run: python3 tools/run-apps.py --app "$APP_SELECTION" --case "$CASE_SELECTION"
     - name: Encode actual CoreGraphics frame captures
       if: always()
       shell: bash
@@ -295,7 +301,8 @@ jobs:
     - name: Run the same app-owned journeys on the Apple host
       env:
         APP_SELECTION: ${{ inputs.app }}
-      run: python3 tools/run-apps.py --app "$APP_SELECTION" --reference
+        CASE_SELECTION: ${{ inputs.case }}
+      run: python3 tools/run-apps.py --app "$APP_SELECTION" --case "$CASE_SELECTION" --reference
     - name: Record reference evidence
       if: always()
       run: python3 tools/experiment-receipt.py --directory build/results --outcome '${{ job.status }}'

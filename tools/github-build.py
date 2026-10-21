@@ -8,6 +8,7 @@ import re
 import subprocess
 import time
 from datetime import datetime
+from app_suite.selection import select
 
 
 REPO = 'taowen/arlinux-xnu'
@@ -37,6 +38,7 @@ def verify_result_files(directory, expected, run):
 
 
 def collect_evidence(run):
+    verified=[]
     for job in run['jobs']:
         artifact={'native-userland':'ios-app-results-linux','apple-reference':'ios-app-results-apple'}.get(job['name'])
         if not artifact or job['status']!='completed' or job['conclusion']=='skipped':continue
@@ -57,6 +59,58 @@ def collect_evidence(run):
         except (OSError,ValueError,KeyError) as error:
             raise SystemExit('Evidence verification failed: '+str(error)) from error
         print(f'  Verified {artifact}: receipt plus {count} files; {directory}')
+        verified.append(directory)
+    return verified
+
+
+def compare_runs(current, baseline):
+    """Compare retained app effects only after checking both producing receipts."""
+    if current['status']!='completed':raise SystemExit('Comparison requires a completed current run')
+    before=report(baseline,None)
+    if before['status']!='completed':raise SystemExit('Comparison requires a completed baseline run')
+    old_dirs=collect_evidence(before);new_dirs=collect_evidence(current)
+    comparisons=[]
+    for directory in new_dirs:
+        old=next((path for path in old_dirs if path.name==directory.name),None)
+        if old is None:continue
+        old_path=old/'apps/result.json';new_path=directory/'apps/result.json'
+        if not old_path.is_file() or not new_path.is_file():continue
+        for parent in (old,directory):
+            receipt=json.loads((parent/'receipt.json').read_text())
+            if 'apps/result.json' not in {entry['path'] for entry in receipt['files']}:
+                raise SystemExit('App result is not covered by the verified receipt')
+        left=json.loads(old_path.read_text());right=json.loads(new_path.read_text())
+        previous={case['id']:case for case in left['cases']}
+        following={case['id']:case for case in right['cases']}
+        for name in sorted(set(previous)|set(following)):
+            a=previous.get(name);b=following.get(name)
+            row={'id':name,'backend':right['backend'],'before':a and a['status'],'after':b and b['status']}
+            if not a or not b:
+                row['comparison']='not run in both selections'
+            else:
+                owner,journey=name.split('--',1)
+                path=f'apps/{owner}/journeys.json' if owner!='session' else f'apps/scenarios/{journey}.json'
+                matched=(a['journeySHA256']==b['journeySHA256'] if a.get('journeySHA256') and b.get('journeySHA256')
+                         else path in left['inputs'] and left['inputs'][path]==right['inputs'].get(path))
+                row['sameJourney']=matched
+                if not matched:row['comparison']='journey changed; no progress verdict'
+                elif a['status']!=b['status']:row['comparison']='fixed' if b['status']=='passed' else 'regression'
+                else:
+                    ai=next((i for i,s in enumerate(a['steps']) if s['status']=='failed'),None)
+                    bi=next((i for i,s in enumerate(b['steps']) if s['status']=='failed'),None)
+                    row.update(beforeFailedStep=ai,afterFailedStep=bi)
+                    row['comparison']=('later failed step' if bi>ai else 'earlier failed step' if bi<ai else 'same failed step') if ai is not None and bi is not None else 'same status'
+                for label,case in (('before',a),('after',b)):
+                    row[label+'Seconds']=case.get('journeySeconds')
+                    row[label+'DiagnosticSeconds']=round(sum(step.get('diagnosticSeconds',0) for step in case['steps']),3)
+                    failed=next((step for step in case['steps'] if step['status']=='failed'),{})
+                    row[label+'Failure']={key:failed[key] for key in ('do','text','reason') if key in failed}
+            comparisons.append(row)
+            print('  COMPARE '+json.dumps(row))
+    path=ROOT/'build/runs'/str(current['runId'])/f"attempt-{current['attempt']}"/('comparison-'+baseline+'.json')
+    path.write_text(json.dumps({'baseline':baseline,'current':current['runId'],'cases':comparisons},indent=2)+'\n')
+    print('Comparison: '+str(path))
+    if not comparisons:print('No matching verified app result artifacts; comparison unavailable')
 
 
 def wait_for_run(run_id,commit):
@@ -254,8 +308,10 @@ def report(run_id, job_name, verbose=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['build', 'status', 'report', 'download'])
+    parser.add_argument('command', choices=['build', 'status', 'report', 'download', 'cases'])
     parser.add_argument('--app',default='all',help='all or comma-separated source-owned app IDs; subset runs are explicitly partial')
+    parser.add_argument('--case',help='Exact comma-separated journey IDs; only their app dependencies are compiled and run')
+    parser.add_argument('--baseline-run',help='Compare receipt-verified effects against this exact completed run (report or build --wait)')
     parser.add_argument('--reference',action='store_true',help='Also run the same app journeys on the Apple-host reference')
     parser.add_argument('--lifecycle-context',action='store_true',help='Opt-in read-only loaded lifecycle ABI and host window-state evidence on Linux')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
@@ -266,6 +322,16 @@ def main():
     parser.add_argument('--wait',action='store_true',help='Follow the exact newly dispatched run, then report its result without redispatch')
     parser.add_argument('--artifact', help='Download only this named artifact from the exact run')
     args = parser.parse_args()
+    if args.baseline_run and (not args.baseline_run.isdecimal() or not (args.command=='report' or (args.command=='build' and args.wait))):
+        parser.error('--baseline-run NUMERIC_ID requires report or build --wait')
+    if args.case and args.command not in ('build','cases'):parser.error('--case requires build or cases')
+    if args.command in ('build','cases'):
+        try:products,cases,_,full_suite=select(ROOT,args.app,args.case)
+        except ValueError as error:parser.error(str(error))
+        print('Selection: '+str(len(cases))+' journeys; apps='+','.join(sorted(products))+'; fullSuite='+str(full_suite).lower(),flush=True)
+        if args.command=='cases':
+            for case in cases:print(case['id']+' ('+str(len(case['steps']))+' steps)')
+            return
     if args.command in ('report', 'download') and (not args.run_id or not args.run_id.isdecimal()):
         parser.error(args.command + ' requires --run-id NUMERIC_RUN_ID')
     if args.job and args.command != 'report':
@@ -277,7 +343,8 @@ def main():
         parser.error('--evidence requires report or build --wait')
     if args.command == 'report':
         result=report(args.run_id, args.job, args.verbose)
-        if args.evidence:collect_evidence(result)
+        if args.baseline_run:compare_runs(result,args.baseline_run)
+        elif args.evidence:collect_evidence(result)
         return
     repo = REPO
     if args.command == 'build':
@@ -296,6 +363,7 @@ def main():
         print('Dispatching exact pushed source ' + expected, flush=True)
         command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'app=' + args.app, '-f', 'reference=' + str(args.reference).lower(),
                    '-f','lifecycle_context='+str(args.lifecycle_context).lower()]
+        if args.case:command+=['-f','case='+args.case]
         dispatched=subprocess.run(['gh',*command,'--repo',repo],capture_output=True,text=True,check=True)
         dispatch_output=dispatched.stdout+dispatched.stderr
         print(dispatch_output, end='',flush=True)
@@ -305,7 +373,8 @@ def main():
             run_id=match[1]
             wait_for_run(run_id,expected)
             result=report(run_id,None,args.verbose)
-            if args.evidence:collect_evidence(result)
+            if args.baseline_run:compare_runs(result,args.baseline_run)
+            elif args.evidence:collect_evidence(result)
             if result['conclusion']!='success':raise SystemExit(1)
         return
     elif args.command == 'status':

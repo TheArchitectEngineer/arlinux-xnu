@@ -28,8 +28,11 @@ GitHub CLI are required. Compilation and execution happen only on hosted runners
 ./build.sh build                         # entire app collection plus two-app scenarios
 ./build.sh build --app counter --wait --evidence # partial flow, then verified evidence
 ./build.sh build --app counter --reference # same input and journey on Linux and Apple host
+./build.sh cases                         # list exact journey IDs without dispatch
+./build.sh build --case workers--queue,session--concurrent-relaunch --wait --evidence
 ./build.sh status --run-id RUN_ID
 ./build.sh report --run-id RUN_ID
+./build.sh report --run-id RUN_ID --baseline-run PREVIOUS_RUN_ID
 ./build.sh download --run-id RUN_ID --artifact ios-app-results-linux
 ```
 
