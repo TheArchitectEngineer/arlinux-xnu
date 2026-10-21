@@ -12,13 +12,12 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
-#include <glob.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-struct caller_launch { char arguments[32768];const char *root,*dyld,*container; };
+struct caller_launch { char arguments[32768];const char *root,*dyld,*container,*service_index; };
 static int caller_launch_read(uint32_t pid,struct caller_launch *launch)
 {
     char path[64];struct stat caller,self;
@@ -33,15 +32,16 @@ static int caller_launch_read(uint32_t pid,struct caller_launch *launch)
     const char *last=launch->arguments+count;
     for(const char *arg=launch->arguments;arg<last;) {
         const char *value=arg+strlen(arg)+1;
-        if(!strcmp(arg,"--root") || !strcmp(arg,"--dyld") || !strcmp(arg,"--container")) {
+        if(!strcmp(arg,"--root") || !strcmp(arg,"--dyld") || !strcmp(arg,"--container") || !strcmp(arg,"--service-index")) {
             if(value>=last)return EINVAL;
             if(!strcmp(arg,"--root"))launch->root=value;
             if(!strcmp(arg,"--dyld"))launch->dyld=value;
             if(!strcmp(arg,"--container"))launch->container=value;
+            if(!strcmp(arg,"--service-index"))launch->service_index=value;
             arg=value+strlen(value)+1;
         } else arg=value;
     }
-    return launch->root && launch->dyld && launch->container ? 0 : EINVAL;
+    return launch->root && launch->dyld && launch->container && launch->service_index ? 0 : EINVAL;
 }
 static plist_t read_bundle(const char *path)
 {
@@ -69,30 +69,40 @@ static char *bundle_string(plist_t bundle,const char *key)
     if(item && plist_get_node_type(item)==PLIST_STRING)plist_get_string_val(item,&value);
     return value;
 }
-static int service_program(const char *root,const char *service,char **output)
+static int service_program(const char *root,const char *index,const char *service,char **output)
 {
-    const char *patterns[]={"System/Library/Frameworks/*.framework/XPCServices/*.xpc/Info.plist",
-        "System/Library/PrivateFrameworks/*.framework/XPCServices/*.xpc/Info.plist",
-        "System/Library/XPCServices/*.xpc/Info.plist"};
     char *canonical_root=realpath(root,NULL);if(!canonical_root)return errno;
+    plist_t catalog=read_bundle(index);char *registered=catalog ? bundle_string(catalog,"root") : NULL;
+    if(!registered || strcmp(registered,canonical_root)) {
+        free(registered);if(catalog)plist_free(catalog);free(canonical_root);return EINVAL;
+    }
+    free(registered);
+    plist_t services=plist_dict_get_item(catalog,"services");
+    plist_t paths=services && plist_get_node_type(services)==PLIST_DICT ? plist_dict_get_item(services,service) : NULL;
     int error=ENOENT;char *found=NULL;
-    for(size_t p=0;p<sizeof(patterns)/sizeof(*patterns);p++) {
-        char pattern[PATH_MAX];
-        int n=snprintf(pattern,sizeof(pattern),"%s/%s",canonical_root,patterns[p]);
-        if(n<0 || n>=(int)sizeof(pattern)){error=ENAMETOOLONG;break;}
-        glob_t paths={0};int status=glob(pattern,GLOB_NOSORT,NULL,&paths);
-        if(status && status!=GLOB_NOMATCH){globfree(&paths);error=EIO;break;}
-        for(size_t i=0;i<paths.gl_pathc;i++) {
-            plist_t bundle=read_bundle(paths.gl_pathv[i]);
-            if(!bundle)continue;
+    if(paths && plist_get_node_type(paths)!=PLIST_ARRAY)error=EINVAL;
+    uint32_t count=paths && plist_get_node_type(paths)==PLIST_ARRAY ? plist_array_get_size(paths) : 0;
+    if(count>128){error=E2BIG;count=0;}
+    for(uint32_t i=0;i<count;i++) {
+            plist_t item=plist_array_get_item(paths,i);char *relative=NULL;
+            if(item && plist_get_node_type(item)==PLIST_STRING)plist_get_string_val(item,&relative);
+            if(!relative || !*relative || *relative=='/') {free(relative);error=EINVAL;break;}
+            char path[PATH_MAX];int n=snprintf(path,sizeof(path),"%s/%s",canonical_root,relative);free(relative);
+            char *bundle_path=n>0 && n<(int)sizeof(path) ? realpath(path,NULL) : NULL;
+            if(!bundle_path){error=n>=(int)sizeof(path) ? ENAMETOOLONG : errno;break;}
+            if(strncmp(bundle_path,canonical_root,strlen(canonical_root)) || bundle_path[strlen(canonical_root)]!='/') {
+                free(bundle_path);error=EPERM;break;
+            }
+            plist_t bundle=read_bundle(bundle_path);
+            if(!bundle){free(bundle_path);error=EINVAL;break;}
             char *identifier=bundle_string(bundle,"CFBundleIdentifier");
             if(identifier && !strcmp(identifier,service)) {
                 char *executable=bundle_string(bundle,"CFBundleExecutable");
                 if(!executable || !*executable || strchr(executable,'/') ||
                    !strcmp(executable,".") || !strcmp(executable,".."))error=EINVAL;
                 else {
-                    char candidate[PATH_MAX];const char *slash=strrchr(paths.gl_pathv[i],'/');
-                    n=snprintf(candidate,sizeof(candidate),"%.*s/%s",(int)(slash-paths.gl_pathv[i]),paths.gl_pathv[i],executable);
+                    char candidate[PATH_MAX];const char *slash=strrchr(bundle_path,'/');
+                    n=snprintf(candidate,sizeof(candidate),"%.*s/%s",(int)(slash-bundle_path),bundle_path,executable);
                     char *resolved=n>0 && n<(int)sizeof(candidate) ? realpath(candidate,NULL) : NULL;
                     if(!resolved)error=n>=(int)sizeof(candidate) ? ENAMETOOLONG : errno;
                     else if(strncmp(resolved,canonical_root,strlen(canonical_root)) || resolved[strlen(canonical_root)]!='/') {
@@ -114,14 +124,11 @@ static int service_program(const char *root,const char *service,char **output)
                     } else {found=resolved;error=0;}
                 }
                 free(executable);
-            }
-            free(identifier);plist_free(bundle);
+            } else error=EINVAL;
+            free(identifier);plist_free(bundle);free(bundle_path);
             if(error && error!=ENOENT)break;
-        }
-        globfree(&paths);
-        if(error && error!=ENOENT)break;
     }
-    free(canonical_root);
+    plist_free(catalog);free(canonical_root);
     if(error){free(found);return error;}
     *output=found;return 0;
 }
@@ -142,7 +149,7 @@ int native_service_spawn(uint32_t owner,uint32_t incarnation,const char *service
     struct caller_launch caller={0};int error=caller_launch_read(owner,&caller);
     if(error)return error;
     if(!darwin_native_host_process_matches(owner,incarnation))return ESRCH;
-    char *program=NULL;error=service_program(caller.root,service,&program);
+    char *program=NULL;error=service_program(caller.root,caller.service_index,service,&program);
     if(error)return error;
     char executable[PATH_MAX];ssize_t n=readlink("/proc/self/exe",executable,sizeof(executable)-1);
     if(n<0){error=errno;free(program);return error;}executable[n]=0;
@@ -150,7 +157,8 @@ int native_service_spawn(uint32_t owner,uint32_t incarnation,const char *service
         instance[0],instance[1],instance[2],instance[3],instance[4],instance[5],instance[6],instance[7],
         instance[8],instance[9],instance[10],instance[11],instance[12],instance[13],instance[14],instance[15]);
     char *args[]={executable,"--role","service","--service-name",(char *)service,"--service-instance",uuid,
-        "--root",(char *)caller.root,"--dyld",(char *)caller.dyld,"--container",(char *)caller.container,program,NULL};
+        "--root",(char *)caller.root,"--dyld",(char *)caller.dyld,"--container",(char *)caller.container,
+        "--service-index",(char *)caller.service_index,program,NULL};
     char prefix[PATH_MAX+64],server[64],provider[64];
     const char *directory=getenv("ARLINUX_DARLING_PREFIX");
     if(!directory || snprintf(prefix,sizeof(prefix),"ARLINUX_DARLING_PREFIX=%s",directory)>=(int)sizeof(prefix)) {

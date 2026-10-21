@@ -171,6 +171,23 @@ try:
     cache_record=describe_cache(cache,sha)
     (evidence / 'cache-input.json').write_text(json.dumps(cache_record, indent=2)+'\n')
     print('APPLE_CACHE_INPUT '+json.dumps(cache_record), flush=True)
+    # Register actual bundle metadata once while installing the firmware view.
+    # This is operational service lookup data, not a feature/existence test.
+    # Runtime launch revalidates the selected bundle and executable in this root.
+    started=time.monotonic();services={}
+    for pattern in ('System/Library/Frameworks/*.framework/XPCServices/*.xpc/Info.plist',
+                    'System/Library/PrivateFrameworks/*.framework/XPCServices/*.xpc/Info.plist',
+                    'System/Library/XPCServices/*.xpc/Info.plist'):
+        for path in merged.glob(pattern):
+            info=plistlib.loads(path.read_bytes())
+            identifier=info.get('CFBundleIdentifier')
+            if not isinstance(identifier,str) or not identifier:continue
+            relative=str(path.relative_to(merged))
+            if relative not in services.setdefault(identifier,[]):services[identifier].append(relative)
+    service_index=output/'xpc-services.plist'
+    service_index.write_bytes(plistlib.dumps({'root':str(merged.resolve()),'services':services},fmt=plistlib.FMT_BINARY))
+    print('APPLE_SERVICE_INDEX '+json.dumps({'services':len(services),'sha256':sha(service_index),
+        'seconds':round(time.monotonic()-started,3)}),flush=True)
 except BaseException:
     for mount in [merged,*reversed(mounts)]:
         subprocess.run(['fusermount3','-u',str(mount)],check=False)
@@ -186,6 +203,7 @@ print('APPLE_SYSTEM_VERSION ' + json.dumps(version_record), flush=True)
 
 record = {'firmware': source, 'verifiedFirmwareSHA256': actual,
           'images':{role:{'member':member,'sha256':sha(output/Path(member).name)} for role,member in images.items()},
-          'apfsReader': reader, 'dyldBytes': loader.stat().st_size, 'dyldSHA256': sha(loader)}
+          'apfsReader': reader, 'dyldBytes': loader.stat().st_size, 'dyldSHA256': sha(loader),
+          'serviceIndexSHA256':sha(service_index)}
 (evidence / 'apple-input.json').write_text(json.dumps(record, indent=2) + '\n')
 print('APPLE_USERLAND_INPUT ' + json.dumps(record), flush=True)

@@ -88,6 +88,7 @@ class Processes:
         binary = ROOT / app['binary']
         arguments=[str(ROOT / 'build/native/macho-native'), '--role', app['kind'], '--dyld',
             str(ROOT / 'build/ios-input/dyld'), '--root', str(ROOT / 'build/ios-input/filesystem/root'),
+            '--service-index',str(ROOT/'build/ios-input/xpc-services.plist'),
             '--container',str(state.resolve()),
             str(binary)]
         if self.reference:

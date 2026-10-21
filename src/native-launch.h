@@ -3,7 +3,7 @@
 #pragma once
 enum native_launch_role { NATIVE_CONSOLE, NATIVE_APPLICATION, NATIVE_SERVICE };
 struct native_launch_options {
-    const char *program,*dyld,*root,*container,*service_name,*service_instance;
+    const char *program,*dyld,*root,*container,*service_name,*service_instance,*service_index;
     enum native_launch_role role;
 };
 static struct native_launch_options native_launch_parse(int argc,char **argv)
@@ -13,7 +13,7 @@ static struct native_launch_options native_launch_parse(int argc,char **argv)
     for (int i=1;i<argc;i++) {
         const char *argument=argv[i];
         if (!strcmp(argument,"--dyld") || !strcmp(argument,"--root") || !strcmp(argument,"--role") || !strcmp(argument,"--container") ||
-            !strcmp(argument,"--service-name") || !strcmp(argument,"--service-instance")) {
+            !strcmp(argument,"--service-name") || !strcmp(argument,"--service-instance") || !strcmp(argument,"--service-index")) {
             need(i+1<argc,"launch option requires a value");
             const char *value=argv[++i];
             if (!strcmp(argument,"--dyld")) { need(!options.dyld,"duplicate --dyld"); options.dyld=value; }
@@ -21,6 +21,7 @@ static struct native_launch_options native_launch_parse(int argc,char **argv)
             else if (!strcmp(argument,"--container")) { need(!options.container,"duplicate --container"); options.container=value; }
             else if (!strcmp(argument,"--service-name")) { need(!options.service_name,"duplicate --service-name"); options.service_name=value; }
             else if (!strcmp(argument,"--service-instance")) { need(!options.service_instance,"duplicate --service-instance"); options.service_instance=value; }
+            else if (!strcmp(argument,"--service-index")) { need(!options.service_index,"duplicate --service-index"); options.service_index=value; }
             else {
                 need(!role_seen,"duplicate --role"); role_seen=1;
                 if (!strcmp(value,"application")) options.role=NATIVE_APPLICATION;
