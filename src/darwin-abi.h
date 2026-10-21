@@ -177,6 +177,8 @@ enum darwin_port_type {
 enum darwin_device_layout {
     D_DEV_MAJOR_SHIFT = 24, D_DEV_MAJOR_MAX = 255, D_DEV_MINOR_MAX = 0xffffff
 };
+/* XNU bsd/sys/sysctl.h: legacy hardware MIB uses an int page size. */
+enum darwin_sysctl_mib { D_CTL_HW=6, D_HW_PAGESIZE=7 };
 enum darwin_open_flags {
     D_AT_FDCWD = -2,
     D_AT_SYMLINK_NOFOLLOW=0x20, D_AT_REMOVEDIR=0x80,

@@ -90,13 +90,14 @@ static int native_sysctl_name(const char *name,uint64_t length,const char *expec
     while(expected[i]) { if(i>=length || name[i]!=expected[i]) return 0; i++; }
     return length==i || (length==i+1 && !name[i]);
 }
-/* OID_AUTO nodes get numbers from the kernel's own registry. These two numbers
+/* OID_AUTO nodes get numbers from the kernel's own registry. These numbers
  * belong to this compatibility machine, not to an assumed Apple OS release. */
-enum { NATIVE_SYSCTL_OSVARIANT=0x10000,NATIVE_SYSCTL_BOOTARGS };
+enum { NATIVE_SYSCTL_OSVARIANT=0x10000,NATIVE_SYSCTL_BOOTARGS,NATIVE_SYSCTL_PAGESIZE };
 static int native_sysctl_node(const char *name,uint64_t length)
 {
     if(native_sysctl_name(name,length,"kern.osvariant_status")) return NATIVE_SYSCTL_OSVARIANT;
     if(native_sysctl_name(name,length,"kern.bootargs")) return NATIVE_SYSCTL_BOOTARGS;
+    if(native_sysctl_name(name,length,"hw.pagesize")) return NATIVE_SYSCTL_PAGESIZE;
     return 0;
 }
 static long native_sysctl_output(const unsigned long long *r,const void *value,uint64_t required)
@@ -112,6 +113,13 @@ static long native_sysctl_output(const unsigned long long *r,const void *value,u
 static long native_sysctl_value(const unsigned long long *r,int node)
 {
     if (r[4] || r[5]) return -EPERM;
+    if(node==NATIVE_SYSCTL_PAGESIZE) {
+        /* XNU kern_mib.c exposes hw.pagesize by name as CTLTYPE_QUAD.
+         * Report the same 16 KiB guest VM granularity used by mmap/commpage,
+         * not the Linux host's potentially different physical page size. */
+        const uint64_t value=D_GUEST_PAGE_SIZE;
+        return native_sysctl_output(r,&value,sizeof(value));
+    }
     if(node==NATIVE_SYSCTL_BOOTARGS) {
         /* No Darwin kernel boot flags were configured for this machine. */
         const char empty=0;
@@ -147,8 +155,16 @@ static long native_sysctl(const unsigned long long *r)
         if(guest_copy(name,r[4],r[5],0))return -EFAULT;
         int node=native_sysctl_node(name,r[5]);
         if(!node)return -ENOENT;
-        const int32_t result[]={1,node}; /* CTL_KERN plus this machine's OID. */
+        const int32_t result[]={node==NATIVE_SYSCTL_PAGESIZE ? D_CTL_HW : 1,node};
         return native_sysctl_output(r,result,sizeof(result));
+    }
+    if(mib[0]==D_CTL_HW) {
+        if(mib[1]==D_HW_PAGESIZE) {
+            if(r[4] || r[5])return -EPERM;
+            const uint32_t value=D_GUEST_PAGE_SIZE;
+            return native_sysctl_output(r,&value,sizeof(value));
+        }
+        return mib[1]==NATIVE_SYSCTL_PAGESIZE ? native_sysctl_value(r,mib[1]) : -ENOENT;
     }
     return mib[0]==1 ? native_sysctl_value(r,mib[1]) : -ENOENT;
 }
