@@ -195,7 +195,7 @@ static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned
             requested=raw;
         }
         raw=RAW(SYS_mmap,requested,size+alignment,protection,
-                (shared ? MAP_SHARED : MAP_PRIVATE)|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
+                (shared ? MAP_SHARED : MAP_PRIVATE|MAP_NORESERVE)|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
         if (raw==-EEXIST) {
             long gap=native_guest_gap(size+alignment);
             if((unsigned long)gap>=(unsigned long)-4095)return gap;
