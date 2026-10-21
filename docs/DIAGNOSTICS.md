@@ -24,6 +24,12 @@ truncation. Equal encodings do not certify behavior; missing optional methods do
 not establish the cause of a failure. It invokes no app
 actions or private framework lifecycle methods. This flag defaults off and is
 not forwarded to the Apple-host reference. It is diagnosis, not launch success.
+For the Workers queue investigation, it also observes actual UIControl action
+dispatch through a typed, bounded forwarding wrapper. The original method gets
+unchanged arguments; no missing action is supplied. APP_WORKER_QUEUE records
+real submit/background/main execution in the source-owned app. These stages
+localize delivery failures but never replace changed label/pixels and normal
+exit as acceptance.
 
 The same opt-in profile observes failing original CoreUI color lookups. Its
 typed forwarding wrapper keeps the original arguments, NSError pointer and
@@ -71,10 +77,12 @@ close, screenshots and fresh state are unchanged.
 
 `--baseline-run RUN_ID` on report or build --wait compares two completed runs.
 It verifies both receipts and result hashes before comparing shared cases,
-reports fixes/regressions and failed-step movement only for unchanged journey
+reports pass/fail transitions and failed-step movement only for unchanged journey
 definitions, and keeps omitted cases explicitly untested in that selection.
 Failure reasons and diagnosis/total durations remain visible; reaching a later
-step is not a passing journey or a root-cause claim. The comparison is saved
+step is not a passing journey or a root-cause claim. A single failed-to-passed
+transition is labelled "now passes; cause not established", since timing changes
+and intermittent failures can produce the same transition without a repair. The comparison is saved
 beside the current run report. This avoids rereading two large logs to find
 whether a common boundary improved another app or regressed an existing flow.
 

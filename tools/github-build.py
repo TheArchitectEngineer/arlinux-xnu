@@ -112,7 +112,7 @@ def compare_runs(current, baseline):
                          else path in left['inputs'] and left['inputs'][path]==right['inputs'].get(path))
                 row['sameJourney']=matched
                 if not matched:row['comparison']='journey changed; no progress verdict'
-                elif a['status']!=b['status']:row['comparison']='fixed' if b['status']=='passed' else 'regression'
+                elif a['status']!=b['status']:row['comparison']='now passes; cause not established' if b['status']=='passed' else 'regression'
                 else:
                     ai=next((i for i,s in enumerate(a['steps']) if s['status']=='failed'),None)
                     bi=next((i for i,s in enumerate(b['steps']) if s['status']=='failed'),None)

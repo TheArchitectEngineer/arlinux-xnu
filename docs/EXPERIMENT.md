@@ -104,7 +104,7 @@ this full run. These scenarios do not establish arbitrary helper cleanup or back
 | Network | The process no longer crashes on the fabricated OS-variant cache or thread-capacity failure. It times out without Network 42; actual NECP operations remain unsupported. No HTTP round trip has passed. |
 | Web | The guest page-size query and 32 KiB OOL dictionary decoding now work. Original WebCore::IOSurface::maximumSize() reaches IOSurfaceClientGetPropertyMaximum and aborts because the IOSurface kernel service is absent. Requests for com.apple.WebKit.WebContent also lack a launch implementation. No DOM/helper/presentation acceptance. |
 | Share | Real timed semaphore forwarding passes the earlier dispatch failure. The flow now waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
-| Workers queue | Previously passed but now times out without Queue 3. The original process remains alive; its LLDB stacks and real worker upcalls are retained. An earlier run also exhibited a queue timeout. Keep this failure visible; its cause and relation to the current change are not established. |
+| Workers queue | Times out without Queue 3 in this full run. A diagnostic reproduction confirmed original UIKit calls queue: and returns; no action failure is established. The strengthened relaunch journey passes in the selected run below, but no scheduling repair has been made. Cause and reliability remain unresolved. |
 | Process | Child-side MIG reply-port construction fails after fork. Fork/session/rights inheritance needs implementation; this console capability is not an ordinary iOS app lifecycle claim. |
 
 The runtime now forwards timed semaphore operations to the existing Darling
@@ -128,8 +128,17 @@ reports require both runs' verified receipts and unchanged journey definitions.
 Selected runs remain partial. Feedback measurements belong to the exact run,
 not a latency guarantee; firmware stays transient, hash-verified and runner-local.
 
-The earlier Workers queue timeout remains in run 39536560764. Neither its
-intervening pass nor this new failure is evidence of reliable scheduling.
+Selected run [39544862883](https://github.com/taowen/arlinux-xnu/actions/runs/39544862883),
+source **32876fe91942f2813c70507fe586b794a4d2da36**, attempt 1, passes the strengthened
+queue close/relaunch journey and unchanged focus-activation journey. Receipt
+**16235c1b7a0df7307f24c0f07f4da39f5c7e97721af39023f82d9c1f59f41dd1**
+and 45 files were verified. Both Workers processes (**5759/27796**, **5802/28137**)
+execute actual submit/background/main stages, show Queue 3 with matching label
+region SHA-256 **6ff8f0127624499a850ed8a457f9e2e6c82916a5fafa29fe7a1234a12177dafc**,
+and exit normally with 0. The two journeys take 18.634 s; whole run 145 s.
+This is partial acceptance. Changed journey definitions receive no baseline
+progress verdict; a pass after logging changes does not establish a repair.
+The earlier timeout remains in run 39536560764; reliable scheduling is unresolved.
 
 Apple-host reference run
 [39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593)
