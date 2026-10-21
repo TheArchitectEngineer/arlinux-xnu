@@ -7,7 +7,11 @@ import subprocess
 ROOT=Path(__file__).resolve().parents[2]
 def command(*args,timeout=10,**kwargs):
     return subprocess.run(list(map(str,args)),check=True,timeout=timeout,**kwargs)
-def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
+def sha(path):
+    digest=hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda:stream.read(8<<20),b''):digest.update(block)
+    return digest.hexdigest()
 def identity(pid):
     if sys.platform=='darwin':
         value=subprocess.check_output(['ps','-p',str(pid),'-o','lstart=','-o','comm='],text=True).strip()

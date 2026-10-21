@@ -4,6 +4,7 @@ from pathlib import Path
 import plistlib
 import shutil
 import subprocess
+from app_suite.inputs import prepare_reference_firmware
 ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'build/reference-tools';OUT.mkdir(parents=True,exist_ok=False)
 def run(*args):subprocess.run(list(map(str,args)),check=True)
 source=json.loads((ROOT/'sources.lock.json').read_text())['playcoverReference']
@@ -19,9 +20,13 @@ for name in ['playcover-convert.swift','playcover-mach-bridge.h']:
 run('xcrun','swiftc','-O','-import-objc-header',corresponding/'playcover-mach-bridge.h',corresponding/'Macho.swift',corresponding/'DataExtensions.swift',corresponding/'PlayCoverError.swift',corresponding/'playcover-convert.swift','-o',OUT/'convert')
 run('xcrun','swiftc',ROOT/'tools/desktop-events.swift','-o',OUT/'desktop-events')
 products=json.loads((ROOT/'build/apps/products.json').read_text())
+prepare_reference_firmware(products['apps'])
+observer=OUT/'libarlinux-inspection.dylib'
+shutil.copy2(ROOT/'build/apps/libarlinux-inspection.dylib',observer)
+run(OUT/'convert',observer);run('codesign','--force','--sign','-',observer)
 for app in products['apps']:
     if app['build']!='passed':continue
-    original=ROOT/'build/apps'/(app['name']+'.app');bundle=ROOT/'build/reference-apps'/original.name
+    original=(ROOT/app['binary']).parent;bundle=ROOT/'build/reference-apps'/original.name
     shutil.copytree(original,bundle)
     platform=bundle/'libarlinux-ios.dylib'
     if platform.exists():platform.unlink()
@@ -30,3 +35,5 @@ for app in products['apps']:
     info=plistlib.loads((bundle/'Info.plist').read_bytes());info['LSMinimumSystemVersion']='11.0'
     (bundle/'Info.plist').write_bytes(plistlib.dumps(info))
     run('codesign','--force','--deep','--sign','-',bundle)
+    app['referenceBinary']=str((bundle/app['name']).relative_to(ROOT))
+(ROOT/'build/reference-products.json').write_text(json.dumps(products,indent=2)+'\n')

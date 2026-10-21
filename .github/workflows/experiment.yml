@@ -305,6 +305,7 @@ jobs:
       env:
         APP_SELECTION: ${{ inputs.app }}
         CASE_SELECTION: ${{ inputs.case }}
+        ARLINUX_DIAGNOSE_LIFECYCLE: ${{ inputs.lifecycle_context && '1' || '0' }}
       run: python3 tools/run-apps.py --app "$APP_SELECTION" --case "$CASE_SELECTION" --reference
     - name: Record reference evidence
       if: always()

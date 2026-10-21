@@ -5,6 +5,7 @@
   "pixelAppearance": "mixed",
   "input": {
     "kind": "firmware",
-    "bundleIdentifier": "com.apple.calculator"
+    "bundleIdentifier": "com.apple.calculator",
+    "binarySHA256": "82dc9e13e2f215f1128c13521b9b5110418c566742a25e5a1f9500c5dbc74120"
   }
 }

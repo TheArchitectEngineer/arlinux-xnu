@@ -49,6 +49,9 @@ def main():
             '-Wno-deprecated-declarations','-DARLINUX_PLATFORM_INSPECTION',
             '-DAppInspectionStart=ArlinuxOriginalAppInspectionStart',
             '-c',ROOT/'apps/shared/Inspect.m','-o',observer)
+    command('xcrun','clang','-target',target,'-isysroot',sdk,'-dynamiclib',observer,
+            '-o',OUT/'libarlinux-inspection.dylib','-framework','UIKit','-framework','Foundation','-framework','QuartzCore',
+            '-Wl,-install_name,@loader_path/libarlinux-inspection.dylib')
     command('xcrun','clang','-target',target,'-isysroot',sdk,'-dynamiclib',
             '-fblocks',ROOT/'src/ios-platform.c',ROOT/'src/ios-lifecycle.m',ROOT/'src/ios-scene-token.m',ROOT/'src/ios-rendering.m',ROOT/'src/ios-input.m',ROOT/'src/ios-filesystem.m',ROOT/'src/ios-network.m',ROOT/'src/diagnostics/ios-lifecycle.m',ROOT/'src/diagnostics/ios-colors.m',
             observer,'-o',OUT/'libarlinux-ios.dylib',

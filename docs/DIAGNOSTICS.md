@@ -23,7 +23,9 @@ missing methods and raw encoding differences together, with explicit bounds and
 truncation. Equal encodings do not certify behavior; missing optional methods do
 not establish the cause of a failure. It invokes no app
 actions or private framework lifecycle methods. This flag defaults off and is
-not forwarded to the Apple-host reference. It is diagnosis, not launch success.
+not injected as a Linux platform implementation on the Apple-host reference.
+The original-app reference observer may read the same public view/screen
+geometry there. It is diagnosis, not launch success.
 For the Workers queue investigation, it also observes actual UIControl action
 dispatch through a typed, bounded forwarding wrapper. The original method gets
 unchanged arguments; no missing action is supplied. APP_WORKER_QUEUE records
