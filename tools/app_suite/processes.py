@@ -241,9 +241,10 @@ class Processes:
         # app-only stacks cannot distinguish loading from a service wait.
         log=self.output/(self.case['id']+'--session')/'session.log'
         if not log.is_file():return
+        session_text=log.read_text(errors='replace')
         started=re.findall(r'^SESSION_SERVICE_STARTED owner=(\d+) incarnation=(\d+) service=(\S+) instance=(\d+) pid=(\d+) start_ticks=(\d+) ',
-            log.read_text(errors='replace'),re.M)
-        if not started:return
+            session_text,re.M)
+        if not started and 'SESSION_NATIVE_FAULT ' not in session_text:return
         peers=[('session',self.session)]
         # Prefer a live original process for each actual service. An exited
         # early retry must not consume the bounded attachment budget.
@@ -316,25 +317,13 @@ class Processes:
                                '__fetch_xpcservice_info','__xpc_dictionary_create_bootstrap_copy'):
                     arguments+=['--lookup',image,symbol]
                 arguments+=['--list-symbols',image,'xpcservice']
-            if 'DARWIN_EXIT_FRAME ' in session_text and 'service=com.apple.WebKit.Networking ' in session_text:
-                # Run 39572965048 resolves the original exit branch to these
-                # two consumers, not an entitlement failure or missing launch.
-                image='/System/Library/Frameworks/WebKit.framework/WebKit'
-                for symbol in ('__ZN6WebKit29XPCServiceInitializerDelegate23getConnectionIdentifierERN3IPC10Connection10IdentifierE',
-                               '__ZN6WebKit29XPCServiceInitializerDelegate19getClientIdentifierERN3WTF6StringE'):
-                    arguments+=['--lookup',image,symbol]
             if 'service=com.apple.WebKit.Networking ' in session_text:
-                # Run 39607303960 blocks in this original preferences consumer
-                # before reaching rendering. Read the actual service boundary.
-                arguments+=['--lookup',
-                    '/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation',
-                    '-[CFPrefsSearchListSource synchronouslySendSystemMessage:andUserMessage:andDirectMessage:replyHandler:]']
-            if 'service=com.apple.WebKit.WebContent ' in session_text:
-                # Full run 39600777191 reaches actual rendering stream creation
-                # after the database wait. Read the failed buffer consumer.
-                arguments+=['--lookup',
-                    '/System/Library/Frameworks/WebKit.framework/WebKit',
-                    '__ZN3IPC22StreamClientConnection6createEj']
+                # Current original worker waits on synchronous preferences.
+                # Remove resolved identifier/stream dumps; read its producer.
+                image='/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation'
+                for symbol in ('-[CFPrefsSearchListSource synchronouslySendSystemMessage:andUserMessage:andDirectMessage:replyHandler:]',
+                               '-[_CFXPreferences withConnectionForRole:andUserIdentifier:performBlock:]'):
+                    arguments+=['--lookup',image,symbol]
             command(*arguments,capture_output=True)
         except (OSError,RuntimeError,subprocess.SubprocessError) as error:
             self.diagnostic['collectionErrors'].append('Service runtime symbolication: '+str(error))
