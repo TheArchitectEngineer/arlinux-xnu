@@ -53,7 +53,8 @@ static uint32_t native_window_flags(const struct native_wayland *w)
 {
     return ARLINUX_IOS_WINDOW_BACKEND_ALIVE |
         (w->configured ? ARLINUX_IOS_WINDOW_CONFIGURED : 0) |
-        (w->focused>0 ? ARLINUX_IOS_WINDOW_ACTIVE : 0);
+        (w->focused>0 ? ARLINUX_IOS_WINDOW_ACTIVE : 0) |
+        (w->keyboard ? ARLINUX_IOS_WINDOW_KEYBOARD_AVAILABLE : 0);
 }
 static void native_wm_ping(void *data,struct xdg_wm_base *shell,uint32_t serial)
 { (void)data; xdg_wm_base_pong(shell,serial); }
@@ -232,6 +233,7 @@ static void native_seat_capabilities(void *data,struct wl_seat *seat,uint32_t ca
     } else if(!(capabilities&WL_SEAT_CAPABILITY_KEYBOARD) && w->keyboard) {
         wl_keyboard_destroy(w->keyboard);w->keyboard=NULL;w->keyboard_focused=0;
     }
+    native_window_publish(w,native_window_flags(w));
 }
 static const struct wl_seat_listener native_seat_listener={.capabilities=native_seat_capabilities};
 static void native_wl_global(void *data,struct wl_registry *registry,uint32_t name,
@@ -391,7 +393,7 @@ static void native_wayland_run(int ready_fd,int pixels_fd,int notify,struct darw
         }
     }
     uint32_t final_flags=__atomic_load_n(&w.control->window_flags,__ATOMIC_RELAXED);
-    native_window_publish(&w,final_flags&~(ARLINUX_IOS_WINDOW_BACKEND_ALIVE|ARLINUX_IOS_WINDOW_ACTIVE));
+    native_window_publish(&w,final_flags&~(ARLINUX_IOS_WINDOW_BACKEND_ALIVE|ARLINUX_IOS_WINDOW_ACTIVE|ARLINUX_IOS_WINDOW_KEYBOARD_AVAILABLE));
     wl_display_disconnect(w.display); _exit(0);
 }
 static void native_display_open(void)

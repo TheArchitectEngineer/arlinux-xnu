@@ -49,6 +49,23 @@ static const struct arlinux_ios_platform_api *input_host;
 static UITouch *contact;
 static CGPoint contact_point;
 static unsigned int pointer_bindings;
+static void (*set_keyboard_attached)(Boolean,uint32_t);
+static BOOL keyboard_available;
+static int keyboard_state_known;
+static BOOL host_keyboard_mode(id object,SEL selector)
+{(void)object;(void)selector;return keyboard_available;}
+static void update_keyboard_device(const struct arlinux_ios_window_state *window)
+{
+    BOOL available=(window->flags&(ARLINUX_IOS_WINDOW_BACKEND_ALIVE|ARLINUX_IOS_WINDOW_KEYBOARD_AVAILABLE))==
+        (ARLINUX_IOS_WINDOW_BACKEND_ALIVE|ARLINUX_IOS_WINDOW_KEYBOARD_AVAILABLE);
+    if(keyboard_state_known && keyboard_available==available)return;
+    keyboard_state_known=1;keyboard_available=available;
+    /* GraphicsServices and UIKit must agree on the actual host source. See
+     * WebKit's UIScriptControllerIOS::setHardwareKeyboardAttached; this bridge
+     * takes its state from the real Wayland seat, never a test setting. */
+    set_keyboard_attached(available,0);
+    fprintf(stderr,"IOS_HOST_KEYBOARD available=%d\n",available);
+}
 static id (*original_image_cache_init)(id,SEL,BOOL);
 static id image_cache_without_apple_disk(id object,SEL selector,BOOL local)
 {
@@ -163,6 +180,7 @@ static void input_tick(CFRunLoopTimerRef timer,void *context)
     @autoreleasepool {
         struct arlinux_ios_window_state window;
         if(input_host->read_window(&window,sizeof(window)))return;
+        update_keyboard_device(&window);
         BOOL active=(window.flags&(ARLINUX_IOS_WINDOW_ACTIVE|ARLINUX_IOS_WINDOW_BACKEND_ALIVE))==
             (ARLINUX_IOS_WINDOW_ACTIVE|ARLINUX_IOS_WINDOW_BACKEND_ALIVE);
         if(!active && contact)deliver_contact(UITouchPhaseCancelled,mach_absolute_time());
@@ -224,6 +242,14 @@ static void local_keyboard_start(id receiver,SEL selector)
 void arlinux_ios_input_start(const struct arlinux_ios_platform_api *api)
 {
     input_host=api;
+    void *graphics=dlopen("/System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices",RTLD_NOW|RTLD_LOCAL);
+    set_keyboard_attached=graphics ? (void *)dlsym(graphics,"GSEventSetHardwareKeyboardAttached") : NULL;
+    if(!set_keyboard_attached) {fprintf(stderr,"IOS_INPUT_BINDING_FAILED operation=keyboard-device\n");abort();}
+    Class keyboard=objc_getClass("UIKeyboard");
+    require_input_method(keyboard ? object_getClass(keyboard) : Nil,"isInHardwareKeyboardMode","B16@0:8");
+    method_setImplementation(class_getClassMethod(keyboard,sel_registerName("isInHardwareKeyboardMode")),(IMP)host_keyboard_mode);
+    struct arlinux_ios_window_state initial;
+    if(!api->read_window(&initial,sizeof(initial)))update_keyboard_device(&initial);
     Class imageCache=objc_getClass("TIImageCacheClient");
     require_input_method(imageCache,"initWithLocalAccess:","@20@0:8B16");
     Method imageInit=class_getInstanceMethod(imageCache,sel_registerName("initWithLocalAccess:"));

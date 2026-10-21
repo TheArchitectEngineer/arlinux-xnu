@@ -10,7 +10,8 @@ enum arlinux_ios_window_flags {
     ARLINUX_IOS_WINDOW_CONFIGURED=1U,
     ARLINUX_IOS_WINDOW_ACTIVE=2U,
     ARLINUX_IOS_WINDOW_CLOSE_REQUESTED=4U,
-    ARLINUX_IOS_WINDOW_BACKEND_ALIVE=8U
+    ARLINUX_IOS_WINDOW_BACKEND_ALIVE=8U,
+    ARLINUX_IOS_WINDOW_KEYBOARD_AVAILABLE=16U
 };
 /* Agreed surface-buffer geometry, not an unaccepted resize proposal. Identity
  * is the actual Darling audit PID/incarnation of this guest process. */

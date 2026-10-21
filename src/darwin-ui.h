@@ -137,7 +137,7 @@ static long native_ios_window_read(struct arlinux_ios_window_state *state,unsign
         if (before!=__atomic_load_n(&ui.control->window_sequence,__ATOMIC_SEQ_CST)) continue;
         /* A SIGKILL/abort cannot publish the child's final shared-memory
          * update. Kernel child status remains authoritative for liveness. */
-        if (!ipc_display_live()) value.flags&=~(ARLINUX_IOS_WINDOW_BACKEND_ALIVE|ARLINUX_IOS_WINDOW_ACTIVE);
+        if (!ipc_display_live()) value.flags&=~(ARLINUX_IOS_WINDOW_BACKEND_ALIVE|ARLINUX_IOS_WINDOW_ACTIVE|ARLINUX_IOS_WINDOW_KEYBOARD_AVAILABLE);
         *state=value; return 0;
     }
     return -EAGAIN;
