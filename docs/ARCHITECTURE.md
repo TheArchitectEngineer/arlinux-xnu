@@ -145,8 +145,12 @@ launch, surface sharing and actual DOM rendering still need end-to-end proof.
 The paired bytesPerRowAlignment platform configuration uses four-byte BGRA row
 alignment, matching the actual width * four bytesPerRow passed to
 CGBitmapContextCreate. It uses WebCore's own scalar setter/getter interface;
-the input semantics are declared in WebKit's IOSurface.h. Its next app run must
-verify that configuration rather than treating the setting call as acceptance.
+the input semantics are declared in WebKit's
+[IOSurface.h](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/platform/graphics/cocoa/IOSurface.h).
+Run 39555581254 verifies both original getters and passes Canvas/Counter again.
+Web now reaches actual WebContent/Networking discovery rather than aborting in
+the IOSurface property queries; no DOM content has passed. Real helper launch,
+connection and retirement remain required under the Linux-owned session.
 
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor

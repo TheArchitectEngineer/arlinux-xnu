@@ -58,6 +58,12 @@ metadata for the first 32 calls; the guest output buffer is never read or change
 The failure summary includes eight syscall frequency entries and eight resource
 paths; full arguments, callers and truncation markers remain in runtimeLog.
 Frequency is not a root-cause verdict.
+For the original IOSurface initialization abort, targeted reads now resolve the
+actual WebCore size/row-layout configuration and IOSurface property boundary,
+rather than unrelated QuartzCore backing-store functions. Current selected Web
+evidence has passed those queries and records unsupported WebContent/Networking
+discovery instead. Configuration logs identify a platform boundary; DOM pixels,
+real input and helper lifetimes remain the required effect.
 For native XPC reception, correlate XPC_OOL_RECEIVED with XPC_OOL_RELEASED and
 its actual deallocation status in the same session.log. XPC_DECODE_FAILED records
 the message ID, byte count and decoder errno; subsequent replies/requests and

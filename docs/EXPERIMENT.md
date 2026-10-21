@@ -116,13 +116,28 @@ observation; one full pass does not prove its isolated cause or general repair.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Web | Process 6491/54275 reaches WebCore::IOSurface::maximumSize(), then IOSurfaceClientGetPropertyMaximum aborts because the IOSurface kernel service is absent. WebContent launch is also unimplemented. No DOM/helper/presentation acceptance. |
+| Web | The latest selected run below configures original WebCore size/row-layout policy and gets past the IOSurface query abort. It waits for unsupported WebContent/Networking service discovery; no DOM/helper/presentation acceptance. |
 | Share | Process 6288/51832 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
 
-The current Web investigation uses the existing original-process collector to
-resolve WebCore's maximum-size query/configuration setter and the actual
-IOSurface property functions. It replaces unrelated standing QuartzCore dumps;
-no query result, GPU service or app effect is fabricated by diagnosis.
+Selected run [39555581254](https://github.com/taowen/arlinux-xnu/actions/runs/39555581254),
+source **35927cc3076e52cfb342ce06a0f2da89f0b1213f**, attempt 1, passes Canvas and
+Counter but **fails Web** (2/3). Receipt
+**543768b1c2cbf93d5c8a67aad1a451c01d531d2e27c3f113c4ea119c36941b34**
+and 49 files were verified. Original WebCore getters return the configured CPU
+limit 8192x8192 and four-byte BGRA row alignment; Canvas actually repaints and
+Counter still closes/relaunches interactively. Web process **5987/22843** no
+longer aborts at the IOSurface limit/alignment queries, but WebCount 0 never
+appears in the 8.019 s effect wait. Its real main run loop is waiting, not a
+completed page. Total feedback is 156 s, including 9.542 s of diagnosis.
+
+The actual session receives type=5/flags=32 instance-scoped discovery for
+com.apple.WebKit.WebContent and com.apple.WebKit.Networking from that audit
+identity, then returns error 45. Their nested bootstrap requests (ID 0x400002c6)
+also remain unsupported. The next boundary is real Linux-owned helper launch,
+bootstrap/connection and retirement, without an empty success endpoint or a
+synthetic DOM callback. No IOSurface driver, GPU allocation or Web pass is
+claimed. Targeted cache reads of the original configuration interfaces replaced
+unrelated standing QuartzCore dumps; the original fault/run-loop evidence stays.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
