@@ -202,6 +202,19 @@ static long guest_path(unsigned long address,char *path)
 }
 static int path_directory(char **path)
 {
+    /* Guest paths use one root namespace. Collapse repeated separators before
+     * matching explicit bundle/container roots and removing the firmware '/'.
+     * Otherwise //System remains absolute after one slash is stripped, and
+     * Linux openat silently ignores root_descriptor. Preserve dot components:
+     * their meaning depends on actual symlink traversal, not lexical cleanup.
+     * All callers supply their own writable, bounded guest_path buffer. */
+    char *read=*path,*write=*path;
+    while(*read) {
+        char value=*read++;
+        *write++=value;
+        if(value=='/')while(*read=='/')read++;
+    }
+    *write=0;
     unsigned int i=0;
     while ((*path)[i] && (*path)[i]==executable_path[i]) i++;
     if (!(*path)[i] && !executable_path[i]) return AT_FDCWD;
