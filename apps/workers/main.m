@@ -1,6 +1,7 @@
 #import "../shared/Screen.h"
 #include <pthread.h>
 #include <sys/mman.h>
+#include <stdio.h>
 static void *compute(void *value) { *(int *)value=42; return (void *)37; }
 @interface WorkersDelegate : UIResponder <UIApplicationDelegate>
 @property(nonatomic,strong) UIWindow *window; @property(nonatomic,strong) UILabel *result;
@@ -27,9 +28,15 @@ static void *compute(void *value) { *(int *)value=42; return (void *)37; }
     self.result.text=ok ? @"Memory: 16384" : @"Memory failed";
 }
 - (void)queue:(id)sender {
-    (void)sender; dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0),^{
+    (void)sender;
+    puts("APP_WORKER_QUEUE stage=submit");fflush(stdout);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0),^{
         NSUInteger value=[@[@2,@3,@5] count];
-        dispatch_async(dispatch_get_main_queue(),^{ self.result.text=value==3 ? @"Queue: 3" : @"Queue failed"; });
+        printf("APP_WORKER_QUEUE stage=background value=%lu\n",(unsigned long)value);fflush(stdout);
+        dispatch_async(dispatch_get_main_queue(),^{
+            puts("APP_WORKER_QUEUE stage=main");fflush(stdout);
+            self.result.text=value==3 ? @"Queue: 3" : @"Queue failed";
+        });
     });
 }
 @end
