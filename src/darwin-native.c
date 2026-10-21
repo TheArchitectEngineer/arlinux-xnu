@@ -146,8 +146,14 @@ static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned
     size = (size + PAGE16 - 1) & ~(PAGE16 - 1);
     long raw=-ENOMEM;
     for (unsigned int attempt=0;attempt<128;attempt++) {
-        unsigned long requested=__atomic_fetch_add(&guest_next,size+alignment,__ATOMIC_RELAXED);
-        if (requested>=D_GUEST_COMMPAGE || size+alignment>D_GUEST_COMMPAGE-requested) return -ENOMEM;
+        unsigned long requested=__atomic_load_n(&guest_next,__ATOMIC_RELAXED);
+        for (;;) {
+            /* A rejected large reservation must not advance/wrap the cursor
+             * and make subsequent ordinary allocations fail as well. */
+            if (requested>=D_GUEST_COMMPAGE_RO || size+alignment>D_GUEST_COMMPAGE_RO-requested) return -ENOMEM;
+            unsigned long next=requested+size+alignment;
+            if (__atomic_compare_exchange_n(&guest_next,&requested,next,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED))break;
+        }
         raw=RAW(SYS_mmap,requested,size+alignment,protection,
                 (shared ? MAP_SHARED : MAP_PRIVATE)|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
         if (raw==-EEXIST) continue; /* Preserve existing mappings, choose another range. */

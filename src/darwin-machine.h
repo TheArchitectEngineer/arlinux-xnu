@@ -8,7 +8,10 @@
 /* XNU arm/cpu_capabilities.h: immutable layout-1 fields have a distinct page. */
 #define D_GUEST_COMMPAGE_RO 0xfffff4000ULL
 #define D_GUEST_ADDRESS_LIMIT 0x1000000000ULL
-#define D_VM_MAX_ALLOCATION (1ULL << 32)
+/* Virtual reservations are bounded by guest address geometry, not physical
+ * RAM or a 32-bit byte count. Allocators may reserve tens of GiB PROT_NONE
+ * while committing only the pages they actually use. */
+#define D_VM_MAX_ALLOCATION (D_GUEST_COMMPAGE_RO - D_GUEST_HEAP_START)
 #define D_SIGNAL_STACK_SIZE (128UL * 1024)
 #define D_THREAD_RUNTIME_STACK_SIZE (64UL * 1024)
 #define D_COMM_COMPAT_VERSION 3
