@@ -131,10 +131,51 @@ static void trace_call(unsigned long number,unsigned long pc,unsigned long resul
 }
 
 /* Legacy ARM64 iOS packs class pointers into a 36-bit user address space.
- * Keep every guest allocation below its commpage, independently of Linux's
- * much higher automatic mmap placement. The atomic cursor also reserves
- * disjoint ranges before future concurrent allocation is enabled. */
+ * Keep every guest allocation below its commpage. The cursor is only a hint;
+ * MAP_FIXED_NOREPLACE atomically owns a range without replacing dyld/cache or
+ * another thread's allocation. Read actual holes only after a hint conflict. */
 static unsigned long guest_next=D_GUEST_HEAP_START;
+static long native_guest_gap(unsigned long length)
+{
+    int fd=RAW(SYS_openat,AT_FDCWD,"/proc/self/maps",O_RDONLY|O_CLOEXEC,0,0,0);
+    if(fd<0)return fd;
+    char buffer[4096],prefix[64];size_t used=0;unsigned long candidate=D_GUEST_HEAP_START;
+    long result=-ENOMEM;
+    for (;;) {
+        long count=RAW(SYS_read,fd,buffer,sizeof(buffer),0,0,0);
+        if(count==-EINTR)continue;
+        if(count<0){result=count;break;}
+        if(!count) {
+            if(candidate<D_GUEST_COMMPAGE_RO && length<=D_GUEST_COMMPAGE_RO-candidate)result=candidate;
+            break;
+        }
+        for(long i=0;i<count;i++) {
+            if(buffer[i]!='\n') {if(used<sizeof(prefix))prefix[used++]=buffer[i];continue;}
+            unsigned long start=0,end=0;size_t at=0;int valid=1;
+            for(unsigned int field=0;field<2;field++) {
+                unsigned long value=0;size_t digits=0;
+                while(at<used) {
+                    unsigned char c=prefix[at];unsigned int digit;
+                    if(c>='0' && c<='9')digit=c-'0';
+                    else if(c>='a' && c<='f')digit=c-'a'+10;
+                    else break;
+                    if(++digits>sizeof(value)*2){valid=0;break;}
+                    value=(value<<4)|digit;at++;
+                }
+                char delimiter=field ? ' ' : '-';
+                if(!digits || at>=used || prefix[at++]!=delimiter){valid=0;break;}
+                if(field)end=value;else start=value;
+            }
+            used=0;
+            if(!valid || start>=end){result=-EIO;goto finished;}
+            if(start>=candidate && length<=start-candidate) {result=candidate;goto finished;}
+            if(end>candidate)candidate=(end+PAGE16-1)&~(PAGE16-1);
+            if(candidate>=D_GUEST_COMMPAGE_RO || length>D_GUEST_COMMPAGE_RO-candidate)goto finished;
+        }
+    }
+finished:
+    RAW(SYS_close,fd,0,0,0,0,0);return result;
+}
 static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned long mask,int shared)
 {
     /* Ordinary guest anonymous allocations do not provide adapted code.
@@ -145,21 +186,20 @@ static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned
     if (alignment<PAGE16) alignment=PAGE16;
     size = (size + PAGE16 - 1) & ~(PAGE16 - 1);
     long raw=-ENOMEM;
+    unsigned long requested=__atomic_load_n(&guest_next,__ATOMIC_RELAXED);
     for (unsigned int attempt=0;attempt<128;attempt++) {
-        unsigned long requested=__atomic_load_n(&guest_next,__ATOMIC_RELAXED);
-        for (;;) {
-            /* A rejected large reservation must not advance/wrap the cursor
-             * and make subsequent ordinary allocations fail as well. */
-            if (requested>=D_GUEST_COMMPAGE_RO || size+alignment>D_GUEST_COMMPAGE_RO-requested) {
-                trace_record("DARWIN_ANON_RANGE_EXHAUSTED cursor=0x",requested,size,alignment);
-                return -ENOMEM;
-            }
-            unsigned long next=requested+size+alignment;
-            if (__atomic_compare_exchange_n(&guest_next,&requested,next,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED))break;
+        if(requested>=D_GUEST_COMMPAGE_RO || size+alignment>D_GUEST_COMMPAGE_RO-requested) {
+            raw=native_guest_gap(size+alignment);
+            if((unsigned long)raw>=(unsigned long)-4095)return raw;
+            requested=raw;
         }
         raw=RAW(SYS_mmap,requested,size+alignment,protection,
                 (shared ? MAP_SHARED : MAP_PRIVATE)|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
-        if (raw==-EEXIST) continue; /* Preserve existing mappings, choose another range. */
+        if (raw==-EEXIST) {
+            raw=native_guest_gap(size+alignment);
+            if((unsigned long)raw>=(unsigned long)-4095)return raw;
+            requested=raw;continue;
+        }
         if ((unsigned long)raw >= (unsigned long)-4095) {
             trace_record("DARWIN_ANON_HOST_REJECTED address=0x",requested,size+alignment,raw);
             trace_record("DARWIN_ANON_HOST_POLICY protection=0x",protection,shared,0);
@@ -168,6 +208,8 @@ static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned
         if ((unsigned long)raw!=requested) {
             RAW(SYS_munmap,raw,size+alignment,0,0,0,0); return -ENOTSUP;
         }
+        unsigned long next=requested+size+alignment,previous=__atomic_load_n(&guest_next,__ATOMIC_RELAXED);
+        while(previous<next && !__atomic_compare_exchange_n(&guest_next,&previous,next,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED)){}
         break;
     }
     if ((unsigned long)raw >= (unsigned long)-4095) return raw;
