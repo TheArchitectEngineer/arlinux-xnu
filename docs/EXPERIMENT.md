@@ -19,62 +19,40 @@ and two cross-app scenarios; selected runs never certify the whole collection.
 
 ## Current failed GUI effect
 
-Run [39523544166](https://github.com/taowen/arlinux-xnu/actions/runs/39523544166),
-source **0a0528edfee5283ff3df787aad956a7cc7f977fb**, selected Counter. Receipt
-**53ca2fa7234003a83c5de509a6360ebaf16c35aec0e37af4305c290df8c94dea**
-and all 53 files were verified by build --wait --evidence. The process renders
-the original Counter label in actual composed pixels, but its button is still
-invisible. The click step fails its pixel requirement before submitting input;
-nine later steps are blocked. No complete GUI journey is accepted.
+Run [39524469630](https://github.com/taowen/arlinux-xnu/actions/runs/39524469630),
+source **9511fd0e77ccaa519978648278c192d8f112823e**, selected Console, Foundation
+and Counter. Receipt
+**bb23988b3836a36dcb65719dba4ae33ece91dafb4bc7bb3508da1d1fee9a6f42**
+and all 38 files were verified by build --wait --evidence. Console and Foundation
+passed. Counter's original label and blue Increment button appear in actual
+composed pixels. Its external click was submitted, but Count remained 0; eight
+later close/relaunch steps are blocked. No full GUI journey is accepted.
 
-- The guest reads actual host window state: 1024 x 600, 60000 mHz, configured,
-  active, backend-alive, audited PID/incarnation. Kernel child status also masks
-  stale alive/active flags; abrupt backend termination itself remains untested.
-- The genuine FBSScene initializer returns with original specification/settings
-  objects and an actual FBSSerialQueue. Creation now goes through FBSScene's
-  agent notification, which binds the agent before entering UIKit. The old
-  direct workspace callback and its `_scene == scene` failure are removed.
-- The genuine local CAContext succeeds. CPU CGImage backing replaces the default
-  CALayer _display storage, retaining original public display/delegate dispatch,
-  layerWillDraw, drawInContext and CoreGraphics composition. The prior IOSurface
-  kernel-service assertion is gone; no driver or remote-render reply is faked.
-- Resilient private file mappings now load real Helvetica/SFUI bytes. The prior
-  EINVAL -> LastResort missing-glyph boxes are gone. Composed text reads
-  "Counter 1.0 — Count: 0" at the expected real UIKit label rectangle.
-- The input adapter owns local key-window focus and gates Apple remote keyboard
-  focus/connection IPC. The token still rejects remote capability export.
-  External input and keyboard delivery are unimplemented.
-- The current button boundary is UIColor resolution: systemBlueColor resolves
-  to RGBA [0,0,0,0] with the actual label traits (light style 1, displayGamut 0).
-  Its layer is visible with opacity 1; the 138 x 36 CPU backing has zero alpha
-  pixels. Static black resolves to alpha 1 and draws 2832 alpha pixels in the
-  560 x 120 main label backing. Supplying a balanced UIKit graphics context and
-  actual current traits did not fix this color lookup. Do not hardcode blue.
-- The actual resolver calls CUIDesignLibrary, then its composite catalog.
-  The original call reports Cocoa error 256, underlying POSIX error 78 (Darwin
-  ENOSYS), for `/System/Library/PrivateFrameworks/CoreUI.framework/DesignLibrary-iOS.bundle/iOSRepositories/LightStandard.car`.
-  UIKit falls back to clearColor after that failed resource lookup. The same
-  actual path appears in successful getattrlist (220), with five attribute
-  groups recorded: common=0xd03fde0d, volume=0, directory=5, file=1, fork=0x40.
-  File metadata, declared filesystem enumeration, no-Seatbelt queries and
-  invalid-volume-attribute packing now return their Linux-backed results, but
-  the composed frame is unchanged (SHA-256
-  0f4856ad6a56f5189249b94c7c76af2e8d6cd3fa0ba1f2d50d48517953202e07).
-  No nearby ENOSYS or actual resource open establishes the read rejection.
-  NSError's factory observer captured no construction stack. Next follow the
-  actual catalog initializer and error initializer to choose a shared file-read
-  adaptation boundary; do not add unrelated syscalls or hardcode a color.
-- Frame evidence now writes a temporary file and atomically publishes complete
-  frames. This run's encoder passes; incomplete temporary files never replace
-  the last completed frame. The failure summary samples four screenshots while
-  preserving every observation and its files in the full journey evidence.
-- Counter's journey now also clicks after relaunch and requires Count: 1.
-  Original-process fatal-service diagnosis preserves waiting caller stacks;
-  default non-diagnostic fatal exits remain unchanged.
-
-Session scene registration, complete workspace enumeration, compositor focus
-updates, input, host-process/remote endpoint support and normal close remain
-unfinished. No app/control callback is invoked by the harness or adapter.
+- The original FBSScene agent path launches UIKit; local CAContext and CPU
+  CALayer backing preserve original drawing/layout/delegation. Actual resilient
+  file mappings load Helvetica/SFUI instead of LastResort glyphs.
+- Expanding getattrlist, filesystem enumeration and policy-query support did
+  not change the failed button pixels. Original CoreUI catalog initialization
+  first calls NSURL checkResourceIsReachableAndReturnError:. That advisory
+  check is now backed by real Linux stat, retaining URL objects, subsequent
+  opens and original CoreUI parsing. LightStandard.car is actually reachable;
+  original systemBlueColor resolves and draws. No color is substituted.
+- The button target now contains 419 nonwhite pixels instead of zero. The
+  failed-after-click screenshot SHA-256 is
+  **22789c0d44af252ce045ca030b2363bab2f291d421fa2a06412ecc5fab6e0cc6**.
+  The screenshot visibly shows the label and original blue button.
+- Actual loaded UITouchesEvent methods _clearTouches and
+  _addTouch:forDelayedDelivery: were measured; their absence on UIEvent alone
+  was not evidence that UIKit lacked these operations. The implementation now
+  queues actual Wayland primary-pointer transitions and constructs real
+  IOHID/UITouch events for UIKit dispatch on its main loop. This next source
+  requires hosted end-to-end verification; it has not demonstrated input yet.
+- Host close now enters original UIApplication termination; normal exit and
+  interactive relaunch likewise remain unverified. Focus/activation updates,
+  keyboard/multitouch, complete workspace enumeration and other session/process
+  capabilities remain unfinished. The harness never invokes app/control actions.
+- The ineffective NSError factory/initializer observers are removed. No new
+  filesystem property or syscall is added to chase the former color failure.
 
 ## Feedback measurements
 

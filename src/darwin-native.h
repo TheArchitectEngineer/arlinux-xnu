@@ -44,11 +44,14 @@ int darwin_native_display_register(uint32_t width,uint32_t height,uint32_t refre
                                    uint64_t period_bits,int32_t backend_pid);
 /* Real QuartzCore entry points, resolved from the currently loaded cache. */
 #include "ios-framework-api.h"
+#include "ios-platform-abi.h"
 enum darwin_frame_state { D_FRAME_FREE, D_FRAME_DRAWING, D_FRAME_READY, D_FRAME_BUSY };
 struct darwin_frame_control {
     uint32_t state[2],sequence[2];
     /* Single host writer. Odd window_sequence means publication in progress. */
     uint32_t window_sequence,width,height,refresh_millihz,window_flags;
+    uint32_t input_read,input_write,input_overflow;
+    struct arlinux_ios_pointer_event input[ARLINUX_IOS_INPUT_CAPACITY];
 };
 void darwin_native_ui_api(const struct darwin_ui_api *api);
 void darwin_native_ui_output(void *pixels,uint32_t width,uint32_t height,

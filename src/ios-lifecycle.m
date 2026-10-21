@@ -29,6 +29,7 @@
 - (void)setFrame:(CGRect)frame;
 - (void)setForeground:(BOOL)foreground;
 - (void)_callOutQueue_agent_didCreateWithTransitionContext:(id)context completion:(void (^)(void))completion;
+- (void)_terminateWithStatus:(int)status;
 @end
 
 static const struct arlinux_ios_platform_api *host;
@@ -181,10 +182,19 @@ static void create_scene(UIApplication *app,const struct arlinux_ios_window_stat
 static void lifecycle_tick(CFRunLoopTimerRef timer,void *info)
 {
     (void)timer; (void)info;
-    if (launch_phase) return;
     struct arlinux_ios_window_state window;
-    if (host->read_window(&window,sizeof(window)) ||
-        !(window.flags&ARLINUX_IOS_WINDOW_CONFIGURED) || !(window.flags&ARLINUX_IOS_WINDOW_BACKEND_ALIVE)) return;
+    if(host->read_window(&window,sizeof(window)))return;
+    if(launch_phase) {
+        if(launch_phase==1 && (window.flags&ARLINUX_IOS_WINDOW_CLOSE_REQUESTED)) {
+            launch_phase=2;
+            UIApplication *app=[UIApplication sharedApplication];
+            require_method([app class],"_terminateWithStatus:","v20@0:8i16",NO);
+            fprintf(stderr,"IOS_LIFECYCLE_CLOSE pid=%u incarnation=%u source=host-window\n",window.pid,window.incarnation);
+            [app _terminateWithStatus:0];
+        }
+        return;
+    }
+    if(!(window.flags&ARLINUX_IOS_WINDOW_CONFIGURED) || !(window.flags&ARLINUX_IOS_WINDOW_BACKEND_ALIVE))return;
     @autoreleasepool {
         UIApplication *app=[UIApplication sharedApplication];
         if (!app.delegate) return;
@@ -194,8 +204,7 @@ static void lifecycle_tick(CFRunLoopTimerRef timer,void *info)
             log_scene_exception(exception);
             @throw;
         }
-        /* Activation updates and normal close are not implemented yet. No
-         * successful lifecycle state or app readiness is fabricated here. */
+        /* Later focus/activation updates remain unfinished. */
     }
 }
 void arlinux_ios_lifecycle_start(const struct arlinux_ios_platform_api *api)

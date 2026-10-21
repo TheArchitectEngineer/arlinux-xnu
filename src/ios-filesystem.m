@@ -24,7 +24,7 @@ static BOOL file_reachable(NSURL *url,SEL selector,NSError **error,reachability_
     struct stat metadata;
     int status=path ? stat(path,&metadata) : -1;
     int failure=path ? errno : EINVAL;
-    if(observed++<16)fprintf(stderr,"IOS_FILE_REACHABILITY status=%d errno=%d path=%.1024s\n",
+    if(__atomic_fetch_add(&observed,1,__ATOMIC_RELAXED)<16)fprintf(stderr,"IOS_FILE_REACHABILITY status=%d errno=%d path=%.1024s\n",
         status,status ? failure : 0,path ? path : "<unrepresentable>");
     if(!status)return YES;
     if(error) {

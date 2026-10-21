@@ -142,7 +142,23 @@ static long native_ios_window_read(struct arlinux_ios_window_state *state,unsign
     }
     return -EAGAIN;
 }
+static long native_ios_pointer_read(struct arlinux_ios_pointer_event *event,unsigned long size)
+{
+    if(!event || size!=sizeof(*event))return -EINVAL;
+    if(!ui.control || native_current_thread()!=native_threads)return -ENOTSUP;
+    uint32_t read=__atomic_load_n(&ui.control->input_read,__ATOMIC_RELAXED);
+    uint32_t written=__atomic_load_n(&ui.control->input_write,__ATOMIC_ACQUIRE);
+    if(__atomic_exchange_n(&ui.control->input_overflow,0,__ATOMIC_ACQ_REL)) {
+        __atomic_store_n(&ui.control->input_read,written,__ATOMIC_RELEASE);
+        return -EOVERFLOW;
+    }
+    if(read==written)return 0;
+    *event=ui.control->input[read%ARLINUX_IOS_INPUT_CAPACITY];
+    __atomic_store_n(&ui.control->input_read,read+1,__ATOMIC_RELEASE);
+    return 1;
+}
 static const struct arlinux_ios_platform_api native_ios_platform_api={
     .version=ARLINUX_IOS_PLATFORM_ABI_VERSION,.size=sizeof(struct arlinux_ios_platform_api),
-    .attach=native_ios_platform_attach,.read_window=native_ios_window_read
+    .attach=native_ios_platform_attach,.read_window=native_ios_window_read,
+    .read_pointer=native_ios_pointer_read
 };

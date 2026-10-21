@@ -118,7 +118,6 @@ class Processes:
             runtime = Path(item['runtime'])
             arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,runtime,runtime.with_suffix('.symbols.json')]
             stderr=Path(item['stdout']).with_suffix('.stderr')
-            if stderr.is_file():arguments.extend(['--stderr',stderr])
             if 'IOS_COLOR_LOOKUP_FAILED ' in stderr.read_text(errors='replace'):
                 arguments.extend(['--lookup','/System/Library/PrivateFrameworks/CoreUI.framework/CoreUI',
                     '-[CUIDesignLibraryCatalog initWithURL:error:]'])

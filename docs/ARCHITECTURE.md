@@ -41,11 +41,10 @@ its causal connection to a failing app effect before expanding the adapter.
 In run 39523544166, resource metadata and filesystem queries succeeded but the
 Counter button remained invisible with the same frame hash and CoreUI file-read
 error. These ABI additions have not demonstrated progress on that GUI failure.
-Locate the actual file-read rejection before adding more filesystem properties;
-consider adapting the shared Foundation/CoreFoundation file-loading boundary if
-it avoids Apple-specific volume/service dependencies while retaining original
-data objects and CoreUI resource parsing. That boundary is a candidate, not yet
-a verified solution. Do not replace the resource with a fixed color or app rule.
+The subsequent run 39524469630 verifies the narrower shared NSURL file
+reachability boundary: actual Linux stat replaces Apple's volume/property
+checks, and original CoreUI parsing produces the real blue button. Keep data
+objects and resource parsing original. No fixed color or app rule is supplied.
 
 Use multiple independent app journeys to check reuse. A boundary should solve a
 shared capability without app names, firmware offsets or per-app patches. Native
@@ -76,14 +75,16 @@ context/layer behavior while avoiding a nonexistent Apple render server. Hosted
 run 39514010952 confirms original UIKit text in composed pixels. ios-input.m owns actual
 UIKit key-window focus locally instead of exporting the local scene token to
 Apple's remote keyboard arbiter. Host input and keyboard delivery remain to be
-implemented and verified. The backend replaces CALayer's default `_display`
+verified. A primary Wayland pointer bridge is now implemented for verification.
+The backend replaces CALayer's default `_display`
 storage with a CPU bitmap/CGImage and keeps original public display delegation,
 layerWillDraw and drawInContext behavior. It supplies a balanced UIKit graphics
-context and the actual view's current-trait drawing environment; dynamic-color
-output is still being validated. CoreGraphics/CALayer still compose actual app
+context and the actual view's current-trait drawing environment; real dynamic
+system-blue output is verified. CoreGraphics/CALayer still compose actual app
 content into the Wayland surface. No IOSurface driver is advertised. The latest
-verified frame shows the real Counter label, but its button remains invisible
-and no full GUI journey has passed. Remote context sharing is unsupported.
+verified frame shows the real Counter label and blue button, but external input
+has not yet changed its state and no full GUI journey has passed. Remote context
+sharing is unsupported.
 
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor
@@ -99,6 +100,10 @@ Finder metadata, data-protection flags and other Apple-only fields stay absent;
 ctime is never substituted for birth time. Unsupported non-mask requests fail.
 Filesystem enumeration exposes only the declared root/bundle filesystems, using
 the same fd-backed statfs metadata; no Apple filesystem identity is invented.
+ios-filesystem.m implements file URL reachability using actual stat and returns
+Cocoa errors with the real underlying POSIX failure. Non-file URL schemes retain
+their original implementation. It preserves CoreUI parsing, Foundation URL/data
+objects and subsequent real open errors.
 
 ### Lifecycle boundary and next implementation
 
@@ -114,12 +119,19 @@ or deactivate it on real focus changes, and request normal termination on host
 close. Each event belongs to a specific process incarnation and scene; queued
 events, acknowledgements and cleanup must agree across process exit/relaunch.
 Rendering and input remain separate consumers of the same scene identity and
-geometry. The lifecycle event contract is a design target. The version-2
+geometry. The lifecycle event contract is a design target. The version-3
 platform API currently exposes an actual window snapshot: agreed buffer
 geometry, refresh, compositor activation, explicit close request, backend
 liveness and audited app PID/incarnation. A bounded sequence-checked read
 avoids torn host updates; kernel child status overrides stale liveness after
-an abrupt backend exit. The guest ios-lifecycle.m now attempts real scene construction on its main
+an abrupt backend exit. Its bounded single-producer/consumer pointer queue
+preserves actual Wayland contact transitions and monotonic timestamps; overflow
+requires cancellation rather than a synthetic successful click. The guest
+main-loop adapter constructs real IOHID/UITouch events and sends them through
+UIKit hit testing and UIApplication sendEvent:. Only primary-pointer contacts
+are implemented, not keyboard, scroll or multitouch. The host-close flag now
+enters original UIApplication termination. These new input/close paths require
+end-to-end verification. The guest ios-lifecycle.m attempts real scene construction on its main
 loop using the specification's actual settings/client/transition classes and
 host-derived process/geometry identity. It supplies a local updater and enters
 FBSScene's genuine agent creation notification. That path binds the agent to
@@ -128,7 +140,7 @@ direct UIApplication workspace callback skipped that required binding. The
 software rendering boundary now produces actual Counter label pixels; a full
 GUI journey has not passed. Session scene registration, complete
 workspace enumeration, focus updates, host-process/remote endpoint support,
-input and normal close remain unfinished. Unsupported operations fail visibly.
+input/normal-close acceptance remain unfinished. Unsupported operations fail visibly.
 
 Use the existing injected platform library as the adaptation seam. Inspect the
 real UIKit/FrontBoard startup path to choose the narrowest framework-facing
@@ -156,6 +168,7 @@ app-specific exception is evidence to revisit the boundary, not a new policy.
 | components/darling | Shared Mach core and genuine cross-task ports/messages/VM operations | A second competing port-ownership implementation |
 | native-xpc.c | Audited peer identity/incarnation, registered displays, bootstrap and required service transport | UIKit policy or legacy FrontBoard lifecycle emulation |
 | ios-scene-token.m | Immutable local scene identity/copy/equality without a remote Apple endpoint | Encoding a fake remote capability |
+| ios-filesystem.m | Linux-backed file URL reachability with real errors | Replacing resource parsers or returning unconditional success |
 | ios-lifecycle.m | Guest main-loop scene construction and framework-facing lifecycle adaptation | App delegate/control callbacks or acceptance decisions |
 | ios-platform.c / ios-platform-abi.h | Real dyld library constructor and versioned private platform attachment | Bootstrap lookup side effects or calling frameworks from syscall signals |
 | darwin-ui.h | Per-process UIKit/CG state; real main-loop layer rendering | Replacing app views or synthesizing control callbacks |

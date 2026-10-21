@@ -8,6 +8,8 @@
 #include <poll.h>
 #include <signal.h>
 #include <sys/eventfd.h>
+#include <time.h>
+#include <linux/input-event-codes.h>
 #include "ios-platform-abi.h"
 static int native_display_enabled;
 static void *native_display_pixels;
@@ -19,6 +21,10 @@ struct native_wayland {
     struct wl_shm *shm;
     struct xdg_wm_base *shell;
     struct wl_surface *surface;
+    struct wl_seat *seat;
+    struct wl_pointer *pointer;
+    int32_t pointer_x,pointer_y;
+    int pointer_inside,pointer_down;
     struct native_wl_buffer buffers[2];
     struct darwin_frame_control *control;
     struct native_wl_output outputs[8],*current_output;
@@ -78,11 +84,82 @@ static void native_surface_leave(void *data,struct wl_surface *surface,struct wl
 static const struct wl_surface_listener native_wl_surface_listener={
     .enter=native_surface_enter,.leave=native_surface_leave
 };
+static void native_pointer_publish(struct native_wayland *w,uint32_t phase)
+{
+    struct timespec now;
+    need(!clock_gettime(CLOCK_MONOTONIC,&now),"Wayland input timestamp");
+    uint32_t write=__atomic_load_n(&w->control->input_write,__ATOMIC_RELAXED);
+    uint32_t read=__atomic_load_n(&w->control->input_read,__ATOMIC_ACQUIRE);
+    if(write-read>=ARLINUX_IOS_INPUT_CAPACITY) {
+        __atomic_store_n(&w->control->input_overflow,1,__ATOMIC_RELEASE);
+        fprintf(stderr,"WAYLAND_POINTER_OVERFLOW app=%ld\n",(long)getppid());
+        return;
+    }
+    w->control->input[write%ARLINUX_IOS_INPUT_CAPACITY]=(struct arlinux_ios_pointer_event){
+        .nanoseconds=(uint64_t)now.tv_sec*1000000000+now.tv_nsec,
+        .x_fixed=w->pointer_x,.y_fixed=w->pointer_y,.phase=phase,.sequence=write+1};
+    __atomic_store_n(&w->control->input_write,write+1,__ATOMIC_RELEASE);
+    fprintf(stderr,"WAYLAND_POINTER app=%ld sequence=%u phase=%u x_fixed=%d y_fixed=%d\n",
+        (long)getppid(),write+1,phase,w->pointer_x,w->pointer_y);
+}
+static void native_pointer_cancel(struct native_wayland *w)
+{
+    if(w->pointer_down)native_pointer_publish(w,ARLINUX_IOS_POINTER_CANCEL);
+    w->pointer_down=0;
+}
+static void native_pointer_enter(void *data,struct wl_pointer *pointer,uint32_t serial,
+                                  struct wl_surface *surface,wl_fixed_t x,wl_fixed_t y)
+{
+    struct native_wayland *w=data;(void)pointer;(void)serial;
+    w->pointer_inside=surface==w->surface;w->pointer_x=x;w->pointer_y=y;
+}
+static void native_pointer_leave(void *data,struct wl_pointer *pointer,uint32_t serial,struct wl_surface *surface)
+{
+    struct native_wayland *w=data;(void)pointer;(void)serial;(void)surface;
+    native_pointer_cancel(w);w->pointer_inside=0;
+}
+static void native_pointer_motion(void *data,struct wl_pointer *pointer,uint32_t time,wl_fixed_t x,wl_fixed_t y)
+{
+    struct native_wayland *w=data;(void)pointer;(void)time;
+    w->pointer_x=x;w->pointer_y=y;
+    if(w->pointer_down)native_pointer_publish(w,ARLINUX_IOS_POINTER_MOVE);
+}
+static void native_pointer_button(void *data,struct wl_pointer *pointer,uint32_t serial,uint32_t time,uint32_t button,uint32_t state)
+{
+    struct native_wayland *w=data;(void)pointer;(void)serial;(void)time;
+    if(button!=BTN_LEFT)return;
+    if(state==WL_POINTER_BUTTON_STATE_PRESSED && w->pointer_inside && !w->pointer_down) {
+        w->pointer_down=1;native_pointer_publish(w,ARLINUX_IOS_POINTER_DOWN);
+    } else if(state==WL_POINTER_BUTTON_STATE_RELEASED && w->pointer_down) {
+        w->pointer_down=0;native_pointer_publish(w,ARLINUX_IOS_POINTER_UP);
+    }
+}
+static void native_pointer_axis(void *data,struct wl_pointer *pointer,uint32_t time,uint32_t axis,wl_fixed_t value)
+{(void)data;(void)pointer;(void)time;(void)axis;(void)value;}
+static const struct wl_pointer_listener native_pointer_listener={
+    .enter=native_pointer_enter,.leave=native_pointer_leave,.motion=native_pointer_motion,
+    .button=native_pointer_button,.axis=native_pointer_axis
+};
+static void native_seat_capabilities(void *data,struct wl_seat *seat,uint32_t capabilities)
+{
+    struct native_wayland *w=data;
+    if((capabilities&WL_SEAT_CAPABILITY_POINTER) && !w->pointer) {
+        w->pointer=wl_seat_get_pointer(seat);
+        wl_pointer_add_listener(w->pointer,&native_pointer_listener,w);
+    } else if(!(capabilities&WL_SEAT_CAPABILITY_POINTER) && w->pointer) {
+        native_pointer_cancel(w);wl_pointer_destroy(w->pointer);w->pointer=NULL;w->pointer_inside=0;
+    }
+}
+static const struct wl_seat_listener native_seat_listener={.capabilities=native_seat_capabilities};
 static void native_wl_global(void *data,struct wl_registry *registry,uint32_t name,
                              const char *interface,uint32_t version)
 {
     struct native_wayland *w=data; (void)version;
     if (!strcmp(interface,"wl_compositor")) w->compositor=wl_registry_bind(registry,name,&wl_compositor_interface,1);
+    else if(!strcmp(interface,"wl_seat") && !w->seat) {
+        w->seat=wl_registry_bind(registry,name,&wl_seat_interface,1);
+        wl_seat_add_listener(w->seat,&native_seat_listener,w);
+    }
     else if (!strcmp(interface,"wl_shm")) {
         w->shm=wl_registry_bind(registry,name,&wl_shm_interface,1);
         wl_shm_add_listener(w->shm,&native_shm_listener,w);

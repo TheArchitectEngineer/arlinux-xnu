@@ -29,10 +29,9 @@ The same opt-in profile observes failing original CoreUI color lookups. Its
 typed forwarding wrapper keeps the original arguments, NSError pointer and
 return object, recording the real error domain/code, underlying error and path.
 It neither issues an extra color lookup nor substitutes a color.
-The profile also observes the original NSError factory and initializer for
-POSIX 78/Cocoa 256 and retains at most eight original caller stacks. No observed
-stack means those entry points did not capture the failure, not that no error
-was constructed. The current targeted CoreUI lookup follows catalog loading,
+The unsuccessful NSError-construction observers have been removed after the
+file reachability boundary fixed the real color-resource failure. On a future
+actual color lookup failure, the targeted CoreUI lookup follows catalog loading,
 not a standing dump of every color method. BSD ENOSYS
 also retains original arguments and caller frames once per syscall (at most 32
 distinct calls, with an explicit truncation marker). The symbolicator resolves
