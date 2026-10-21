@@ -394,6 +394,7 @@ static long guest_stat(unsigned long argument,unsigned long destination,unsigned
 }
 
 #include "darling-native.h"
+#include "darling-suspend.h"
 #include "darwin-filesystem.h"
 #include "darwin-attributes.h"
 #include "darwin-signature.h"
@@ -1143,12 +1144,10 @@ void darwin_native_prepare(const char *root,const char *program,const char *cont
         if (sigaction(failures[i],&action,NULL)) { perror("fault handler"); exit(1); }
     }
 #ifdef ARLINUX_DARLING
-    /* Diagnose the original interrupted context when the integrated core
-     * suspends a task. Use the core's generated signal number, not a host libc
-     * RT offset or a guessed constant. This is opt-in evidence, not successful
-     * task-suspend emulation or a signal ignored by the production runtime. */
-    if(native_stop_on_fault && sigaction(LINUX_SIGRTMIN,&action,NULL)) {
-        perror("Darling suspension diagnosis");exit(1);
+    action.sa_sigaction=darling_suspend;action.sa_flags|=SA_RESTART;
+    sigfillset(&action.sa_mask);
+    if(sigaction(LINUX_SIGRTMIN,&action,NULL)) {
+        perror("Darling suspension handler");exit(1);
     }
 #endif
     void *vdso = dlopen("linux-vdso.so.1",RTLD_NOW|RTLD_LOCAL);
