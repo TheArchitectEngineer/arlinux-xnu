@@ -21,6 +21,8 @@
 - (Class)settingsClass;
 - (Class)clientSettingsClass;
 - (Class)transitionContextClass;
+- (id)settings;
++ (id)diffFromSettings:(id)before toSettings:(id)after;
 - (id)mainConfiguration;
 - (id)_workspace;
 - (void)setIdentity:(id)identity;
@@ -28,6 +30,9 @@
 - (void)setDisplayConfiguration:(id)display;
 - (void)setFrame:(CGRect)frame;
 - (void)setForeground:(BOOL)foreground;
+- (void)setDeactivationReasons:(unsigned long long)reasons;
+- (void)updater:(id)updater didUpdateSettings:(id)settings withDiff:(id)diff
+    transitionContext:(id)context completion:(void (^)(id))completion;
 - (void)_callOutQueue_agent_didCreateWithTransitionContext:(id)context completion:(void (^)(void))completion;
 - (void)_terminateWithStatus:(int)status;
 @end
@@ -36,6 +41,13 @@ static const struct arlinux_ios_platform_api *host;
 static id owned_workspace,owned_scene;
 static NSString *owned_identifier;
 static int launch_phase;
+static id scene_specification;
+static int scene_created,scene_update_pending;
+static struct arlinux_ios_window_state applied_window;
+/* This backend owns its scene's platform settings. One opaque nonzero
+ * deactivation contribution represents the compositor withholding input focus;
+ * it does not model an Apple lock screen or claim a backgrounded process. */
+enum { ARLinuxHostFocusDeactivation=1 };
 static const char *scene_stage="waiting";
 id arlinux_ios_scene_token(NSString *identifier,NSString *workspace);
 static void log_scene_exception(NSException *exception)
@@ -90,6 +102,47 @@ static void require_method(Class cls,const char *name,const char *types,BOOL met
 @end
 static ARLinuxSceneUpdater *updater;
 
+static void configure_settings(id settings,const struct arlinux_ios_window_state *window)
+{
+    require_method([settings class],"setDeactivationReasons:","v24@0:8Q16",NO);
+    [settings setFrame:CGRectMake(0,0,window->width,window->height)];
+    /* A configured live surface remains in the foreground when another
+     * window takes focus. Only the activation contribution changes. */
+    [settings setForeground:YES];
+    [settings setDeactivationReasons:window->flags&ARLINUX_IOS_WINDOW_ACTIVE ? 0 : ARLinuxHostFocusDeactivation];
+}
+static void update_scene(const struct arlinux_ios_window_state *window)
+{
+    if(!scene_created || scene_update_pending)return;
+    if(window->pid!=applied_window.pid || window->incarnation!=applied_window.incarnation)
+        unsupported("scene incarnation changed");
+    if(window->width==applied_window.width && window->height==applied_window.height &&
+        !((window->flags^applied_window.flags)&ARLINUX_IOS_WINDOW_ACTIVE))return;
+    struct arlinux_ios_window_state next=*window;
+    scene_update_pending=1;
+    [updater.callOutQueue performAsync:^{
+        @try {
+            scene_stage="scene settings update";
+            id before=[owned_scene settings];
+            id mutable=[[before mutableCopy] autorelease];
+            configure_settings(mutable,&next);
+            id after=[[mutable copy] autorelease];
+            Class diffClass=objc_getClass("FBSSceneSettingsDiff");
+            require_method(diffClass,"diffFromSettings:toSettings:","@32@0:8@16@24",YES);
+            id diff=[diffClass diffFromSettings:before toSettings:after];
+            id context=[[[[scene_specification transitionContextClass] alloc] init] autorelease];
+            if(!before || !after || !diff || !context)unsupported("scene update inputs");
+            fprintf(stderr,"IOS_SCENE_UPDATE_BEGIN pid=%u incarnation=%u active=%u width=%u height=%u\n",
+                next.pid,next.incarnation,!!(next.flags&ARLINUX_IOS_WINDOW_ACTIVE),next.width,next.height);
+            [owned_scene updater:updater didUpdateSettings:after withDiff:diff transitionContext:context completion:^(id error) {
+                if(error)unsupported("scene settings update completion");
+                applied_window=next;scene_update_pending=0;
+                fprintf(stderr,"IOS_SCENE_UPDATE_COMPLETION pid=%u active=%u\n",next.pid,!!(next.flags&ARLINUX_IOS_WINDOW_ACTIVE));
+            }];
+        } @catch(NSException *exception) {log_scene_exception(exception);@throw;}
+    }];
+}
+
 static id workspace_scenes(id object,SEL selector)
 { return object==owned_workspace && owned_scene ? @[owned_scene] : original_scenes(object,selector); }
 static id workspace_scene(id object,SEL selector,id identifier)
@@ -119,12 +172,15 @@ static void create_scene(UIApplication *app,const struct arlinux_ios_window_stat
     require_method(monitorClass,"mainConfiguration","@16@0:8",NO);
     require_method([app class],"_workspace","@16@0:8",NO);
     require_method(sceneClass,"_callOutQueue_agent_didCreateWithTransitionContext:completion:","v32@0:8@16@?24",NO);
+    require_method(sceneClass,"settings","@16@0:8",NO);
+    require_method(sceneClass,"updater:didUpdateSettings:withDiff:transitionContext:completion:","v56@0:8@16@24@32@40@?48",NO);
     owned_workspace=[[app _workspace] retain];
     if (!owned_workspace || !definitionClass) unsupported("workspace/definition");
     owned_identifier=[[NSString alloc] initWithFormat:@"arlinux:%u:%u:main",window->pid,window->incarnation];
     NSString *workspaceName=@"io.arlinux.workspace";
     scene_stage="identity";
     id specification=[specificationClass specification];
+    scene_specification=[specification retain];
     id identity=[identityClass identityForIdentifier:owned_identifier workspaceIdentifier:workspaceName];
     id token=arlinux_ios_scene_token(owned_identifier,workspaceName);
     scene_stage="display configuration";
@@ -142,8 +198,7 @@ static void create_scene(UIApplication *app,const struct arlinux_ios_window_stat
     require_method([settings class],"setForeground:","v20@0:8B16",NO);
     require_method([settings class],"setDisplayConfiguration:","v24@0:8@16",NO);
     [settings setDisplayConfiguration:display];
-    [settings setFrame:CGRectMake(0,0,window->width,window->height)];
-    [settings setForeground:!!(window->flags&ARLINUX_IOS_WINDOW_ACTIVE)];
+    configure_settings(settings,window);
     /* FBSScene requires the specification's exact immutable class, not its
      * mutable configuration counterpart (original fault 0x19b93237c). */
     settings=[[settings copy] autorelease];
@@ -173,6 +228,7 @@ static void create_scene(UIApplication *app,const struct arlinux_ios_window_stat
             scene_stage="scene-agent creation delivery";
             fprintf(stderr,"IOS_SCENE_DELIVER_BEGIN identifier=%s\n",owned_identifier.UTF8String);
             [owned_scene _callOutQueue_agent_didCreateWithTransitionContext:context completion:^{
+                applied_window=initial;scene_created=1;
                 fprintf(stderr,"IOS_SCENE_DELIVERY_COMPLETION\n");
             }];
             fprintf(stderr,"IOS_SCENE_DELIVER_RETURNED app_acceptance=false\n");
@@ -192,6 +248,8 @@ static void lifecycle_tick(CFRunLoopTimerRef timer,void *info)
             fprintf(stderr,"IOS_LIFECYCLE_CLOSE pid=%u incarnation=%u source=host-window\n",window.pid,window.incarnation);
             [app _terminateWithStatus:0];
         }
+        if(launch_phase==1 && (window.flags&ARLINUX_IOS_WINDOW_CONFIGURED) &&
+            (window.flags&ARLINUX_IOS_WINDOW_BACKEND_ALIVE))update_scene(&window);
         return;
     }
     if(!(window.flags&ARLINUX_IOS_WINDOW_CONFIGURED) || !(window.flags&ARLINUX_IOS_WINDOW_BACKEND_ALIVE))return;
@@ -204,7 +262,6 @@ static void lifecycle_tick(CFRunLoopTimerRef timer,void *info)
             log_scene_exception(exception);
             @throw;
         }
-        /* Later focus/activation updates remain unfinished. */
     }
 }
 void arlinux_ios_lifecycle_start(const struct arlinux_ios_platform_api *api)

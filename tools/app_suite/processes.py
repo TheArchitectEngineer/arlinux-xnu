@@ -194,6 +194,6 @@ class Processes:
                 args += ['-o', item]
             result = subprocess.run(args, stdout=log, stderr=subprocess.STDOUT, timeout=15)
         self.diagnostic.update(identity=live['identity'],status=result.returncode,
-            target='current app' if live['app']==self.current else 'surviving peer')
+            target='failed-step app' if live['app']==target else 'surviving peer')
         command(sys.executable,ROOT/'tools/symbolicate-cache.py',cache,
                 self.directory/'original-process.lldb.log',self.directory/'original-process.symbols.json',capture_output=True)

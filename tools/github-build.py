@@ -171,6 +171,7 @@ def print_observation(line):
     failed=entry.get('failedStep',{})
     print(f"  APP_DIAGNOSIS {entry.get('id')}: {failed.get('do')} {failed.get('reason')}")
     print(f"    effect={failed.get('seconds')}s diagnosis={failed.get('diagnosticSeconds')}s blocked={entry.get('blockedSteps')} infrastructureFailure={entry.get('infrastructureFailure')}")
+    if failed.get('observedApplicationState'):print('    Actual application state: '+json.dumps(failed['observedApplicationState']))
     for process in entry.get('processes',[]):
         print(f"    Process {process.get('app')} generation={process.get('generation')} identity={json.dumps(process.get('identity'))}")
         print(f"    Logs: {process.get('runtimeLog')}; {process.get('stderr')}")
