@@ -185,6 +185,7 @@ try:
             relative=str(path.relative_to(merged))
             if relative not in services.setdefault(identifier,[]):services[identifier].append(relative)
     service_index=output/'xpc-services.plist'
+    for entries in services.values():entries.sort()
     service_index.write_bytes(plistlib.dumps({'root':str(merged.resolve()),'services':services},fmt=plistlib.FMT_BINARY))
     print('APPLE_SERVICE_INDEX '+json.dumps({'services':len(services),'sha256':sha(service_index),
         'seconds':round(time.monotonic()-started,3)}),flush=True)

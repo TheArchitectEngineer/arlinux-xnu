@@ -61,7 +61,9 @@ static plist_t read_bundle(const char *path)
         if(done>=8 && !memcmp(bytes,"bplist00",8))plist_from_bin(bytes,done,&result);
         else plist_from_xml(bytes,done,&result);
     }
-    free(bytes);return result;
+    free(bytes);
+    if(result && plist_get_node_type(result)!=PLIST_DICT){plist_free(result);result=NULL;}
+    return result;
 }
 static char *bundle_string(plist_t bundle,const char *key)
 {
