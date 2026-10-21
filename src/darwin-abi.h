@@ -9,6 +9,7 @@
  */
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 
 /* launchd liblaunch/bootstrap{,_priv}.h: name-port service registry ABI. */
 enum darwin_bootstrap {
