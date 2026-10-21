@@ -184,8 +184,11 @@ def wait_for_run(run_id,commit):
 
 
 def api(endpoint):
-    result = subprocess.run(['gh', 'api', '--allow-escape-sequences', 'repos/' + REPO + '/' + endpoint],
-                            capture_output=True, timeout=60)
+    try:
+        result = subprocess.run(['gh', 'api', '--allow-escape-sequences', 'repos/' + REPO + '/' + endpoint],
+                                capture_output=True, timeout=60)
+    except (subprocess.TimeoutExpired,OSError) as error:
+        raise SystemExit('GitHub API observation unavailable: '+endpoint) from error
     if result.returncode:
         # Redirect failures can include signed download URLs in stderr.
         raise SystemExit('GitHub API request failed: ' + endpoint)
@@ -409,9 +412,11 @@ def main():
         command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'app=' + args.app, '-f', 'reference=' + str(args.reference).lower(),
                    '-f','lifecycle_context='+str(args.lifecycle_context).lower()]
         if args.case:command+=['-f','case='+args.case]
-        dispatched=subprocess.run(['gh',*command,'--repo',repo],capture_output=True,text=True,check=True)
+        dispatched=subprocess.run(['gh',*command,'--repo',repo],capture_output=True,text=True)
         dispatch_output=dispatched.stdout+dispatched.stderr
         print(dispatch_output, end='',flush=True)
+        if dispatched.returncode:
+            raise SystemExit('Workflow dispatch request failed; inspect remote status before retrying')
         if args.wait:
             match=re.search(r'https://github\.com/'+re.escape(repo)+r'/actions/runs/(\d+)',dispatch_output)
             if not match:raise SystemExit('Dispatch accepted but exact run URL was not returned; inspect status, do not redispatch')
