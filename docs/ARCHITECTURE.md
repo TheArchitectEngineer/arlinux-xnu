@@ -482,5 +482,5 @@ as shared-memory behavior. Process named-memory alias/fork interaction passes on
 Linux; cross-independent-task port transfer and Web rendering remain unverified.
 Aligned shared-range extraction can retain zero data offset; masked permissions
 intersect the actual source protection before conversion. Unaligned data-address
-extraction and other memory-entry modes remain unsupported. This flag extension
-awaits runner app-flow validation.
+extraction and other memory-entry modes remain unsupported. The flag extension passes the Process app flow and moves original WebContent
+past handle export; the GPU receiver still fails to map the transferred stream.

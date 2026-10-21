@@ -748,6 +748,11 @@ kern_return_t mach_vm_machine_attribute(vm_map_t map, mach_vm_address_t addr, ma
 };
 
 kern_return_t mach_vm_map_external(vm_map_t target_map, mach_vm_offset_t* address, mach_vm_size_t initial_size, mach_vm_offset_t mask, int flags, ipc_port_t port, vm_object_offset_t offset, boolean_t copy, vm_prot_t cur_protection, vm_prot_t max_protection, vm_inherit_t inheritance) {
+    static unsigned int traces;
+    if (IP_VALID(port) && __atomic_fetch_add(&traces, 1, __ATOMIC_RELAXED) < 32)
+        dprintf(2, "MACH_NAMED_MAP_REQUEST bytes=%llu mask=%#llx flags=%x offset=%#llx copy=%d cur=%x max=%x inheritance=%d\n",
+            (unsigned long long)initial_size, (unsigned long long)mask, flags,
+            (unsigned long long)offset, copy, cur_protection, max_protection, inheritance);
     if (target_map == VM_MAP_NULL) return KERN_INVALID_TASK;
     if (!address || !initial_size || initial_size > UINT64_MAX - PAGE_MASK ||
         (cur_protection & ~VM_PROT_ALL) || (max_protection & ~VM_PROT_ALL) ||

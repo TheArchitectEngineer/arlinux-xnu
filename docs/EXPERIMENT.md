@@ -117,7 +117,7 @@ observation; one full pass does not prove its isolated cause or general repair.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Web | WebContent rejects export flags 0x500043, then traps in StreamConnectionBuffer::createHandle. Networking also waits on original synchronous preferences. No DOM or helper-lifecycle acceptance. |
+| Web | WebContent rejects export flags 0x500043, then traps in StreamConnectionBuffer::createHandle. Networking and GPU-helper behavior remain unaccepted. No DOM or helper-lifecycle acceptance. |
 | Share | Process 6226/64986 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
 
 Web app **6445/67882** shares owned session **6442/67876**. WebContent requests
@@ -146,10 +146,11 @@ forced cleanup. The post-start memory command takes 0.05 s to produce its real
 observed answer. This proves that path, not unrelated-task port transfer, arbitrary
 concurrent export or per-unmap registry reclamation. The earlier SDK header build
 failure was corrected using iPhoneOS's actual vm_* interfaces, with no fabricated
-SDK declarations. Web remains blocked in original Networking preferences before
-reaching the new memory boundary. Total feedback is 225 s; journeys take 82.275 s
+SDK declarations. In this selected run, Web waits in original Networking
+preferences before reaching the new memory boundary; the later full run above
+reaches the explicit shared-memory flag rejection instead. Total feedback is 225 s; journeys take 82.275 s
 including 24.008 s of diagnosis. The collection now contains 17 journeys; its
-expanded full regression is pending. Resolved identifier/stream diagnostic dumps
+expanded full regression above passes 15/17. Resolved identifier/stream diagnostic dumps
 are removed in favor of the actual preferences producer/consumer pair.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
@@ -197,12 +198,24 @@ a behavior reference, not evidence of Linux/Android capability. Architecture and
 diagnostics procedures live in their own documents; no OCR, model recognition,
 readiness marker or direct app/control action establishes acceptance here.
 
-## Current candidate
+## Latest shared-memory boundary
 
-The next candidate accepts aligned shared-range extraction with USE_DATA_ADDR
-(data offset zero) and applies VM_PROT_IS_MASK against the actual source mapping
-before backing conversion, following the in-tree XNU vm_user.c semantics. Other
-flags and unaligned data-address extraction remain unsupported. The existing
-Process named-memory command now requests the same flag combination as original
-WebKit; this candidate still needs runner app-flow validation. Networking's
-preference producer is inspected separately; no cfprefsd service is fabricated.
+Selected run [39611639219](https://github.com/taowen/arlinux-xnu/actions/runs/39611639219),
+source **589eb0fbf79d9afa6ea571324a7f0541d57bf328**, attempt 1, passes Counter
+and both Process journeys (3/4 partial). Receipt
+**0a83bd699760ad74ef5ae0e22ac83495f4d5d61e39d6455c6d17e6198c1ee3f4**
+and all 149 files were verified. Feedback takes 225 s; journeys 77.5 s including
+21.4 s of diagnosis. Process now requests the same extraction flags as WebKit
+and verifies live alias/fork writes and normal exit.
+
+Aligned extraction retains zero data offset; VM_PROT_IS_MASK intersects source
+permissions before backing conversion, following in-tree XNU vm_user.c. Other
+flags and unaligned data-address extraction remain unsupported. WebContent now
+exports its 2,097,408-byte buffer and receives a real shared file mapping. The
+original GPU helper **6072/19342** consumes CreateRenderingBackend through real
+IPC, then traps at **0x1987d65a8** from StreamServerConnection::create after
+SharedMemory::map returns empty. Web app **5947/17565**, session **5944/17560**,
+still produces no DOM acceptance. Receiving the message does not establish the
+receiver mapped the stream or that rendering works. Next diagnostics read the
+actual map request and same-cache SharedMemory::map consumer; the stale standing
+preference probes are removed. No extra Apple service is implemented.

@@ -317,13 +317,10 @@ class Processes:
                                '__fetch_xpcservice_info','__xpc_dictionary_create_bootstrap_copy'):
                     arguments+=['--lookup',image,symbol]
                 arguments+=['--list-symbols',image,'xpcservice']
-            if 'service=com.apple.WebKit.Networking ' in session_text:
-                # Current original worker waits on synchronous preferences.
-                # Remove resolved identifier/stream dumps; read its producer.
-                image='/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation'
-                for symbol in ('-[CFPrefsSearchListSource synchronouslySendSystemMessage:andUserMessage:andDirectMessage:replyHandler:]',
-                               '-[_CFXPreferences _copyDaemonConnectionSettingUpIfNecessaryForRole:andUserIdentifier:]'):
-                    arguments+=['--lookup',image,symbol]
+            if 'service=com.apple.WebKit.GPU ' in session_text:
+                # Original GPU worker fails mapping the transferred stream handle.
+                image='/System/Library/Frameworks/WebKit.framework/WebKit'
+                arguments+=['--lookup',image,'__ZN6WebKit12SharedMemory3mapERKNS0_6HandleENS0_10ProtectionE']
             command(*arguments,capture_output=True)
         except (OSError,RuntimeError,subprocess.SubprocessError) as error:
             self.diagnostic['collectionErrors'].append('Service runtime symbolication: '+str(error))
