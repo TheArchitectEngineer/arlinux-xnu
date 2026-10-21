@@ -15,7 +15,7 @@ sources.lock.json pins iPhone10,1 (iPhone 8/A11), iOS 16.7.16 build 20H392,
 601cb23e740dacf8b61271fe02ffd5b3c146b518abb5a6e6b286e5f0475fe43b.
 Actual OS and Cryptex1,SystemOS volumes form the read-only filesystem. Apple
 executable data stays runner-local. Compilation/execution use hosted runners
-through build.sh. The collection has 11 source-owned apps, 13 short journeys
+through build.sh. The collection has 11 source-owned apps, 14 short journeys
 and three cross-app scenarios; selected runs never certify the whole collection.
 
 ## Verified focus and reactivation
@@ -83,14 +83,14 @@ took 156 s overall and 30 s in journeys.
 
 ## Complete collection and remaining failures
 
-Full run [39604373891](https://github.com/taowen/arlinux-xnu/actions/runs/39604373891),
-source **5a7ffb4f961daf345072971bd2e3b9f151e88cad**, attempt 1, passes **14/16**
-journeys. The collection is still **failed**. Receipt
-**996ddc14544637d8984f9037b000721d5f9fe48adb27ba330ecb2b47f600af41**
-and all 345 retained files were verified. Individual journeys total 190.624 s,
-including 29.052 s of diagnosis. Total feedback is 353 s; firmware transfer takes
-16.361 s, toolchain setup 43 s and pinned-userland preparation 44 s. Resource,
-protection, purgeable-allocation and deferred-RPC changes retain all 14 passing flows.
+Full run [39610149135](https://github.com/taowen/arlinux-xnu/actions/runs/39610149135),
+source **0324dec9a985a70043fe6c2cc14bb909ee02df09**, attempt 1, passes **15/17**
+journeys. The collection remains **failed**. Receipt
+**ee366e2be3cf22eeb3e84148cac63f1cbee68adcad2c7a6d8eb82f05c60296d7**
+and all 333 retained files were verified. Journeys total 223.2 s, including
+30.8 s of diagnosis; dispatch-to-completion is 345 s. Compiler cache has 170
+hits and zero misses. The new named-memory alias/fork flow passes alongside
+all 14 previously passing flows. Web and Share remain failed.
 
 Console, Foundation, Counter, Swift, Notes, Canvas, Process and all three Workers
 journeys pass. Concurrent relaunch passes all 29 steps; crash isolation and focus
@@ -99,7 +99,8 @@ helper cleanup or background lifecycle behavior. The earlier kmsg preallocation
 regression is repaired: auxiliary ownership adds to the allocation and leaves
 the original inline-message capacity intact.
 
-Network passes all 14 steps. Processes **7842/46583** and **7891/46948**
+The earlier full run [39604373891](https://github.com/taowen/arlinux-xnu/actions/runs/39604373891)
+passes Network's 14 steps. Processes **7842/46583** and **7891/46948**
 (PID/startTicks) each receive an actual status 200 / 13-byte response through
 Linux libcurl and original NSURLSession completion. JSON parsing and main-queue
 delivery produce Network: 42 in composed pixels, the peer records two requests,
@@ -116,13 +117,15 @@ observation; one full pass does not prove its isolated cause or general repair.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Web | Original VM initializes and stream allocation succeeds; named-memory export remains the current failed boundary. Networking initialization also remains incomplete. No DOM or helper-lifecycle acceptance. |
-| Share | Process 6275/31171 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
+| Web | WebContent rejects export flags 0x500043, then traps in StreamConnectionBuffer::createHandle. Networking also waits on original synchronous preferences. No DOM or helper-lifecycle acceptance. |
+| Share | Process 6226/64986 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
 
-Web app **6514/33745** shares owned session **6511/33740**. Its rendering-stream
-buffer allocates successfully, but the real named-memory export returns unsupported.
+Web app **6445/67882** shares owned session **6442/67876**. WebContent requests
+2,097,408 bytes at **0xd92d64000**, protection **0x500043**: READ/WRITE,
+VM_PROT_IS_MASK, MAP_MEM_VM_SHARE and MAP_MEM_USE_DATA_ADDR. The implementation
+accepts plain READ/WRITE only and returns unsupported for this flag combination.
 The original consumer traps at **0x1990c9b60**; the shared session no longer aborts.
-The candidate builds named entries from real Linux memfd backing, reusing Darling's
+The implementation builds named entries from real Linux memfd backing, reusing Darling's
 shared-remap descriptor/tree ownership and XNU's real port/no-senders lifetime.
 S2C file mapping transfers an actual FD; source and target aliases retain the same
 backing. The former no-op-success mach_vm_map_external is replaced by actual mapping
@@ -193,3 +196,13 @@ previously passed the same four-app subset with native desktop events. It remain
 a behavior reference, not evidence of Linux/Android capability. Architecture and
 diagnostics procedures live in their own documents; no OCR, model recognition,
 readiness marker or direct app/control action establishes acceptance here.
+
+## Current candidate
+
+The next candidate accepts aligned shared-range extraction with USE_DATA_ADDR
+(data offset zero) and applies VM_PROT_IS_MASK against the actual source mapping
+before backing conversion, following the in-tree XNU vm_user.c semantics. Other
+flags and unaligned data-address extraction remain unsupported. The existing
+Process named-memory command now requests the same flag combination as original
+WebKit; this candidate still needs runner app-flow validation. Networking's
+preference producer is inspected separately; no cfprefsd service is fabricated.

@@ -570,7 +570,7 @@ kern_return_t mach_vm_allocate_kernel(vm_map_t map, mach_vm_offset_t* addr, mach
  * The initial private-to-shared conversion retains upstream's copy/rebind race
  * with concurrent writers. Once bound, all aliases use the same live backing. */
 static kern_return_t dtape_share_region(vm_map_t map, uint64_t start, uint64_t length,
-    dtape_map_shared_descriptor_t **result, uint64_t *result_offset, vm_prot_t *protection, vm_prot_t required) {
+    dtape_map_shared_descriptor_t **result, uint64_t *result_offset, vm_prot_t *protection, vm_prot_t required, bool mask_required) {
     dtape_memory_region_info_t info;
     if (!dtape_hooks->task_get_memory_region_info(map->dtape_task->context, start, &info))
         return KERN_INVALID_ADDRESS;
@@ -581,6 +581,12 @@ static kern_return_t dtape_share_region(vm_map_t map, uint64_t start, uint64_t l
     if (start - info.start_address > available || length > available - (start - info.start_address))
         return KERN_INVALID_ADDRESS;
     int prot = info.protection & (PROT_READ | PROT_WRITE | PROT_EXEC);
+    /* vm_user.c masks requested permissions against the actual source range.
+     * Do this before converting backing, never grant a missing permission. */
+    if (mask_required) {
+        required &= prot;
+        if (!required) return KERN_PROTECTION_FAILURE;
+    }
     if (!(prot & PROT_READ) || (required & ~prot)) return KERN_PROTECTION_FAILURE;
     *protection = prot;
     dtape_map_shared_entry_t *existing[2];
@@ -647,8 +653,16 @@ kern_return_t _mach_make_memory_entry(vm_map_t target_map, memory_object_size_t*
         dprintf(2, "MACH_NAMED_ENTRY_REQUEST bytes=%llu offset=%#llx protection=%x parent=%d\n",
             (unsigned long long)*size, (unsigned long long)offset, permission, parent_entry != IP_NULL);
     *object_handle = IP_NULL;
-    if (parent_entry != IP_NULL || (permission & ~(VM_PROT_READ | VM_PROT_WRITE))) return KERN_NOT_SUPPORTED;
-    if (!permission || (offset & PAGE_MASK)) return KERN_INVALID_ARGUMENT;
+    /* Supported extraction flags follow XNU vm_user.c, not a WebKit rule.
+     * Aligned USE_DATA_ADDR has data_offset zero. Unaligned extraction remains
+     * unsupported until mapping can honor the returned data address. */
+    const vm_prot_t supported = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_IS_MASK |
+        MAP_MEM_VM_SHARE | MAP_MEM_USE_DATA_ADDR;
+    if (parent_entry != IP_NULL || (permission & ~supported)) return KERN_NOT_SUPPORTED;
+    bool mask_protections = (permission & VM_PROT_IS_MASK) != 0;
+    permission &= VM_PROT_READ | VM_PROT_WRITE;
+    if (!permission) return KERN_INVALID_ARGUMENT;
+    if (offset & PAGE_MASK) return KERN_NOT_SUPPORTED;
     uint64_t length = mach_vm_round_page(*size);
     if (length < *size || offset > UINT64_MAX - length) return KERN_INVALID_ARGUMENT;
     vm_named_entry_t entry = kalloc(sizeof(*entry));
@@ -656,7 +670,8 @@ kern_return_t _mach_make_memory_entry(vm_map_t target_map, memory_object_size_t*
     bzero(entry, sizeof(*entry)); named_entry_lock_init(entry);
     uint64_t backing_offset = 0; vm_prot_t source_protection = VM_PROT_NONE;
     dtape_map_shared_descriptor_t *descriptor = NULL;
-    kern_return_t kr = dtape_share_region(target_map, offset, length, &descriptor, &backing_offset, &source_protection, permission);
+    kern_return_t kr = dtape_share_region(target_map, offset, length, &descriptor, &backing_offset, &source_protection, permission, mask_protections);
+    if (mask_protections) permission &= source_protection;
     if (kr != KERN_SUCCESS || (permission & ~source_protection)) {
         if (descriptor) dtape_map_shared_descriptor_release(descriptor);
         named_entry_lock_destroy(entry); kfree(entry, sizeof(*entry));
@@ -1009,7 +1024,7 @@ static kern_return_t mach_vm_remap_external_shared(vm_map_t target_map, mach_vm_
     uint64_t start = mach_vm_trunc_page(memory_address);
     uint64_t length = mach_vm_round_page(memory_address + size) - start;
     dtape_map_shared_descriptor_t *descriptor = NULL; uint64_t offset = 0; vm_prot_t prot = 0;
-    kern_return_t kr = dtape_share_region(src_map, start, length, &descriptor, &offset, &prot, VM_PROT_NONE);
+    kern_return_t kr = dtape_share_region(src_map, start, length, &descriptor, &offset, &prot, VM_PROT_NONE, false);
     if (kr != KERN_SUCCESS) return kr;
     dtape_map_shared_entry_t *mapping = dtape_map_shared_entry_create(0, length,
         dtape_byte_count_to_page_count_round_down(offset), descriptor);

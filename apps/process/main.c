@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <mach/mach.h>
+#include <mach/memory_object_types.h>
 static int own_task(void) {
     audit_token_t token={{0}};mach_msg_type_number_t count=TASK_AUDIT_TOKEN_COUNT;
     kern_return_t error=task_info(mach_task_self(),TASK_AUDIT_TOKEN,(task_info_t)&token,&count);
@@ -21,7 +22,9 @@ static int named_memory_command(void) {
     kern_return_t error=vm_allocate(mach_task_self(),&source,size,VM_FLAGS_ANYWHERE);
     if(error)goto done;
     *(volatile int *)(uintptr_t)source=23;
-    error=mach_make_memory_entry_64(mach_task_self(),&size,source,VM_PROT_READ|VM_PROT_WRITE,&entry,MACH_PORT_NULL);
+    error=mach_make_memory_entry_64(mach_task_self(),&size,source,
+        VM_PROT_READ|VM_PROT_WRITE|VM_PROT_IS_MASK|MAP_MEM_VM_SHARE|MAP_MEM_USE_DATA_ADDR,
+        &entry,MACH_PORT_NULL);
     if(error){result=41;goto done;}
     error=vm_map(mach_task_self(),&alias,size,0,VM_FLAGS_ANYWHERE,entry,0,FALSE,
         VM_PROT_READ|VM_PROT_WRITE,VM_PROT_READ|VM_PROT_WRITE,VM_INHERIT_SHARE);

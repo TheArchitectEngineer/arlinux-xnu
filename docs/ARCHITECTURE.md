@@ -478,4 +478,9 @@ shared conversion retains upstream's snapshot/rebind race with concurrent writer
 it is not arbitrary concurrent VM conformance. Per-unmap registry retirement also
 remains incomplete; ambiguous/reused ranges fail rather than returning old backing.
 No empty capability, copied destination snapshot or unmapped-success reply counts
-as shared-memory behavior. Process named-memory alias/fork interaction passes on Linux; cross-independent-task port transfer and Web rendering remain unverified.
+as shared-memory behavior. Process named-memory alias/fork interaction passes on
+Linux; cross-independent-task port transfer and Web rendering remain unverified.
+Aligned shared-range extraction can retain zero data offset; masked permissions
+intersect the actual source protection before conversion. Unaligned data-address
+extraction and other memory-entry modes remain unsupported. This flag extension
+awaits runner app-flow validation.

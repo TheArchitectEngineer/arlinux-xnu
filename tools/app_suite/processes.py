@@ -322,7 +322,7 @@ class Processes:
                 # Remove resolved identifier/stream dumps; read its producer.
                 image='/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation'
                 for symbol in ('-[CFPrefsSearchListSource synchronouslySendSystemMessage:andUserMessage:andDirectMessage:replyHandler:]',
-                               '-[_CFXPreferences withConnectionForRole:andUserIdentifier:performBlock:]'):
+                               '-[_CFXPreferences _copyDaemonConnectionSettingUpIfNecessaryForRole:andUserIdentifier:]'):
                     arguments+=['--lookup',image,symbol]
             command(*arguments,capture_output=True)
         except (OSError,RuntimeError,subprocess.SubprocessError) as error:
