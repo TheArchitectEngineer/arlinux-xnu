@@ -13,7 +13,8 @@ class Session:
         self.temporary=tempfile.TemporaryDirectory(prefix='arlinux-app-session-')
         self.log=(self.directory/'session.log').open('wb')
         self.process=subprocess.Popen([str(ROOT/'build/native/macho-native'),'--session',self.temporary.name],
-            stdout=self.log,stderr=subprocess.STDOUT,start_new_session=True)
+            stdout=self.log,stderr=subprocess.STDOUT,start_new_session=True,
+            env={**os.environ,'ARLINUX_STOP_ON_FAULT':'1'})
         try:
             deadline=time.monotonic()+15
             while 'SESSION_READY ' not in (self.directory/'session.log').read_text(errors='replace'):

@@ -232,6 +232,11 @@ class Processes:
         started=re.findall(r'^SESSION_SERVICE_STARTED owner=(\d+) incarnation=(\d+) service=(\S+) instance=(\d+) pid=(\d+) start_ticks=(\d+) ',
             log.read_text(errors='replace'),re.M)
         if not started:return
+        try:
+            command(sys.executable,ROOT/'tools/symbolicate-cache.py',cache,log,
+                self.directory/'service-runtime.symbols.json',capture_output=True)
+        except (OSError,RuntimeError,subprocess.SubprocessError) as error:
+            self.diagnostic['collectionErrors'].append('Service runtime symbolication: '+str(error))
         peers=[('session',self.session)]
         for owner,incarnation,service,instance,pid,ticks in started[:2]:
             peers.append(('service-'+instance,{'pid':int(pid),'startTicks':int(ticks),
@@ -254,6 +259,12 @@ class Processes:
                 record.update(status=result.returncode,log=str(path.relative_to(self.output)))
                 command(sys.executable,ROOT/'tools/symbolicate-cache.py',cache,path,
                     prefix.with_suffix('.symbols.json'),capture_output=True)
+            except ProcessLookupError:
+                record['unavailable']='original process exited'
+            except FileNotFoundError as error:
+                if str(error.filename).startswith('/proc/'):
+                    record['unavailable']='original process exited'
+                else:record['collectionError']=str(error)
             except (OSError,RuntimeError,subprocess.SubprocessError) as error:
                 record['collectionError']=str(error)
         self.diagnostic['serviceProcesses']=observations

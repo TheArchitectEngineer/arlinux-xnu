@@ -158,7 +158,9 @@ int native_service_spawn(uint32_t owner,uint32_t incarnation,const char *service
     }
     snprintf(server,sizeof(server),"ARLINUX_DARLING_PID=%ld",(long)getpid());
     snprintf(provider,sizeof(provider),"ARLINUX_SESSION_PID=%ld",(long)getpid());
-    char *environment[]={prefix,server,provider,NULL}; /* Never inherit host credentials. */
+    char *environment[]={prefix,server,provider,NULL,NULL}; /* Never inherit host credentials. */
+    const char *stop_on_fault=getenv("ARLINUX_STOP_ON_FAULT");
+    if(stop_on_fault && !strcmp(stop_on_fault,"1"))environment[3]="ARLINUX_STOP_ON_FAULT=1";
     posix_spawnattr_t attributes;posix_spawn_file_actions_t actions;
     error=posix_spawnattr_init(&attributes);if(error){free(program);return error;}
     error=posix_spawn_file_actions_init(&actions);
