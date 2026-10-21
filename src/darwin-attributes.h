@@ -6,6 +6,7 @@
 #pragma once
 enum darwin_attribute_options {
     D_FSOPT_NOFOLLOW=1, D_FSOPT_NOINMEMUPDATE=2, D_FSOPT_REPORT_FULLSIZE=4,
+    D_FSOPT_PACK_INVAL_ATTRS=8,
     D_FSOPT_ATTR_CMN_EXTENDED=0x20
 };
 enum darwin_common_attributes {
@@ -22,6 +23,11 @@ enum darwin_object_attributes {
     D_ATTR_FILE_IOBLOCKSIZE=8, D_ATTR_FILE_DATALENGTH=0x200,
     D_ATTR_FILE_DATAALLOCSIZE=0x400, D_ATTR_EXT_REALDEVID=0x40
 };
+enum darwin_volume_attributes {
+    D_ATTR_VOL_MOUNTPOINT=0x2000, D_ATTR_VOL_CAPABILITIES=0x20000,
+    D_ATTR_VOL_UUID=0x40000, D_ATTR_VOL_ATTRIBUTES=0x40000000,
+    D_ATTR_VOL_INFO=0x80000000
+};
 struct darwin_attrlist {
     uint16_t count,reserved;
     uint32_t common,volume,directory,file,fork;
@@ -37,6 +43,16 @@ static unsigned int native_attr_width(uint32_t bit)
     case D_ATTR_NAME: case D_ATTR_FULLPATH: case D_ATTR_FSID: case D_ATTR_FILEID:return 8;
     case D_ATTR_CRTIME: case D_ATTR_MODTIME: case D_ATTR_CHGTIME: case D_ATTR_ACCTIME:return 16;
     default:return 4;
+    }
+}
+static unsigned int native_volume_attr_width(uint32_t bit)
+{
+    switch(bit) {
+    case D_ATTR_VOL_MOUNTPOINT:return 8;
+    case D_ATTR_VOL_CAPABILITIES:return 32;
+    case D_ATTR_VOL_UUID:return 16;
+    case D_ATTR_VOL_ATTRIBUTES:return 40;
+    default:return 0; /* ATTR_VOL_INFO is a modifier, not a field. */
     }
 }
 static void native_attr_pack(char *out,unsigned int *position,const void *value,unsigned int size)
@@ -80,6 +96,20 @@ static long native_attr_object(int fd,const struct darwin_attrlist *request,
     if(actual.stx_dev_major>D_DEV_MAJOR_MAX || actual.stx_dev_minor>D_DEV_MINOR_MAX)return -EOVERFLOW;
     uint32_t device=(actual.stx_dev_major<<D_DEV_MAJOR_SHIFT)|actual.stx_dev_minor;
     struct darwin_attribute_set returned={0};
+    const uint32_t common_schema=D_ATTR_NAME|D_ATTR_DEVID|D_ATTR_FSID|D_ATTR_OBJTYPE|
+        D_ATTR_CRTIME|D_ATTR_MODTIME|D_ATTR_CHGTIME|D_ATTR_ACCTIME|D_ATTR_OWNERID|
+        D_ATTR_GRPID|D_ATTR_ACCESSMASK|D_ATTR_USERACCESS|D_ATTR_FILEID|D_ATTR_FULLPATH|
+        D_ATTR_ERROR|D_ATTR_RETURNED;
+    const uint32_t volume_schema=D_ATTR_VOL_MOUNTPOINT|D_ATTR_VOL_CAPABILITIES|
+        D_ATTR_VOL_UUID|D_ATTR_VOL_ATTRIBUTES|D_ATTR_VOL_INFO;
+    const uint32_t file_schema=D_ATTR_FILE_LINKCOUNT|D_ATTR_FILE_TOTALSIZE|D_ATTR_FILE_ALLOCSIZE|
+        D_ATTR_FILE_IOBLOCKSIZE|D_ATTR_FILE_DATALENGTH|D_ATTR_FILE_DATAALLOCSIZE;
+    int report=(request->common&D_ATTR_RETURNED)!=0;
+    int pack_invalid=(options&D_FSOPT_PACK_INVAL_ATTRS)!=0;
+    if(pack_invalid && !report)return -EINVAL;
+    if(pack_invalid && ((request->common&~common_schema) || (request->volume&~volume_schema) ||
+        (request->directory&~D_ATTR_DIR_LINKCOUNT) || (request->file&~file_schema) ||
+        (request->fork&~D_ATTR_EXT_REALDEVID)))return -ENOTSUP;
     uint32_t available=D_ATTR_NAME|D_ATTR_DEVID|D_ATTR_ERROR;
     if(actual.stx_mask&STATX_TYPE)available|=D_ATTR_OBJTYPE;
     if(actual.stx_mask&STATX_INO)available|=D_ATTR_FILEID;
@@ -109,31 +139,37 @@ static long native_attr_object(int fd,const struct darwin_attrlist *request,
         }
     }
     returned.common=request->common&(available|D_ATTR_RETURNED);
+    returned.volume=request->volume&(D_ATTR_VOL_INFO|D_ATTR_VOL_ATTRIBUTES|
+        ((available&D_ATTR_FULLPATH) ? D_ATTR_VOL_MOUNTPOINT : 0));
     if((actual.stx_mode&S_IFMT)==S_IFDIR && (actual.stx_mask&STATX_NLINK))returned.directory=request->directory&D_ATTR_DIR_LINKCOUNT;
-    else if((actual.stx_mode&S_IFMT)==S_IFREG)returned.file=request->file&
-        (D_ATTR_FILE_LINKCOUNT|D_ATTR_FILE_TOTALSIZE|D_ATTR_FILE_ALLOCSIZE|
-         D_ATTR_FILE_IOBLOCKSIZE|D_ATTR_FILE_DATALENGTH|D_ATTR_FILE_DATAALLOCSIZE);
+    else if((actual.stx_mode&S_IFMT)==S_IFREG)returned.file=request->file&file_schema;
     if(!(actual.stx_mask&STATX_NLINK))returned.file&=~D_ATTR_FILE_LINKCOUNT;
     if(!(actual.stx_mask&STATX_SIZE))returned.file&=~(D_ATTR_FILE_TOTALSIZE|D_ATTR_FILE_DATALENGTH);
     if(!(actual.stx_mask&STATX_BLOCKS))returned.file&=~(D_ATTR_FILE_ALLOCSIZE|D_ATTR_FILE_DATAALLOCSIZE);
     if(options&D_FSOPT_ATTR_CMN_EXTENDED)returned.fork=request->fork&D_ATTR_EXT_REALDEVID;
-    int report=(request->common&D_ATTR_RETURNED)!=0;
     if(!report && (returned.common!=request->common || returned.volume!=request->volume ||
         returned.directory!=request->directory || returned.file!=request->file || returned.fork!=request->fork))return -ENOTSUP;
+    struct darwin_attribute_set packed=pack_invalid ? (struct darwin_attribute_set){
+        request->common,request->volume,request->directory,request->file,request->fork} : returned;
+    /* XNU file/directory groups remain mutually exclusive for the object. */
+    if((actual.stx_mode&S_IFMT)==S_IFDIR)packed.file=0;
+    else packed.directory=0;
     char output[4096]={0};
     unsigned int fixed=4+(report ? sizeof(returned) : 0);
-    for(unsigned int i=0;i<31;i++)if(returned.common&(1U<<i))fixed+=native_attr_width(1U<<i);
-    if(returned.directory)fixed+=4;
-    for(unsigned int i=0;i<32;i++)if(returned.file&(1U<<i))fixed+=
+    for(unsigned int i=0;i<31;i++)if(packed.common&(1U<<i))fixed+=native_attr_width(1U<<i);
+    for(unsigned int i=0;i<32;i++)if(packed.volume&(1U<<i))fixed+=native_volume_attr_width(1U<<i);
+    if(packed.directory)fixed+=4;
+    for(unsigned int i=0;i<32;i++)if(packed.file&(1U<<i))fixed+=
         ((1U<<i)==D_ATTR_FILE_LINKCOUNT || (1U<<i)==D_ATTR_FILE_IOBLOCKSIZE) ? 4 : 8;
-    if(returned.fork)fixed+=4;
+    if(packed.fork)fixed+=4;
     unsigned int position=4+(report ? sizeof(returned) : 0),variable=fixed;
     uint32_t zero=0;
     /* XNU packs ATTR_CMN_ERROR before name, irrespective of its bit number. */
-    if(returned.common&D_ATTR_ERROR)native_attr_pack(output,&position,&zero,4);
+    if(packed.common&D_ATTR_ERROR)native_attr_pack(output,&position,&zero,4);
     for(unsigned int i=0;i<31;i++) {
         uint32_t bit=1U<<i;
-        if(!(returned.common&bit) || bit==D_ATTR_ERROR)continue;
+        if(!(packed.common&bit) || bit==D_ATTR_ERROR)continue;
+        if(!(returned.common&bit)) {position+=native_attr_width(bit);continue;}
         uint64_t value=0;
         struct darwin_timespec time={0};
         const struct statx_timestamp *stamp=NULL;
@@ -168,9 +204,44 @@ static long native_attr_object(int fd,const struct darwin_attrlist *request,
             native_attr_pack(output,&position,&time,sizeof(time));
         } else native_attr_pack(output,&position,&value,native_attr_width(bit));
     }
-    if(returned.directory)native_attr_pack(output,&position,&actual.stx_nlink,4);
     for(unsigned int i=0;i<32;i++) {
-        uint32_t bit=1U<<i;if(!(returned.file&bit))continue;
+        uint32_t bit=1U<<i;if(!(packed.volume&bit))continue;
+        if(!(returned.volume&bit)) {position+=native_volume_attr_width(bit);continue;}
+        if(bit==D_ATTR_VOL_MOUNTPOINT) {
+            const char *text="/";
+            unsigned int prefix=0;
+            while(prefix<bundle_path_length && fullpath[prefix] && fullpath[prefix]==bundle_path[prefix])prefix++;
+            if(prefix==bundle_path_length && (!fullpath[prefix] || fullpath[prefix]=='/'))text=bundle_path;
+            unsigned int size=0;while(text[size])size++;size++;
+            unsigned int padded=(size+3)&~3U;
+            if(variable+padded>sizeof(output))return -EOVERFLOW;
+            struct darwin_attrreference reference={(int32_t)(variable-position),size};
+            native_attr_pack(output,&position,&reference,sizeof(reference));
+            __builtin_memcpy(output+variable,text,size);variable+=padded;
+        } else if(bit==D_ATTR_VOL_ATTRIBUTES) {
+            struct {struct darwin_attribute_set valid,native;} supported={0};
+            supported.valid.common=available|D_ATTR_RETURNED;
+            supported.valid.volume=D_ATTR_VOL_INFO|D_ATTR_VOL_MOUNTPOINT|D_ATTR_VOL_ATTRIBUTES;
+            supported.valid.directory=D_ATTR_DIR_LINKCOUNT;
+            supported.valid.file=file_schema;
+            supported.valid.fork=D_ATTR_EXT_REALDEVID;
+            supported.native.common=available&~(D_ATTR_NAME|D_ATTR_FULLPATH|D_ATTR_USERACCESS|D_ATTR_ERROR);
+            supported.native.directory=D_ATTR_DIR_LINKCOUNT;
+            supported.native.file=file_schema;
+            supported.native.fork=D_ATTR_EXT_REALDEVID;
+            native_attr_pack(output,&position,&supported,sizeof(supported));
+        }
+    }
+    if(packed.directory) {
+        uint32_t links=returned.directory ? actual.stx_nlink : 0;
+        native_attr_pack(output,&position,&links,4);
+    }
+    for(unsigned int i=0;i<32;i++) {
+        uint32_t bit=1U<<i;if(!(packed.file&bit))continue;
+        if(!(returned.file&bit)) {
+            position+=bit==D_ATTR_FILE_LINKCOUNT || bit==D_ATTR_FILE_IOBLOCKSIZE ? 4 : 8;
+            continue;
+        }
         uint64_t value;
         switch(bit) {
         case D_ATTR_FILE_LINKCOUNT:value=actual.stx_nlink;break;
@@ -181,7 +252,10 @@ static long native_attr_object(int fd,const struct darwin_attrlist *request,
         native_attr_pack(output,&position,&value,
             bit==D_ATTR_FILE_LINKCOUNT || bit==D_ATTR_FILE_IOBLOCKSIZE ? 4 : 8);
     }
-    if(returned.fork)native_attr_pack(output,&position,&device,4);
+    if(packed.fork) {
+        uint32_t actual_device=returned.fork ? device : 0;
+        native_attr_pack(output,&position,&actual_device,4);
+    }
     if(position!=fixed)return -EIO;
     uint32_t copied=capacity<variable ? capacity : variable;
     uint32_t length=(options&D_FSOPT_REPORT_FULLSIZE) ? variable : copied;
@@ -195,7 +269,8 @@ static long native_getattrlist(const unsigned long long *r)
     struct darwin_attrlist request;
     long error=guest_copy(&request,r[1],sizeof(request),0);if(error)return error;
     if(request.count!=5 || request.reserved || r[3]<4)return -EINVAL;
-    if(r[4]&~(D_FSOPT_NOFOLLOW|D_FSOPT_NOINMEMUPDATE|D_FSOPT_REPORT_FULLSIZE|D_FSOPT_ATTR_CMN_EXTENDED))return -ENOTSUP;
+    if(r[4]&~(D_FSOPT_NOFOLLOW|D_FSOPT_NOINMEMUPDATE|D_FSOPT_REPORT_FULLSIZE|
+        D_FSOPT_PACK_INVAL_ATTRS|D_FSOPT_ATTR_CMN_EXTENDED))return -ENOTSUP;
     char buffer[4096],*path=buffer;
     error=guest_path(r[0],buffer);if(error)return error;
     int directory=path_directory(&path);
