@@ -43,7 +43,7 @@ def collect_evidence(run):
     verified=[]
     for job in run['jobs']:
         artifact={'native-userland':'ios-app-results-linux','apple-reference':'ios-app-results-apple'}.get(job['name'])
-        if not artifact or job['status']!='completed' or job['conclusion']=='skipped':continue
+        if not artifact or (job['status']!='completed' and not job.get('stepsFinished')) or job['conclusion']=='skipped':continue
         receipts=[json.loads(line[len('EXPERIMENT_RECEIPT '):]) for line in job.get('observations',[])
                   if line.startswith('EXPERIMENT_RECEIPT ')]
         matches=[receipt for receipt in receipts if receipt['directory']=='build/results'
@@ -260,6 +260,7 @@ def report(run_id, job_name, verbose=False):
         if job_name and job['name'] != job_name:
             continue
         item = {key: job[key] for key in ('id', 'name', 'status', 'conclusion', 'steps')}
+        item['stepsFinished']=bool(job['steps']) and all(step['status']=='completed' for step in job['steps'])
         result['jobs'].append(item)
         print(f"\n{job['name']}: {job['status']} / {job['conclusion']}")
         if job.get('started_at'):
@@ -276,9 +277,11 @@ def report(run_id, job_name, verbose=False):
         for step in job['steps']:
             if step['conclusion'] not in (None, 'success', 'skipped'):
                 print(f"  Step {step['number']}: {step['name']} -> {step['conclusion']}")
-        if job['status'] != 'completed' or job['conclusion'] == 'skipped':
-            item['logState'] = 'not fetched: job running or skipped'
+        if (job['status'] != 'completed' and not item['stepsFinished']) or job['conclusion'] == 'skipped':
+            item['logState'] = 'not fetched: steps running or job skipped'
             continue
+        if job['status'] != 'completed':
+            print('  All steps finished; reading recorded effects while GitHub job finalization remains pending')
         log_path = output / f"job-{job['id']}.log"
         log_format = 'actions-job-api'
         data = None

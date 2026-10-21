@@ -70,12 +70,14 @@ class Desktop:
             if matches:
                 path=self.snapshot('observe');rect=self.screen_rect(state,matches[0]['rect']);pixels=self.sample(path,rect)
                 self.observations[-1].update(uiState=state,target=matches[0],screenRect=rect,pixels=pixels)
-                # Actual text/control must have ink against the fixture's white UI.
-                # Readiness, exported UIKit state or a frame callback alone cannot pass.
+                # Require ink on a light surface, including native gray controls.
+                # The complement of ink uses the same threshold on both hosts;
+                # pure black/white/gray frames cannot meet both requirements.
+                # Structured state or a frame callback alone cannot pass.
                 key=(self.current,self.processes[self.current]['generation'],tuple(matches[0]['rect']))
                 old=self.painted.get(key)
                 changed=not old or old['text']==matches[0]['text'] or old['sha256']!=pixels['sha256']
-                if changed and pixels['ink']>=8 and pixels['white']>=pixels['pixels']//2:
+                if changed and pixels['ink']>=8 and pixels['pixels']-pixels['ink']>=pixels['pixels']//2:
                     self.painted[key]={'text':matches[0]['text'],'sha256':pixels['sha256']}
                     return {**matches[0],'screenRect':rect}
             if time.monotonic()>=deadline:raise RuntimeError('Missing structured UI state or actual composited pixels: '+pattern)

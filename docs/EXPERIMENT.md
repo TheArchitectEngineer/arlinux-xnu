@@ -65,15 +65,37 @@ waits before export/GPU creation. Therefore startup progress is not stable, and
 preferences are not established as its cause. The current full run is stronger
 proof of actual cross-process mapping, not proof of a working rendering backend.
 
-The next candidate selects WebKit's own software rendering preferences at the
-WKWebView configuration boundary, through actual feature enumeration, typed
-method checks and readback. It keeps original DOM/JS/layout, does not advertise
-an IOSurface driver, and does not modify app source/actions. Feature selection
-and resulting pixels still require runner validation. Source/API references:
+Selected [run 39615956625](https://github.com/taowen/arlinux-xnu/actions/runs/39615956625),
+source **e4f8b5c914ec1370bd9fb2180f9a908e9b09f52e**, attempt 1, passes Canvas
+and Counter (2/3 partial). Receipt
+**508c628e4179cdeb2b3f61aa39f63eb5e41b91a4517694a096bbe456074a3d81**
+and all 91 files were verified. Web **5964/27974**, session **5961/27968**,
+now produces original DOM inspection plus actual visible WebCount: 0 and a gray
+Advance button. Its three actual features (UseGPUProcessForDOMRenderingEnabled,
+UseGPUProcessForCanvasRenderingEnabled, AcceleratedDrawingEnabled) read back
+from 1 to 0. The original software path produces those pixels; no IOSurface
+kernel service is advertised. DOM/JS/layout and app configuration remain original.
+
+The click step fails before sending input: the old observer requires near-white
+pixels over half the button, but this genuine gray control has 717 ink and 782
+near-white pixels out of 6,204. The candidate instead requires ink plus a majority
+of light pixels, using the complement of the existing ink threshold on both
+Linux and Apple hosts. Uniform blank frames still fail, and changed text still
+requires changed composed pixels. No direct callback/action or app-specific rule
+is introduced. External click, WebCount: 1 and normal close remain unaccepted.
+
+This run's journeys take 67.8 s (diagnosis 21.7 s included); total feedback is
+534 s, including delayed GitHub finalization after execution/evidence upload.
+The report entry can now read completed-step evidence before job finalization
+when logs are available, retaining the real pending status and hash checks.
+The delayed run became terminal during verification; the provisional-status
+branch is not independently exercised by that completed-run result.
+
+Interface references:
 [WKPreferencesPrivate.h](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/API/Cocoa/WKPreferencesPrivate.h),
 [_WKFeature.h](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/API/Cocoa/_WKFeature.h).
-Current upstream interfaces guide binding; only actual pinned-cache/runtime
-observations and app effects establish compatibility.
+Actual typed runtime binding and app effects, not current upstream declarations,
+establish this pinned userland's observed behavior.
 
 ## Share and limits
 

@@ -140,6 +140,18 @@ and intermittent failures can produce the same transition without a repair. The 
 beside the current run report. This avoids rereading two large logs to find
 whether a common boundary improved another app or regressed an existing flow.
 
+Pixel observation requires real contrasting ink on a light fixture surface,
+including native gray controls; it does not require a majority of near-white
+pixels inside a button. Linux and Apple-host samplers share the same ink
+threshold, so the light-pixel complement applies equally to both. Blank frames
+still fail; changing reported text must also change the actual target pixels.
+
+If GitHub still reports a running job after all its steps finish, report
+--evidence may read its available producer log and verify already-uploaded
+effects against the same receipt/source/run/attempt/file hashes. The job/run
+status remains pending; this does not declare workflow success or permit
+completed-run comparison.
+
 `--wait` follows the exact dispatch URL, never another run with the same commit.
 Job/step transitions and completed-job failures are shown while the run is live.
 Observation failures keep following that run without redispatch. It then reports
