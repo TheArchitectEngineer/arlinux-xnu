@@ -117,8 +117,8 @@ ARM64 code does not imply a Metal dependency.
   required XNU support, MIG and headers are maintained here together with our
   native client. Import revisions live in components/darling/ORIGINS.json;
   builds do not fetch a separate Darling fork. Embedding and guest geometry
-  changes are included. Copyright notices and GPL/source licenses are retained. Historical console evidence exists on this backend;
-  iOS UI and Android compatibility remain unverified.
+  changes are included. Copyright notices and GPL/source licenses are retained. The current source-owned basic iOS UI flows pass on Linux;
+  general iOS compatibility and Android acceptance remain unverified.
 * [Apple Open Source](https://github.com/apple-oss-distributions): XNU and the
   matching libdispatch kernel firehose implementation; licenses remain upstream.
 

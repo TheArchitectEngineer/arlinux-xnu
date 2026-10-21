@@ -231,4 +231,18 @@ confirms those arguments. The rejection is the unsupported data-address flag,
 not an excessive maximum protection. The current candidate accepts this flag
 only for named entries with zero data offset; anonymous and unaligned cases
 remain unsupported. The existing Process alias command also requests it. Runner
-validation is pending; no receiver mapping or webpage pass is claimed yet.
+validation follows below; no receiver mapping or webpage pass is claimed yet.
+
+Selected run [39613216515](https://github.com/taowen/arlinux-xnu/actions/runs/39613216515),
+source **0252f966a5cac0451dd018f34ef3508ea6c57334**, attempt 1, passes Counter
+and both Process flows (3/4 partial). Receipt
+**91bcd101b6b34c06bf3be285a67f0d0c92570a68e4e2572048d7feec26a6a1fa**
+and all 148 files were verified. Process's alias map now uses RETURN_DATA_ADDR,
+with real shared writes/fork/normal exit. This run's Web app **5946/16258**,
+session **5943/16253**, does not reach shared export or GPU creation; collected
+WebContent **5982/16539** and replacement Networking **6018/16990** stacks show
+run-loop waits, with a Networking work queue suspended. No original fault or
+named-map request is recorded, so this run does not verify the GPU mapping fix
+or establish preferences as its current cause. Feedback takes 220 s; journeys
+77.3 s, including 20.4 s of diagnosis. A full collection rerun is needed both to
+check regressions and to observe original helper progress again.
