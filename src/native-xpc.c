@@ -294,6 +294,82 @@ static struct launch_bootstrap *launch_bootstrap_for_child(spc_dictionary_t *req
     return NULL;
 }
 
+/* Plist metadata has no Mach rights. Preserve its actual scalar/container
+ * values; unsupported plist types fail rather than supplying a default. */
+static int service_metadata_value(plist_t node,spc_value_t *output,unsigned int depth,unsigned int *budget)
+{
+    *output=spc_null_create();
+    if(!node || depth>16 || !*budget)return D_E2BIG;
+    --*budget;int error=0;
+    switch(plist_get_node_type(node)) {
+    case PLIST_STRING:
+        output->type=SPC_TYPE_STRING;plist_get_string_val(node,&output->value.str);
+        if(!output->value.str)error=D_ENOMEM;
+        break;
+    case PLIST_BOOLEAN: {
+        uint8_t value=0;plist_get_bool_val(node,&value);
+        output->type=SPC_TYPE_BOOL;output->value.u64=value;break;
+    }
+    case PLIST_UINT:
+        output->type=SPC_TYPE_UINT64;plist_get_uint_val(node,&output->value.u64);break;
+    case PLIST_REAL:
+        output->type=SPC_TYPE_DOUBLE;plist_get_real_val(node,&output->value.dbl);break;
+    case PLIST_DATA: {
+        char *bytes=NULL;uint64_t length=0;plist_get_data_val(node,&bytes,&length);
+        if(length>D_XPC_MAX_PAYLOAD_BYTES || (!bytes && length)){free(bytes);error=D_E2BIG;break;}
+        output->type=SPC_TYPE_DATA;output->value.data=(spc_data_t){(unsigned char *)bytes,length};break;
+    }
+    case PLIST_ARRAY:
+        output->type=SPC_TYPE_ARRAY;output->value.array=spc_array_create();
+        if(!output->value.array){*output=spc_null_create();error=D_ENOMEM;break;}
+        for(uint32_t i=0;i<plist_array_get_size(node);i++) {
+            spc_value_t value;error=service_metadata_value(plist_array_get_item(node,i),&value,depth+1,budget);
+            if(error)break;
+            spc_array_set_value(output->value.array,i,value);
+        }
+        break;
+    case PLIST_DICT: {
+        output->type=SPC_TYPE_DICT;output->value.dict=spc_dictionary_create();
+        if(!output->value.dict){*output=spc_null_create();error=D_ENOMEM;break;}
+        plist_dict_iter iterator=NULL;plist_dict_new_iter(node,&iterator);
+        if(!iterator){error=D_ENOMEM;break;}
+        for(;;) {
+            char *key=NULL;plist_t child=NULL;plist_dict_next_item(node,iterator,&key,&child);
+            if(!key)break;
+            spc_value_t value;error=service_metadata_value(child,&value,depth+1,budget);
+            if(!error)spc_dictionary_set_value(output->value.dict,key,value);
+            free(key);if(error)break;
+        }
+        free(iterator);break;
+    }
+    default:error=D_ENOTSUP;break;
+    }
+    if(error){spc_value_destroy(*output);*output=spc_null_create();}
+    return error;
+}
+static int service_metadata_reply(spc_dictionary_t *request,const uint32_t *audit,spc_dictionary_t *reply)
+{
+    if(!audit || spc_dictionary_get_uint64(request,"type")!=6 || !spc_dictionary_get_bool(request,"self") ||
+       !darwin_native_host_process_matches(audit[5],audit[7]))return D_EINVAL;
+    struct service_instance *child=service_instances;
+    while(child && !(child->child.pid==(pid_t)audit[5] && (uint32_t)child->child.start_ticks==audit[7]))child=child->next;
+    if(!child)return D_ESRCH;
+    plist_t configuration=NULL;
+    int status=native_service_metadata(child->owner,child->incarnation,child->name,&configuration);
+    if(status) {
+        fprintf(stderr,"SESSION_SERVICE_METADATA_FAILED pid=%u service=%s errno=%d\n",audit[5],child->name,status);
+        return status==ESRCH ? D_ESRCH : D_ENOTSUP;
+    }
+    unsigned int budget=1024;spc_value_t value;
+    int error=service_metadata_value(configuration,&value,0,&budget);plist_free(configuration);
+    if(error)return error;
+    spc_dictionary_set_string(reply,"identifier",child->name);
+    spc_dictionary_set_value(reply,"xpcservice-dict",value);
+    fprintf(stderr,"SESSION_SERVICE_METADATA_REPLY pid=%u incarnation=%u service=%s fields=%zu\n",
+        audit[5],audit[7],child->name,value.value.dict->num_items);
+    return 0;
+}
+
 int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bootstrap,uint32_t *held_port,const uint32_t *audit)
 {
     mach_msg_header_t *header=request;
@@ -317,7 +393,8 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
     }
     int set_bootstrap=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x2c6U;
     int copy_bootstrap=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x2c7U;
-    if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U && !set_bootstrap && !copy_bootstrap) {
+    int copy_service=packed_routine && ((uint32_t)header->msgh_id&0xffffU)==0x2ceU;
+    if (packed_routine && ((uint32_t)header->msgh_id&0xffffU)!=0x324U && !set_bootstrap && !copy_bootstrap && !copy_service) {
         /* Unknown interface routines keep the actual unsupported response. */
         fprintf(stderr,"BOOTSTRAP_XPC_PACKED_UNIMPLEMENTED id=%x bytes=%u\n",header->msgh_id,header->msgh_size);
         /* Scalar routing fields are logged above; don't dump arbitrary OOL
@@ -348,6 +425,7 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
         else error=darwin_native_system_lookup(name,type,flags,&port);
     }
     spc_dictionary_t *reply=spc_dictionary_create();
+    if(copy_service)error=service_metadata_reply(message->content,audit,reply);
     /* The genuine non-PID-1 bootstrap path authenticates its requester echo
      * against the requester's current audit PID/incarnation. The kernel audit
      * trailer identifies the requesting task across processes; never echo this
@@ -365,7 +443,7 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
         borrowed=spc_dictionary_lookup(reply,"bootstrap");
         spc_dictionary_set_data(reply,"creator",context->creator,sizeof(context->creator));
     }
-    if (!error && !set_bootstrap && !copy_bootstrap) spc_dictionary_set_send_port(reply,"port",port);
+    if (!error && !set_bootstrap && !copy_bootstrap && !copy_service) spc_dictionary_set_send_port(reply,"port",port);
     spc_message_t response={.remote_port={header->msgh_remote_port,D_MACH_TYPE_MOVE_SEND_ONCE},
         .id=0x20000000,.content=reply};
     spc_mach_message_t *encoded=spc_serialize(&response);
@@ -382,7 +460,7 @@ int arlinux_xpc_bootstrap(void *request,void *output,size_t capacity,uint32_t bo
             ports[i].disposition=D_MACH_TYPE_COPY_SEND;
         }
     }
-    if(context && (!encoded || encoded->header.msgh_size>capacity || unsupported_copy)) {
+    if((context || copy_service) && (!encoded || encoded->header.msgh_size>capacity || unsupported_copy)) {
         free(encoded);spc_dictionary_destroy(reply);spc_message_destroy(message);
         return session_error_reply(header,output,capacity,audit);
     }

@@ -145,6 +145,25 @@ static int child_start_ticks(pid_t pid,uint64_t *ticks)
     for(int i=0;i<19;i++){field=strchr(field,' ');if(!field)return EINVAL;field++;}
     char *end;*ticks=strtoull(field,&end,10);return end==field || !*ticks ? EINVAL : 0;
 }
+int native_service_metadata(uint32_t owner,uint32_t incarnation,const char *service,plist_t *configuration)
+{
+    struct caller_launch caller={0};int error=caller_launch_read(owner,&caller);
+    if(error)return error;
+    if(!darwin_native_host_process_matches(owner,incarnation))return ESRCH;
+    char *program=NULL;error=service_program(caller.root,caller.service_index,service,&program);
+    if(error)return error;
+    char path[PATH_MAX];const char *slash=strrchr(program,'/');
+    int n=snprintf(path,sizeof(path),"%.*s/Info.plist",(int)(slash-program),program);free(program);
+    if(n<=0 || n>=(int)sizeof(path))return ENAMETOOLONG;
+    plist_t info=read_bundle(path);if(!info)return EINVAL;
+    plist_t value=plist_dict_get_item(info,"XPCService");
+    if(!value || plist_get_node_type(value)!=PLIST_DICT)error=ENOTSUP;
+    else {
+        *configuration=plist_copy(value);
+        if(!*configuration)error=ENOMEM;
+    }
+    plist_free(info);return error;
+}
 int native_service_spawn(uint32_t owner,uint32_t incarnation,const char *service,
                          const unsigned char instance[16],struct native_service_child *child)
 {
