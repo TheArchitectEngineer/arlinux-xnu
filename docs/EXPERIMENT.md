@@ -139,6 +139,20 @@ synthetic DOM callback. No IOSurface driver, GPU allocation or Web pass is
 claimed. Targeted cache reads of the original configuration interfaces replaced
 unrelated standing QuartzCore dumps; the original fault/run-loop evidence stays.
 
+The session bootstrap-setting operation is now exercised in selected run
+[39556740329](https://github.com/taowen/arlinux-xnu/actions/runs/39556740329), source
+**d505268693c7b8d453a62e718bde6d2f3ed57eb9**, attempt 1. Receipt
+**95b202ebdf9b62edd1cee6af079a4c39dd69554ca708a7cb90640d5ea50043ed**
+and 39 files were verified. Counter passes; Web still fails the original DOM
+step (1/2). Process **6020/38599** sends actual WebContent/Networking bootstrap
+dictionaries; the session stores each under its audited lifetime and returns
+only the configuration acknowledgement, with no service port. Each contains
+_NSBundleEntry, OverrideLanguages and ContainerEnvironmentVariables. Only their
+names/types are logged; values and transferred rights remain private owned
+runtime data. Instance-scoped lookup still returns unsupported and no helper
+has been started. Context retirement is implemented but not yet independently
+verified by a user flow; it is not a helper-lifecycle acceptance result.
+
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
 pointer contacts, Alt-F4 and actual host keyboard text commits/deletion are

@@ -64,6 +64,11 @@ rather than unrelated QuartzCore backing-store functions. Current selected Web
 evidence has passed those queries and records unsupported WebContent/Networking
 discovery instead. Configuration logs identify a platform boundary; DOM pixels,
 real input and helper lifetimes remain the required effect.
+Service bootstrap diagnostics retain bounded key/type metadata only. The
+session owns actual initialization dictionaries and their rights under audited
+PID/incarnation and pidfd lifetime; logs omit nested environment values. A
+successful bootstrap-setting reply reports stored configuration, not process
+launch, connection readiness or service functionality.
 For native XPC reception, correlate XPC_OOL_RECEIVED with XPC_OOL_RELEASED and
 its actual deallocation status in the same session.log. XPC_DECODE_FAILED records
 the message ID, byte count and decoder errno; subsequent replies/requests and
