@@ -83,12 +83,12 @@ took 156 s overall and 30 s in journeys.
 
 ## Complete collection and remaining failures
 
-Full run [39543376499](https://github.com/taowen/arlinux-xnu/actions/runs/39543376499),
-source **9a875fe712eea34ec3005de68bc0bda8878f716c**, attempt 1, passed **11/16**
+Full run [39545899351](https://github.com/taowen/arlinux-xnu/actions/runs/39545899351),
+source **4865c2f7b7b53cfb4aa3423200d28b82738f6f84**, attempt 1, passed **12/16**
 journeys. The collection is still **failed**. Receipt
-**bf995a8078231cce4069667b56f6eb9026491474b4191a5e27f43c4bee9f6f6a**
-and all 239 retained files were verified. This run took 321 s; the journey step took 197 s. Individual journeys total
-195.2 s, including 44.359 s of diagnosis.
+**891bf73bd2f2f4ab0f2c2bebf8b74618ab9fb0aceb79e3a6902584d3ed877cc8**
+and all 233 retained files were verified. This run took 319 s; the journey step took 187 s. Individual journeys total
+185.267 s, including 32.111 s of diagnosis.
 
 Console, Foundation, Counter, Swift and Notes pass. Canvas passes actual
 red-to-green repaint and normal close; Workers passes thread and mmap journeys,
@@ -104,15 +104,15 @@ this full run. These scenarios do not establish arbitrary helper cleanup or back
 | Network | The process no longer crashes on the fabricated OS-variant cache or thread-capacity failure. It times out without Network 42; actual NECP operations remain unsupported. No HTTP round trip has passed. |
 | Web | The guest page-size query and 32 KiB OOL dictionary decoding now work. Original WebCore::IOSurface::maximumSize() reaches IOSurfaceClientGetPropertyMaximum and aborts because the IOSurface kernel service is absent. Requests for com.apple.WebKit.WebContent also lack a launch implementation. No DOM/helper/presentation acceptance. |
 | Share | Real timed semaphore forwarding passes the earlier dispatch failure. The flow now waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
-| Workers queue | Times out without Queue 3 in this full run. A diagnostic reproduction confirmed original UIKit calls queue: and returns; no action failure is established. The strengthened relaunch journey passes in the selected run below, but no scheduling repair has been made. Cause and reliability remain unresolved. |
-| Process | Child-side MIG reply-port construction fails after fork. Fork/session/rights inheritance needs implementation; this console capability is not an ordinary iOS app lifecycle claim. |
+| Workers queue | Times out without Queue 3. The actual app records submit and background value=3, but no main-stage execution. Investigate main-queue delivery/wakeup; button dispatch and background computation have been observed. No scheduling repair is claimed. |
 
 The runtime now forwards timed semaphore operations to the existing Darling
 implementation and creates workloop workers on actual epoll readiness instead
 of eagerly allocating one per registered queue. Idle workers enter original
-libpthread cleanup. Receipt-verified comparison against run 39540314048 flags
-the queue pass-to-fail change; the new focus case was absent from that baseline and receives no progress
-verdict in that comparison. The full result remains failed.
+libpthread cleanup. Receipt-verified comparison against run 39543376499 retains
+unchanged passing cases and the three other failures. Process and queue journey
+definitions changed, so their comparison receives no progress verdict. The full
+result remains failed.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
@@ -128,17 +128,25 @@ reports require both runs' verified receipts and unchanged journey definitions.
 Selected runs remain partial. Feedback measurements belong to the exact run,
 not a latency guarantee; firmware stays transient, hash-verified and runner-local.
 
-Selected run [39544862883](https://github.com/taowen/arlinux-xnu/actions/runs/39544862883),
-source **32876fe91942f2813c70507fe586b794a4d2da36**, attempt 1, passes the strengthened
-queue close/relaunch journey and unchanged focus-activation journey. Receipt
-**16235c1b7a0df7307f24c0f07f4da39f5c7e97721af39023f82d9c1f59f41dd1**
-and 45 files were verified. Both Workers processes (**5759/27796**, **5802/28137**)
-execute actual submit/background/main stages, show Queue 3 with matching label
-region SHA-256 **6ff8f0127624499a850ed8a457f9e2e6c82916a5fafa29fe7a1234a12177dafc**,
-and exit normally with 0. The two journeys take 18.634 s; whole run 145 s.
-This is partial acceptance. Changed journey definitions receive no baseline
-progress verdict; a pass after logging changes does not establish a repair.
-The earlier timeout remains in run 39536560764; reliable scheduling is unresolved.
+The latest fork guard is verified separately in selected run
+[39546263777](https://github.com/taowen/arlinux-xnu/actions/runs/39546263777), source
+**de54ab793d74584732bdb501aaa58f7ae9190b6d**, attempt 1. Receipt
+**aa1d6447dd52f4c88d054224faf204ff531b160a001b4ca4f0de2eb64462cbd5**
+and 16 files were verified. Parent **6040/270974** and child **6045/271192**
+(PID/startTicks) use distinct actual tasks; TASK_AUDIT_TOKEN matches each real
+PID, and each allocates/releases its own receive port. Parent private memory
+stays 11 while the child's private write is 99; shared memory becomes 42.
+The child exits 37, the parent reaps it, accepts external stdin and exits 0.
+The full run also passed this strengthened flow (parent **6097/17298**, child
+**6098/17543**). The selected run takes 125 s overall / 2.337 s journey.
+
+The child formerly kept cached parent task handles without creating the required
+rights in its own namespace. The fix reconnects the existing core, refreshes
+actual task/host/thread rights and libpthread registration, and registers the
+child's real COW dyld metadata. A pipe holds the parent until registration.
+This proves the single-threaded pre-workqueue console boundary; live framework
+sessions/kqueues, multithreaded fork and arbitrary helper lifecycle remain
+unsupported. It is not an ordinary iOS application lifecycle claim.
 
 Apple-host reference run
 [39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593)
