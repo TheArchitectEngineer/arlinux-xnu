@@ -75,7 +75,11 @@ context/layer behavior while avoiding a nonexistent Apple render server. Hosted
 run 39514010952 confirms original UIKit text in composed pixels. ios-input.m owns actual
 UIKit key-window focus locally instead of exporting the local scene token to
 Apple's remote keyboard arbiter. Primary Wayland pointer input, normal close and relaunch pass Counter and
-Swift/UIKit journeys. Text input is not implemented.
+Swift/UIKit journeys. Host keyboard text commits and deletion now enter the
+actual first responder's UIKeyInput methods; Notes editing/persistence has not
+passed, so this does not establish text-input compatibility. Keyboard availability
+comes from the actual Wayland seat and is shared consistently with GraphicsServices
+and UIKit. Key repeat, IME composition and general key commands remain unsupported.
 The backend replaces CALayer's default `_display`
 storage with a CPU bitmap/CGImage and keeps original public display delegation,
 layerWillDraw and drawInContext behavior. It supplies a balanced UIKit graphics
@@ -119,17 +123,19 @@ or deactivate it on real focus changes, and request normal termination on host
 close. Each event belongs to a specific process incarnation and scene; queued
 events, acknowledgements and cleanup must agree across process exit/relaunch.
 Rendering and input remain separate consumers of the same scene identity and
-geometry. The lifecycle event contract is a design target. The version-3
+geometry. The lifecycle event contract is a design target. The version-4
 platform API currently exposes an actual window snapshot: agreed buffer
 geometry, refresh, compositor activation, explicit close request, backend
 liveness and audited app PID/incarnation. A bounded sequence-checked read
 avoids torn host updates; kernel child status overrides stale liveness after
-an abrupt backend exit. Its bounded single-producer/consumer pointer queue
-preserves actual Wayland contact transitions and monotonic timestamps; overflow
+an abrupt backend exit. Its bounded single-producer/consumer input queue
+preserves actual Wayland contact transitions, keyboard commits/deletion and
+monotonic timestamps; overflow
 requires cancellation rather than a synthetic successful click. The guest
 main-loop adapter constructs real IOHID/UITouch events and sends them through
-UIKit hit testing and UIApplication sendEvent:. Only primary-pointer contacts
-are implemented, not keyboard, scroll or multitouch. The host-close flag now
+UIKit hit testing and UIApplication sendEvent:. Primary-pointer contacts and
+keyboard text commits/deletion are implemented; scroll and multitouch are not.
+The host-close flag now
 enters original UIApplication termination. Counter and Swift/UIKit verify these paths end to end; no full collection
 or Android claim follows. The guest ios-lifecycle.m attempts real scene construction on its main
 loop using the specification's actual settings/client/transition classes and

@@ -63,11 +63,11 @@ in evidence and do not satisfy the composed-pixel requirement.
 
 ## Complete collection and remaining failures
 
-Full run [39531478920](https://github.com/taowen/arlinux-xnu/actions/runs/39531478920),
-source **10a20ef4f8a436bbac8b7b778fb902f11143f4e2**, attempt 1, passed **10/15**
+Full run [39535886835](https://github.com/taowen/arlinux-xnu/actions/runs/39535886835),
+source **5f7b6a1450b3a86c28d5ed0ad998f31f95ec3106**, attempt 1, passed **10/15**
 journeys. The collection is still **failed**. Receipt
-**1817ca54ae9a32ab83ade79b62ee441ad4633382ed6ef5e130b6eb5c0e2c5b06**
-and all 202 retained files were verified. This run took 285 s; app journeys 149 s.
+**45d37f495ded7697a892dc2ec3d171acfa38d743a4edaee9d6493c49a65fa7ba**
+and all 215 retained files were verified. This run took 315 s; app journeys 171 s.
 
 Alongside the four basic apps, Canvas passes actual red-to-green repaint and
 normal close; Workers passes independent thread, mmap and asynchronous queue
@@ -79,31 +79,46 @@ cleanup or UIKit scene activation-state transitions.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Notes | Uncaught NSInvalidArgumentException: NSFileManager fileSystemRepresentationWithPath receives a nil/empty path while UIKeyboardCache initializes. Trace the actual home/cache path and Linux keyboard boundary before changing storage or UI behavior. Text/save/reopen has not passed. |
-| Network | Original os_variant internal-security query crashed on a fabricated partial status cache. The cache claim was removed; latest original process reaches further networking code but still faults, with NECP operations observed. No HTTP round trip has passed. |
+| Notes | After forwarding timed semaphore traps, the actual failure is CoreEmoji asserting that its framework bundle cannot be found. The earlier nil keyboard-cache path and semaphore failure are no longer this run's blocker. Text/save/reopen has not passed; writable app storage is still incomplete. |
+| Network | The process no longer crashes on the fabricated OS-variant cache or thread-capacity failure. It times out without Network 42; actual NECP operations remain unsupported. No HTTP round trip has passed. |
 | Web | JavaScriptCore WTFCrashWithInfo during WebKit initialization; retain original caller/argument evidence before deciding the platform dependency. No DOM output accepted. |
-| Share | Original libdispatch reports a Mach semaphore timed-wait API failure during presentation. Extension launch/payload/retirement have not passed. |
+| Share | Real timed semaphore forwarding passes the earlier dispatch failure. The flow now waits without displaying EchoExtension. Extension launch/payload/retirement have not passed. |
 | Process | Child-side MIG reply-port construction fails after fork. Fork/session/rights inheritance needs implementation; this console capability is not an ordinary iOS app lifecycle claim. |
 
-Latest runtime source **f7a27d5966ba73523df8abefce12e3f2ce1ff376** was checked in
-run [39531756257](https://github.com/taowen/arlinux-xnu/actions/runs/39531756257).
-Console, Foundation, Counter and Swift still pass after removing the false OS
-variant cache. Network still fails at a different boundary. Receipt
-**468d08d9aeb0512b2f0cdf2baf7ed6b525e150b461709204c2928a2e9e2620a5**
-and 67 files were verified. The other ten journeys were not rerun at this source;
-the 10/15 result above belongs to its explicitly recorded earlier source.
+The runtime now forwards timed semaphore operations to the existing Darling
+implementation and creates workloop workers on actual epoll readiness instead
+of eagerly allocating one per registered queue. Idle workers enter original
+libpthread cleanup. This full run retains the same ten passing journeys; it
+does not establish complete scheduling or arbitrary helper cleanup.
 
-Primary-pointer contacts and Alt-F4 are implemented; keyboard text, scroll and
-multitouch are not. Home/container storage, networking, WebKit and extension
-services remain incomplete. Session lifecycle activation-state updates, complete
-workspace enumeration and broader process cleanup still require work. The next
-implementation boundary is the actual Notes keyboard/home/cache failure, while
-retaining the independently diagnosed network/semaphore/fork/WebKit failures.
+Each launch has an explicit Linux-backed private home/container. Original
+firmware and current guest file opens remain read-only; writable storage is a
+remaining platform capability. Primary-pointer contacts, Alt-F4 and actual host
+keyboard text commits/deletion are implemented. Text editing is not yet accepted;
+scroll, IME composition, key repeat and multitouch remain unsupported. Session
+activation-state updates, networking, WebKit and extensions require further work.
 No third-party IPA or Android acceptance has passed. The full goal remains active.
 
-The successful selected run took **135 s** from dispatch to completion, including
-queues; the real app journeys took **22 s**. These are measurements, not a latency
-guarantee. Firmware remains transient, hash-verified and runner-local.
+The sole entry can select exact app journeys and scenarios through --case;
+SDK compilation and execution use the same dependency selection. Comparison
+reports require both runs' verified receipts and unchanged journey definitions.
+Selected runs remain partial. Feedback measurements belong to the exact run,
+not a latency guarantee; firmware stays transient, hash-verified and runner-local.
+
+Tooling verification run
+[39536560764](https://github.com/taowen/arlinux-xnu/actions/runs/39536560764),
+source **4f6b591e209f25b583cf6a1bb724efeff748fd12**, selected only Notes,
+Workers queue and concurrent relaunch, compiling Counter/Notes/Workers. It took
+175 s overall and 62 s in journeys, versus 315/171 s for the full baseline.
+This saves unrelated work, not an equivalent full-suite speedup. Both receipts
+and all retained files were verified; the selected artifact has 69 files.
+Concurrent relaunch passed; Notes failed at the same CoreEmoji assertion.
+Workers queue passed in the baseline but timed out here despite pointer
+begin/end delivery to its UIButton. Its original-process stacks are retained;
+the cause remains unresolved. The runtime source was unchanged by this tooling
+commit, so this is a changed result, not evidence that selection introduced a
+runtime defect. Twelve omitted journeys are explicitly untested. The comparison
+correctly preserves both failures and writes their effect/diagnostic timings.
 
 Apple-host reference run
 [39456469593](https://github.com/taowen/arlinux-xnu/actions/runs/39456469593)

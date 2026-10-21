@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Dispatch and inspect the hosted XNU experiment; never compile locally."""
 import argparse
+from contextlib import redirect_stdout
 import hashlib
+import io
 import json
 from pathlib import Path
 import re
@@ -66,7 +68,10 @@ def collect_evidence(run):
 def compare_runs(current, baseline):
     """Compare retained app effects only after checking both producing receipts."""
     if current['status']!='completed':raise SystemExit('Comparison requires a completed current run')
-    before=report(baseline,None)
+    # Keep the complete baseline report on disk without printing its entire
+    # historical diagnosis again beside the current failure.
+    with redirect_stdout(io.StringIO()):before=report(baseline,None)
+    print(f"Baseline run {baseline}, source {before['commit']}: {before['url']}")
     if before['status']!='completed':raise SystemExit('Comparison requires a completed baseline run')
     old_dirs=collect_evidence(before);new_dirs=collect_evidence(current)
     comparisons=[]
@@ -106,7 +111,12 @@ def compare_runs(current, baseline):
                     failed=next((step for step in case['steps'] if step['status']=='failed'),{})
                     row[label+'Failure']={key:failed[key] for key in ('do','text','reason') if key in failed}
             comparisons.append(row)
-            print('  COMPARE '+json.dumps(row))
+            if a and b:
+                print(f"  COMPARE {name}: {a['status']} -> {b['status']}; {row['comparison']}")
+                print(f"    journey={row.get('beforeSeconds')}s -> {row.get('afterSeconds')}s; diagnosis={row.get('beforeDiagnosticSeconds')}s -> {row.get('afterDiagnosticSeconds')}s")
+                if row.get('afterFailure'):print('    Current failed effect: '+json.dumps(row['afterFailure']))
+    omitted=[row['id'] for row in comparisons if row['before'] is None or row['after'] is None]
+    if omitted:print('  Not run in both selections (no verdict): '+', '.join(omitted))
     path=ROOT/'build/runs'/str(current['runId'])/f"attempt-{current['attempt']}"/('comparison-'+baseline+'.json')
     path.write_text(json.dumps({'baseline':baseline,'current':current['runId'],'cases':comparisons},indent=2)+'\n')
     print('Comparison: '+str(path))

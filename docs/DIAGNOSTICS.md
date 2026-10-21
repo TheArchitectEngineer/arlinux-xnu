@@ -156,7 +156,8 @@ processes. A fault first records registers and bounded kernel mappings, marks
 the journey failed, and stops the original process for existing read-only LLDB
 collection. Debugger collection or forced cleanup never counts as normal exit.
 The same opt-in collector now retains fatal service-request failures: after
-recording DARLING_RPC_ERROR, the runtime raises SIGABRT on the rejecting thread
+recording DARLING_RPC_ERROR and DARLING_RPC_FATAL, the runtime stops the process
+with SIGSTOP even when the rejecting thread blocks asynchronous signals,
 so waiting original client threads can be inspected. Without the diagnostic
 flag the fatal exit remains unchanged. Run 39510457131 retained the actual
 UIWindow -> CAContext remote-connection stack that exit_group previously lost.
