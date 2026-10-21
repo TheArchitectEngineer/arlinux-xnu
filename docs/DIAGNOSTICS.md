@@ -327,6 +327,11 @@ controllers and their public presentation/transition-coordinator state. It does
 not load absent views, change animation policy, invoke app actions or complete
 transitions. This distinguishes a persistent presentation transition from an
 application initialization wait without treating either as a proven cause.
+It also reads UIApplication's actual protected-data availability: the original
+Things binary references that getter. It does not change the state or emit an
+availability notification. After repeated 120-second original runs retained the
+same upgrade modal, the ordinary Things first-Inbox wait returns to 30 seconds;
+the required Inbox/pixels and complete task/relaunch flow remain unchanged.
 
 When the original failed process actually requests com.apple.containermanagerd,
 its existing cache symbolication reads the Foundation group-container method and

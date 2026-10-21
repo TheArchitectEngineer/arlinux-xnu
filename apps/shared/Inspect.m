@@ -128,6 +128,7 @@ static void snapshot(void) {
         NSMutableArray *controllers=[NSMutableArray new];collect_controllers(window.rootViewController,controllers,0);
         value[@"controllers"]=controllers;value[@"controllerLimitReached"]=@(controllers.count>=16);
         value[@"animationsEnabled"]=@([UIView areAnimationsEnabled]);
+        value[@"protectedDataAvailable"]=@([UIApplication sharedApplication].protectedDataAvailable);
     }
 #endif
     NSData *json=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:nil];
