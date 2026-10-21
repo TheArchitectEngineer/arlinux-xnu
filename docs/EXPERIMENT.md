@@ -118,7 +118,7 @@ observation; one full pass does not prove its isolated cause or general repair.
 
 | Remaining journey | Actual failure evidence / next boundary |
 | --- | --- |
-| Web | Real WebContent helpers pass Gigacage reservation and receive original bootstrap configuration. They and Networking abort at unsupported service metadata operation 0x2ce. No DOM, connection or helper-lifecycle acceptance. |
+| Web | Latest selected run below passes actual bootstrap/service metadata and JavaScriptCore suspension/resume. Original helpers wait in NSRunLoop; service check-in 0x325 and the client connection remain unsupported. No DOM or helper-lifecycle acceptance. |
 | Share | Process 6058/26678 does not display EchoExtension. The actual session also rejects discovery of com.apple.extensionkitservice. Extension discovery, launch/payload/retirement have not passed. |
 
 Selected run [39555581254](https://github.com/taowen/arlinux-xnu/actions/runs/39555581254),
@@ -164,6 +164,26 @@ the synchronous session loop. Original session and both WebContent LLDB
 collections complete; the third child is explicitly omitted from attachment,
 with its actual fault records retained in session.log. No DOM, usable connection,
 normal helper retirement, third-party IPA or Android acceptance is claimed.
+
+Latest selected run [39568869763](https://github.com/taowen/arlinux-xnu/actions/runs/39568869763),
+source **c5a5d6714693179d3b77fdb881cc52cdb61cc8c3**, attempt 1, passes Counter
+and fails the same original Web DOM step (1/2, partial). Receipt
+**7db0965851ad019dcb15e6e9945ed2c0093cbdb29f7225fdf021c49e95aff47f**
+and 47 files were verified. App **5949/64980**, WebContent **5989/65516** and
+**6008/65692**, and Networking **6015/65696** share owned session **5946/64975**.
+The actual XPCService metadata replies contain five fields for WebContent and
+four for Networking. Original consumers pass the former direct-launch rejection
+and issue actual check-in requests 0x325 (type 6, handle 0, flags 0, service name).
+Earlier child exit signal 43 was traced in run 39567204970 to real JavaScriptCore
+scavenger -> stop_allocator -> thread_suspend, not attributed to check-in failure.
+The native client now uses Darling's real suspension RPC/state path. Multiple
+BEGIN/RESUMED pairs complete in these original processes; their collected main
+stack continues in original NSRunLoop/CFRunLoop, with the scavenger in its timed
+wait. No fatal fault/exit is observed in the retained session interval. This
+supports that actual allocator path, not general thread-state conformance.
+Check-in still returns unsupported; no empty endpoint, fake ready flag or DOM
+callback is supplied. Total feedback is 188 s; journeys take 40.553 s including
+23.820 s of diagnosis. The previous full 14/16 result remains source-specific.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary

@@ -76,6 +76,15 @@ kernel errors and does not change host overcommit policy. Shared anonymous
 memory retains real shared backing. See the [WebKit allocation discussion](https://bugs.webkit.org/show_bug.cgi?id=183329)
 and [Linux commit accounting](https://docs.kernel.org/mm/overcommit-accounting.html).
 
+The ARM64 suspension bridge follows Darling's existing interrupt-enter,
+thread_suspended and interrupt-exit RPC sequence. It saves actual integer/NEON
+signal context, waits on the integrated XNU suspend count, restores the returned
+state and resumes the interrupted thread. This is needed by JavaScriptCore's
+allocator scavenger; ignoring its suspend notification would violate allocator
+synchronization. The signal number comes from the same generated header as the
+core. General debugger register editing and arbitrary suspension workloads have
+not been independently accepted by the app collection.
+
 | Capability | Preferred implementation | Required observable effect |
 | --- | --- | --- |
 | Objective-C/Swift, Foundation objects and serialization | Original userland where usable | Real language/object behavior across independent apps |
@@ -202,6 +211,11 @@ session retains the original objects/send rights; reply descriptors copy send
 rights instead of consuming that ownership. Unsupported right forms or oversized
 inline responses fail. This supplies real initialization data, not a ready
 connection or a fabricated managed-service identity.
+Service-metadata replies resolve the caller's actual selected firmware bundle
+and return its XPCService plist with the validated identifier, only to the
+owned child PID/incarnation. Scalar/container values retain their actual types;
+unknown types, depth/node limits and oversized replies fail. This does not
+allocate a service endpoint or complete check-in/connection handoff.
 
 Font files use Darwin MAP_RESILIENT_MEDIA. The memory adapter provides private
 eager file snapshots with zero-filled EOF/unavailable media, real descriptor

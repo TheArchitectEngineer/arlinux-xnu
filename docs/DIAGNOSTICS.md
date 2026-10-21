@@ -85,6 +85,20 @@ owned helpers, and the launcher forwards only that named diagnostic option.
 Their actual fault records in session.log are symbolicated against the same
 firmware cache. This preserves original exception stacks for attachment rather
 than replaying the helper or treating exit 133 as a service result.
+The Mach core's suspension notification uses its generated rtsig.h, passed
+through the existing build handoff. It is not a hardcoded RT offset. The
+temporary diagnostic stop exposed JavaScriptCore scavenger -> stop_allocator ->
+thread_suspend in run 39567204970: this is a real allocator synchronization
+request, not an invalid guest instruction. The replacement native handler
+follows Darling's interrupt-enter/thread_suspended/interrupt-exit protocol and
+preserves ARM64 integer/NEON state. Bounded BEGIN/RESUMED records observe the
+actual wait, not a fake resume or a Web acceptance result. RPC failures retain
+the original caller through the existing fatal collector.
+Observed unsupported check-in operation 0x325 selects the actual bootstrap and
+connection check-in consumers. --lookup-fragment reads at most four matching
+function symbols; ambiguous sets remain metadata only. The earlier discovery
+listing is removed once the real names are known. No lookup result implements
+the requested receive-right handoff.
 For native XPC reception, correlate XPC_OOL_RECEIVED with XPC_OOL_RELEASED and
 its actual deallocation status in the same session.log. XPC_DECODE_FAILED records
 the message ID, byte count and decoder errno; subsequent replies/requests and
