@@ -165,26 +165,25 @@ collections complete; the third child is explicitly omitted from attachment,
 with its actual fault records retained in session.log. No DOM, usable connection,
 normal helper retirement, third-party IPA or Android acceptance is claimed.
 
-Latest selected run [39599465978](https://github.com/taowen/arlinux-xnu/actions/runs/39599465978),
-source **502f95953f76c120305682ca8bbb2a7d4913648b**, attempt 1, passes Counter
+Latest selected run [39600136880](https://github.com/taowen/arlinux-xnu/actions/runs/39600136880),
+source **973607e0f3fb6b0a006f445fa42d037d796df4c6**, attempt 1, passes Counter
 and fails Web DOM (1/2, partial). Receipt
-**6603c19740a263f24d59a76024101a1a53fe29c97678a04905f910dc8aa557a3**
-and 45 evidence files were verified. App **5977/19186** shares owned session
-**5974/19181**; WebContent **6016/19463**, Networking **6035/19871** and
-replacement **6045/19929** are retained by PID/start ticks.
-The actual getrlimit implementation removes syscall 194 ENOSYS and the earlier
-JSC VM stack-bound trap. Original VM construction advances to
-WTF::Config::permanentlyFreeze -> WTFCrashWithInfo (PC **0x199246b58**),
-whose actual source literal and branch identify vm_protect(set_maximum=true)
-returning KERN_NOT_SUPPORTED (**46**). The candidate applies real Linux page
-protection for this form, matching integrated Darling's memory adapter; it does
-not enforce a separate maximum-permission ceiling. Runner validation pending.
-Resolved pthread/StackBounds diagnostic lookups are removed; complete original
-fault stacks and unresolved networking identifier consumers remain collected.
-Networking still separately exits in its connection/client identifier branch.
-No DOM or helper-lifecycle acceptance. Total feedback is 168 s; journeys take
-37.701 s including 23.171 s of diagnosis. The previous full 14/16 result remains
-source-specific; the full goal remains active.
+**0b59a7e1b662a24869a06089b4821b2d45129491b12076a336ec3c94060b6821**
+and 47 evidence files were verified. App **6200/67367** shares owned session
+**6197/67362**; WebContent **6238/67850**, Networking **6275/68560** and
+replacement **6326/68721** are retained by PID/start ticks.
+The original VM passes the former stack-bound and WTF configuration-freezing
+crashes. vm_protect now returns actual success after applying Linux protection.
+WebContent's original stack advances through initializeWebProcess ->
+setWebsiteDataStoreParameters -> ensureNetworkProcessConnection ->
+LaunchServicesDatabaseManager::waitForDatabaseUpdate (binary semaphore wait).
+This proves forward execution beyond the previous VM crashes, not DOM success.
+Targeted matching-cache reads of this actual dependency are next, alongside a
+full collection regression for the common resource/protection changes.
+Networking still separately exits in its connection/client identifier branch;
+no synthetic identifier is supplied. Total feedback is 190 s; journeys take
+40.406 s including 23.389 s of diagnosis. No DOM or helper-lifecycle acceptance.
+The previous full 14/16 result remains source-specific; the full goal remains active.
 
 Each launch has an explicit Linux-backed private home/container. Firmware and
 bundles remain read-only; writes target the actual private container. Primary
