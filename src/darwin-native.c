@@ -196,9 +196,9 @@ static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned
         raw=RAW(SYS_mmap,requested,size+alignment,protection,
                 (shared ? MAP_SHARED : MAP_PRIVATE)|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
         if (raw==-EEXIST) {
-            raw=native_guest_gap(size+alignment);
-            if((unsigned long)raw>=(unsigned long)-4095)return raw;
-            requested=raw;continue;
+            long gap=native_guest_gap(size+alignment);
+            if((unsigned long)gap>=(unsigned long)-4095)return gap;
+            requested=gap;raw=-EAGAIN;continue;
         }
         if ((unsigned long)raw >= (unsigned long)-4095) {
             trace_record("DARWIN_ANON_HOST_REJECTED address=0x",requested,size+alignment,raw);
