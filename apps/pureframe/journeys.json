@@ -7,6 +7,7 @@
     "steps": [
       {"do":"launch","app":"pureframe"},
       {"do":"viewport","width":375,"height":667},
+      {"do":"click","text":"^知道了$","target":"text"},
       {"do":"see","text":"^我的$","timeoutSeconds":20},
       {"do":"click","text":"^我的$","target":"text"},
       {"do":"see","text":"^转码记录$","timeoutSeconds":15},

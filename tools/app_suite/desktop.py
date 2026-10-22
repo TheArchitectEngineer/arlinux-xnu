@@ -59,7 +59,11 @@ class Desktop:
                 if not text or not rect or rect[2]<=0 or rect[3]<=0:continue
                 local=[rect[0]*scale-bounds[0],rect[1]*scale-bounds[1],rect[2]*scale,rect[3]*scale]
                 if local[0]<0 or local[1]<0 or local[0]+local[2]>bounds[2]+1 or local[1]+local[3]>bounds[3]+1:continue
-                elements.append({'text':text,'rect':local,'interactive':entry['role'] in ('AXButton','AXTextField','AXTextArea','AXCheckBox','AXPopUpButton')})
+                element={'text':text,'rect':local,'interactive':entry['role'] in ('AXButton','AXTextField','AXTextArea','AXCheckBox','AXPopUpButton')}
+                # React Native may expose the same static label at parent and
+                # child levels with identical bounds. They represent the same
+                # pixels and external click point; retain the raw AX tree above.
+                if element not in elements:elements.append(element)
             state={'viewport':bounds[2:],'windowPixelBounds':bounds,'elements':elements,
                    'observationSource':'external-macos-accessibility','limitReached':raw['limitReached']}
             self.observations_state=state

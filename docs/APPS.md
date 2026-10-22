@@ -13,7 +13,8 @@ Its existing public decrypted cache was downloaded without login; the manifest
 pins the archive and original executable hashes. Static input inspection found
 thin ARM64, minimum iOS 16.4 and cryptid 0 in the main executable and five bundled
 frameworks, including React/Hermes. This is not a simple UIKit-only app.
-The first-screen/reopen journey requires an external click on 我的 and visible
+The first-screen/reopen journey dismisses the actual 知道了 introduction once,
+then requires an external click on 我的 and visible
 转码记录 content, then normal close/relaunch and repeat. These targets still
 require confirmation against actual UI. It does not certify media import,
 editing or export. Runner-side source
@@ -29,6 +30,11 @@ and exited/relaunched normally. Its original broad title check passed, but both
 viewed screenshots still show the splash image. This is not interaction success.
 The external observer now excludes AXWindow titles, and the journey requires
 navigation into actual page content instead of matching the application name.
+Run 39806436244 (8345518), receipt
+95146c39860da3c05b4c1b45b46f3f219ce651ef5b478321b5f217253d52b616,
+verifies 20 files. Its screenshot shows the real home page and welcome dialog;
+the first navigation click was blocked by that undismissed introduction. The
+updated journey dismisses the genuine notice through its observed AX rectangle.
 
 The next acquired original-binary candidate is Things iPhone 3.17.1/build
 31701001, bundle ID com.culturedcode.ThingsiPhone. Its community-decrypted IPA
