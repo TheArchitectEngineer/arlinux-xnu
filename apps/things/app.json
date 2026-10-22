@@ -20,17 +20,12 @@
   "diagnosticSymbols": [
     {
       "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent update]",
+      "symbol": "-[THTaskListSceneLayoutComponent canUpdate]",
       "observeReturn": true
     },
     {
       "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent animateUpdateWithContext:]",
-      "observeReturn": true
-    },
-    {
-      "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent didFinishUpdate]",
+      "symbol": "-[THTaskListSceneLayoutComponent setDisplayScale:]",
       "observeReturn": true
     }
   ]

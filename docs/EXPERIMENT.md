@@ -2,6 +2,17 @@
 
 ## Scope
 
+Run 39772829516 (ec5f967), receipt
+c4538ced8dcdefc378ea6ae8144839fae0c52002c7f2c5e8d6f8cd511cde51d3, verifies
+93 files. All three component-update points are armed but unhit in the finite
+20-second window; the app later remains blank. This is not proof of an animation
+completion failure. Static original canUpdate calls displayScale, compares it
+with zero and returns that comparison. Next observe this actual boolean return
+and setDisplayScale: entry/return, and read per-view public trait displayScale in
+the existing geometry samples. This checks the component's explicit precondition
+before attributing failure to its update/animation implementation. The debugger
+now records raw x0 on observed returns, without changing or interpreting it.
+
 Next targeted original control flow: the pinned executable's
 THTaskListSceneLayoutComponent.update constructs a real block and submits it to
 an animate: API; that block calls animateUpdateWithContext:. didFinishUpdate

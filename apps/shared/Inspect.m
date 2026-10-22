@@ -26,6 +26,7 @@ static void collect_geometry(UIView *view,NSMutableArray *records,unsigned depth
         @"bounds":rect_values(view.bounds),@"transform":@[@(transform.a),@(transform.b),@(transform.c),@(transform.d),@(transform.tx),@(transform.ty)],
         @"layerFrame":rect_values(layer.frame),@"layerBounds":rect_values(layer.bounds),
         @"layerNeedsLayout":@(layer.needsLayout),@"layerNeedsDisplay":@(layer.needsDisplay),
+        @"traitDisplayScale":@(view.traitCollection.displayScale),
         @"cornerRadius":@(layer.cornerRadius),@"masksToBounds":@(layer.masksToBounds),
         @"maskClass":layer.mask ? NSStringFromClass(layer.mask.class) : @"<absent>",
         @"maskBounds":rect_values(layer.mask ? layer.mask.bounds : CGRectZero),

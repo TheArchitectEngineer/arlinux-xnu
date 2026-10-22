@@ -174,6 +174,9 @@ def trace(debugger,specification,runtime_path,stderr_path):
                         else:arm(record)
                 else:
                     frame=thread.GetFrameAtIndex(0)
+                    if record['stage']=='return':
+                        print('ORIGINAL_TRACE_RETURN_X0',json.dumps(dict(symbol=record['symbol'],
+                            x0=hex(frame.FindRegister('x0').GetValueAsUnsigned()))))
                     print('ORIGINAL_TRACE_STACK',thread.GetThreadID())
                     for index in range(min(16,thread.GetNumFrames())):
                         print(f'frame #{index}: {thread.GetFrameAtIndex(index).GetPC():#x}')

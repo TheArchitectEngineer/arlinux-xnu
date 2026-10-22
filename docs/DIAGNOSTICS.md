@@ -690,3 +690,8 @@ header (invoke at offset 16), checks readable non-executable metadata and an
 executable aligned invoke address, then observes that address. Nil is recorded
 as absent. No block is copied, retained or invoked. First invocation is evidence
 of actual execution, not proof of user effects or captured-state correctness.
+
+Observed original method returns include raw x0 metadata. Interpret it only
+against the actual method ABI: a boolean-return method's value differs from an
+object pointer, void result or floating-point return. Geometry samples also read
+public per-view trait displayScale, independently of UIScreen.scale.
