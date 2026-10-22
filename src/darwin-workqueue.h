@@ -7,6 +7,7 @@
 /* Real per-process dispatch metadata, also retained for original-process
  * debugger inspection. Actual callbacks remain owned by registered libpthread. */
 static volatile struct darwin_workq_dispatch_config native_dispatch_config;
+static unsigned int native_workqueue_narrow_observations;
 
 static int native_priority_qos(uint32_t priority)
 {
@@ -101,6 +102,8 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
         unsigned int workers=0;
         for (unsigned int i=1;i<NATIVE_THREADS;i++) if (native_threads[i].workqueue &&
             __atomic_load_n(&native_threads[i].state,__ATOMIC_ACQUIRE)==2) workers++;
+        if(__atomic_fetch_add(&native_workqueue_narrow_observations,1,__ATOMIC_RELAXED)<16)
+            trace_record("DARWIN_WORKQUEUE_NARROW priority/workers/decision=0x",r[2],workers,workers>1);
         return workers>1; /* Reduce concurrency on the actual single CPU. */
     case D_WQ_REQTHREADS: {
         if (!workqueue_opened || r[1] || !r[2] || r[2]>=NATIVE_THREADS) return -EINVAL;

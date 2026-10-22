@@ -161,10 +161,8 @@ queued. The initial reading of those stub calls as unconditional
 runInNextUpdatePass submissions was incorrect. The lazy-bind table maps pointer
 0x531f80 to consumeTriggers(with:), and 0x531fc8 to runInNextUpdatePass in this
 fixed binary. These are static evidence addresses, never runtime patch offsets.
-The next observation is the actual exported consumeTriggers entry after update
-and its supplied callback, using the existing one-shot collector. The original
-caller stack must identify the database component; observing another component
-cannot establish its progress.
+The candidate consumeTriggers trace was superseded before execution when the
+next diagnostic exposed the concrete vendor-identifier fault described below.
 
 Focused [39710756996](https://github.com/taowen/arlinux-xnu/actions/runs/39710756996),
 source 1630a3731e85aff9fd09e703de9d45058768549d, PID 5854/startTicks 18860,
@@ -202,6 +200,19 @@ reset after the last vendor app is uninstalled remain unsupported; clearing the
 shared development store resets it. This change still needs original-app runner
 verification. The obsolete upgrade breakpoint declarations have been removed;
 the next run uses ordinary execution of the same task journey.
+
+Ordinary [39712359756](https://github.com/taowen/arlinux-xnu/actions/runs/39712359756),
+source 6b3307c4121e23a07017412e7e0790e573daaaa5, PID 5999/startTicks 133032,
+compiles both native and guest adapters but still stalls before Inbox. No vendor
+getter or replacement-directory creation is observed, so the new identifier
+behavior remains unverified. Receipt
+**cef93d8c76404eb737e36b57cee6a172267eb7f3d9d2f3aee13538c2c677d045**
+and all 84 files verify. Feedback was 193 s, journey 46.2 s. The earlier nil-ID
+fault is a concrete separate gap; this run does not establish that fixing it
+changes the ordinary stall. The next bounded workqueue observation records real
+SHOULD_NARROW priority, counted workers and decision, without changing scheduling.
+Its invocation counter is included in the existing process collector so an
+unused syscall path can be ruled out before attempting a scheduling repair.
 
 ## Reusable changes and outstanding boundary
 

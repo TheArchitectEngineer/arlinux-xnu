@@ -233,6 +233,7 @@ class Processes:
             symbols=[]
         commands.insert(-1,'target variable native_mach_wakeups native_mach_wakeups_omitted')
         commands.insert(-1,'target variable guest_next native_guest_gap_requests native_guest_mapping_conflicts')
+        commands.insert(-1,'target variable native_workqueue_narrow_observations')
         queue_addresses={int(record['address'],16) for record in symbols if record.get('symbol')=='_dispatch_main_q'}
         # The fixture logs the actual public dispatch_get_main_queue() object.
         # This keeps metadata collection useful even when a private symbol is absent.
