@@ -34,6 +34,7 @@ patterns=[r'frame #\d+: (0x[0-9a-fA-F]+)',r'DARWIN_(?:EXIT|FAULT|UNIMPLEMENTED|M
           r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)']
 frames=sorted({int(pc,16) for pattern in patterns for pc in re.findall(pattern,trace)})
 exception_returns={int(pc,16) for pc in re.findall(r'IOS_UNCAUGHT_EXCEPTION_FRAME index=\d+ pc=(0x[0-9a-fA-F]+)',trace)}
+exception_returns.update(int(pc,16) for pc in re.findall(r'IOS_FILE_COORDINATION_FRAME index=\d+ pc=(0x[0-9a-fA-F]+)',trace))
 frames=sorted(set(frames)|exception_returns)
 faults={int(pc,16) for pc in re.findall(r'DARWIN_FAULT signal=\S+ pc=(0x[0-9a-fA-F]+)',trace)}
 returns={int(pc,16):int(index,16) for index,pc in re.findall(
