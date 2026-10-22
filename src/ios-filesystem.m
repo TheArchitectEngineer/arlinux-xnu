@@ -12,12 +12,69 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <limits.h>
+#include <unistd.h>
 #include "ios-platform-abi.h"
 
 typedef BOOL (*reachability_method)(NSURL *,SEL,NSError **);
 static reachability_method original_url,original_cfurl;
 static unsigned int observed;
 static const struct arlinux_ios_platform_api *storage;
+typedef NSURL *(*directory_method)(NSFileManager *,SEL,NSSearchPathDirectory,NSSearchPathDomainMask,NSURL *,BOOL,NSError **);
+static directory_method original_directory;
+
+/* NSItemReplacementDirectory is a unique scratch directory on the target's
+ * actual filesystem, not a coordinated write to an existing document. Linux
+ * mkdtemp supplies atomic creation and ownership without an Apple arbiter.
+ * Contract: developer.apple.com/documentation/foundation/filemanager/
+ * url(for:in:appropriatefor:create:). create is intentionally ignored here. */
+static NSURL *replacement_failure(NSURL *url,NSError **error,int failure)
+{
+    if(error) {
+        NSInteger code=NSFileWriteUnknownError;
+        if(failure==EACCES || failure==EPERM)code=NSFileWriteNoPermissionError;
+        else if(failure==ENOSPC)code=NSFileWriteOutOfSpaceError;
+        else if(failure==EINVAL || failure==ENAMETOOLONG)code=NSFileWriteInvalidFileNameError;
+        NSMutableDictionary *info=[NSMutableDictionary dictionaryWithObject:
+            [NSError errorWithDomain:NSPOSIXErrorDomain code:failure userInfo:nil] forKey:NSUnderlyingErrorKey];
+        if(url)info[NSURLErrorKey]=url;
+        *error=[NSError errorWithDomain:NSCocoaErrorDomain code:code userInfo:info];
+    }
+    fprintf(stderr,"IOS_REPLACEMENT_DIRECTORY status=failed errno=%d\n",failure);
+    return nil;
+}
+static NSURL *directory_url(NSFileManager *manager,SEL selector,NSSearchPathDirectory directory,
+    NSSearchPathDomainMask domain,NSURL *url,BOOL create,NSError **error)
+{
+    if(directory!=NSItemReplacementDirectory || domain!=NSUserDomainMask)
+        return original_directory(manager,selector,directory,domain,url,create,error);
+    if(!url.isFileURL || !url.fileSystemRepresentation)return replacement_failure(url,error,EINVAL);
+    NSString *ancestor=url.path;struct stat target;
+    for(;;) {
+        if(!stat(ancestor.fileSystemRepresentation,&target))break;
+        int failure=errno;
+        if(failure!=ENOENT && failure!=ENOTDIR)return replacement_failure(url,error,failure);
+        NSString *parent=ancestor.stringByDeletingLastPathComponent;
+        if(!parent.length || [parent isEqualToString:ancestor])return replacement_failure(url,error,failure);
+        ancestor=parent;
+    }
+    NSString *base=NSTemporaryDirectory();struct stat temporary;
+    if(!base.fileSystemRepresentation || stat(base.fileSystemRepresentation,&temporary))
+        return replacement_failure(url,error,base.fileSystemRepresentation ? errno : EINVAL);
+    if(temporary.st_dev!=target.st_dev)
+        base=S_ISDIR(target.st_mode) ? ancestor : ancestor.stringByDeletingLastPathComponent;
+    NSString *pattern=[base stringByAppendingPathComponent:@".arlinux-replacement-XXXXXX"];
+    const char *bytes=pattern.fileSystemRepresentation;
+    char path[PATH_MAX];
+    if(!bytes || strlen(bytes)>=sizeof(path))return replacement_failure(url,error,ENAMETOOLONG);
+    strcpy(path,bytes);
+    if(!mkdtemp(path))return replacement_failure(url,error,errno);
+    struct stat created;
+    int status=stat(path,&created),failure=status ? errno : created.st_dev!=target.st_dev ? EXDEV : 0;
+    if(failure) {rmdir(path);return replacement_failure(url,error,failure);}
+    fprintf(stderr,"IOS_REPLACEMENT_DIRECTORY status=created same_device=1 path=%.1024s\n",path);
+    return [NSURL fileURLWithFileSystemRepresentation:path isDirectory:YES relativeToURL:nil];
+}
 typedef void (^file_access)(NSURL *);
 typedef void (^file_pair_access)(NSURL *,NSURL *);
 typedef void (*coordinate_one)(id,SEL,NSURL *,NSUInteger,NSError **,file_access);
@@ -135,6 +192,13 @@ static BOOL cfurl_reachable(NSURL *url,SEL selector,NSError **error)
 void arlinux_ios_filesystem_start(const struct arlinux_ios_platform_api *api)
 {
     storage=api;
+    Method directory=class_getInstanceMethod([NSFileManager class],@selector(URLForDirectory:inDomain:appropriateForURL:create:error:));
+    const char *directory_encoding=directory ? method_getTypeEncoding(directory) : NULL;
+    if(!directory_encoding || strcmp(directory_encoding,"@56@0:8Q16Q24@32B40^@48")) {
+        fprintf(stderr,"IOS_REPLACEMENT_DIRECTORY_BINDING_FAILED encoding=%s\n",directory_encoding ?: "<absent>");
+        abort();
+    }
+    original_directory=(directory_method)method_setImplementation(directory,(IMP)directory_url);
     Method group=class_getInstanceMethod([NSFileManager class],@selector(containerURLForSecurityApplicationGroupIdentifier:));
     const char *group_encoding=group ? method_getTypeEncoding(group) : NULL;
     if(!api->group_path || !group_encoding || strcmp(group_encoding,"@24@0:8@16")) {
