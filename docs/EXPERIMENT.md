@@ -2,6 +2,16 @@
 
 ## Scope
 
+Diagnostic run 39767427316 (3596271), receipt
+ef57637d8bb73ebcf9ff2d37dc4aee380d954cf696b73ccaba3f19bb1f95eceb, verifies
+88 files but cannot diagnose the blank-screen cause: SIGTRAP is at the newly
+probed original main-executable callback 0x10052c9f4. macho-image.h maps the
+source file then copies its text to anonymous memory; this copies the uprobe
+trap outside its kernel-owned mapping. Remove the main-image probes and reject
+MH_EXECUTE in the collector before attaching any probe. No application runtime
+repair is justified by this diagnostic interference. Next rerun only the same
+case with the public connected-scene/key-window metadata, without code probes.
+
 Latest diagnostic run: 39754726627, source fd207841a45208eea2bc7424db6e333c9592413a,
 receipt ca1df07cd074946388b6e84aa841396e1591b0cca2804f00aaeaaf6d16af2861;
 all 96 files verify. At samples 10, 50 and 125, original geometry remains stable:

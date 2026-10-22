@@ -656,3 +656,9 @@ resuming the handler still exits fatally. Runtime RPC ancillary iteration uses
 bounded layout arithmetic, avoiding an implicit host-libc CMSG_NXTHDR call while
 Darwin owns TLS. Deferred reply bodies and received FD ownership follow the
 integrated upstream server's push_reply/pipe-acknowledgement protocol.
+
+Main-executable MH_EXECUTE uprobes are also rejected before registration: the
+startup loader copies text from a source mapping to anonymous executable memory,
+which can copy a kernel-owned breakpoint out of its original mapping. Run
+39767427316 trapped at the newly probed delegate entry, not a proven application
+fault. Use the public scene metadata observer for this lifecycle question.

@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -65,7 +66,13 @@ def start(specification,state_path):
                 raise ValueError('dyld cache uprobes are unsafe across Mach memory remapping; use runtime boundary observations')
             else:
                 image=Path(record['path']).resolve()
-                digest=hashlib.sha256(image.read_bytes()).hexdigest()
+                image_bytes=image.read_bytes()
+                # The startup loader copies MH_EXECUTE text from its source
+                # mapping into anonymous memory. Copying a live uprobe trap
+                # there loses kernel ownership and produces a guest SIGTRAP.
+                if len(image_bytes)>=16 and struct.unpack_from('<I',image_bytes)[0]==0xfeedfacf and struct.unpack_from('<I',image_bytes,12)[0]==2:
+                    raise ValueError('main executable uprobes are unsafe across startup code copying; use read-only lifecycle observations')
+                digest=hashlib.sha256(image_bytes).hexdigest()
                 if 'symbol' in record:
                     offset=symbol_address(image,record['symbol'],file_offset=True)
                 else:

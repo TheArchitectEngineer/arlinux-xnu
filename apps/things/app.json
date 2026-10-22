@@ -4,32 +4,6 @@
   "version": "3.17.1",
   "kind": "application",
   "pixelAppearance": "mixed",
-  "kernelTraceSymbols": [
-    {
-      "image": "ThingsiPhone",
-      "fileOffset": "0x52c9f4",
-      "imageSHA256": "cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4",
-      "observedRun": "39754726627",
-      "label": "THWindowSceneDelegate scene:willConnectToSession:options:",
-      "siteSource": "Original ARM64 Objective-C class/method metadata; main executable SHA-256 pinned in input"
-    },
-    {
-      "image": "ThingsiPhone",
-      "fileOffset": "0x52cb38",
-      "imageSHA256": "cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4",
-      "observedRun": "39754726627",
-      "label": "THWindowSceneDelegate sceneWillEnterForeground:",
-      "siteSource": "Original ARM64 Objective-C class/method metadata; main executable SHA-256 pinned in input"
-    },
-    {
-      "image": "ThingsiPhone",
-      "fileOffset": "0x52cb40",
-      "imageSHA256": "cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4",
-      "observedRun": "39754726627",
-      "label": "THWindowSceneDelegate sceneDidBecomeActive:",
-      "siteSource": "Original ARM64 Objective-C class/method metadata; main executable SHA-256 pinned in input"
-    }
-  ],
   "input": {
     "kind": "ipa",
     "url": "https://archive.org/download/thingsi-phone-3.17.1-le-ti/ThingsiPhone_3.17.1_LeTi.ipa",
