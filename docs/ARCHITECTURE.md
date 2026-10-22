@@ -252,6 +252,10 @@ use real openat2/mkdirat/renameat/unlinkat/fsync operations under declared stora
 with beneath/no-magic-link resolution; firmware and bundle writes are rejected.
 Darwin stat/fstatat share actual Linux statx metadata and guest record packing.
 This provides platform file operations, not Apple sandbox or data protection.
+open_dprotected_np uses the same actual open path for ordinary plaintext I/O,
+validating creation classes and rejecting raw encrypted/unencrypted data flags.
+Its class selection does not install Apple keybag encryption; bounded runtime
+records explicitly report policy_enforced=0. File contents and errors remain real.
 Guarded file calls follow the integrated Darling adapter's real-open/close
 policy: cookie memory is validated and reads/writes/errors are real, but XNU
 descriptor guard enforcement, guard exceptions and CLOFORK protection are not

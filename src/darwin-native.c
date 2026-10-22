@@ -972,6 +972,20 @@ socketpair_done:
     case D_SYS_CSOPS: case D_SYS_CSOPS_AUDITTOKEN: result=native_csops(r); break;
     case D_SYS_PROC_INFO: result=native_proc_info(r); break;
     case D_SYS_OPEN: case D_SYS_OPEN_NOCANCEL: result=guest_openat(D_AT_FDCWD,r[0],r[1],r[2]); break;
+    case D_SYS_OPEN_DPROTECTED: {
+        /* Ordinary plaintext I/O uses the same real storage operations and
+         * errors as open. Do not claim keybag/data-protection enforcement or
+         * expose plaintext as the requested raw encrypted representation. */
+        int protection_class=(int32_t)r[2];
+        if (r[3]) result=-ENOTSUP;
+        else if ((r[1]&D_O_CREAT) && (protection_class<D_PROTECTION_CLASS_DEFAULT ||
+                 protection_class>D_PROTECTION_CLASS_F)) result=-EINVAL;
+        else result=guest_openat(D_AT_FDCWD,r[0],r[1],r[4]);
+        static unsigned int traces;
+        if (__atomic_fetch_add(&traces,1,__ATOMIC_RELAXED)<8)
+            trace_record("DARWIN_DPROTECTED_OPEN policy_enforced=0 class=0x",r[2],r[3],result);
+        break;
+    }
     case D_SYS_OPENAT: case D_SYS_OPENAT_NOCANCEL: result=guest_openat((int)r[0],r[1],r[2],r[3]); break;
     case D_SYS_GUARDED_OPEN: case D_SYS_GUARDED_CLOSE: case D_SYS_GUARDED_WRITE:
     case D_SYS_GUARDED_PWRITE: case D_SYS_GUARDED_WRITEV: result=native_guarded_file(r);break;

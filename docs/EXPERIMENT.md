@@ -56,6 +56,19 @@ zero-filled backing; volatile/discard control remains unsupported. Next run only
 the ordinary Things journey, checking actual image creation and task effects.
 Neither allocation success nor crossing this exception alone passes the journey.
 
+Run 39748396327 (1ec04e2) verifies receipt
+83f1b6b0722175baf18a20bdf3c529ba682659e0a7a82b39acd68170edd7192f and all 87
+files. ImageIO's purgeable anonymous allocations now return real memory, the
+100x100 exception disappears, and the process continues rendering. It then traps
+in original Swift TodayExtensionExportComponent.swift:270: try! encounters Cocoa
+512 / POSIX 78 while saving Today Extension Data.json in the declared group
+container. The same thread records syscall 216 (open_dprotected_np) returning
+ENOSYS immediately before the error. Candidate maps ordinary plaintext opens
+through existing container-confined guest_openat, preserves real flags/mode/I/O
+errors, validates creation classes and rejects raw encryption flags. No Apple
+keybag policy is claimed. Next run only the original Things journey; no task
+creation, edit, completion or persistence effect has yet passed.
+
 User-requested resource work: cache only the two pinned OS volume DMGs on hosted
 Actions, verifying locked byte sizes/SHA-256 before use and keeping app data
 fresh. No full IPSW, boot/recovery payload, app state or test result is cached.
