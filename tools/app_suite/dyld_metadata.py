@@ -161,8 +161,21 @@ def collect(target, info_address, runtime_path):
                         # Retain bounded object words, not guessed private field
                         # names. Match the actual cache's drain/worker instructions
                         # before interpreting them as a root queue's head/pending.
-                        record['objectWords']=[hex(value) for value in struct.unpack('<16Q',read(address,128))]
+                        words=struct.unpack('<16Q',read(address,128))
+                        record['objectWords']=[hex(value) for value in words]
                         record['objectWordBytes']=8
+                        # In the matched iOS 16 cache's root drain, +0x30 is
+                        # the tail and +0x68 the head (run 39735955818). Preserve
+                        # raw candidate objects for offline interpretation;
+                        # never call their functions or alter queue ownership.
+                        candidates={words[offset//8] for offset in (0x30,0x68)}
+                        record['linkedObjectWords']=[]
+                        for candidate in sorted(candidates):
+                            if not candidate or candidate%8 or capacity(candidate)<64:continue
+                            entry={'address':hex(candidate)}
+                            try:entry['words']=[hex(value) for value in struct.unpack('<8Q',read(candidate,64))]
+                            except ValueError as error:entry['unavailable']=str(error)
+                            record['linkedObjectWords'].append(entry)
                     except ValueError as error:record['objectWordsUnavailable']=str(error)
                     for name,offset in offsets.items():
                         try:

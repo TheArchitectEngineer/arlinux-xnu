@@ -29,6 +29,29 @@ cc3884c0a0810708b9cff12f8bc46e1c02312b2c83ce33e7676843762c7ff8ce and all 89
 files verify. Feedback 197 s, journey 46.749 s including 11.471 s diagnosis;
 compiler cache 169 hits / 1 miss. Android remains unverified.
 
+Focused run 39735955818, source d67c965a39d844b01e358bf56a699d319a088ceb,
+retains the same Inbox failure with no fault. The actual receiver snapshot has
+equal nonzero words at +0x30 and +0x68 (0x304901740), and +0x70 is 1. Original
+libdispatch root-drain instructions identify those first two offsets as queue
+tail/head; the worker decrements pending at +0x70. Its computed root-array base
+0x1e1d33f00 and QoS-5 index 12 select this exact receiver, 0x1e1d34500.
+Thus work remains queued with pending=1 at the final stopped-process sample;
+it is not evidence that this queue drained the submitted work. Why that pending
+worker is absent remains unresolved. There are earlier actual QoS-5 entries and
+exit upcalls, not proof of a new worker for this later submission. Do not
+decrement pending or force-drain the app as a repair. The existing collector now
+retains bounded raw objects referenced by those two observed fields to identify
+the queued continuation on the next hypothesis-driven execution. Matching-cache
+symbols have multiple original implementations; preserve both and confirm the
+actual callback binding before drawing an implementation-specific conclusion.
+Receipt c51f74de4a5b826e8315a13942ca539fb1fb97d10b168e0bf6fb55e7412f6935
+and 89 files verify; feedback 173 s, journey 45.479 s including 10.2 s diagnosis,
+all 170 compile calls hit cache and snapshot save was skipped. No compatibility
+repair or full regression is claimed. The Apple libdispatch source reference
+read locally is tag libdispatch-1325.100.36, commit
+c5a8b9353b880a6f31cc24f631578a4b05222868; its queue layout is a reference, while
+the instruction evidence above comes from the actual pinned firmware.
+
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.
 The collection currently has 12 source-owned apps, original Calculator and Things, 20 app
