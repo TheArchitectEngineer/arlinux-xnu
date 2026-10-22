@@ -2,6 +2,18 @@
 
 ## Scope
 
+Same-PID launch observation run 39791431370 (8d4ca53) finally captures Apple's
+actual EXC_BREAKPOINT (BRK #1), not a replay or a missing report. Receipt
+5c685f7354e41e55a612cf536c7f6833986ff5e42c9c3c87a83c10fb1a92b96a
+verifies 15 files. LLDB follows the owned Python launch PID 1374 through exec
+into ThingsiPhone, records original frames, then detaches successfully. The
+original app appears in lower frames, but the top frames have no resolved image
+because LLDB's image-notification breakpoint failed during exec. A Swift or
+app-assertion diagnosis is not established from BRK alone. Capture the OS's
+vmmap for that same stopped PID, file addresses and bounded registers alongside
+the stack in run 39793232793 (be1cfb2); it remains pending. Ordinary Apple launch
+still fails and this diagnostic run cannot replace Linux app acceptance.
+
 Crash collection run 39790422933 (82b7f1b) reproduces the Apple early SIGTRAP;
 receipt a160f1adaf124636fa9a5f702ec3ff82877da953650e8b1e4bb8f3979ad37afe
 verifies 13 files. The bounded OS-report collector finds no matching report
