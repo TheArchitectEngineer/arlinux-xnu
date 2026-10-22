@@ -197,6 +197,18 @@ def api(endpoint):
 
 def print_observation(line):
     """Bound terminal output only; report.json retains the original observation."""
+    if line.startswith('APP_ORIGINAL_INPUT '):
+        try:
+            entry=json.loads(line.split(' ',1)[1])
+            if 'originalInput' in entry:
+                origin=entry['originalInput']
+                entry={key:entry[key] for key in ('id','version','build','error') if key in entry}
+                entry.update({key:origin[key] for key in ('bundleIdentifier','binarySHA256',
+                    'bundleManifestSHA256','downloadURL','downloadSeconds') if key in origin})
+                entry['evidence']='input-'+entry['id']+'.json'
+            print('  APP_ORIGINAL_INPUT '+json.dumps(entry))
+        except (ValueError,KeyError):print('  '+line[:512])
+        return
     if not line.startswith('APP_DIAGNOSIS '):
         print('  '+line);return
     try:entry=json.loads(line[len('APP_DIAGNOSIS '):])
@@ -334,7 +346,7 @@ def report(run_id, job_name, verbose=False):
         if log_format == 'gh-run-view':
             lines = [re.sub(r'^[^\t]+\t[^\t]+\t', '', line) for line in lines]
         lines = [re.sub(r'^\d{4}-\d\d-\d\dT\S+\s+', '', line) for line in lines]
-        markers=('APP_BUILD ','APP_CASE ','APP_DIAGNOSIS ','APP_SUITE ','APP_INPUT_VERIFIED ','APP_INPUT_HANDOFF ','APP_IPA_DOWNLOAD ',
+        markers=('APP_BUILD ','APP_CASE ','APP_DIAGNOSIS ','APP_SUITE ','APP_INPUT_VERIFIED ','APP_INPUT_HANDOFF ','APP_IPA_DOWNLOAD ','APP_ORIGINAL_INPUT ',
                  'COMPILER_CACHE_STATS ','APPLE_DOWNLOAD_TIMING ','APPLE_PREPARATION_TIMING ','EXPERIMENT_RECEIPT ')
         item['observations']=[line for line in lines if line.startswith(markers)]
         for line in (lines if verbose else item['observations']):

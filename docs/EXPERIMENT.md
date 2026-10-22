@@ -103,10 +103,28 @@ The saved main thread composes through CoreGraphics/vImage; live guest workers
 are in event waits. The existing LLDB collector now retains bounded actual
 workloop ownership and original IPA image metadata. Some workloop IDs have no
 readable label and the list is truncated; no dispatch-deadlock verdict follows.
-Static inspection locates the original THCDatabaseComponent.startUpgrade export,
-NSOperationQueue imports and Swift task creation/switch imports. The next task is
-to trace its actual startup/event/completion path, rather than fixing incidental
-SDK messages as if they explained the persistent upgrade screen.
+The opt-in original-process trace in run
+[39697806891](https://github.com/taowen/arlinux-xnu/actions/runs/39697806891)
+(source 2900ce2167d3e42b290ba36212fe984bc3e2b4b4) now observes real main entry,
+THCDatabaseComponent.startUpgrade and its supplied completion callback. All
+three breakpoints hit; no callback was invoked by the harness. Original PID
+5891/startTicks 79496 then reports `DatabaseUpgradeAppComponent.swift:137: Fatal
+error`. The same run's original Foundation log reports that NSFileCoordinator
+returned an error after filecoordinationd failed. This association is not yet
+proof of the fatal branch's cause; inspect the actual error/status consumer and
+confirm the ordinary untraced path before changing compatibility behavior.
+Its receipt 95049b8db9e8248c3e9aad5e71853c176e3d8565aaa44336077a3c01dfa123b4
+and all 85 retained files verify. Total dispatch time was 159 s, journey 27.518 s
+including 25.199 s diagnosis. The original task journey remains failed.
+
+The preceding 39696796170 trace attached before cache preparation and left a
+later requested stop; its blank viewport was a collector race, not evidence of
+a new app rendering fault. The launcher now requires the entry record plus an
+actual kernel stop before attaching. Run 39697155936 verifies main entry and
+ordinary return to the upgrade UI, but its symbol lookup failed because the
+binary uses stripped export metadata. The collector now reuses existing LLVM's
+export-trie reader. Reports expose collector errors separately from app effects,
+and startup tracing counts as diagnosis rather than app effect time.
 
 ### Proven reusable boundary changes
 
@@ -124,11 +142,25 @@ Things' task database; the main UI does not advance. File-mapping failures retai
 a separate eight-request argument/caller budget instead of being hidden by
 successful startup mappings. Their frequency is not a root-cause verdict.
 
-The identical IPA is obtained from declared official Archive.org storage mirrors
-and verified against its pinned size/SHA-256 before extraction. The actual URL is
-recorded. A 185-second total download budget replaces independent long retries
-that previously delayed a full run by roughly 548 s. Timing can still vary with
-the network; no binary is substituted or uploaded as evidence.
+The identical IPA is verified against its pinned size/SHA-256 before extraction;
+the actual URL is recorded. Run 39697155936 spent approximately 120 s on two
+serial mirror deadlines before the canonical URL completed in about 3 s. The
+downloader now races the declared routes under a 65-second outer deadline,
+cancelling/reaping other curls and deleting partial files after one verified
+download. Run 39697947621 exposed a repeated pipe-read error during cleanup;
+it is corrected. Run
+[39698454606](https://github.com/taowen/arlinux-xnu/actions/runs/39698454606)
+(source 6aa877d531c54589a960058c5496389e72829015) verifies the real 52,104,885-byte
+input in 1.653 s through three raced routes, then runs the original app. Main,
+upgrade and completion hit again without collector errors; the original Swift
+fatal error remains. Dispatch completed in 159 s, with a 21.299 s journey that
+includes 19.206 s diagnosis. Compiler cache reports 170 hits and zero misses.
+Receipt c400c26fa3f26ed2b582aba7bce33a379e201ad398db40d6c566c89f2c029d29
+and all 85 files verify. Download latency still depends on network conditions;
+do not attribute the entire end-to-end timing difference to this change or
+count the earlier input failure as an improvement. No binary is substituted or
+uploaded as evidence. Compact report consumption of 39697806891 reverified its
+85 files in about 7 s without rebuilding; full provenance remains in input JSON.
 
 XML-to-DER entitlement conversion remains explicitly unsupported; SecTask still
 reports it. Group preferences/keychain, DER-only membership and last-member

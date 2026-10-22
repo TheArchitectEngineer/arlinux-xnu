@@ -229,4 +229,9 @@ def prepare_inputs(apps,reference):
             app.update(build='failed',error=str(error))
         # Metadata only. Bundles remain outside build/results and build/apps.
         (ROOT/'build/results'/('input-'+app['id']+'.json')).write_text(json.dumps(app,indent=2)+'\n')
-        print('APP_ORIGINAL_INPUT '+json.dumps(app),flush=True)
+        origin=app.get('originalInput',{})
+        summary={key:app[key] for key in ('id','version','build','error') if key in app}
+        summary.update({key:origin[key] for key in ('bundleIdentifier','archiveSHA256',
+            'binarySHA256','bundleManifestSHA256','downloadURL','downloadSeconds') if key in origin})
+        summary.update(resourceFiles=len(origin.get('files',[])),evidence='input-'+app['id']+'.json')
+        print('APP_ORIGINAL_INPUT '+json.dumps(summary),flush=True)

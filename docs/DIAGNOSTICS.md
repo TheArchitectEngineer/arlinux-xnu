@@ -7,11 +7,12 @@ independent app collection, not a timeout/readiness check. Compilation and guest
 remain on hosted runners, never WSL or the workstation.
 
 The default failure collection symbolizes original stacks and records the live
-process. Original IPA downloads have a shared retry budget and a 185-second
-outer deadline; an unavailable input fails that app and does not silently choose
-another binary or hold the collection for four independent three-minute waits.
-Declared mirrors name the same pinned object and share this budget; size/hash
-validation is unchanged, and input provenance records the actual download URL.
+process. Original IPA downloads race the canonical URL and declared mirrors
+under one 65-second outer deadline. Each names the same pinned object; the first
+completed download must pass size/SHA-256 before use. Pending curls are killed,
+reaped and their partial files removed. An unavailable or mismatched input fails
+explicitly; no other binary is substituted. APP_IPA_DOWNLOAD records actual
+download seconds, route count and selected URL alongside input provenance.
 Do not attach a standing catalogue of private-service symbol dumps to
 every failure. Use explicit targeted cache lookups only for the current failed
 effect. Production framework adaptation is allowed; the diagnostic harness must
@@ -74,7 +75,8 @@ cleared on handler return and thread-slot reuse; this changes no guest result.
 An app may declare diagnosticSymbols for an original image's exported symbols.
 Only --lifecycle-context enables the existing launcher to stop before dyld and
 attach the bounded original_trace.py collector. It first observes the actual
-main entry, resolves the requested symbol from the original Mach-O symbol table
+main entry, resolves the requested symbol with the existing LLVM reader (including
+stripped Mach-O export tries)
 and actual dyld load address, and records its real breakpoint hit/stack. An
 explicit callbackRegister may observe the supplied code address and its later
 execution; it never invokes that callback. The 20-second observation window,
@@ -83,6 +85,9 @@ startup.lldb.log. Not hitting a breakpoint proves nothing beyond that window.
 This profile alters timing and cannot be used as ordinary launch-performance
 acceptance. The original UI/task/persistence journey remains independently red
 until its actual effects pass; debugger success cannot replace those effects.
+Reports retain hits, unhit observations, collector errors and detach status as
+separate startupTrace evidence. Startup tracing time counts as diagnosticSeconds,
+so it is not mistaken for ordinary app effect time.
 File-mapping failures have a separate eight-request observation budget, retaining
 the original arguments, real descriptor path and saved caller frames even when
 successful startup mappings exhausted the ordinary trace limit. This addresses
