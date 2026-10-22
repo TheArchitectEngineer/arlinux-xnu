@@ -102,7 +102,10 @@ so it is not mistaken for ordinary app effect time.
 
 For an original-app ordering failure that changes under debugger attachment,
 an app may instead declare kernelTraceSymbols (bundle-relative image and exact
-exported symbol). A stripped callback may instead declare its observed
+exported symbol). A framework stored only in the firmware dyld shared cache may
+declare its exact absolute image path with `dyldCacheImage`; the collector resolves
+the symbol and backing split-cache file offset through the existing UUID-checked
+cache index. A stripped callback may instead declare its observed
 fileOffset, exact imageSHA256, observedRun and label; the image hash is required
 before registration. Such sites come from actual original call arguments or
 the pinned disassembly of an observed handler's direct call/block literal, and
@@ -263,6 +266,15 @@ Cache snapshot writes are conditional on actual compiler-cache misses. In run
 170 compilation calls hit; saving a new per-commit snapshot added no reusable
 objects. The workflow now records misses and skips that upload when the count is
 zero. Cache restore and fresh same-run build/evidence receipts remain required.
+
+Run 39727204563 confirmed the save was skipped at zero misses, but exposed a
+diagnostic configuration error before the app launched: Apple's
+`libsystem_pthread.dylib` is in the firmware dyld shared cache, not the IPA's
+bundle directory. That run spent 153 seconds overall (64 seconds installing the
+runner toolchain and 47 seconds preparing the pinned userland) to reach a
+0.3-second infrastructure failure. The trace now resolves shared-cache images
+through the existing cache index; retry only this one Things journey after that
+fix, rather than paying setup cost for the 23-journey suite.
 
 For one worker behavior or cross-app scenario, use `--case` with exact IDs from
 `./build.sh cases`. Dispatch, SDK compilation and execution share one selector:

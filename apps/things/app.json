@@ -6,8 +6,9 @@
   "pixelAppearance": "mixed",
   "kernelTraceSymbols": [
     {
-      "image": "usr/lib/system/libsystem_pthread.dylib",
+      "image": "/usr/lib/system/libsystem_pthread.dylib",
       "symbol": "__pthread_wqthread",
+      "dyldCacheImage": true,
       "label": "original libpthread workqueue callback",
       "role": "workqueue-entry",
       "captureWorkqueueArguments": true

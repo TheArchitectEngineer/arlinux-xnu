@@ -117,7 +117,10 @@ class Processes:
             diagnostic_started=time.monotonic()
             script=ROOT/'tools/app_suite/uprobe_trace.py'
             specification=prefix.with_suffix('.kernel-symbols.json')
-            specification.write_text(json.dumps([{**point,'path':str(binary.parent/point['image'])}
+            cache_path=ROOT/'build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64'
+            specification.write_text(json.dumps([{**point,
+                **({'cachePath':str(cache_path)} if point.get('dyldCacheImage') else
+                   {'path':str(binary.parent/point['image'])})}
                 for point in kernel_symbols],indent=2)+'\n')
             state_path=prefix.with_suffix('.kernel-trace.json')
             if not hasattr(self,'kernel_traces'):self.kernel_traces=[]
