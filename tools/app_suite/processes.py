@@ -140,10 +140,23 @@ class Processes:
                 f'{str(prefix.with_suffix(".stderr"))!r})')
             with prefix.with_suffix('.startup.lldb.log').open('wb') as output:
                 try:
+                    # Attaching immediately races the loader's cache preparation:
+                    # an early collector detach can precede the requested stop.
+                    # Require both the actual entry record and kernel stop state.
+                    deadline=time.monotonic()+30
+                    while True:
+                        if process.poll() is not None:raise RuntimeError('Original process exited before diagnostic entry stop')
+                        status=Path(f'/proc/{process.pid}/status').read_text()
+                        ready='NATIVE_DARWIN_ENTRY entry=' in prefix.with_suffix('.stderr').read_text(errors='replace')
+                        if ready and re.search(r'^State:\s+T\s',status,re.M):break
+                        if time.monotonic()>=deadline:raise RuntimeError('Original diagnostic entry stop was not observed within 30 seconds')
+                        time.sleep(.02)
                     observed=subprocess.run(['sudo','-n','timeout','--kill-after=2','30','lldb-18','--batch',
                         '--attach-pid',str(process.pid),'-o','settings set auto-confirm true','-o',invocation],
                         stdout=output,stderr=subprocess.STDOUT,timeout=34)
                     output.write(f'\nSTARTUP_TRACE_EXIT status={observed.returncode}\n'.encode())
+                except (OSError,subprocess.SubprocessError) as error:
+                    output.write(f'\nSTARTUP_TRACE_UNAVAILABLE {error}\n'.encode())
                 finally:
                     # A collector failure must not leave the app stopped.
                     if process.poll() is None:os.kill(process.pid,signal.SIGCONT)

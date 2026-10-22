@@ -65,6 +65,24 @@ metadata for the first 32 calls; the guest output buffer is never read or change
 The failure summary includes eight syscall frequency entries and eight resource
 paths; full arguments, callers and truncation markers remain in runtimeLog.
 Frequency is not a root-cause verdict.
+The same opt-in profile exposes each live SIGSYS handler's original kernel-owned
+ucontext to the existing LLDB reader. It follows at most 24 actual ARM64 frame
+records in readable non-executable mappings, rather than scanning for plausible
+addresses when host unwinding loses the signal boundary. Context pointers are
+cleared on handler return and thread-slot reuse; this changes no guest result.
+
+An app may declare diagnosticSymbols for an original image's exported symbols.
+Only --lifecycle-context enables the existing launcher to stop before dyld and
+attach the bounded original_trace.py collector. It first observes the actual
+main entry, resolves the requested symbol from the original Mach-O symbol table
+and actual dyld load address, and records its real breakpoint hit/stack. An
+explicit callbackRegister may observe the supplied code address and its later
+execution; it never invokes that callback. The 20-second observation window,
+unhit breakpoints, unavailable metadata and detach result stay in the generation's
+startup.lldb.log. Not hitting a breakpoint proves nothing beyond that window.
+This profile alters timing and cannot be used as ordinary launch-performance
+acceptance. The original UI/task/persistence journey remains independently red
+until its actual effects pass; debugger success cannot replace those effects.
 File-mapping failures have a separate eight-request observation budget, retaining
 the original arguments, real descriptor path and saved caller frames even when
 successful startup mappings exhausted the ordinary trace limit. This addresses
