@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <errno.h>
 
 /* Public iOS APIs only. No workqueue syscalls, runtime internals or harness
  * callbacks: the external pointer starts work and observes the rendered result. */
@@ -52,7 +53,9 @@
                     });
                 }
             });
+            printf("APP_SCHEDULING case=Blocking worker=%u stage=wait\n",i); fflush(stdout);
             long error=dispatch_semaphore_wait(gate,dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC));
+            printf("APP_SCHEDULING case=Blocking worker=%u stage=returned result=%ld\n",i,error); fflush(stdout);
             dispatch_async(dispatch_get_main_queue(),^{finished++; if (error) errors++;});
         });
     }
@@ -82,6 +85,7 @@
     (void)sender; NSUInteger generation=[self begin:@"Timer IO"]; if (!generation) return;
     int descriptors[2];
     if (socketpair(AF_UNIX,SOCK_STREAM,0,descriptors)) {
+        printf("APP_SCHEDULING case=TimerIO stage=socketpair errno=%d\n",errno); fflush(stdout);
         [self finish:@"Timer IO" generation:generation ok:NO]; return;
     }
     int reader=descriptors[0],writer=descriptors[1];
@@ -105,12 +109,14 @@
     dispatch_source_set_event_handler(timer,^{
         unsigned char byte=(unsigned char)(++ticks);
         if (write(writer,&byte,1)!=1) failed=YES;
+        printf("APP_SCHEDULING case=TimerIO stage=timer tick=%u failed=%d\n",ticks,failed); fflush(stdout);
         if (failed || ticks==3) dispatch_source_cancel(timer);
     });
     dispatch_source_set_event_handler(input,^{
         unsigned char bytes[3]; ssize_t count=read(reader,bytes,sizeof(bytes));
         if (count<=0) failed=YES;
         for (ssize_t i=0;i<count;i++) if (bytes[i]!=++received) failed=YES;
+        printf("APP_SCHEDULING case=TimerIO stage=read bytes=%ld received=%u failed=%d\n",(long)count,received,failed); fflush(stdout);
         if (failed || received==3) {
             dispatch_source_cancel(input); dispatch_source_cancel(timer);
             BOOL ok=!failed && received==3 && ticks==3;

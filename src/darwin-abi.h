@@ -27,6 +27,7 @@ enum darwin_syscall {
     D_SYS_FORK = 2,
     D_SYS_READ = 3,
     D_SYS_WRITE = 4,
+    D_SYS_SOCKETPAIR = 135,
     D_SYS_WRITEV=121, D_SYS_WRITEV_NOCANCEL=412,
     D_SYS_GUARDED_OPEN=441, D_SYS_GUARDED_CLOSE=442,
     D_SYS_GUARDED_WRITE=485, D_SYS_GUARDED_PWRITE=486, D_SYS_GUARDED_WRITEV=487,
@@ -155,13 +156,20 @@ enum darwin_errno {
     D_EDOM = 33,
     D_ERANGE = 34,
     D_EAGAIN = 35,
+    D_EPROTONOSUPPORT = 43, D_ESOCKTNOSUPPORT = 44,
     D_ENOTSUP = 45,
+    D_EAFNOSUPPORT = 47,
     D_ETIMEDOUT = 60,
     D_ENAMETOOLONG = 63,
     D_ESTALE = 70,
     D_ENOSYS = 78,
     D_EOVERFLOW = 84,
     D_EOWNERDEAD = 105,
+};
+
+/* XNU bsd/sys/socket.h: local socket-pair arguments. */
+enum darwin_local_socket {
+    D_AF_LOCAL=1, D_SOCK_STREAM=1, D_SOCK_DGRAM=2, D_SOCK_SEQPACKET=5
 };
 enum darwin_kern_return {
     D_KERN_SUCCESS = 0, D_KERN_INVALID_ADDRESS = 1,

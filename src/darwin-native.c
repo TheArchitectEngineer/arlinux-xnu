@@ -82,6 +82,9 @@ static int darwin_error(long result)
     case EDOM: return D_EDOM;
     case ERANGE: return D_ERANGE;
     case EAGAIN: return D_EAGAIN;
+    case EPROTONOSUPPORT: return D_EPROTONOSUPPORT;
+    case ESOCKTNOSUPPORT: return D_ESOCKTNOSUPPORT;
+    case EAFNOSUPPORT: return D_EAFNOSUPPORT;
     case ENOTSUP: return D_ENOTSUP;
     case ETIMEDOUT: return D_ETIMEDOUT;
     case ENAMETOOLONG: return D_ENAMETOOLONG;
@@ -912,6 +915,29 @@ static void dispatch_impl(int signal, siginfo_t *info, void *context)
         __builtin_unreachable();
     case D_SYS_READ: case D_SYS_READ_NOCANCEL: result = RAW(SYS_read,r[0],r[1],r[2],0,0,0); break;
     case D_SYS_WRITE: case D_SYS_WRITE_NOCANCEL: result = RAW(SYS_write,r[0],r[1],r[2],0,0,0); break;
+    case D_SYS_SOCKETPAIR: {
+        /* Real local descriptors share the existing read/write/close and epoll
+         * paths. Do not add CLOEXEC: socketpair does not request that flag. */
+        if ((int)r[0]!=D_AF_LOCAL) {result=-EAFNOSUPPORT;break;}
+        int type;
+        switch ((int)r[1]) {
+        case D_SOCK_STREAM:type=SOCK_STREAM;break;
+        case D_SOCK_DGRAM:type=SOCK_DGRAM;break;
+        case D_SOCK_SEQPACKET:type=SOCK_SEQPACKET;break;
+        default:result=-ESOCKTNOSUPPORT;goto socketpair_done;
+        }
+        int pair[2];
+        result=RAW(SYS_socketpair,AF_UNIX,type,(int)r[2],pair,0,0);
+        if (!result) {
+            result=guest_copy(pair,r[3],sizeof(pair),1);
+            if (result) {
+                RAW(SYS_close,pair[0],0,0,0,0,0);
+                RAW(SYS_close,pair[1],0,0,0,0,0);
+            }
+        }
+socketpair_done:
+        break;
+    }
     case D_SYS_WRITEV: case D_SYS_WRITEV_NOCANCEL: {
         /* XNU syscalls.master/uio.h: ARM64 iovec is the same pointer/size_t
          * pair as Linux. Preserve vectored writes, short counts and real FD/
