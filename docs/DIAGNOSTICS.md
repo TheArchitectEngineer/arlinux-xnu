@@ -13,13 +13,11 @@ completed download must pass size/SHA-256 before use. Pending curls are killed,
 reaped and their partial files removed. An unavailable or mismatched input fails
 explicitly; no other binary is substituted. APP_IPA_DOWNLOAD records actual
 download seconds, route count and selected URL alongside input provenance.
-An IPA declaration may use browserPage when its public download requires a
-normal JavaScript browser session. The same build entry then uses the hosted
-runner's installed Chrome and a hash-pinned Playwright client solely for input
-download. Its empty temporary profile contains no workstation cookies or login;
-it does not solve CAPTCHAs or change browser security. Download page text and a
-screenshot are retained, and the same declared archive size/SHA-256 remains
-mandatory. Browser/site failure is input preparation failure, not an app result.
+An IPA declaration may pin a repository path. The same build entry verifies
+its declared size and SHA-256 before using the common archive/executable
+preparation. Its URL remains source provenance, not a fallback to mutable web
+content. Missing input or unmaterialized LFS pointers fail input preparation,
+never silently substitute another app.
 Do not attach a standing catalogue of private-service symbol dumps to
 every failure. Use explicit targeted cache lookups only for the current failed
 effect. Production framework adaptation is allowed; the diagnostic harness must

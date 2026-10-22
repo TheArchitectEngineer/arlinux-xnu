@@ -7,7 +7,7 @@
   "input": {
     "kind": "ipa",
     "url": "https://decrypt.34306.lol/api/v1/download/com.pureframe.app?region=cn",
-    "browserPage": "https://decrypt.34306.lol/",
+    "path": "apps/pureframe/input/pureframe-1.2.3.ipa",
     "bytes": 22813663,
     "sha256": "1bba6c62c2160db804ea915013864f32fb5c80e9ba9e037e768bdabe39baa483",
     "bundleIdentifier": "com.pureframe.app",

@@ -2,3 +2,4 @@
 
 # Preserve imported source bytes; symlink and executable modes are tracked by Git.
 components/darling/source/** -text
+apps/*/input/*.ipa binary

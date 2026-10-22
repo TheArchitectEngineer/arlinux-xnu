@@ -18,8 +18,11 @@ targets still require confirmation against actual UI. It does not certify image
 import, editing or export, and no execution has passed yet. Runner-side source
 availability is also required; a workstation download is not a runner cache.
 Run 39804175373 failed before app execution: the public cache endpoint returned
-HTTP 403 to runner curl. Its browserPage route now exercises normal browser
-download with the same pinned input, without transferring workstation sessions.
+HTTP 403 to runner curl. That exact downloaded IPA is now stored under
+apps/pureframe/input in Git, retaining the same archive/executable hashes.
+An attempted Git LFS upload was rejected because the account's LFS budget was
+exceeded; the 22.8 MB input therefore uses a normal binary Git object. No browser
+downloader or transferred workstation session is required.
 
 The next acquired original-binary candidate is Things iPhone 3.17.1/build
 31701001, bundle ID com.culturedcode.ThingsiPhone. Its community-decrypted IPA

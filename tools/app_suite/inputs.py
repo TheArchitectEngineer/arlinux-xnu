@@ -7,7 +7,6 @@ import shutil
 import stat
 import struct
 import subprocess
-import sys
 import time
 import zipfile
 from pathlib import Path
@@ -110,13 +109,15 @@ def prepare_ipa_app(app,destination=None,platform_library=True):
     # Race bounded downloads so two unavailable mirrors cannot delay a healthy
     # canonical URL by 120 seconds. All partial files remain runner-local.
     started=time.monotonic();deadline=started+65;errors=[];download_url=None;routes=[]
-    if declared.get('browserPage'):
-        subprocess.run([sys.executable,str(ROOT/'tools/app_suite/browser_download.py'),
-            '--url',declared['url'],'--page',declared['browserPage'],'--output',str(archive),
-            '--evidence',str(ROOT/'build/results'/('download-'+app['id']))],check=True,timeout=120)
+    if declared.get('path'):
+        relative=Path(declared['path'])
+        source=(ROOT/relative).resolve()
+        if relative.is_absolute() or not source.is_relative_to(ROOT.resolve()):
+            raise RuntimeError('IPA source path escapes the checked-out repository')
+        shutil.copyfile(source,archive)
         if archive.stat().st_size!=declared['bytes'] or sha(archive)!=declared['sha256']:
-            raise RuntimeError('IPA size/SHA-256 mismatch: '+declared['url'])
-        download_url=declared['url']
+            raise RuntimeError('Repository IPA size/SHA-256 mismatch: '+relative.as_posix())
+        download_url='git:'+relative.as_posix()
     try:
         for index,url in enumerate([] if download_url else dict.fromkeys([declared['url'],*declared.get('mirrors',[])])):
             partial=archive.with_name(archive.name+f'.route-{index}')
