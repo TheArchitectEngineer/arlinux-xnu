@@ -33,13 +33,14 @@ case "bounds":
 case "accessibility", "press":
     guard args.count >= 3,let pid=Int32(args[2]),args[1] != "press" || args.count==4 else { fatalError("Expected PID and optional exact button title") }
     let trusted=AXIsProcessTrusted()
-    var records=[[String:Any]](),target:AXUIElement?
+    var records=[[String:Any]](),target:AXUIElement?,depthLimitReached=false
     func attribute(_ element:AXUIElement,_ name:String) -> CFTypeRef? {
         var value:CFTypeRef?
         return AXUIElementCopyAttributeValue(element,name as CFString,&value) == .success ? value : nil
     }
     func visit(_ element:AXUIElement,_ depth:Int) {
-        if depth>12 || records.count>=128 { return }
+        if depth>24 { depthLimitReached=true;return }
+        if records.count>=256 { return }
         let role=attribute(element,kAXRoleAttribute) as? String ?? ""
         if role==(kAXMenuBarRole as String) { return }
         let title=attribute(element,kAXTitleAttribute) as? String ?? ""
@@ -62,7 +63,7 @@ case "accessibility", "press":
     }
     if trusted { visit(AXUIElementCreateApplication(pid),0) }
     let scale=Double(CGDisplayPixelsWide(CGMainDisplayID()))/CGDisplayBounds(CGMainDisplayID()).width
-    var result:[String:Any]=["trusted":trusted,"elements":records,"limitReached":records.count>=128,"found":target != nil,"displayScale":scale]
+    var result:[String:Any]=["trusted":trusted,"elements":records,"limitReached":records.count>=256 || depthLimitReached,"depthLimitReached":depthLimitReached,"found":target != nil,"displayScale":scale]
     if let target=target { result["actionError"]=AXUIElementPerformAction(target,kAXPressAction as CFString).rawValue }
     try output(result)
 case "click":
@@ -91,8 +92,11 @@ case "sample":
         if min(r,g,b)<220 { ink+=1 }; if min(r,g,b)>240 { white+=1 }
         if r>200 && g<70 && b<70 { red+=1 };if g>200 && r<70 && b<70 { green+=1 }
     }
-    let occupied=luminance.indices.filter{luminance[$0]>=8}
-    let contrastSpan=occupied.isEmpty ? 0 : occupied.last!-occupied.first!
+    var low=0,high=255,total=0
+    for level in 0..<256 { total+=luminance[level];if total>=8 { low=level;break } }
+    total=0
+    for level in stride(from:255,through:0,by:-1) { total+=luminance[level];if total>=8 { high=level;break } }
+    let contrastSpan=width*height<16 ? 0 : max(0,high-low)
     try output(["pixels":width*height,"ink":ink,"white":white,"red":red,"green":green,"contrastSpan":contrastSpan,
                 "sha256":SHA256.hash(data:Data(bytes)).map{String(format:"%02x",$0)}.joined()] as [String:Any])
 case "type":

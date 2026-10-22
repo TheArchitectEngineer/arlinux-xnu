@@ -121,11 +121,18 @@ class Desktop:
         with Image.open(path) as image:
             if x<0 or y<0 or x+w>image.width or y+h>image.height:raise RuntimeError('Target is outside actual composed display')
             crop=image.convert('RGB').crop((x,y,x+w,y+h));pixels=list(crop.getdata())
-        occupied=[i for i,count in enumerate(crop.convert('L').histogram()) if count>=8]
+        histogram=crop.convert('L').histogram();low=0;high=255;total=0
+        for level,count in enumerate(histogram):
+            total+=count
+            if total>=8:low=level;break
+        total=0
+        for level in range(255,-1,-1):
+            total+=histogram[level]
+            if total>=8:high=level;break
         return {'pixels':len(pixels),'ink':sum(min(p)<220 for p in pixels),'white':sum(min(p)>240 for p in pixels),
                 'red':sum(p[0]>200 and p[1]<70 and p[2]<70 for p in pixels),
                 'green':sum(p[1]>200 and p[0]<70 and p[2]<70 for p in pixels),
-                'contrastSpan':occupied[-1]-occupied[0] if occupied else 0,
+                'contrastSpan':max(0,high-low) if len(pixels)>=16 else 0,
                 'sha256':hashlib.sha256(crop.tobytes()).hexdigest()}
 
     def observe(self,pattern,word=False,timeout_seconds=8,region=None):
