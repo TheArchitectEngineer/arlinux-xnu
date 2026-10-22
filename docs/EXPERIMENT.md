@@ -2,6 +2,16 @@
 
 ## Scope
 
+Crash collection run 39790422933 (82b7f1b) reproduces the Apple early SIGTRAP;
+receipt a160f1adaf124636fa9a5f702ec3ff82877da953650e8b1e4bb8f3979ad37afe
+verifies 13 files. The bounded OS-report collector finds no matching report
+within eight seconds and records that absence explicitly; there is still no
+exception stack. This is not evidence of a functioning Apple app or the cause
+of Linux's Inbox failure. Next capture the actual Apple launch trap, rather
+than increasing a report wait or treating a missing report as no exception.
+Native-userland is skipped as intended; total active runner time is 131 seconds
+(74 SDK + 57 Apple). No compatibility runtime behavior changed in this work.
+
 Apple original-IPA comparison is now exercised rather than rejected by a guard.
 Run 39788575603 (46ada9c) stops at an encrypted optional extension before app
 launch; Apple receipt 6f4f4172e3136467b6ba4b29bbcc1e1047d82d75064d56a2b407bec8987b054a
