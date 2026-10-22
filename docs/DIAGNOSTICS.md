@@ -107,7 +107,8 @@ copy the temporary breakpoint into a shared memfd outside the original inode's
 probe ownership. Run 39732010413 faulted with SIGTRAP at the probed pthread entry
 after its page became `darling-shared`; its original instruction is an ordinary
 stack store. This is a diagnostic-interference hypothesis, not an original-app
-crash verdict. Observe actual workqueue upcall arguments at the runtime boundary
+crash verdict. Removing that probe in 39735050451 eliminates the recorded trap
+but preserves the original Inbox stall. Observe actual workqueue upcall arguments at the runtime boundary
 instead; these bounded records do not alter executable bytes. A stripped app
 callback may instead declare its observed
 fileOffset, exact imageSHA256, observedRun and label; the image hash is required
@@ -126,6 +127,9 @@ ring-buffer CPU statistics and original trace records remain beside that
 generation's logs. An unavailable kernel facility or an overflowing trace is
 not evidence of non-execution. Kernel tracing also changes timing; the original
 journey's effects and ordinary execution still require independent acceptance.
+The global uprobe_profile counter for a return probe counts breakpoint hits,
+not successfully observed function returns. Use the actual return records in
+the private instance trace to establish a return within its capture interval.
 For a point explicitly marked dispatch-submit, the existing stopped-process
 metadata reader also reads at most four observed queue receivers using the
 actual libdispatch-registered serial/label offsets. Unreadable labels stay

@@ -11,12 +11,23 @@ The Mach remapping path copies already-adapted process memory; a copied probe
 breakpoint is a plausible diagnostic-induced trap, not proof of an app defect.
 The shared-cache probe is removed, with bounded actual upcall-argument records
 at the runtime's existing entry/resume boundaries instead. No scheduler behavior
-is changed. Next execution: only things--offline-task-persistence with the
-read-only profile. Correlate ordinary worker flags/counts with the original
-submit/block/worker sites. If it still traps, inspect the new exact mapping and
-fault before changing workqueue policy; if it stalls, use the observed submission
-and worker evidence to choose a reusable scheduling repair. Neither outcome
-passes task acceptance without actual Inbox/create/edit/complete/relaunch effects.
+is changed. Focused run 39735050451 (source 35af3360c1a2b37ff8e75f895b09af01c118e038)
+has no recorded fault and reaches the original 30-second Inbox failure again.
+The original async submit has both entry and return records; its block, Swift
+closure and database worker have no hits during the captured interval, with no
+ring-buffer overflow. This supports diagnostic interference as the prior trap's
+cause, not an app repair. Actual ordinary worker entries include flags 0x244006
+and 0x244005 with count 0; therefore an absence of ordinary worker creation is
+not the explanation. The observed submission receiver is 0x1e1d34500, registered
+queue serial 16. Its label remains unavailable under the metadata reader's
+non-executable-memory policy; do not infer it from an address or serial alone.
+Next question: what state/wakeup prevents that original queue from draining the
+submitted block? Inspect retained arguments and pinned libdispatch first; do not
+rerun the same timeout just to reconfirm the stall. Original Inbox and all 22
+later task effects remain unverified. Receipt
+cc3884c0a0810708b9cff12f8bc46e1c02312b2c83ce33e7676843762c7ff8ce and all 89
+files verify. Feedback 197 s, journey 46.749 s including 11.471 s diagnosis;
+compiler cache 169 hits / 1 miss. Android remains unverified.
 
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.
