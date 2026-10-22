@@ -695,3 +695,8 @@ Observed original method returns include raw x0 metadata. Interpret it only
 against the actual method ABI: a boolean-return method's value differs from an
 object pointer, void result or floating-point return. Geometry samples also read
 public per-view trait displayScale, independently of UIScreen.scale.
+
+A named original diagnostic symbol may request observeRegisters (at most eight
+ARM64 x0..x7 or d0..d7 names). LLDB records their actual textual register values
+at the real entry. Floating-point arguments must be read from their ABI registers,
+not inferred from x0 or a different public object's similarly named property.

@@ -174,6 +174,12 @@ def trace(debugger,specification,runtime_path,stderr_path):
                         else:arm(record)
                 else:
                     frame=thread.GetFrameAtIndex(0)
+                    if record.get('observeRegisters'):
+                        names=record['observeRegisters']
+                        if not isinstance(names,list) or len(names)>8 or any(not re.fullmatch(r'[xd][0-7]',name) for name in names):
+                            raise ValueError('original argument-register observation exceeds ARM64 budget')
+                        print('ORIGINAL_TRACE_ARGUMENTS',json.dumps(dict(symbol=record['symbol'],
+                            registers={name:frame.FindRegister(name).GetValue() for name in names})))
                     if record['stage']=='return':
                         print('ORIGINAL_TRACE_RETURN_X0',json.dumps(dict(symbol=record['symbol'],
                             x0=hex(frame.FindRegister('x0').GetValueAsUnsigned()))))

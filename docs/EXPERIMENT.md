@@ -2,6 +2,18 @@
 
 ## Scope
 
+Run 39778756148 (a798ab3), receipt
+3693717c61a753198c9789f7e001169c2790f82ad4c4bf73021fcf0d57ad14d3,
+verifies 93 files. Initial canUpdate actually returns x0=0, followed later by a
+real setDisplayScale: call/return. All public per-view trait displayScale values
+are 2 in all four samples. Initial zero before a setter may be normal setup; no
+platform scale repair is justified yet. The original setter compares d0 with its
+stored scale, writes a changed value and sets needsUpdate. Next read its actual
+d0 argument and arm canUpdate/update only after that setter is really entered.
+This distinguishes a zero supplied input from lost subsequent update delivery.
+Argument observations read at most eight actual ARM64 x0..x7/d0..d7 registers;
+no arguments or results are changed.
+
 Run 39772829516 (ec5f967), receipt
 c4538ced8dcdefc378ea6ae8144839fae0c52002c7f2c5e8d6f8cd511cde51d3, verifies
 93 files. All three component-update points are armed but unhit in the finite

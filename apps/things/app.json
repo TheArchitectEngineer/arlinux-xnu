@@ -20,13 +20,23 @@
   "diagnosticSymbols": [
     {
       "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent canUpdate]",
-      "observeReturn": true
+      "symbol": "-[THTaskListSceneLayoutComponent setDisplayScale:]",
+      "observeReturn": true,
+      "observeRegisters": [
+        "d0"
+      ]
     },
     {
       "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent setDisplayScale:]",
-      "observeReturn": true
+      "symbol": "-[THTaskListSceneLayoutComponent canUpdate]",
+      "observeReturn": true,
+      "afterSymbol": "-[THTaskListSceneLayoutComponent setDisplayScale:]"
+    },
+    {
+      "image": "ThingsiPhone",
+      "symbol": "-[THTaskListSceneLayoutComponent update]",
+      "observeReturn": true,
+      "afterSymbol": "-[THTaskListSceneLayoutComponent setDisplayScale:]"
     }
   ]
 }
