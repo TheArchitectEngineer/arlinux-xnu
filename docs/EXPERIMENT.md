@@ -2,6 +2,28 @@
 
 ## Scope
 
+Layout control run 39783907861 (467b30b) passes the same deferred-layout journey
+on Linux and the Apple-host reference. Linux receipt
+1f3027a3c240092ec70e7b1dbf5b053266dd5390d629b976a03cfc42c52476f2 verifies
+29 files; Apple receipt 7c92ad4ba8560f11bdc093d8a4f2176f91a1776b1d68ce615a2998b435a86bcf
+verifies 22. Actual external clicks log pending=1 followed by genuine layout
+passes, changing the panel from 335 to 255 points on Linux and back, with visible
+red/green pixels and new-process repetition. Final Linux 009-observe.png and
+Apple 007-observe.png visibly show inset/green. Desktop sizes differ (Linux375,
+Apple1025); this is behavior comparison, not pixel equality or Android acceptance.
+The first run 39783522942 failed app linking because CoreGraphics was omitted;
+no app ran there. The manifest dependency is corrected in 467b30b. The attempted
+cancellation found that failed run already completed.
+
+This rules out a generic deferred-UIView-layout failure for this probe, not every
+Things layout path. Existing observations traverse UIViews; they do not establish
+whether layer-only list content exists but fails composition. Next inspect a
+bounded original CALayer tree (256 nodes/depth24) alongside the existing four
+geometry samples, including delegate/content classes, masks, opacity, transforms
+and actual bounds. No pixels or content payloads are read by this observer and
+no layers are changed. Do not treat a data-binding cause as established merely
+because UIView text inspection is empty. Things remains failed.
+
 Run 39782339027 (40675be), receipt
 ec30625d5e8e2fa8adae2999851c4894677ce5edf83997ba9026eb66c2b1daf5,
 verifies 91 files. The controller's listAdapter/listView storage is nonzero in

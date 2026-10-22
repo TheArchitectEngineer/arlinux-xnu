@@ -60,6 +60,23 @@ static void collect_geometry(UIView *view,NSMutableArray *records,unsigned depth
         @"contentsCenter":rect_values(layer.contentsCenter),@"contentsGravity":layer.contentsGravity ?: @"<absent>"}];
     for (UIView *child in view.subviews) collect_geometry(child,records,depth+1);
 }
+static void collect_layers(CALayer *layer,NSMutableArray *records,unsigned depth,NSInteger parent) {
+    if(!layer || depth>24 || records.count>=256)return;
+    NSUInteger index=records.count;CATransform3D t=layer.transform;
+    NSArray *children=layer.sublayers;
+    [records addObject:@{@"parent":@(parent),@"depth":@(depth),
+        @"class":NSStringFromClass(layer.class),@"bounds":rect_values(layer.bounds),
+        @"position":@[@(layer.position.x),@(layer.position.y)],
+        @"hidden":@(layer.hidden),@"opacity":@(layer.opacity),
+        @"delegateClass":layer.delegate ? NSStringFromClass([(id)layer.delegate class]) : @"<absent>",
+        @"contentsClass":layer.contents ? NSStringFromClass([layer.contents class]) : @"<absent>",
+        @"maskClass":layer.mask ? NSStringFromClass(layer.mask.class) : @"<absent>",
+        @"maskBounds":rect_values(layer.mask ? layer.mask.bounds : CGRectZero),
+        @"transform":@[@(t.m11),@(t.m12),@(t.m13),@(t.m14),@(t.m21),@(t.m22),@(t.m23),@(t.m24),
+            @(t.m31),@(t.m32),@(t.m33),@(t.m34),@(t.m41),@(t.m42),@(t.m43),@(t.m44)],
+        @"sublayerCount":@(children.count)}];
+    for(CALayer *child in children)collect_layers(child,records,depth+1,(NSInteger)index);
+}
 static void observe_geometry(UIWindow *window) {
     static unsigned samples;
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
@@ -70,15 +87,17 @@ static void observe_geometry(UIWindow *window) {
     if (samples>125) return;
     unsigned sample=samples++;
     if (sample!=0 && sample!=10 && sample!=50 && sample!=125) return;
-    UIScreen *screen=window.screen;NSMutableArray *views=[NSMutableArray new];
+    UIScreen *screen=window.screen;NSMutableArray *views=[NSMutableArray new],*layers=[NSMutableArray new];
     collect_geometry(window,views,0);
+    collect_layers(window.layer,layers,0,-1);
     NSDictionary *value=@{@"sample":@(sample),@"windowBounds":rect_values(window.bounds),
         @"screenBounds":rect_values(screen.bounds),@"nativeBounds":rect_values(screen.nativeBounds),
         @"screenScale":@(screen.scale),@"nativeScale":@(screen.nativeScale),
         @"idiom":@([UIDevice currentDevice].userInterfaceIdiom),
         @"horizontalSizeClass":@(window.traitCollection.horizontalSizeClass),
         @"verticalSizeClass":@(window.traitCollection.verticalSizeClass),
-        @"views":views,@"viewLimit":@128,@"limitReached":@(views.count>=128)};
+        @"views":views,@"viewLimit":@128,@"limitReached":@(views.count>=128),
+        @"layers":layers,@"layerLimit":@256,@"layerLimitReached":@(layers.count>=256)};
     NSData *json=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:nil];
     if (json) { fwrite("APP_RENDER_GEOMETRY ",1,20,stdout);fwrite(json.bytes,1,json.length,stdout);fputc('\n',stdout);fflush(stdout); }
 }

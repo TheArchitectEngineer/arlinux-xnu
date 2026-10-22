@@ -708,3 +708,10 @@ field name/offset/bytes-inspected/allZero. It calls no app getter, follows no
 stored pointer and exports no field payload. Empty Swift ivar type encodings
 are never cast to object references; allZero is storage evidence, not a general
 Swift optional/value interpretation. Apple framework classes are excluded.
+
+The four opt-in geometry samples also include the real window CALayer hierarchy,
+not only UIView descendants: up to 256 nodes/depth 24 with parent indices, actual
+bounds/position/transform, visibility/opacity, content/delegate class names and
+mask metadata. No layer is forced to draw/layout and no contents payload is
+exported. This distinguishes absent view labels from possible layer-only content;
+it does not certify composition or readable pixels. Truncation remains explicit.
