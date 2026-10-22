@@ -162,6 +162,14 @@ class Processes:
             arguments=[str(binary)]
             if app.get('input',{}).get('kind') in ('firmware','ipa'):
                 env['DYLD_INSERT_LIBRARIES']=str(ROOT/'build/reference-tools/libarlinux-inspection.dylib')
+        reference_trace=self.reference and app.get('input',{}).get('kind')=='ipa' and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1'
+        if reference_trace:
+            # This unprivileged Python process stops before exec. LLDB follows
+            # the same PID into the original executable, catching early dyld /
+            # runtime traps that happen before an observer constructor exists.
+            insertion=env.pop('DYLD_INSERT_LIBRARIES','')
+            script='import os,signal,sys; os.kill(os.getpid(),signal.SIGSTOP); os.environ["DYLD_INSERT_LIBRARIES"]=sys.argv[1]; os.execv(sys.argv[2],sys.argv[2:])'
+            arguments=[sys.executable,'-c',script,insertion,str(binary)]
         process = subprocess.Popen(arguments, cwd=state, env=env, stdout=stdout, stderr=stderr,
             stdin=subprocess.PIPE, pass_fds=(trace.fileno(),), start_new_session=True)
         record = {'app': name, 'generation': number,
@@ -176,6 +184,33 @@ class Processes:
         self.generations.append(record)
         self.processes[name] = {**record, 'process': process, 'runtime': str(prefix.with_suffix('.runtime.log')), 'stdout': str(prefix.with_suffix('.stdout'))}
         self.current = name
+        if reference_trace:
+            diagnostic_started=time.monotonic()
+            output=prefix.with_suffix('.apple-startup.json')
+            script=ROOT/'tools/app_suite/reference_startup_trace.py'
+            invocation=('script import runpy; '+f'runpy.run_path({str(script)!r})["trace"](lldb.debugger,{str(output)!r})')
+            try:
+                deadline=time.monotonic()+5
+                while True:
+                    if process.poll() is not None:raise RuntimeError('Reference launch exited before debugger attachment')
+                    status=command('ps','-o','stat=','-p',process.pid,capture_output=True,text=True).stdout
+                    if 'T' in status:break
+                    if time.monotonic()>=deadline:raise RuntimeError('Reference launch did not stop before exec')
+                    time.sleep(.02)
+                with prefix.with_suffix('.startup.lldb.log').open('wb') as log:
+                    result=subprocess.run(['sudo','-n','/usr/bin/lldb','--batch','--attach-pid',str(process.pid),
+                        '-o','settings set auto-confirm true','-o',invocation],stdout=log,stderr=subprocess.STDOUT,timeout=18)
+                if result.returncode or not output.is_file():
+                    self.infrastructure_failure=True
+                    raise RuntimeError('Apple launch debugger failed; inspect startup.lldb.log')
+                record['startupTrace']=str(output.relative_to(self.output))
+                record['diagnosticLaunch']=True
+                if process.poll() is None:
+                    record['identity']=identity(process.pid)
+                    self.processes[name]['identity']=record['identity']
+            finally:
+                if process.poll() is None:os.kill(process.pid,signal.SIGCONT)
+                self.steps[-1]['diagnosticSeconds']=round(time.monotonic()-diagnostic_started,3)
         if trace_symbols:
             diagnostic_started=time.monotonic()
             # The same owned original process stops before dyld. The debugger

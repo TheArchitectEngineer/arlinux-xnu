@@ -25,6 +25,12 @@ pinned PlayCover converter and ad-hoc signing. Input metadata keeps original
 hashes separate from converted/signed hashes. Conversion is an input step, not
 compatibility acceptance; actual launch, window, input and persistence can still
 fail. Apple-host behavior is a comparison and never Linux/Android acceptance.
+For an IPA with an early Apple-host trap and no OS crash report, use that same
+entry with --reference-only --lifecycle-context. The owned launch PID stops in
+a diagnostic Python wrapper before exec; LLDB follows it into the original
+executable, records the actual first exception/stop and bounded thread stacks,
+then detaches within eight seconds. No replay, callback or return modification
+is used. This changes timing and cannot establish ordinary launch acceptance.
 
 For the current lifecycle boundary investigation, opt in with
 `./build.sh build --app counter --lifecycle-context`. The injected platform

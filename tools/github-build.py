@@ -394,7 +394,7 @@ def main():
     parser.add_argument('--baseline-run',help='Compare receipt-verified effects against this exact completed run (report or build --wait)')
     parser.add_argument('--reference',action='store_true',help='Also run the same app journeys on the Apple-host reference')
     parser.add_argument('--reference-only',action='store_true',help='Only Apple comparison; skip Linux build/execution, never Linux acceptance')
-    parser.add_argument('--lifecycle-context',action='store_true',help='Opt-in read-only loaded lifecycle ABI and host window-state evidence on Linux')
+    parser.add_argument('--lifecycle-context',action='store_true',help='Read-only lifecycle evidence; original IPA Apple reference also observes its actual launch under LLDB')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
     parser.add_argument('--job', help='Exact job name for report; default: all jobs')
