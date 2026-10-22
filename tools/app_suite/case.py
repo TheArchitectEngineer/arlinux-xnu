@@ -159,7 +159,9 @@ class Case(Processes,Desktop):
                     self.steps[-1].update(status='failed', reason=error,seconds=round(max(0,time.monotonic()-started-self.steps[-1].get('diagnosticSeconds',0)),3))
                     diagnosis_started=time.monotonic()
                     failures=[]
-                    for collect in (lambda:self.snapshot('failure'),self.stop_kernel_traces,self.diagnose):
+                    collectors=(self.stop_kernel_traces,) if getattr(self,'infrastructure_failure',False) and not self.processes else (
+                        lambda:self.snapshot('failure'),self.stop_kernel_traces,self.diagnose)
+                    for collect in collectors:
                         try: collect()
                         except (RuntimeError,OSError,subprocess.SubprocessError) as diagnostic_error:
                             failures.append(str(diagnostic_error))

@@ -271,6 +271,19 @@ predicate code pointers were recorded by the actual trigger consumer; the next
 bounded observation follows their real entry/return on the same exact image.
 This does not yet establish a background submission or fix scheduling.
 
+Predicate [39717413546](https://github.com/taowen/arlinux-xnu/actions/runs/39717413546),
+source 26406591167035f13ac785d2c1345d3e8a2d8c18, PID 5870/startTicks 18521,
+records 70/70 entries without overflow and clean cleanup. Receipt
+**c0ccc646247189f9c83080bf1b214493225e6f5a6959332ba4173807bf41a192**
+and all 89 files verify. The first predicate returns false; the second executes
+once and returns true within the requested receiver's consumeTriggers call.
+The third/fourth predicates are not invoked on that consumed event. Inbox still
+fails; feedback was 206 s. Static binding inspection identifies NSProcessInfo
+beginBackgroundTask followed by the original global DispatchQueue.async call
+in the accepted branch, not the initially guessed next-update-pass method.
+The next focused trace replaces the unused predicates with that actual submit
+stub and the block/Swift/database worker entries from its pinned disassembly.
+
 Two earlier kernel-setup attempts (39715347208 and 39716080783) produced no valid
 function trace: Python append mode sought to the end of the tracefs command
 file and received EINVAL before writing. The collector now issues a single

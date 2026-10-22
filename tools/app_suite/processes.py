@@ -122,14 +122,28 @@ class Processes:
             state_path=prefix.with_suffix('.kernel-trace.json')
             if not hasattr(self,'kernel_traces'):self.kernel_traces=[]
             self.kernel_traces.append(state_path)
+            setup_error=None
             with prefix.with_suffix('.kernel-setup.log').open('wb') as log:
                 try:
                     result=subprocess.run(['sudo','-n','--preserve-env=GITHUB_ACTIONS',sys.executable,str(script),'start',str(specification),str(state_path)],
                         stdout=log,stderr=subprocess.STDOUT,timeout=15)
                     log.write(f'\nKERNEL_TRACE_SETUP_EXIT status={result.returncode}\n'.encode())
-                except (OSError,subprocess.SubprocessError) as error:
-                    log.write(('KERNEL_TRACE_SETUP_UNAVAILABLE '+str(error)+'\n').encode())
+                    if result.returncode:
+                        setup_error=f'collector exited {result.returncode}'
+                    else:
+                        observed=json.loads(state_path.read_text())
+                        if observed.get('status')!='active':
+                            setup_error=observed.get('error') or 'collector did not enable tracing'
+                except (OSError,ValueError,subprocess.SubprocessError) as error:
+                    setup_error=str(error)
+                    log.write(('KERNEL_TRACE_SETUP_UNAVAILABLE '+setup_error+'\n').encode())
             self.steps[-1]['diagnosticSeconds']=round(time.monotonic()-diagnostic_started,3)
+            if setup_error:
+                # An explicitly requested observation cannot answer its question
+                # without a collector. Do not run an unobserved app to timeout.
+                self.infrastructure_failure=True
+                raise RuntimeError('Requested kernel observation unavailable before app launch: '+setup_error+
+                    '; inspect '+str(prefix.with_suffix('.kernel-setup.log')))
         trace_symbols=app.get('diagnosticSymbols',[]) if not self.reference and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' else []
         if trace_symbols:env['ARLINUX_DEBUG_ENTRY_STOP']='1'
         if app.get('input',{}).get('kind') in ('firmware','ipa'):

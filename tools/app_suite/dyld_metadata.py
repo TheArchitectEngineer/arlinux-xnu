@@ -139,6 +139,34 @@ def collect(target, info_address, runtime_path):
     except (ValueError,OverflowError) as error:
         print('ORIGINAL_WORKLOOP_METADATA_UNAVAILABLE',str(error))
 
+    kernel_state=Path(str(runtime_path).removesuffix('.runtime.log')+'.kernel-trace.json')
+    if kernel_state.is_file():
+        try:
+            state=json.loads(kernel_state.read_text())
+            if state.get('status')=='recorded':
+                config=target.FindFirstGlobalVariable('native_dispatch_config')
+                if not config.IsValid():raise ValueError('dispatch registration unavailable')
+                offsets={name:config.GetChildMemberWithName(name+'_offset').GetValueAsUnsigned() for name in ('serial','label')}
+                trace=kernel_state.with_suffix('.log').read_text()
+                addresses=set()
+                for index,point in enumerate(state.get('symbols',[])):
+                    if point.get('role')=='dispatch-submit':
+                        addresses.update(int(a,16) for a in re.findall(
+                            r'point'+str(index)+r'_entry_\S+.*receiver=(0x[0-9a-f]+)',trace))
+                for address in sorted(addresses)[:4]:
+                    record={'address':hex(address),'source':'observed original dispatch-submit receiver'}
+                    for name,offset in offsets.items():
+                        try:
+                            if not 0<offset<=1024:raise ValueError('unsupported registered queue offset')
+                            value=struct.unpack('<Q',read(address+offset,8))[0]
+                            if name=='label':record['labelPointer']=hex(value)
+                            record[name]=string(value) if name=='label' else value
+                        except ValueError as error:record[name+'Unavailable']=str(error)
+                    print('ORIGINAL_DISPATCH_QUEUE',json.dumps(record))
+                if len(addresses)>4:print('ORIGINAL_DISPATCH_QUEUE_TRUNCATED',len(addresses)-4)
+        except (ValueError,OSError,KeyError,OverflowError) as error:
+            print('ORIGINAL_DISPATCH_QUEUE_UNAVAILABLE',str(error))
+
     try:
         # LP64 offsets from the declared fields, including the notify-port and
         # reserved arrays. No Apple instructions or Mach-O headers are read.

@@ -104,7 +104,8 @@ For an original-app ordering failure that changes under debugger attachment,
 an app may instead declare kernelTraceSymbols (bundle-relative image and exact
 exported symbol). A stripped callback may instead declare its observed
 fileOffset, exact imageSHA256, observedRun and label; the image hash is required
-before registration. Such sites come from actual original call arguments and
+before registration. Such sites come from actual original call arguments or
+the pinned disassembly of an observed handler's direct call/block literal, and
 stay in the pinned app declaration, never production compatibility code.
 --lifecycle-context then enables entry/return uprobes through
 the existing journey launcher, before the app starts, without a debugger entry
@@ -118,6 +119,10 @@ ring-buffer CPU statistics and original trace records remain beside that
 generation's logs. An unavailable kernel facility or an overflowing trace is
 not evidence of non-execution. Kernel tracing also changes timing; the original
 journey's effects and ordinary execution still require independent acceptance.
+For a point explicitly marked dispatch-submit, the existing stopped-process
+metadata reader also reads at most four observed queue receivers using the
+actual libdispatch-registered serial/label offsets. Unreadable labels stay
+unavailable; no queue readiness or ownership is inferred from their names.
 File-mapping failures have a separate eight-request observation budget, retaining
 the original arguments, real descriptor path and saved caller frames even when
 successful startup mappings exhausted the ordinary trace limit. This addresses
@@ -190,7 +195,20 @@ collection and cross-app acceptance requires explicit --app all; the Actions
 form also requires an explicit app input. `cases` lists journeys without using
 a runner.
 
-Choose runs by the question they can answer:
+Choose runs by the question they can answer. Before dispatch, write down the
+failed effect, the competing explanations, the bounded observations that separate
+them, and what each outcome would change. Trace the producer, submission and
+consumer together where possible; do not spend one fresh runner on every edge
+of an already identifiable call chain. Keep sites tied to the exact input image
+and preserve the ordinary journey as acceptance.
+
+An explicitly requested kernel trace must report active setup before the app
+launches. A failed setup stops that journey as an infrastructure failure, keeping
+setup/state logs and cleanup, rather than waiting for an unobserved app to time
+out. If no app launched, skip its screenshot and debugger collection. This does
+not establish an app failure or pass; fix the collector before retrying. The two
+invalid trace attempts 39715347208 and 39716080783 show why this matters.
+
 
 1. Read/report the existing exact run first. Re-symbolize retained evidence or
    inspect pinned source locally where possible. A failed artifact download,
@@ -225,6 +243,15 @@ journeys; Things accounted for about 42 seconds. Dispatch-to-completion was
 preparation in the Linux job; the parallel Mac compilation took 65 seconds.
 These are measured durations, not a billing calculation or a promise that a
 focused run eliminates setup costs. Scope reduction is the first improvement.
+The two valid scoped Things trace runs 39716512266 and 39717413546 still took
+185 and 206 seconds, respectively. They narrowed request delivery and predicate
+consumption, but neither fixed the app effect. Treat that as diagnostic progress,
+not compatibility progress. If another run would only reproduce the same failure
+without separating an explanation, inspect the existing trace and pinned binary
+first. Documentation/report-only changes need no execution run. Do not launch
+another full collection until there is a relevant implementation change or a
+specific regression question.
+
 Further cache work should target measured repeated preparation and source-owned
 SDK products using complete input/output hashes, while retaining fresh run
 provenance. Do not cache test results as current execution, or bypass input

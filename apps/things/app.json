@@ -19,13 +19,6 @@
     },
     {
       "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "fileOffset": "0x3ee9f8",
-      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
-      "observedRun": "39716512266",
-      "label": "first supplied trigger predicate"
-    },
-    {
-      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
       "fileOffset": "0x3eea00",
       "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
       "observedRun": "39716512266",
@@ -33,17 +26,39 @@
     },
     {
       "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "fileOffset": "0x3eea08",
+      "fileOffset": "0x4420bc",
       "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
-      "observedRun": "39716512266",
-      "label": "third supplied trigger predicate"
+      "observedRun": "39717413546",
+      "label": "original DispatchQueue.async import stub",
+      "role": "dispatch-submit",
+      "siteSource": "disassembly of the original accepted trigger predicate and its submitted block"
     },
     {
       "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "fileOffset": "0x3eea50",
+      "fileOffset": "0x1179d8",
       "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
-      "observedRun": "39716512266",
-      "label": "fourth supplied trigger predicate"
+      "observedRun": "39717413546",
+      "label": "original submitted Objective-C block bridge",
+      "role": "block-invoke",
+      "siteSource": "disassembly of the original accepted trigger predicate and its submitted block"
+    },
+    {
+      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
+      "fileOffset": "0x3f6040",
+      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
+      "observedRun": "39717413546",
+      "label": "original Swift work closure from the accepted predicate",
+      "role": "swift-work",
+      "siteSource": "disassembly of the original accepted trigger predicate and its submitted block"
+    },
+    {
+      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
+      "fileOffset": "0x3ec468",
+      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
+      "observedRun": "39717413546",
+      "label": "original database worker called by that closure",
+      "role": "database-work",
+      "siteSource": "disassembly of the original accepted trigger predicate and its submitted block"
     }
   ],
   "input": {
