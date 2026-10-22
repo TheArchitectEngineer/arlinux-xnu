@@ -45,6 +45,15 @@ def startup_trace(path,output):
         elif line.startswith('ORIGINAL_TRACE_DETACH '):summary['detach']=line.split(' ',1)[1]
         elif line.startswith('STARTUP_TRACE_EXIT status='):summary['exitStatus']=int(line.split('=',1)[1])
     summary['note']='Bounded debugger observations; unhit is not proof of non-execution outside the window'
+    apple=path.with_name(path.name.replace('.startup.lldb.log','.apple-startup.json'))
+    if apple.is_file():
+        observations=json.loads(apple.read_text())
+        summary['appleEvidence']=str(apple.relative_to(output))
+        summary['appleStops']=[{'pid':entry['pid'],'memoryMap':entry.get('memoryMap'),
+            'threads':[{'id':thread['id'],'reason':thread['reason'],'frames':thread['frames'][:4]}
+                for thread in entry.get('threads',[]) if thread.get('reason')][:2]}
+            for entry in observations if entry.get('event')=='actual-stop'][:2]
+        summary['appleDetach']=[entry for entry in observations if entry.get('event')=='detach']
     return summary
 
 def unimplemented_calls(runtime):
