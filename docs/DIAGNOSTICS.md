@@ -83,7 +83,12 @@ main entry, resolves the requested symbol with the existing LLVM reader (includi
 stripped Mach-O export tries)
 and actual dyld load address, and records its real breakpoint hit/stack. An
 explicit callbackRegister may observe the supplied code address and its later
-execution; it never invokes that callback. The 20-second observation window,
+execution; it never invokes that callback.
+An optional afterSymbol arms a one-shot symbol only after the named entry is
+actually hit, separating initial setup from the update following a request.
+observeReturn follows that hit's actual link register on the same thread; it
+does not change control flow or infer a successful operation from a return.
+The 20-second observation window,
 unhit breakpoints, unavailable metadata and detach result stay in the generation's
 startup.lldb.log. Not hitting a breakpoint proves nothing beyond that window.
 This profile alters timing and cannot be used as ordinary launch-performance

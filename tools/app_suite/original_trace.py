@@ -47,7 +47,12 @@ def trace(debugger,specification,runtime_path,stderr_path):
     for name in ('SIGSYS','SIGSTOP'):
         number=signals.GetSignalNumberFromName(name)
         signals.SetShouldStop(number,False);signals.SetShouldNotify(number,False)
-    breakpoints={}
+    breakpoints={};deferred=[]
+    def arm(record):
+        point=target.BreakpointCreateByAddress(int(record['address'],16))
+        if record.get('thread'):point.SetThreadID(record['thread'])
+        breakpoints[point.GetID()]=record
+        print('ORIGINAL_TRACE_ARMED',json.dumps(record))
     try:
         entry=re.search(r'NATIVE_DARWIN_ENTRY entry=(0x[0-9a-f]+)',Path(stderr_path).read_text(errors='replace'))
         if not entry:raise ValueError('original entry address unavailable')
@@ -80,14 +85,22 @@ def trace(debugger,specification,runtime_path,stderr_path):
                         image=next((image for image in images if image['path'].endswith('/'+requested['image'])),None)
                         if image is None:raise ValueError('declared original image not loaded')
                         address=image['address']+symbol_address(image['path'],requested['symbol'])
-                        point=target.BreakpointCreateByAddress(address)
-                        breakpoints[point.GetID()]=dict(stage='symbol',address=hex(address),**requested)
-                        print('ORIGINAL_TRACE_ARMED',json.dumps(breakpoints[point.GetID()]))
+                        record=dict(stage='symbol',address=hex(address),**requested)
+                        if requested.get('afterSymbol'):deferred.append(record)
+                        else:arm(record)
                 else:
                     frame=thread.GetFrameAtIndex(0)
                     print('ORIGINAL_TRACE_STACK',thread.GetThreadID())
                     for index in range(min(16,thread.GetNumFrames())):
                         print(f'frame #{index}: {thread.GetFrameAtIndex(index).GetPC():#x}')
+                    if record['stage']=='symbol':
+                        for waiting in deferred[:]:
+                            if waiting['afterSymbol']==record['symbol']:
+                                arm(waiting);deferred.remove(waiting)
+                        if record.get('observeReturn'):
+                            address=frame.FindRegister('x30').GetValueAsUnsigned()
+                            if not address or address%4:raise ValueError('original return address invalid')
+                            arm(dict(stage='return',address=hex(address),symbol=record['symbol'],thread=thread.GetThreadID()))
                     if record.get('callbackRegister'):
                         address=frame.FindRegister(record['callbackRegister']).GetValueAsUnsigned()
                         if not address or address%4:raise ValueError('original callback address invalid')
@@ -96,7 +109,7 @@ def trace(debugger,specification,runtime_path,stderr_path):
                         print('ORIGINAL_TRACE_ARMED',json.dumps(breakpoints[point.GetID()]))
             process.Continue()
             if not breakpoints:break
-        print('ORIGINAL_TRACE_WINDOW_ENDED',json.dumps(dict(unhit=list(breakpoints.values()))))
+        print('ORIGINAL_TRACE_WINDOW_ENDED',json.dumps(dict(unhit=list(breakpoints.values())+deferred)))
     except Exception as error:
         print('ORIGINAL_TRACE_UNAVAILABLE',str(error))
     finally:

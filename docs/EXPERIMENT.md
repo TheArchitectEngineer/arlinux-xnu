@@ -149,7 +149,21 @@ the overall Things startup failure persists.
 The current workqueue narrowing code counts all live workers, including parked
 event workers. XNU instead validates caller/QoS/overcommit and uses active/busy
 accounting. This semantic mismatch is identified but not yet corrected; the two
-passing probe flows do not certify it. The next bounded work is the rejected
-read-source subscription and its real registration/rearm/cancel/close behavior,
-then original Things again. Do not accept flags while silently omitting their
-lifetime behavior or infer a common cause from similar-looking stalls.
+passing probe flows do not certify it. The READ rejection is a real independent
+gap, but neither original Things nor Web has demonstrated that same rejection.
+Prioritize the original application's actual pending work and its producer /
+consumer before extending a probe. A probe may encounter an earlier unrelated
+missing API; fixing that does not establish progress on the original stall.
+Do not accept flags while silently omitting their lifetime behavior or infer a
+common cause from similar-looking stalls.
+
+The read-only lifecycle run [39703669624](https://github.com/taowen/arlinux-xnu/actions/runs/39703669624),
+source 60f1ea2361fb206a6159c5009fe5ae0cfd4fc6e3, still fails both selected journeys.
+Receipt **d8b2f5159c61a1c9b2cfbf98a0c19a3842f7a8c49f782eda1694a0dff27f61f0**
+and 105 files verify. Things' sampled main thread is rendering its original
+upgrade UI, not visibly blocked in a read source. That single sample does not
+prove rendering starvation. Web's real began event reaches UIKit with a view,
+but the view is cleared during sendEvent before the ended event; DOM remains
+WebCount: 0. This narrows input delivery, without establishing which recognizer
+or event property causes the cancellation. The loaded UITouch has no
+setGestureView: method; adding that selector is not a supported repair.

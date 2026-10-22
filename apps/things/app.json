@@ -12,7 +12,9 @@
     },
     {
       "image": "ThingsCommon.framework/ThingsCommon",
-      "symbol": "_$s12ThingsCommon20THCDatabaseComponentC22performBlockingUpgradeyyF"
+      "symbol": "_$s12ThingsCommon20THCDatabaseComponentC6updateyyF",
+      "afterSymbol": "_$s12ThingsCommon20THCDatabaseComponentC12startUpgrade10completionyyyc_tF",
+      "observeReturn": true
     }
   ],
   "input": {
