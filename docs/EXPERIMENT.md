@@ -2,6 +2,23 @@
 
 ## Scope
 
+Latest read-only geometry evidence: run 39771576263, source
+a4d181a4c63c352e33448ee308d185f6ee0b7735, receipt
+4d6caaebb4d19775cbe9117ce840996ec0879f73bbd7489a277584267fd7b4fe;
+all 91 files verify. Samples 0, 10, 50 and 125 contain no visible view layer with
+needsLayout or needsDisplay set, including the eventual original task-list view.
+Do not add forced layout/display calls on the assumption of an unserviced flag.
+Read-only inspection of the retained fresh database (including its real WAL)
+finds 33 TMTask rows, 2 TMMetaItem rows and 1 TMSettings row; Meta databaseVersion
+is 21 and default-tag/orphan-heading setup is recorded. These are original
+first-launch records, not externally created test tasks or persistence acceptance.
+The original app creates content but does not present a populated list. Next
+trace original data-to-list selection/binding after initialization, rather than
+repeating scene activation, renderer or database-empty hypotheses. Unsupported
+EVFILT_VNODE registrations also exist, mostly with generic preferences/resource
+masks; their frequency alone does not tie them to this missing list effect.
+No compatibility behavior was changed by these diagnostic runs.
+
 Latest list diagnostic: run 39770870267 (1d8c6ee), receipt
 c5ed4b0e334d4255f7131e2deb6d894b5461cd0b913f708834d0a299a901b841,
 verifies all 93 files. Original main is reached and both named list breakpoints
