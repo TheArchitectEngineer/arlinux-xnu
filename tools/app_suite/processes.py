@@ -160,7 +160,7 @@ class Processes:
         if self.reference:
             binary=ROOT/'build/reference-apps'/(app['name']+'.app')/app['name']
             arguments=[str(binary)]
-            if app.get('input',{}).get('kind')=='firmware':
+            if app.get('input',{}).get('kind') in ('firmware','ipa'):
                 env['DYLD_INSERT_LIBRARIES']=str(ROOT/'build/reference-tools/libarlinux-inspection.dylib')
         process = subprocess.Popen(arguments, cwd=state, env=env, stdout=stdout, stderr=stderr,
             stdin=subprocess.PIPE, pass_fds=(trace.fileno(),), start_new_session=True)

@@ -18,6 +18,14 @@ every failure. Use explicit targeted cache lookups only for the current failed
 effect. Production framework adaptation is allowed; the diagnostic harness must
 remain read-only with respect to app/framework behavior.
 
+The Apple-host reference can prepare a declared IPA through the same pinned
+download, archive safety and original executable checks as Linux. Its copied
+bundle's Mach-O images (including bundled frameworks/extensions) then use the
+pinned PlayCover converter and ad-hoc signing. Input metadata keeps original
+hashes separate from converted/signed hashes. Conversion is an input step, not
+compatibility acceptance; actual launch, window, input and persistence can still
+fail. Apple-host behavior is a comparison and never Linux/Android acceptance.
+
 For the current lifecycle boundary investigation, opt in with
 `./build.sh build --app counter --lifecycle-context`. The injected platform
 library reads actual loaded Objective-C method signatures and samples the real

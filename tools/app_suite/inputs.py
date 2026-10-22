@@ -102,7 +102,7 @@ def prepare_bundle(app,original,info,root,origin,destination=None,platform_libra
                binarySHA256=sha(binary),build='passed')
 
 
-def prepare_ipa_app(app):
+def prepare_ipa_app(app,destination=None,platform_library=True):
     declared=app['input'];directory=ROOT/'build/ipa-input'/app['id']
     directory.mkdir(parents=True,exist_ok=False);archive=directory/'app.ipa'
     # Same pinned object through declared routes, not substitute app versions.
@@ -167,7 +167,7 @@ def prepare_ipa_app(app):
     def version(value):return tuple(int(part) for part in value.split('.'))
     if version(info['MinimumOSVersion'])>version(firmware['version']):raise RuntimeError('IPA requires a newer iOS userland')
     prepare_bundle(app,original,info,unpacked,{'url':declared['url'],'downloadURL':download_url,'downloadSeconds':download_seconds,'archiveBytes':declared['bytes'],
-        'archiveSHA256':declared['sha256'],'minimumOSVersion':info['MinimumOSVersion']})
+        'archiveSHA256':declared['sha256'],'minimumOSVersion':info['MinimumOSVersion']},destination,platform_library)
 
 
 def prepare_reference_firmware(apps):
@@ -218,7 +218,6 @@ def prepare_inputs(apps,reference):
         if app.get('build') not in ('pending-firmware','pending-ipa'):continue
         try:
             if reference:
-                if app.get('build')=='pending-ipa':raise RuntimeError('IPA Apple-host conversion is not yet validated')
                 prepared=json.loads((ROOT/'build/reference-products.json').read_text())
                 if prepared['source']!=os.environ['GITHUB_SHA'] or prepared['runId']!=os.environ['GITHUB_RUN_ID']:
                     raise RuntimeError('Reference products source/run mismatch')
