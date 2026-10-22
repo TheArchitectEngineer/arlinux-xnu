@@ -14,9 +14,9 @@ pins the archive and original executable hashes. Static input inspection found
 thin ARM64, minimum iOS 16.4 and cryptid 0 in the main executable and five bundled
 frameworks, including React/Hermes. This is not a simple UIKit-only app.
 The first-screen/reopen journey dismisses the actual 知道了 introduction once,
-then requires an external click on 我的 and visible
-转码记录 content, then normal close/relaunch and repeat. These targets still
-require confirmation against actual UI. It does not certify media import,
+then clicks the observed combined label 转码记录, 查看历史结果 and requires
+the history page's 尚无转码记录 content, then normal close/relaunch and repeat.
+It does not certify media import,
 editing or export. Runner-side source
 availability is also required; a workstation download is not a runner cache.
 Run 39804175373 failed before app execution: the public cache endpoint returned
@@ -35,6 +35,14 @@ Run 39806436244 (8345518), receipt
 verifies 20 files. Its screenshot shows the real home page and welcome dialog;
 the first navigation click was blocked by that undismissed introduction. The
 updated journey dismisses the genuine notice through its observed AX rectangle.
+Run 39807696309 (cd92177), receipt
+5f0738fc732da527f55cbbd11dda12458851c3386f55d894c0a37375b4133993,
+verifies 19 files. The notice closes and the full home page renders. The bounded
+AX tree reaches its contents at depth 17 without truncation. Navigation had not
+occurred: React combines the card title/subtitle into one accessible label,
+so the previous exact title-only click did not match. The journey now uses the
+observed label and requires a history-specific empty state, not the home's
+different recent-results message.
 
 The next acquired original-binary candidate is Things iPhone 3.17.1/build
 31701001, bundle ID com.culturedcode.ThingsiPhone. Its community-decrypted IPA

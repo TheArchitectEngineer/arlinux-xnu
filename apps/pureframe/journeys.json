@@ -8,13 +8,13 @@
       {"do":"launch","app":"pureframe"},
       {"do":"viewport","width":375,"height":667},
       {"do":"click","text":"^知道了$","target":"text"},
-      {"do":"click","text":"^转码记录$","target":"text"},
-      {"do":"see","text":"尚无转码记录|还没有转码记录","timeoutSeconds":15},
+      {"do":"click","text":"^转码记录, 查看历史结果$","target":"text"},
+      {"do":"see","text":"尚无转码记录","timeoutSeconds":15},
       {"do":"close"},
       {"do":"exit","app":"pureframe"},
       {"do":"launch","app":"pureframe"},
-      {"do":"click","text":"^转码记录$","target":"text"},
-      {"do":"see","text":"尚无转码记录|还没有转码记录","timeoutSeconds":15},
+      {"do":"click","text":"^转码记录, 查看历史结果$","target":"text"},
+      {"do":"see","text":"尚无转码记录","timeoutSeconds":15},
       {"do":"close"},
       {"do":"exit","app":"pureframe"}
     ]
