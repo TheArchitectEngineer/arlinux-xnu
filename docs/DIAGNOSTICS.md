@@ -66,6 +66,10 @@ metadata for the first 32 calls; the guest output buffer is never read or change
 The failure summary includes eight syscall frequency entries and eight resource
 paths; full arguments, callers and truncation markers remain in runtimeLog.
 Frequency is not a root-cause verdict.
+Bounded DARWIN_KEVENT_ERROR records include ident, filter, flags, fflags, xflags,
+the real result, data and udata. Data is the requested threshold for NOTE_LOWAT;
+udata identifies the actual subscription. Do not interpret rejected registration
+as lost wakeup or enable flags without implementing their lifetime semantics.
 The same opt-in profile exposes each live SIGSYS handler's original kernel-owned
 ucontext to the existing LLDB reader. It follows at most 24 actual ARM64 frame
 records in readable non-executable mappings, rather than scanning for plausible

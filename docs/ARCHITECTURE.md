@@ -70,6 +70,9 @@ that geometry rather than a 4 GiB byte cap. A cursor is a placement hint;
 MAP_FIXED_NOREPLACE owns the real range atomically. On conflicts, a bounded
 raw-syscall reader searches actual /proc/self/maps holes, so a large reservation
 can fit after dyld without replacing it or skipping the entire requested size.
+After a fallback below a colliding hint, publish the actual next address only if
+the cursor is unchanged; a permanently monotonic hint can repeatedly collide
+with fixed dyld mappings despite available lower holes.
 Private anonymous mappings use Linux MAP_NORESERVE for demand-paged backing,
 following WebKit's Linux allocation strategy; allocation still reports actual
 kernel errors and does not change host overcommit policy. Shared anonymous

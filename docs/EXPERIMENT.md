@@ -4,7 +4,7 @@
 
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.
-The collection currently has 11 source-owned apps, original Calculator and Things, 17 app
+The collection currently has 12 source-owned apps, original Calculator and Things, 20 app
 journeys and three cross-app scenarios. Android execution is unverified.
 
 The fixed input is iPhone10,1 (iPhone 8/A11), iOS 16.7.16 / 20H392,
@@ -63,108 +63,93 @@ comparison, not a pixel-equivalence baseline. The new phone viewport gate has
 not passed on macOS. An arbitrary desktop-shaped iPhone app cannot establish
 that a display difference is a rendering bug.
 
-## Latest complete collection: failed, 17/20
+## Latest complete collection: failed, 19/23
 
-[Run 39694034223](https://github.com/taowen/arlinux-xnu/actions/runs/39694034223),
-source **ce07f6dbc482955e0da13d3764e3fb2de453cf84**, attempt 1, passes 17/20
-journeys after the shared-storage, vectored-write, statfs, guarded-I/O and record
-lock changes. Both original Calculator phone cases, Notes persistence and all
-previously passing fixture/session journeys remain passing. Receipt
-**05dcfb438b7e498fa8aefb2685e13789b27552384ac1c059873857dc187a48ca**
-and all 379 files were verified. Feedback is 490 s; journeys 341.5 s including
-41.1 s diagnosis. Android remains unverified.
+[Run 39702562664](https://github.com/taowen/arlinux-xnu/actions/runs/39702562664),
+source **46ce1f273e46a36a47d80dc860794c6c00008502**, attempt 1, passes 19/23
+journeys. All 17 previously passing journeys remain passing, including both
+original Calculator phone cases, Notes persistence, Network and the session
+scenarios. Two new scheduling probe journeys pass; its timer/I/O journey fails.
+Things, Web input and Share remain failed. This is not a full-suite pass.
+Receipt **01ef74f69645653c466acc49fa2a6ddeb185c3340d5c188f4f2c03a1e06f3cb5**
+and all 426 files verify. Dispatch-to-completion was 422 s; measured journeys
+278.2 s including 41.6 s diagnosis. Android remains unverified.
 
-- Things actually runs, displays its upgrade UI, and fails Inbox after 120 s.
-- Web reaches its original DOM/first pixels, but external input still fails
-  WebCount 1. Earlier runs intermittently missed first paint; this does not prove
-  that the new filesystem code repaired Web startup.
-- Share still cannot show EchoExtension; payload/helper-lifetime acceptance fails.
+## Focused scheduling probe: real failures, separate from original acceptance
 
-No complete 20-case run has passed. Later changes are read-only diagnostics and
-restore Things' ordinary 30-second first-Inbox wait after repeated 120-second
-runs retained the same modal. Inbox/pixels and all task/relaunch steps remain
-required. New observation success is never app success.
+The source-owned SchedulingProbe has three independent public-iOS-API journeys.
+Each requires external pointer input, real result pixels, two successive runs,
+normal close and the same operations in a fresh process. It uses the existing
+build, selection, observer, screenshots and failure collector. See APPS.md for
+the extension convention; no second probe framework or builder exists.
 
-## Things: first UI works; task database initialization remains unexplained
+In the full run, blocking handoff and the 64-item backlog pass in 9.255 s and
+8.835 s respectively. Timer IO fails in process 6792/startTicks 23378. The same
+failure is isolated in [39702531395](https://github.com/taowen/arlinux-xnu/actions/runs/39702531395),
+process 6174/startTicks 22878: the actual dispatch timer fires three times and
+writes three bytes, but the read handler never runs. After five seconds the app
+shows Timer IO: FAILED 1. Original kevent registration for descriptor 22 returns
+ENOTSUP: filter -1 (READ), flags 0x385 (ADD, ENABLE, DISPATCH2, VANISHED), fflags 1
+(NOTE_LOWAT). These arguments are rejected by the production adapter's explicit
+subscription gates, before readiness can be delivered. This is an observed
+compatibility gap, not proof of a thread-pool starvation root cause.
 
-The latest selected run is
-[39694944246](https://github.com/taowen/arlinux-xnu/actions/runs/39694944246),
-source **fd62d33aada116678a8bb98057e1c52614d9e20b**, PID/start 6014/91271.
-It executes unchanged Things iPhone 3.17.1/build 31701001 and bundled frameworks,
-passes the actual 375x667-point viewport and displays **Upgrading Database**,
-but fails Inbox after 30.11 s; all 22 later task steps are blocked. Receipt
-**9524db79443aee2a6bd37276038df5043c7f393b9dd22ac465669b3f434f61fd**
-and all 84 files were verified. The actual UIKit sample reports active state,
-protectedDataAvailable=true, and no ongoing presentation/dismissal or transition
-coordinator on the root/child controllers. Those observations do not prove the
-cause of initialization's failure or describe every earlier startup instant.
+The first probe baseline [39702058928](https://github.com/taowen/arlinux-xnu/actions/runs/39702058928)
+failed earlier at socketpair ENOSYS. Local socket pairs now create actual Linux
+stream/datagram/seqpacket descriptors, preserve real errors and close both on
+failed guest copyout. The stream path is exercised by the timer's real writes;
+datagram/seqpacket behavior has not been independently accepted. Error evidence
+now also retains kevent data/udata to identify the rejected threshold and
+subscription. Read-source lifecycle and threshold support remain to be fixed;
+the probe is deliberately still red.
 
-The saved main thread composes through CoreGraphics/vImage; live guest workers
-are in event waits. The existing LLDB collector now retains bounded actual
-workloop ownership and original IPA image metadata. Some workloop IDs have no
-readable label and the list is truncated; no dispatch-deadlock verdict follows.
-The opt-in original-process trace in run
-[39697806891](https://github.com/taowen/arlinux-xnu/actions/runs/39697806891)
-(source 2900ce2167d3e42b290ba36212fe984bc3e2b4b4) now observes real main entry,
-THCDatabaseComponent.startUpgrade and its supplied completion callback. All
-three breakpoints hit; no callback was invoked by the harness. Original PID
-5891/startTicks 79496 then reports `DatabaseUpgradeAppComponent.swift:137: Fatal
-error`. The same run's original Foundation log reports that NSFileCoordinator
-returned an error after filecoordinationd failed. This association is not yet
-proof of the fatal branch's cause; inspect the actual error/status consumer and
-confirm the ordinary untraced path before changing compatibility behavior.
-Its receipt 95049b8db9e8248c3e9aad5e71853c176e3d8565aaa44336077a3c01dfa123b4
-and all 85 retained files verify. Total dispatch time was 159 s, journey 27.518 s
-including 25.199 s diagnosis. The original task journey remains failed.
+The isolated parameter run [39703128074](https://github.com/taowen/arlinux-xnu/actions/runs/39703128074),
+source f21bed8f652a7270aad5d8cdb69ff9fa1f872181, confirms that the READ subscription
+requests NOTE_LOWAT with data=1. It fails identically in process 6111/startTicks
+41468. Receipt **86c47b5456a3463c79584eb52b9421e267aea76ae377917f012399f8af14d28a**
+and all 25 files verify. The producer records three real timer writes and no
+read-handler delivery. This run changes diagnostics only, not subscription policy.
 
-The preceding 39696796170 trace attached before cache preparation and left a
-later requested stop; its blank viewport was a collector race, not evidence of
-a new app rendering fault. The launcher now requires the entry record plus an
-actual kernel stop before attaching. Run 39697155936 verifies main entry and
-ordinary return to the upgrade UI, but its symbol lookup failed because the
-binary uses stripped export metadata. The collector now reuses existing LLVM's
-export-trie reader. Reports expose collector errors separately from app effects,
-and startup tracing counts as diagnosis rather than app effect time.
+## Things: original database-upgrade UI, no task acceptance
 
-### Proven reusable boundary changes
+The full run's Things process 7131/startTicks 28329 displays Upgrading Database
+and fails Inbox after 30.085 s; all 22 later task steps are blocked. The original
+IPA/version/hash remain fixed in APPS.md and apps/things/app.json. No original
+task creation, editing, completion or persistence has passed.
 
-The former ThingsCommon trap force-unwrapped a nil group-container URL. Original
-XML membership now registers real shared Linux writable roots; Foundation returns
-their actual URLs. No Things identifier is hardcoded. Linux writev preserves
-previously lost framework diagnostics. Named statfs64 uses real mount metadata;
-guarded file calls use Darling's real-I/O, unenforced-guard policy. access(W_OK)
-checks actual writable-root permissions. POSIX/OFD lock records translate to real
-Linux fcntl; the full run records successful OFD GETLK and SETLK operations.
+Targeted [39699108324](https://github.com/taowen/arlinux-xnu/actions/runs/39699108324),
+source 572734a512f71eeee0973cf5f118cc50974ed5a4, observed original main,
+THCDatabaseComponent.startUpgrade and its supplied completion, followed by the
+actual Swift fatal error at DatabaseUpgradeAppComponent.swift:137. The saved
+Foundation caller is NSFileManager._URLForReplacingItemAtURL:error:, requesting
+NSItemReplacementDirectory. Its NSFileCoordinator returned Cocoa error 512
+without invoking the accessor. Foundation's filecoordinationd-crashed message
+is a reported service failure; no such daemon process was observed launching.
+Receipt **35d22eade8569ae16ea026f4ca51a19f64e3b3071fa7bf44d1da5b661a2d6eb0**
+and all 85 files verify. The trace alters timing and cannot certify normal launch.
 
-The original AppCenter SQLite SDK now creates a real 20,480-byte Logs.sqlite and
-its previous open-failure message disappears. This is the SDK database, not
-Things' task database; the main UI does not advance. File-mapping failures retain
-a separate eight-request argument/caller budget instead of being hidden by
-successful startup mappings. Their frequency is not a root-cause verdict.
+The shared replacement-directory adapter now uses a real unique mkdtemp on the
+target filesystem and preserves failures, forwarding other directory requests
+to Foundation. Its actual invocation has not been observed in later ordinary
+Things runs, so creation and its effect on Things remain unverified. A normal
+run and a lifecycle-observation run without breakpoints both still stop at the
+upgrade UI. Standing Things private-symbol breakpoints have been removed.
 
-The identical IPA is verified against its pinned size/SHA-256 before extraction;
-the actual URL is recorded. Run 39697155936 spent approximately 120 s on two
-serial mirror deadlines before the canonical URL completed in about 3 s. The
-downloader now races the declared routes under a 65-second outer deadline,
-cancelling/reaping other curls and deleting partial files after one verified
-download. Run 39697947621 exposed a repeated pipe-read error during cleanup;
-it is corrected. Run
-[39698454606](https://github.com/taowen/arlinux-xnu/actions/runs/39698454606)
-(source 6aa877d531c54589a960058c5496389e72829015) verifies the real 52,104,885-byte
-input in 1.653 s through three raced routes, then runs the original app. Main,
-upgrade and completion hit again without collector errors; the original Swift
-fatal error remains. Dispatch completed in 159 s, with a 21.299 s journey that
-includes 19.206 s diagnosis. Compiler cache reports 170 hits and zero misses.
-Receipt c400c26fa3f26ed2b582aba7bce33a379e201ad398db40d6c566c89f2c029d29
-and all 85 files verify. Download latency still depends on network conditions;
-do not attribute the entire end-to-end timing difference to this change or
-count the earlier input failure as an improvement. No binary is substituted or
-uploaded as evidence. Compact report consumption of 39697806891 reverified its
-85 files in about 7 s without rebuilding; full provenance remains in input JSON.
+## Reusable changes and outstanding boundary
 
-XML-to-DER entitlement conversion remains explicitly unsupported; SecTask still
-reports it. Group preferences/keychain, DER-only membership and last-member
-removal are incomplete. Exact input URL/version/hash and distribution limits
-are in APPS.md and apps/things/app.json. Creating/editing/completing tasks and
-saved data across normal close/reopen are unverified. No fixture substitutes
-for these original-app requirements.
+XML shared-group membership resolves to actual Linux roots; vectored writes,
+statfs64, writable-root access checks and POSIX/OFD record locks perform real
+Linux operations. Guarded I/O uses actual descriptors without enforcing Apple's
+guard policy. AppCenter creates its real 20,480-byte Logs.sqlite; that is an SDK
+log database, not Things' task database. XML-to-DER conversion, group preferences
+and keychain remain incomplete. Anonymous allocation publishes its actual next
+placement after a fallback, instead of repeatedly hitting the fixed dyld region;
+the overall Things startup failure persists.
+
+The current workqueue narrowing code counts all live workers, including parked
+event workers. XNU instead validates caller/QoS/overcommit and uses active/busy
+accounting. This semantic mismatch is identified but not yet corrected; the two
+passing probe flows do not certify it. The next bounded work is the rejected
+read-source subscription and its real registration/rearm/cancel/close behavior,
+then original Things again. Do not accept flags while silently omitting their
+lifetime behavior or infer a common cause from similar-looking stalls.
