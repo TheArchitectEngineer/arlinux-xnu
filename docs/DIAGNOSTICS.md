@@ -599,7 +599,7 @@ and Apple Security SecTask.c db15acbe6a7f257a859ad9a3bb86097bfe0679d9. The
 original consumer decoding and real user effects remain required validation.
 
 The opt-in public UIKit geometry observer retains four bounded samples (up to
-128 visible views each) on its existing 200 ms timer: first window and samples
+128 visible views each, including actual layer needsLayout/needsDisplay flags) on its existing 200 ms timer: first window and samples
 10, 50 and 125. This observes later controller/layout changes without invoking
 layout or actions; frame count and timer scheduling do not imply wall-clock
 accuracy. Controller metadata remains in the existing APP_INSPECTION records. The same

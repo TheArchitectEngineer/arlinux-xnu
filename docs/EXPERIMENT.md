@@ -2,6 +2,18 @@
 
 ## Scope
 
+Latest list diagnostic: run 39770870267 (1d8c6ee), receipt
+c5ed4b0e334d4255f7131e2deb6d894b5461cd0b913f708834d0a299a901b841,
+verifies all 93 files. Original main is reached and both named list breakpoints
+are armed; neither layoutSubviews nor setLayoutSubviewsBlock: hits in the
+20-second window, with successful detach. The app later remains on its blank
+list. Unhit points in a finite debugger window do not prove missing layout.
+The production software frame pump currently calls renderInContext: without
+an explicit layout pass. Next collect real layer needsLayout/needsDisplay flags
+in the existing four geometry samples, without startup debugger overhead, before
+changing the frame pump. Remove the answered/ambiguous startup probes from the
+manifest; the reusable bounded block observer remains available when needed.
+
 Latest original callback evidence: run 39769922814, source 7cdec16036e94c68c2345ba8a5a6121429d128df,
 receipt 9200bb36d726f0dfb226b7964333edb319220f3a5a761d6a813df8af2cc590c9;
 all 93 files verify. Connect, foreground and active delegate methods each hit
