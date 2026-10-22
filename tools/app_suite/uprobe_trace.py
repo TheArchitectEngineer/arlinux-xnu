@@ -25,9 +25,19 @@ def error_log():
     except OSError:return 'kernel error log unavailable'
 
 
+def control(command):
+    # Python append-mode FileIO performs SEEK_END, which tracefs control files
+    # reject. One write is one kernel command; never truncate the global list.
+    fd=os.open(TRACE/'uprobe_events',os.O_WRONLY|os.O_APPEND|os.O_CLOEXEC)
+    try:
+        data=(command+'\n').encode()
+        if os.write(fd,data)!=len(data):raise OSError(errno.EIO,'incomplete tracefs command')
+    finally:os.close(fd)
+
+
 def remove_events(group,events):
     for event in reversed(events):
-        with (TRACE/'uprobe_events').open('a') as stream:stream.write(f'-:{group}/{event}\n')
+        control(f'-:{group}/{event}')
 
 
 def start(specification,state_path):
@@ -61,14 +71,14 @@ def start(specification,state_path):
                 definition=f'{kind}:{state["group"]}/{name} {image}:{offset:#x}'
                 state['lastCommand']=definition+fetch
                 try:
-                    with (TRACE/'uprobe_events').open('a') as stream:stream.write(definition+fetch+'\n')
+                    control(definition+fetch)
                 except OSError as error:
                     if error.errno!=errno.EINVAL:raise
                     state.setdefault('fetchUnavailable',[]).append(dict(command=definition+fetch,error=error_log()))
                     # Counts/timestamps can answer an entry-order question;
                     # unavailable register values must never be inferred.
                     state['lastCommand']=definition
-                    with (TRACE/'uprobe_events').open('a') as stream:stream.write(definition+'\n')
+                    control(definition)
                 state['events'].append(name)
                 save(state_path,state)
         (instance/'events'/state['group']/'enable').write_text('1')
