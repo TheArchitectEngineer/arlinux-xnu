@@ -329,6 +329,15 @@ class Processes:
             target='failed-step app' if live['app']==target else 'surviving peer')
         arguments=[sys.executable,ROOT/'tools/symbolicate-cache.py',cache,
                 self.directory/'original-process.lldb.log',self.directory/'original-process.symbols.json']
+        kernel_state=Path(str(live['runtime']).removesuffix('.runtime.log')+'.kernel-trace.json')
+        if kernel_state.is_file():
+            observed=json.loads(kernel_state.read_text())
+            if observed.get('status')=='recorded' and any(point.get('role')=='dispatch-submit' for point in observed.get('symbols',[])):
+                # Match bounded receiver words to this firmware's actual queue
+                # layout and worker-selection code, not a source-version guess.
+                for symbol in ('__dispatch_worker_thread2','__dispatch_root_queue_drain','__dispatch_root_queue_poke_slow'):
+                    arguments+=['--lookup','/usr/lib/system/libdispatch.dylib',symbol]
+                arguments+=['--lookup-bytes','2048']
         session_log=self.output/(self.case['id']+'--session')/'session.log'
         if session_log.is_file() and 'name=com.apple.containermanagerd' in session_log.read_text(errors='replace'):
             # A real original app asked for the missing shared-container service.

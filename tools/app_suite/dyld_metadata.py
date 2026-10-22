@@ -72,7 +72,9 @@ def collect(target, info_address, runtime_path):
 
     def string(address):
         if not address:return None
-        data=read(address,min(1024,capacity(address)))
+        count=min(1024,capacity(address))
+        if not count:raise ValueError('string outside readable non-executable metadata mapping')
+        data=read(address,count)
         if b'\0' not in data:raise ValueError('unbounded metadata string')
         return data.split(b'\0',1)[0].decode('utf-8',errors='replace')
 
@@ -155,6 +157,13 @@ def collect(target, info_address, runtime_path):
                             r'point'+str(index)+r'_entry_\S+.*receiver=(0x[0-9a-f]+)',trace))
                 for address in sorted(addresses)[:4]:
                     record={'address':hex(address),'source':'observed original dispatch-submit receiver'}
+                    try:
+                        # Retain bounded object words, not guessed private field
+                        # names. Match the actual cache's drain/worker instructions
+                        # before interpreting them as a root queue's head/pending.
+                        record['objectWords']=[hex(value) for value in struct.unpack('<16Q',read(address,128))]
+                        record['objectWordBytes']=8
+                    except ValueError as error:record['objectWordsUnavailable']=str(error)
                     for name,offset in offsets.items():
                         try:
                             if not 0<offset<=1024:raise ValueError('unsupported registered queue offset')

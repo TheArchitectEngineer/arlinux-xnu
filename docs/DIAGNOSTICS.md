@@ -140,6 +140,12 @@ successful startup mappings exhausted the ordinary trace limit. This addresses
 the original Things run's many later mmap errors without guessing from frequency
 or treating a missing image as proof of a mapping cause. Results are unchanged;
 the same cache symbolicator resolves these callers without blanket code dumps.
+When a declared dispatch-submit trace supplies an actual receiver, the stopped
+reader retains at most four 128-byte object-word snapshots in validated readable
+non-executable mappings. The same failure symbolicator reads the original
+libdispatch worker, root-drain and root-poke functions (at most 2048 bytes each).
+Interpret private queue fields only after matching those actual instructions;
+upstream source or a queue serial alone is not a layout/ownership verdict.
 For the original IOSurface initialization abort, targeted reads now resolve the
 actual WebCore size/row-layout configuration and IOSurface property boundary,
 rather than unrelated QuartzCore backing-store functions. Current selected Web
