@@ -37,7 +37,7 @@ static long native_vendor_uuid(const char *vendor,unsigned char *output,unsigned
     do {error=RAW(SYS_flock,fd,2,0,0,0,0);}while(error==-EINTR); /* LOCK_EX */
     unsigned char bytes[16];struct stat metadata;
     if(!error)error=RAW(SYS_fstat,fd,&metadata,0,0,0,0);
-    if(!error && (!S_ISREG(metadata.st_mode) || (metadata.st_size && metadata.st_size!=16)))error=-EIO;
+    if(!error && ((metadata.st_mode&S_IFMT)!=S_IFREG || (metadata.st_size && metadata.st_size!=16)))error=-EIO;
     if(!error && !metadata.st_size) {
         unsigned int done=0;
         while(done<16) {
