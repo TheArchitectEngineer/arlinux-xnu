@@ -71,6 +71,7 @@ jobs:
         trap 'kill "$firmware_pid" 2>/dev/null || true' EXIT
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends clang-18 cmake ccache ninja-build bison flex libbsd-dev lld-18 llvm-18 libwayland-dev libxkbcommon-dev wayland-protocols 7zip lldb-18 fuse3 unionfs-fuse libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev libcurl4-openssl-dev libplist-dev weston xvfb xdotool scrot python3-pil
+        sudo sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf
         wait "$firmware_pid"
         trap - EXIT
         grep '^APPLE_DOWNLOAD_TIMING ' build/results/firmware-download.log

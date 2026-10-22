@@ -134,13 +134,13 @@ for role,member in images.items():
     mount=output/('os-volume' if role=='OS' else 'system-volume');mount.mkdir(exist_ok=True)
     # Diagnostics run with sudo for private tracefs, so let root read this
     # read-only firmware view while preserving the normal mount owner too.
-    run(reader_build/'apfs-fuse','-o','ro,allow_root',output/Path(member).name,mount)
+    run(reader_build/'apfs-fuse','-o','ro,allow_other',output/Path(member).name,mount)
     mounts.append(mount)
 filesystem=output/'filesystem';filesystem.mkdir(exist_ok=True)
 merged=filesystem/'root';merged.mkdir(exist_ok=True)
 # A real read-only union of the two actual firmware volumes, not copied stubs.
 branches=':'.join(str(mount/'root')+'=RO' for mount in reversed(mounts))
-run('unionfs','-o','ro,allow_root',branches,merged)
+run('unionfs','-o','ro,allow_other',branches,merged)
 loader = output / 'dyld'
 try:
     # Record the real mounted layout before assuming an OS-volume path.

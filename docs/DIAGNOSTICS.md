@@ -277,7 +277,10 @@ through the existing cache index; retry only this one Things journey after that
 fix, rather than paying setup cost for the 23-journey suite. Run 39728405889
 then exposed a collector import-path error before cache lookup; the standalone
 runner script now adds the repository's `tools/` directory to its module path.
-Neither run launched Things and neither is app-behavior evidence.
+Run 39729314604 resolved the collector but root could not read the normal-user
+FUSE firmware mount. The runner now enables the standard FUSE
+`user_allow_other` setting and shares the read-only APFS/union view with root.
+These failures occurred before Things launched and are not app-behavior evidence.
 
 For one worker behavior or cross-app scenario, use `--case` with exact IDs from
 `./build.sh cases`. Dispatch, SDK compilation and execution share one selector:
