@@ -74,11 +74,11 @@ static long native_set_priority(struct native_thread *thread,uint32_t priority)
     if (!thread || !qos || (priority&~D_PTHREAD_PRIORITY_MASK)) return -EINVAL;
     int relative=(int)(priority&D_PTHREAD_RELATIVE_PRIORITY_MASK)+1-256;
     if (relative < -15) return -EINVAL;
-    int nice=(qos>=4 ? 0 : 20-qos*4)-relative;
-    if (nice>19) nice=19;
-    long error=RAW(SYS_setpriority,0,thread->tid,nice,0,0,0);
-    if (error) return error; /* Preserve Linux permission failures on increases. */
-    thread->priority=priority;
+    /* Darwin QoS can rise again after a temporary lowering. Linux nice is
+     * inherited and an unprivileged thread cannot undo such a lowering.
+     * Record the actual requested QoS without mutating host nice; the native
+     * workqueue admission order consumes QoS, while Linux schedules threads. */
+    __atomic_store_n(&thread->priority,priority,__ATOMIC_RELEASE);
     return 0;
 }
 static long native_thread_ctl(const unsigned long long *r)
@@ -91,7 +91,7 @@ static long native_thread_ctl(const unsigned long long *r)
         return 1; /* Actual inherited single-CPU affinity. */
     case D_CTL_GET_QOS:
         thread=r[1] ? native_thread_port(r[1]) : thread;
-        return thread ? (long)thread->priority : -ESRCH;
+        return thread ? (long)__atomic_load_n(&thread->priority,__ATOMIC_ACQUIRE) : -ESRCH;
     case D_CTL_SET_QOS:
         if (r[3]) return -EINVAL;
         thread=r[1] ? native_thread_port(r[1]) : thread;

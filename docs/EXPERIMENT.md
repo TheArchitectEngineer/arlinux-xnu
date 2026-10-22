@@ -2,73 +2,31 @@
 
 ## Scope
 
-Current focused question: Things' accepted upgrade trigger submits an original
-dispatch block, but the block is not observed executing (baseline 39723784073).
-Run 39732010413 added a libpthread shared-cache uprobe and instead stopped at
-SIGTRAP at that exact probe site, 0x1d1b96ab4. Its original instruction is `stp`,
-while the fault map shows the page now belongs to a `darling-shared` memfd.
-The Mach remapping path copies already-adapted process memory; a copied probe
-breakpoint is a plausible diagnostic-induced trap, not proof of an app defect.
-The shared-cache probe is removed, with bounded actual upcall-argument records
-at the runtime's existing entry/resume boundaries instead. No scheduler behavior
-is changed. Focused run 39735050451 (source 35af3360c1a2b37ff8e75f895b09af01c118e038)
-has no recorded fault and reaches the original 30-second Inbox failure again.
-The original async submit has both entry and return records; its block, Swift
-closure and database worker have no hits during the captured interval, with no
-ring-buffer overflow. This supports diagnostic interference as the prior trap's
-cause, not an app repair. Actual ordinary worker entries include flags 0x244006
-and 0x244005 with count 0; therefore an absence of ordinary worker creation is
-not the explanation. The observed submission receiver is 0x1e1d34500, registered
-queue serial 16. Its label remains unavailable under the metadata reader's
-non-executable-memory policy; do not infer it from an address or serial alone.
-Next question: what state/wakeup prevents that original queue from draining the
-submitted block? Inspect retained arguments and pinned libdispatch first; do not
-rerun the same timeout just to reconfirm the stall. Original Inbox and all 22
-later task effects remain unverified. Receipt
-cc3884c0a0810708b9cff12f8bc46e1c02312b2c83ce33e7676843762c7ff8ce and all 89
-files verify. Feedback 197 s, journey 46.749 s including 11.471 s diagnosis;
-compiler cache 169 hits / 1 miss. Android remains unverified.
+Current baseline: run 39739768119, source aeef517fe6f0c4f3c025c2558574f4a27ac6625b,
+receipt dc8e20c3446e944bf1f7d56798291ee129287063f118413d5982851305df4682;
+all 91 retained files verified. Deferred QoS-5 requests are actually admitted:
+REQUEST_DEFERRED -> PENDING_STARTED -> original block/Swift closure/database
+worker entry and return -> main-queue callback. The original task database now
+exists (167936 bytes). This crosses the lost workqueue-request boundary but
+still does not pass Inbox or the task/persistence journey.
 
-Focused run 39735955818, source d67c965a39d844b01e358bf56a699d319a088ceb,
-retains the same Inbox failure with no fault. The actual receiver snapshot has
-equal nonzero words at +0x30 and +0x68 (0x304901740), and +0x70 is 1. Original
-libdispatch root-drain instructions identify those first two offsets as queue
-tail/head; the worker decrements pending at +0x70. Its computed root-array base
-0x1e1d33f00 and QoS-5 index 12 select this exact receiver, 0x1e1d34500.
-Thus work remains queued with pending=1 at the final stopped-process sample;
-it is not evidence that this queue drained the submitted work. Why that pending
-worker is absent remains unresolved. There are earlier actual QoS-5 entries and
-exit upcalls, not proof of a new worker for this later submission. Do not
-decrement pending or force-drain the app as a repair. The existing collector now
-retains bounded raw objects referenced by those two observed fields to identify
-the queued continuation on the next hypothesis-driven execution. Matching-cache
-symbols have multiple original implementations; preserve both and confirm the
-actual callback binding before drawing an implementation-specific conclusion.
-Receipt c51f74de4a5b826e8315a13942ca539fb1fb97d10b168e0bf6fb55e7412f6935
-and 89 files verify; feedback 173 s, journey 45.479 s including 10.2 s diagnosis,
-all 170 compile calls hit cache and snapshot save was skipped. No compatibility
-repair or full regression is claimed. The Apple libdispatch source reference
-read locally is tag libdispatch-1325.100.36, commit
-c5a8b9353b880a6f31cc24f631578a4b05222868; its queue layout is a reference, while
-the instruction evidence above comes from the actual pinned firmware.
+The next original fault is libdispatch event_loop_poke at 0x18db51d28 after
+EVFILT_WORKLOOP ADD|ENABLE / THREAD_REQUEST|UPDATE_QOS|IGNORE_ESTALE returns
+Linux -EACCES. In the actual runtime implementation this comes from setpriority
+on the existing workloop worker. Darwin QoS lowering had been mapped to Linux
+nice lowering, which an unprivileged worker cannot subsequently reverse.
+The candidate removes host renice from thread creation, guest QoS updates and
+workloop updates together. It preserves validated guest priorities and QoS-first
+pending admission, while Linux retains its inherited scheduling policy. This
+is not full XNU priority inheritance or performance equivalence.
 
-Run 39739256496 (0b29cecc11ae34c15d019152daaa8c111c3d66e7) reproduces a
-concrete admission failure: QoS-5 request 0x18 returns Linux -EAGAIN from the
-32-slot native thread allocator after a chain of same-QoS worker requests.
-The final queue still has head=tail, pending=1 and a real continuation (flags
-0x114, function 0x18db93790). Original task effects remain failed; receipt
-d1ee8f09d39467cf4079a2604348d4a67627b2c59456e48ac894e55074e0f2fd and 89 files
-verify. Upstream XNU workq_reqthreads retains requests that fail admission for
-later worker creation. Our synchronous error loses that request while libdispatch
-retains its pending count. The candidate repair retains only EAGAIN requests by
-QoS/overcommit, wakes the existing readiness dispatcher through eventfd, and
-retries admission until an actual worker can be created. Other immediate errors
-remain real errors; asynchronous permanent failures fail explicitly. The thread
-limit, libdispatch queue state and app callbacks are unchanged. Event-worker
-capacity retries rearm their real one-shot epoll subscription and return to the
-shared dispatcher so they cannot block ordinary pending requests indefinitely.
-Next verification must observe DEFERRED followed by PENDING_STARTED and the
-original block/Inbox effects; successful enqueue alone is not acceptance.
+Next execution: only things--offline-task-persistence, initially ordinary (no
+optional trace) to check the actual Inbox/task effects and whether this fault
+recurs. A failure retains the original kevent/fault evidence. Do not add tracing
+or repeat a timeout unless that evidence leaves a specific unresolved question.
+On progress, run related Workers/SchedulingProbe journeys and Calculator before
+full candidate regression. Android remains unverified. Earlier trace/admission
+history stays in Git and Actions rather than this current handoff.
 
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.

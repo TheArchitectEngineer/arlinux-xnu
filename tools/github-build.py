@@ -279,7 +279,24 @@ def report(run_id, job_name, verbose=False):
     if run['status'] == 'completed':
         seconds = (datetime.fromisoformat(run['updated_at']) -
                    datetime.fromisoformat(run['created_at'])).total_seconds()
+        result['dispatchToCompletionSeconds'] = seconds
         print(f"Dispatch-to-completion: {seconds:.0f}s (including runner queues)")
+    # Parallel jobs shorten feedback but still consume separate runners. Keep
+    # all jobs here even when --job filters the detailed diagnostic report.
+    usage = []
+    for job in jobs:
+        if (job['conclusion'] == 'skipped' or not job.get('started_at') or
+                not job.get('completed_at') or job['status'] != 'completed'):
+            continue
+        active = (datetime.fromisoformat(job['completed_at']) -
+                  datetime.fromisoformat(job['started_at'])).total_seconds()
+        usage.append({'job': job['name'], 'labels': job.get('labels', []),
+                      'activeSeconds': active})
+    result['runnerUsage'] = {'completedJobs': usage,
+                            'activeSeconds': sum(job['activeSeconds'] for job in usage),
+                            'complete': all(job['status'] == 'completed' for job in jobs)}
+    print('Runner active time: ' + ', '.join(f"{job['job']}={job['activeSeconds']:.0f}s" for job in usage) +
+          f"; total={result['runnerUsage']['activeSeconds']:.0f}s (completed jobs; not billed minutes)")
     for job in jobs:
         if job_name and job['name'] != job_name:
             continue

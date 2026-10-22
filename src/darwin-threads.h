@@ -1,6 +1,6 @@
 /* Native Linux threads entering the registered, real Darwin pthread callback.
  * Custom stacks and ordinary workqueue callbacks use real Linux threads.
- * QoS is best-effort Linux niceness; event workloops have bound Linux workers.
+ * QoS is guest scheduling metadata; event workloops have bound Linux workers.
  * No host libc/TLS operation occurs after guest entry. */
 #pragma once
 #include <linux/futex.h>
@@ -185,20 +185,10 @@ static long native_thread_create_impl(const unsigned long long *r,const sigset_t
             RAW(SYS_munmap,memory,D_THREAD_RUNTIME_STACK_SIZE,0,0,0,0); RAW(SYS_munmap,alternate,D_SIGNAL_STACK_SIZE,0,0,0,0);
             thread->state=0; return tid;
         }
-        if (workqueue || (flags&D_PTHREAD_START_QOS)) {
-            unsigned int qos=workqueue ? (flags&255) : (unsigned int)__builtin_ctz(qos_bits)+1;
-            int relative=workqueue ? 0 : (int)(flags&255)+1-256;
-            int nice=(qos>=4 ? 0 : 20-(int)qos*4)-relative;
-            if (nice>19) nice=19;
-            long error=RAW(SYS_setpriority,0,tid,nice,0,0,0);
-            if (error) {
-                thread->refs=0;
-                __atomic_store_n(&thread->state,3,__ATOMIC_RELEASE);
-                __atomic_store_n(&thread->launch_state,-1,__ATOMIC_RELEASE);
-                RAW(SYS_futex,&thread->launch_state,FUTEX_WAKE_PRIVATE,1,0,0,0);
-                return error;
-            }
-        }
+        /* Keep the inherited host scheduling policy. Lowering nice here is
+         * irreversible without RLIMIT_NICE/CAP_SYS_NICE, including when a
+         * low-QoS creator later needs a high-QoS worker. Guest QoS lives in
+         * priority/flags and pending-work admission, not Linux nice values. */
         __atomic_store_n(&thread->launch_state,1,__ATOMIC_RELEASE);
         RAW(SYS_futex,&thread->launch_state,FUTEX_WAKE_PRIVATE,1,0,0,0);
         return r[3];

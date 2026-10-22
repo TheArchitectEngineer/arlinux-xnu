@@ -300,6 +300,42 @@ provenance. Do not cache test results as current execution, or bypass input
 verification with an old artifact. Do not add another orchestration framework
 or a separate heavyweight cache pipeline before demonstrating its savings.
 
+Resource review of focused run 39739768119: Linux toolchain installation plus
+overlapped firmware download took 47 seconds, userland preparation 42 seconds,
+core/runtime compilation 3 + 7 seconds, and journey execution including diagnosis
+15 seconds. The parallel Mac SDK build took 29 seconds. Compiler reuse was
+169 hits / 1 miss. Thus another compiler-cache layer is not the first target;
+parallel preparation reduces feedback latency but still occupies two runners.
+`report` now records completed job active seconds and runner labels separately
+from dispatch-to-completion, including all jobs when --job filters detail.
+This is observed runner occupancy, not GitHub billing or a cost estimate.
+
+Prioritize savings in this order:
+
+1. Avoid an execution altogether when retained evidence, pinned source or local
+   collector syntax/import checks answer the question. Batch the known producer,
+   submission and consumer observations in one selected journey. Do not dispatch
+   merely to validate documentation or this resource-accounting change.
+2. On implementation changes, run the blocked case first. Schedule related
+   regression once the changed boundary is actually crossed, then full acceptance
+   once per candidate; do not repeatedly rerun unrelated known failures.
+3. If repeated runtime-only edits still make SDK work material, cache the
+   source-owned SDK products inside the existing apps job, keyed by all selected
+   app/shared-adapter inputs, recipe, target and actual SDK/toolchain identity.
+   Verify output hashes and issue a fresh same-run receipt on reuse. This cache
+   is not implemented yet; do not claim savings or substitute an arbitrary prior
+   run's artifact. Do not duplicate the build graph with manual cache inputs.
+4. Profile the 42-second userland preparation before changing it. Keep Apple
+   firmware/frameworks transient; do not upload them as a shortcut. A fixed
+   source APFS reader took only 1.385 seconds in this run, so caching that
+   product cannot explain or remove most of the 42 seconds. Measure firmware
+   hashing, extraction and mounting before proposing another product cache.
+
+Fresh app data, actual input/display, persistence, normal close/relaunch and
+receipt verification are acceptance work. Their removal is not a resource
+optimization. A diagnostic trace run that advances a callback still needs
+ordinary execution before claiming the user journey passes.
+
 Cache snapshot writes are conditional on actual compiler-cache misses. In run
 39723784073, a 104 MB ccache snapshot restored in about two seconds, then all
 170 compilation calls hit; saving a new per-commit snapshot added no reusable

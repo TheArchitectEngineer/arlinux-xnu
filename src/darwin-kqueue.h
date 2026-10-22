@@ -272,13 +272,8 @@ static long native_knote_change(struct native_kqueue *queue,struct darwin_kevent
             unsigned int bits=(priority>>D_PTHREAD_QOS_SHIFT)&D_PTHREAD_QOS_MASK;
             if (!bits || bits>32 || (bits&(bits-1))) return -ERANGE;
             if (event->fflags&D_NOTE_WL_UPDATE_QOS) {
-                int tid=__atomic_load_n(&queue->owner_tid,__ATOMIC_ACQUIRE);
-                if (tid) {
-                    unsigned int qos=(unsigned int)__builtin_ctz(bits)+1;
-                    int nice=qos>=4 ? 0 : 20-(int)qos*4;
-                    long error=RAW(SYS_setpriority,0,tid,nice,0,0,0);
-                    if (error) return error;
-                }
+                /* This is a guest workloop priority update, not a privileged
+                 * host renice operation. Worker admission reads this value. */
                 __atomic_store_n(&queue->priority,priority,__ATOMIC_RELEASE);
             }
         }

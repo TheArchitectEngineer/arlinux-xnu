@@ -105,6 +105,7 @@ has been performed for these components.
 | --- | --- |
 | [Darling Indium / Iridium](https://github.com/darlinghq/indium) | Experimental Metal-on-Vulkan implementation and AIR-to-SPIR-V shader translation. Requires an outer ABI-compatible Metal implementation; not a drop-in Metal.framework replacement. |
 | [metal2vulkan](https://github.com/steelbrain/metal2vulkan) | Alpha metallib/AIR translator and Rust Metal-style runtime on Vulkan. An Objective-C ABI bridge and display integration are still needed; its runtime does not compile MSL source. |
+| [UniXNU / NativeMetal](https://github.com/UniXNU/NativeMetal) | Objective-C Metal frontend and C ABI object bridge over metal2vulkan/Turnip. A concrete reuse candidate for the missing frontend; its XNU driver, IOSurface and scanout integration need a Linux/Android backend. See the [source review](docs/UNIXNU.md). |
 | [darling-lol](https://github.com/lucannez64/darling-lol) | Integration reference with Metal/Indium and other Darling compatibility changes. The author reports macOS game execution on x86-64 Linux; Android ARM64 support is not established. |
 
 Evaluate actual game shaders and complete rendering/presentation flows before
@@ -119,6 +120,10 @@ ARM64 code does not imply a Metal dependency.
 * [dipa-studio/ios-sweet](https://github.com/dipa-studio/ios-sweet): XNU and iOS
   userland bring-up on Redmi Note 10 Pro. Its bring-up and upstream build recipe informed our historical full-system
   baseline, now retired from the build. Credit belongs to its authors/contributors.
+* [UniXNU/UniXNU](https://github.com/UniXNU/UniXNU): XNU/iOS bring-up on non-Apple
+  ARM64 hardware through UEFI, including NativeMetal and Adreno graphics work.
+  Its platform/graphics adaptation is a [research reference](docs/UNIXNU.md),
+  not an integrated runtime dependency or proof of ARLinux compatibility.
 
 * [wmww/tawc](https://github.com/wmww/tawc): the tawcroot in-process syscall
   interception and host-libc-independent runtime model informed the native path.
