@@ -9,8 +9,10 @@
 @property(nonatomic,strong) UIView *panel;
 @property(nonatomic,strong) UILabel *result;
 @property(nonatomic) CFTimeInterval started;
-@property(nonatomic) BOOL running,observedStart;
-@property(nonatomic) NSUInteger viewCompletions,layerCompletions;
+@property(nonatomic) BOOL running;
+@property(nonatomic) BOOL observedStart;
+@property(nonatomic) NSUInteger viewCompletions;
+@property(nonatomic) NSUInteger layerCompletions;
 @end
 @implementation AnimationDelegate
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
