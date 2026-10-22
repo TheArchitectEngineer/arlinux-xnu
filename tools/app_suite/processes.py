@@ -102,6 +102,7 @@ class Processes:
         if app.get('input',{}).get('kind') in ('firmware','ipa'):
             env['ARLINUX_INSPECT_APPLICATION']='1'
         if app['build'] != 'passed':
+            self.infrastructure_failure=True
             raise RuntimeError('App input failed: '+name+'; '+app.get('error','inspect its build log'))
         binary = ROOT / app['binary']
         arguments=[str(ROOT / 'build/native/macho-native'), '--role', app['kind'], '--dyld',

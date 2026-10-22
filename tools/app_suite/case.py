@@ -198,6 +198,7 @@ class Case(Processes,Desktop):
                     self.cleanup.append({'app': name, 'helper': helper, 'forced': True,
                                          'acceptanceEvidence': False})
         return {'id': self.case['id'], 'status': 'failed' if error else 'passed', 'error': error,
+                'infrastructureFailure':getattr(self,'infrastructure_failure',False),
                 'display':getattr(self,'display',None),
                 'session': self.session, 'processes': self.generations, 'steps': self.steps,
                 'observations': self.observations, 'helpers': self.helpers,

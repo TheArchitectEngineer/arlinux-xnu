@@ -132,7 +132,8 @@ def prepare_ipa_app(app):
     finally:
         for _,partial,process in routes:
             if process.poll() is None:process.kill()
-            process.communicate()
+            process.wait()
+            process.stderr.close()
             partial.unlink(missing_ok=True)
     download_seconds=round(time.monotonic()-started,3)
     print('APP_IPA_DOWNLOAD '+json.dumps(dict(app=app['id'],seconds=download_seconds,
