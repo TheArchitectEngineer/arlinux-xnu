@@ -442,11 +442,12 @@ static long native_kqueue_changes(struct native_kqueue *queue,uint64_t changes,u
             result=native_workloop_sync_wait(queue,waiter);
         }
         if (result && __atomic_fetch_add(&native_kevent_errors,1,__ATOMIC_RELAXED)<D_DIAGNOSTIC_REQUEST_LIMIT) {
-            const char label[]="DARWIN_KEVENT_ERROR ident/filter/flags/fflags/xflags/result follows\n";
+            const char label[]="DARWIN_KEVENT_ERROR ident/filter/flags/fflags/xflags/result/data/udata follows\n";
             RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
             trace_call(0,0,event.ident); trace_call(1,0,(long)event.filter);
             trace_call(2,0,event.flags); trace_call(3,0,event.fflags);
             trace_call(4,0,event.xflags); trace_call(5,0,result);
+            trace_call(6,0,event.data); trace_call(7,0,event.udata);
             if (event.filter==D_EVFILT_WORKLOOP) {
                 const char detail[]="DARWIN_WORKLOOP_ERROR_STATE queue/owner/servicer/qos/udata/ext0..3 follows\n";
                 RAW(SYS_write,native_trace_fd,detail,sizeof(detail)-1,0,0,0);
