@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import runpy
 import struct
+import subprocess
 import time
 import lldb
 
@@ -18,23 +19,21 @@ def symbol_address(path,name):
     magic,_,_,_,count,size,_,_=struct.unpack_from('<8I',data)
     if magic!=0xfeedfacf or count>16384 or size>16*1024*1024:
         raise ValueError('unsupported original Mach-O metadata')
-    offset=32;base=None;table=None
+    offset=32;base=None
     for _ in range(count):
         command,length=struct.unpack_from('<II',data,offset)
         if length<8 or offset+length>32+size:raise ValueError('invalid Mach-O commands')
         if command==0x19 and data[offset+8:offset+24].rstrip(b'\0')==b'__TEXT':
             base=struct.unpack_from('<Q',data,offset+24)[0]
-        if command==2:table=struct.unpack_from('<4I',data,offset+8)
         offset+=length
-    if base is None or table is None:raise ValueError('original symbol table unavailable')
-    symbols,count,strings,string_bytes=table
-    if symbols+count*16>len(data) or strings+string_bytes>len(data):raise ValueError('invalid symbol table range')
-    expected=name.encode()+b'\0'
-    for offset in range(symbols,symbols+count*16,16):
-        index,kind,section,_,value=struct.unpack_from('<IBBHQ',data,offset)
-        if kind&0xe0 or kind&0x0e!=0x0e or not section:continue
-        if index+len(expected)<=string_bytes and data[strings+index:strings+index+len(expected)]==expected:
-            return value-base
+    if base is None:raise ValueError('original text segment unavailable')
+    # LLVM already handles both nlist and stripped Mach-O export tries. Use
+    # the runner's existing pinned toolchain instead of another format reader.
+    symbols=subprocess.check_output(['llvm-nm-18','--defined-only','--format=posix',str(path)],text=True,timeout=3)
+    for line in symbols.splitlines():
+        fields=line.split()
+        if len(fields)>=3 and fields[0]==name and fields[1].upper()=='T':
+            return int(fields[2],16)-base
     raise ValueError('declared original symbol not found: '+name)
 
 
@@ -96,6 +95,7 @@ def trace(debugger,specification,runtime_path,stderr_path):
                         breakpoints[point.GetID()]=dict(stage='callback',address=hex(address),symbol=record['symbol'])
                         print('ORIGINAL_TRACE_ARMED',json.dumps(breakpoints[point.GetID()]))
             process.Continue()
+            if not breakpoints:break
         print('ORIGINAL_TRACE_WINDOW_ENDED',json.dumps(dict(unhit=list(breakpoints.values()))))
     except Exception as error:
         print('ORIGINAL_TRACE_UNAVAILABLE',str(error))
