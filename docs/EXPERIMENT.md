@@ -185,8 +185,12 @@ does reach the actual SQLite shared-memory initialization: syscall 201 returns
 queued callback execute. Return observations match thread, LR and entry SP,
 with zero invocation mismatches. Receipt
 **ddd324795ec55b27bf4a2ce601d3b5c87d85387df7e35b0938caa88e15bfff7a**
-and all 89 files verify. This is timing-sensitive traced progress, not ordinary
-launch acceptance or proof of a task database surviving. The run took 160 s.
+and all 89 files verify. The final shared container holds a 167,936-byte
+Things Database.thingsdatabase/main.sqlite with original Meta, TMTask, TMArea,
+TMTag and other actual tables; its retained DB/WAL/SHM hashes still match the
+receipt. This is timing-sensitive traced initialization and on-disk storage,
+not ordinary launch acceptance or task persistence across app relaunch. The run
+took 160 s.
 
 The next real fault is the original main-thread Swift BRK at 0x1001c9afc.
 Its branch at 0x1001c80d4 follows a nil UIDevice.currentDevice.identifierForVendor;
@@ -231,7 +235,23 @@ The latter main-thread stack is inside native_ui_capture, which overwrote about
 guest main loop. Actual composed journey screenshots remain unchanged; failure
 collection takes one bounded, completed shared source buffer through the same
 LLDB attachment. This reduces repeated diagnostic I/O without weakening effect
-checks. Whether it affects the startup stall remains unverified.
+checks.
+
+[39714180392](https://github.com/taowen/arlinux-xnu/actions/runs/39714180392),
+source 6cdc8629fe7196eb7c1e298eeae265f6a13b74c1, PID 5870/startTicks 20126,
+verifies the new capture path: original source buffer sequence 495, slot 1,
+750x1334 pixels, 4,002,000 bytes, captured once from the stopped process and
+converted to its actual PNG. The source image was visually inspected. The
+composed failure screenshot remains SHA-256
+4083cd047177e692e30fa99c1bdaaab832d43c24d57c3c00e77dbdcf94fbe8a3,
+matching the previous stall. Receipt
+**a7f51e7621bf4783bd65120015d93d5bb5bb1ae0a9613ba7c27a1dc7236f84cb**
+and all 84 files verify. The previous profile wrote 462 source frames, totalling
+1,848,924,000 payload bytes; this run writes one source image after failure and
+no per-frame diagnostic file. This is an I/O reduction, not a measured reduction
+in runner minutes: feedback was 179 s versus 165 s, and the original app still
+fails Inbox after 30 s. SHOULD_NARROW remains unused. The vendor getter and task
+database initialization have not been reached in this no-startup-breakpoint run.
 
 ## Reusable changes and outstanding boundary
 
