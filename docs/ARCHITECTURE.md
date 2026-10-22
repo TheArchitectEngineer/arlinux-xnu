@@ -195,6 +195,18 @@ verified frame shows the real Counter label and blue button. External clicks
 change app state and composed pixels, including after a fresh-process relaunch.
 Remote context sharing is unsupported.
 
+Encoded ImageIO CGImages supplied as layer contents are lowered to real CPU
+bitmap storage before the original CALayer setter retains them. CGImageGetUTType
+identifies encoded-source images; existing bitmap images and other content types
+keep the normal setter path. CoreGraphics performs the original image decode and
+color conversion into the backend's existing 8-bit premultiplied representation,
+retaining an RGB source color space when available. This supplies actual pixels,
+not an IOSurface service or a successful hardware allocation. The original
+PureFrame fault stack traverses QuartzCore prepare_commit/copy_image into
+ImageIO's JPEG surface decoder, so changing an app-specific decoder setting
+would not address this observed boundary. This adaptation still needs the real
+app journey and related rendering regressions before acceptance.
+
 WebCore's existing setMaximumSize(IntSize) platform interface supplies the same
 8192-per-dimension bound enforced by CPU CALayer backing. The actual iOS 16.7.16
 setter/getter ABI was inspected from the producing cache; no firmware address or

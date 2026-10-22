@@ -17,6 +17,48 @@
 
 static id (*local_context)(id,SEL,id);
 static SEL local_selector;
+static void (*original_set_contents)(CALayer *,SEL,id);
+static void software_image_contents(CALayer *layer,SEL selector,id contents)
+{
+    /* QuartzCore's original prepare_commit asks ImageIO-backed CGImages for
+     * IOSurfaces even in a local CAContext. Lower encoded image storage to the
+     * same real CPU bitmap representation used by this backend's draw path.
+     * Leave other content types and already-decoded bitmap images unchanged. */
+    if (!contents || CFGetTypeID((CFTypeRef)contents)!=CGImageGetTypeID() ||
+        !CGImageGetUTType((CGImageRef)contents)) {
+        original_set_contents(layer,selector,contents);return;
+    }
+    CGImageRef source=(CGImageRef)contents;
+    size_t width=CGImageGetWidth(source),height=CGImageGetHeight(source);
+    if (!width || !height || width>ARLINUX_IOS_SOFTWARE_SURFACE_MAX ||
+        height>ARLINUX_IOS_SOFTWARE_SURFACE_MAX) {
+        fprintf(stderr,"IOS_RENDER_IMAGE_BACKING_FAILED reason=unsupported-geometry width=%zu height=%zu\n",width,height);
+        abort();
+    }
+    CGColorSpaceRef colors=CGImageGetColorSpace(source);
+    if (colors && CGColorSpaceGetModel(colors)==kCGColorSpaceModelRGB) CGColorSpaceRetain(colors);
+    else colors=CGColorSpaceCreateDeviceRGB();
+    CGContextRef bitmap=colors ? CGBitmapContextCreate(NULL,width,height,8,
+        width*ARLINUX_IOS_SOFTWARE_PIXEL_BYTES,colors,
+        kCGImageAlphaPremultipliedFirst|kCGBitmapByteOrder32Little) : NULL;
+    if(colors)CGColorSpaceRelease(colors);
+    if(!bitmap) {
+        fprintf(stderr,"IOS_RENDER_IMAGE_BACKING_FAILED reason=bitmap-allocation width=%zu height=%zu\n",width,height);
+        abort();
+    }
+    CGContextSetBlendMode(bitmap,kCGBlendModeCopy);
+    CGContextSetRenderingIntent(bitmap,CGImageGetRenderingIntent(source));
+    CGContextDrawImage(bitmap,CGRectMake(0,0,width,height),source);
+    CGImageRef decoded=CGBitmapContextCreateImage(bitmap);
+    CGContextRelease(bitmap);
+    if(!decoded) {
+        fprintf(stderr,"IOS_RENDER_IMAGE_BACKING_FAILED reason=image-snapshot\n");abort();
+    }
+    original_set_contents(layer,selector,(id)decoded);
+    CGImageRelease(decoded);
+    static unsigned int logged;
+    if(logged++<8)fprintf(stderr,"IOS_RENDER_IMAGE_BACKING width=%zu height=%zu backend=cpu app_acceptance=false\n",width,height);
+}
 static void software_layer_display(CALayer *layer,SEL selector)
 {
     (void)selector;
@@ -219,6 +261,14 @@ void arlinux_ios_rendering_start(void)
         abort();
     }
     method_setImplementation(display,(IMP)software_layer_display);
+    Method contents=class_getInstanceMethod([CALayer class],@selector(setContents:));
+    const char *contents_types=contents ? method_getTypeEncoding(contents) : NULL;
+    if(!contents_types || strcmp(contents_types,"v24@0:8@16")) {
+        fprintf(stderr,"IOS_RENDER_BINDING_FAILED selector=CALayer.setContents: actual=%s\n",contents_types ?: "<absent>");
+        abort();
+    }
+    original_set_contents=(void *)method_getImplementation(contents);
+    method_setImplementation(contents,(IMP)software_image_contents);
     configure_web_rendering();
     configure_web_surface_limit();
 }
