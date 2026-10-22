@@ -2,6 +2,25 @@
 
 ## Scope
 
+Run 39793232793 (be1cfb2), receipt
+4b7b68751c998de02c1e33d0dbd44e51e562a08d3a3a1aeb10d2398ac67b33d2,
+verifies 16 files. vmmap identifies actual PC 0x105142ee4 in SyncronyCore's
+__TEXT range 0x105134000–0x105150000: file-relative offset 0xeee4.
+LLDB incorrectly attributes that PC to dyld, so its symbolic label is not
+evidence. The pinned original framework's symbols/instructions identify
+SCMetadataAdapterCreate: sqlite3_open_v2 returns nonzero and takes the explicit
+BRK #1 path. Its original format string is %@tmp/SyncronyCore.db, with the
+prefix from CFCopyHomeDirectoryURL. This establishes the failed operation,
+not its SQLite result code or Linux's Inbox cause.
+
+The Apple harness set only cwd and inherited the runner's home; Linux already
+sets HOME/CFFIXED_USER_HOME/TMPDIR and prepares real Documents/Library/tmp.
+Apple's published CFPlatform.c confirms that CFFIXED_USER_HOME takes priority
+over the passwd home. e7a2758 aligns Apple launch preparation with that same
+fresh per-journey home and directories, preserving state only for relaunches
+inside that journey. Ordinary (no debugger) run 39795030664 is pending. No
+SQLite database, result or app callback is supplied by the harness.
+
 Same-PID launch observation run 39791431370 (8d4ca53) finally captures Apple's
 actual EXC_BREAKPOINT (BRK #1), not a replay or a missing report. Receipt
 5c685f7354e41e55a612cf536c7f6833986ff5e42c9c3c87a83c10fb1a92b96a
