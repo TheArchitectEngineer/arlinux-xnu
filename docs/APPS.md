@@ -34,6 +34,7 @@ original. The package remains outside Git and is not uploaded as evidence.
 | Counter | Traditional Objective-C / UIKit app delegate, label, system button | Real pointer -> Count 1, normal close, fresh Count 0 |
 | Notes | Objective-C / text input, Foundation document URLs, atomic UTF-8 file write | Typed note saved, visible text survives close/relaunch |
 | Workers | Objective-C / UIKit plus pthread, mmap and dispatch | Separate thread, memory and asynchronous queue journeys, results visible |
+| LayoutProbe | Source-owned UIKit app / external input requests public deferred layout | Only real layoutSubviews updates bounds/color/text after each click; normal close/relaunch and repeat; no forced layout in the harness |
 | SchedulingProbe | Source-owned UIKit app / public libdispatch APIs | Independent blocking handoff, 64-item backlog and timer-to-socket-read journeys; each repeats twice, closes normally and repeats in a new process |
 | Canvas | Objective-C / UIView drawRect, CoreGraphics colors and geometry | Real red pixels, click -> real green pixels, normal close |
 | Network | Objective-C / NSURLSession, HTTP, JSON, main queue | Two genuine HTTP requests recorded across normal close/new-process relaunch, each with visible answer 42 |

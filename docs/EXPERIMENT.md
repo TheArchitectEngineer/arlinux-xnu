@@ -2,6 +2,20 @@
 
 ## Scope
 
+Run 39782339027 (40675be), receipt
+ec30625d5e8e2fa8adae2999851c4894677ce5edf83997ba9026eb66c2b1daf5,
+verifies 91 files. The controller's listAdapter/listView storage is nonzero in
+samples 10/50/125, while navigationBar/headerDelegate remain zero. The original
+THTaskListView's layoutSubviewsBlock storage is also nonzero. This does not prove
+that adapter contents are valid or that a particular optional field is required.
+Existing source-owned screens mostly assign child frames directly and do not
+exercise deferred UIView layout. Add one small probe-layout journey: real external
+click -> public setNeedsLayout -> only genuine layoutSubviews changes panel bounds,
+color and result label; repeat, close/relaunch and repeat. Never call layoutIfNeeded
+or a fixture action from the harness. Use the same input on the optional Apple-host
+reference to assess this narrow platform question. This probe supplements Things;
+its complete task/persistence journey remains red regardless of probe outcome.
+
 Run 39780682935 (cc33e5c), receipt
 95e879b2feb5f1276fd1e54ad2ee72bc65a747319d736a7a1bcd0ec43f0973e1,
 verifies all 93 files. The actual component update reaches MSAnimationManager,
@@ -261,7 +275,7 @@ Android remains unverified. Earlier trace/admission history stays in Git/Actions
 
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.
-The collection currently has 12 source-owned apps, original Calculator and Things, 20 app
+The collection currently has 13 source-owned apps, original Calculator and Things, 21 app
 journeys and three cross-app scenarios. Android execution is unverified.
 
 The fixed input is iPhone10,1 (iPhone 8/A11), iOS 16.7.16 / 20H392,
