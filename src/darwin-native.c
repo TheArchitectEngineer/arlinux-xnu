@@ -139,9 +139,11 @@ static void trace_call(unsigned long number,unsigned long pc,unsigned long resul
  * MAP_FIXED_NOREPLACE atomically owns a range without replacing dyld/cache or
  * another thread's allocation. Read actual holes only after a hint conflict. */
 static unsigned long guest_next=D_GUEST_HEAP_START;
+static unsigned long native_guest_gap_requests,native_guest_mapping_conflicts;
 static long native_guest_gap(unsigned long length)
 {
     if(!length || length>D_GUEST_COMMPAGE_RO-D_GUEST_HEAP_START)return -ENOMEM;
+    __atomic_fetch_add(&native_guest_gap_requests,1,__ATOMIC_RELAXED);
     int fd=RAW(SYS_openat,AT_FDCWD,"/proc/self/maps",O_RDONLY|O_CLOEXEC,0,0,0);
     if(fd<0)return fd;
     char buffer[4096],prefix[64];size_t used=0;unsigned long candidate=D_GUEST_HEAP_START;
@@ -191,7 +193,7 @@ static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned
     if (alignment<PAGE16) alignment=PAGE16;
     size = (size + PAGE16 - 1) & ~(PAGE16 - 1);
     long raw=-ENOMEM;
-    unsigned long requested=__atomic_load_n(&guest_next,__ATOMIC_RELAXED);
+    unsigned long observed=__atomic_load_n(&guest_next,__ATOMIC_RELAXED),requested=observed;
     for (unsigned int attempt=0;attempt<128;attempt++) {
         if(requested>=D_GUEST_COMMPAGE_RO || size+alignment>D_GUEST_COMMPAGE_RO-requested) {
             raw=native_guest_gap(size+alignment);
@@ -201,6 +203,7 @@ static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned
         raw=RAW(SYS_mmap,requested,size+alignment,protection,
                 (shared ? MAP_SHARED : MAP_PRIVATE|MAP_NORESERVE)|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
         if (raw==-EEXIST) {
+            __atomic_fetch_add(&native_guest_mapping_conflicts,1,__ATOMIC_RELAXED);
             long gap=native_guest_gap(size+alignment);
             if((unsigned long)gap>=(unsigned long)-4095)return gap;
             requested=gap;raw=-EAGAIN;continue;
@@ -213,8 +216,13 @@ static long anonymous_aligned_mapping(unsigned long size,int protection,unsigned
         if ((unsigned long)raw!=requested) {
             RAW(SYS_munmap,raw,size+alignment,0,0,0,0); return -ENOTSUP;
         }
-        unsigned long next=requested+size+alignment,previous=__atomic_load_n(&guest_next,__ATOMIC_RELAXED);
-        while(previous<next && !__atomic_compare_exchange_n(&guest_next,&previous,next,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED)){}
+        /* A fixed dyld range can force first-fit below the old hint. Keeping
+         * the hint monotonic then retries that same collision on every large
+         * allocation. Publish the actual new position, including a rewind,
+         * only if another allocator has not already moved it. Correctness
+         * still belongs to Linux MAP_FIXED_NOREPLACE, never this cursor. */
+        unsigned long next=requested+size+alignment;
+        __atomic_compare_exchange_n(&guest_next,&observed,next,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED);
         break;
     }
     if ((unsigned long)raw >= (unsigned long)-4095) return raw;
