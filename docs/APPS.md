@@ -13,9 +13,10 @@ Its existing public decrypted cache was downloaded without login; the manifest
 pins the archive and original executable hashes. Static input inspection found
 thin ARM64, minimum iOS 16.4 and cryptid 0 in the main executable and five bundled
 frameworks, including React/Hermes. This is not a simple UIKit-only app.
-The first-screen/reopen journey is an initial launch comparison only; its text
-targets still require confirmation against actual UI. It does not certify image
-import, editing or export, and no execution has passed yet. Runner-side source
+The first-screen/reopen journey requires an external click on 我的 and visible
+转码记录 content, then normal close/relaunch and repeat. These targets still
+require confirmation against actual UI. It does not certify media import,
+editing or export. Runner-side source
 availability is also required; a workstation download is not a runner cache.
 Run 39804175373 failed before app execution: the public cache endpoint returned
 HTTP 403 to runner curl. That exact downloaded IPA is now stored under
@@ -23,6 +24,11 @@ apps/pureframe/input in Git, retaining the same archive/executable hashes.
 An attempted Git LFS upload was rejected because the account's LFS budget was
 exceeded; the 22.8 MB input therefore uses a normal binary Git object. No browser
 downloader or transferred workstation session is required.
+Run 39805815468 (a48ebda) prepared the exact repository input in 0.109 seconds
+and exited/relaunched normally. Its original broad title check passed, but both
+viewed screenshots still show the splash image. This is not interaction success.
+The external observer now excludes AXWindow titles, and the journey requires
+navigation into actual page content instead of matching the application name.
 
 The next acquired original-binary candidate is Things iPhone 3.17.1/build
 31701001, bundle ID com.culturedcode.ThingsiPhone. Its community-decrypted IPA

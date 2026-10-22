@@ -53,6 +53,7 @@ class Desktop:
             if bounds is None:return None
             scale=raw['displayScale'];elements=[]
             for entry in raw['elements']:
+                if entry['role'] in ('AXApplication','AXWindow'):continue
                 rect=entry.get('rect')
                 text=entry['title'] or entry['value'] or entry['description']
                 if not text or not rect or rect[2]<=0 or rect[3]<=0:continue
