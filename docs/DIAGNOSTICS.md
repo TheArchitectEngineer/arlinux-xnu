@@ -595,6 +595,12 @@ Format references inspected: ProcursusTeam/ldid af86971ae72ec3ed3d0a699107c4e882
 and Apple Security SecTask.c db15acbe6a7f257a859ad9a3bb86097bfe0679d9. The
 original consumer decoding and real user effects remain required validation.
 
+The opt-in public UIKit geometry observer retains four bounded samples (up to
+128 visible views each) on its existing 200 ms timer: first window and samples
+10, 50 and 125. This observes later controller/layout changes without invoking
+layout or actions; frame count and timer scheduling do not imply wall-clock
+accuracy. Controller metadata remains in the existing APP_INSPECTION records.
+
 src/diagnostics/ios-ui.h owns the optional one-time view-tree diagnostic, using
 raw syscalls on the genuine UIKit main loop. Source-buffer capture belongs to
 the existing stopped-process collector in tools/app_suite/dyld_metadata.py. They do not

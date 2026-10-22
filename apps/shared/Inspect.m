@@ -33,13 +33,18 @@ static void collect_geometry(UIView *view,NSMutableArray *records,unsigned depth
     for (UIView *child in view.subviews) collect_geometry(child,records,depth+1);
 }
 static void observe_geometry(UIWindow *window) {
-    static BOOL recorded;
+    static unsigned samples;
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
-    if (recorded || !enabled || strcmp(enabled,"1")) return;
-    recorded=YES;
+    if (!enabled || strcmp(enabled,"1")) return;
+    /* Startup-only geometry misses the original app's later controller swap.
+     * Four bounded samples on the existing 200 ms observer, with no layout
+     * calls, distinguish transient startup geometry from the failed screen. */
+    if (samples>125) return;
+    unsigned sample=samples++;
+    if (sample!=0 && sample!=10 && sample!=50 && sample!=125) return;
     UIScreen *screen=window.screen;NSMutableArray *views=[NSMutableArray new];
     collect_geometry(window,views,0);
-    NSDictionary *value=@{@"windowBounds":rect_values(window.bounds),
+    NSDictionary *value=@{@"sample":@(sample),@"windowBounds":rect_values(window.bounds),
         @"screenBounds":rect_values(screen.bounds),@"nativeBounds":rect_values(screen.nativeBounds),
         @"screenScale":@(screen.scale),@"nativeScale":@(screen.nativeScale),
         @"idiom":@([UIDevice currentDevice].userInterfaceIdiom),
