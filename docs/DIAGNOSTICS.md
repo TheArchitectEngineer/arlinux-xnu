@@ -465,7 +465,13 @@ The two raw DMGs total 7,344,446,573 bytes before Actions cache compression; thi
 is CDN/extraction avoidance, not a small framework subset. Measure actual restore
 and save cost before claiming resource savings. Missing files must not be hidden
 by pruning framework resources to one observed app trace. Fresh mounts, app data,
-execution, receipts and effect checks still run. No Apple input is included in
+execution, receipts and effect checks still run. Cold run 39744136865 saved
+5,651,344,265 compressed bytes in 29 s; warm run 39744680047 restored them in
+57 s and made zero Apple downloads. Preparation dropped from 42 to 23 s, but
+restore plus preparation was slower than the cold preparation/download on a
+healthy CDN. This is a fallback against CDN variability, not evidence of overall
+resource savings. Both runs passed their selected journeys, not the full suite.
+No Apple input is included in
 execution artifacts or releases. Current measurements and acceptance are recorded once in
 [EXPERIMENT.md](EXPERIMENT.md); historical runs remain in Git and Actions.
 

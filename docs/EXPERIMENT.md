@@ -40,10 +40,24 @@ SecTask/csops boundary before any new Things diagnostic run.
 User-requested resource work: cache only the two pinned OS volume DMGs on hosted
 Actions, verifying locked byte sizes/SHA-256 before use and keeping app data
 fresh. No full IPSW, boot/recovery payload, app state or test result is cached.
-First validate cold preparation with original Calculator regression, then warm
-reuse with a related scheduling journey; compare actual restore/preparation and
-job times, including cache-save overhead. Do not claim a size or time reduction
-before measuring. Afterwards continue the original Things entitlement fault.
+Cold run 39744136865 (313c63b) passes both original Calculator journeys; receipt
+4a514214d4773752cf1e0f4c989133fecc30fb845526b46600574be944b2d4b6 and 53 files
+verify. Portrait final 012-observe.png shows 15 after relaunch. Firmware download
+16.101 s, preparation 42 s, cache save 29 s; dispatch-to-completion 174 s.
+The Actions input cache is 5,651,344,265 compressed bytes.
+
+Warm run 39744680047 on the same source passes workers--queue and scheduling
+blocking/backlog, including repeated effects and new-process execution. Receipt
+57abbb79a79b1586f2b864700f33944a7737608afb7800a952196bbb61fd946d and 70 files
+verify. It records zero Apple download bytes, pinned-volume-cache validation
+4.216 s and no repeat cache save. Restore took 57 s, toolchain 42 s, userland
+preparation 23 s; overall 190 s with 34 s of journeys. Fresh mounts and app state
+are retained. These are different journey selections: they do not prove an
+end-to-end speedup. Warm restore + preparation (80 s) exceeds cold preparation
+(42 s) plus the prior 16 s download, which had overlapped apt. This cache avoids
+the observed pathological CDN delay; it is not yet a general resource reduction.
+Do not add another large cache or repeat these passing runs just to seek a better
+timing sample. Next runtime work is the original Things DER entitlement boundary.
 Android remains unverified. Earlier trace/admission history stays in Git/Actions.
 
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
