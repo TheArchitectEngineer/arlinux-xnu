@@ -38,11 +38,23 @@ all task effects remain failed. Inspect original entitlements and the reusable
 SecTask/csops boundary before any new Things diagnostic run. Static inspection
 of the hash-matched original Things executable confirms its XML declares
 com.apple.developer.siri=true; the same failed runtime records DER op 16 returning
--ENOTSUP. Candidate: host-side bounded XML-to-DER serialization of the unchanged
-embedded dictionary before guest entry, preserving existing DER and csops size
-negotiation. Next run only the ordinary Things task/persistence journey. Success
-requires original SecTask to decode the metadata and the real task effects, not
-just a conversion log. A later service failure must remain visible.
+-ENOTSUP. Host-side bounded XML-to-DER serialization preserves the unchanged
+embedded dictionary, existing DER and csops size negotiation.
+
+Run 39747191785 (c4a8d11) verifies receipt
+d03e825a07851c05fc49cfc7a5e17cecfcffd053896ed934efe2edd46b170120 and all 89
+files. The original Siri entitlement exception is crossed. Things now throws
+NSInternalInconsistencyException: input data length 0 does not match 100x100
+image dimensions, in its original QuartzAdditions image path. Immediately before
+that, the original ImageIO PNG decoder's __ImageIO_Malloc requests mmap length
+0xc000, protection 3, flags 0x41002 and allocation metadata 0x46000002. The runtime
+rejects this with EINVAL: anonymous private allocation with VM_FLAGS_PURGABLE
+and image-memory alias 70 was excluded from its tag-only mask. XNU kern_mman.c
+explicitly accepts that allocation flag. Candidate aligns mmap with the existing
+Mach VM allocator: private purgeable memory initially has actual nonvolatile,
+zero-filled backing; volatile/discard control remains unsupported. Next run only
+the ordinary Things journey, checking actual image creation and task effects.
+Neither allocation success nor crossing this exception alone passes the journey.
 
 User-requested resource work: cache only the two pinned OS volume DMGs on hosted
 Actions, verifying locked byte sizes/SHA-256 before use and keeping app data
@@ -64,7 +76,7 @@ end-to-end speedup. Warm restore + preparation (80 s) exceeds cold preparation
 (42 s) plus the prior 16 s download, which had overlapped apt. This cache avoids
 the observed pathological CDN delay; it is not yet a general resource reduction.
 Do not add another large cache or repeat these passing runs just to seek a better
-timing sample. Next runtime work is the original Things DER entitlement boundary.
+timing sample. Next runtime work is the original Things image allocation boundary.
 Android remains unverified. Earlier trace/admission history stays in Git/Actions.
 
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed

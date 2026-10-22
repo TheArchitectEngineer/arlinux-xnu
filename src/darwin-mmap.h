@@ -199,12 +199,17 @@ static long native_mmap(const unsigned long long *r)
 {
     /* XNU kern_mman.c uses MAP_ANON's fd as VM allocation metadata, not
      * a file descriptor. -1 and alias/tag-only values both request ordinary
-     * real anonymous memory. Purgeable/superpage/chunk semantics are not
-     * silently treated as ordinary mappings. Darwin's fd is signed 32-bit. */
+     * real anonymous memory. As with Mach VM allocation, purgeable private
+     * memory starts nonvolatile with real zero-filled backing. Subsequent
+     * volatile/discard controls remain unsupported; no purge is claimed.
+     * Superpage/chunk requests remain rejected. Darwin's fd is signed 32-bit. */
     uint32_t allocation_flags=(uint32_t)r[4];
     unsigned long flags=r[3]&~(unsigned long)D_MAP_UNIX03;
     if ((flags==(D_MAP_PRIVATE|D_MAP_ANON) || flags==(D_MAP_SHARED|D_MAP_ANON)) &&
-        ((int32_t)allocation_flags==-1 || !(allocation_flags&~D_VM_FLAGS_TAG_MASK)) && !r[5] && !r[0]) {
+        ((int32_t)allocation_flags==-1 ||
+         !(allocation_flags&~D_VM_FLAGS_TAG_MASK) ||
+         (flags==(D_MAP_PRIVATE|D_MAP_ANON) &&
+          !(allocation_flags&~(D_VM_FLAGS_TAG_MASK|D_VM_FLAGS_PURGABLE)))) && !r[5] && !r[0]) {
         int shared=!!(flags&D_MAP_SHARED);
         /* Keep the actual Linux shared backing, including inheritance across
          * fork. A private allocation is not an equivalent successful result. */
