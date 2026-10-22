@@ -2,6 +2,25 @@
 
 ## Scope
 
+Latest diagnostic run: 39769180827, source c0e9674623c0a6fd9a0afbce33e67a3b9c005e75,
+receipt ae273c48fd749dfd492834d0a70431e4ec87b02d90781222ae48cf12b3633159;
+all 91 files verify. The actual original app launches, remains active and still
+fails Inbox. The typed CADisplayLink factory observer is installed (no ABI
+unavailable marker), but samples 0, 50, 100 and 250 all record created=0/live=0.
+This supplies no evidence for a registered-but-not-firing display link; it does
+not cover alternative private constructors. Do not implement synthetic refresh
+ticks based on the blank screen. Next inspect original scene-delegate to list
+initialization control flow with the existing debugger after startup copying,
+not file uprobes on the main image. Foreground-active/key-window metadata and
+actual database/extension writes remain established; tasks remain unverified.
+
+The first same-source run 39768611350 did not launch the original app: all IPA
+routes exhausted their shared deadline. Receipt
+bf212284e8ed0a8197a3dc9bf4cfd9c205a822ed4f1eed99b9911ddf4822b7f0 verifies
+17 files. This was input unavailability, not a runtime or display-link result.
+The retry above acquired the same pinned IPA in 2.055 seconds. Its initial report
+API error was recovered by reporting that exact completed run, not redispatching.
+
 Latest run 39768008670 (a405db3) verifies receipt
 be350856e5b921acce9f42ac582abdbfd3a2a4e8ad97fe01a7dac5adbdfef251 and 91
 files. Without main-image uprobes, Things remains alive but Inbox times out.

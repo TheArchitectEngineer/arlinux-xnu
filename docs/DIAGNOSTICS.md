@@ -21,7 +21,7 @@ remain read-only with respect to app/framework behavior.
 For the current lifecycle boundary investigation, opt in with
 `./build.sh build --app counter --lifecycle-context`. The injected platform
 library reads actual loaded Objective-C method signatures and samples the real
-host window-state API for ten seconds on the genuine main run loop. Evidence is
+host window-state API for up to 25 seconds on the genuine main run loop. Evidence is
 in the app's stderr (`IOS_LIFECYCLE_ABI`, `IOS_HOST_WINDOW`). The same profile
 compares the loaded FBSSceneUpdater protocol (including inherited protocols,
 instance/class and optional/required methods) with the real adapter. It reports
