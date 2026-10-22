@@ -2,6 +2,28 @@
 
 ## Scope
 
+Apple original-IPA comparison is now exercised rather than rejected by a guard.
+Run 39788575603 (46ada9c) stops at an encrypted optional extension before app
+launch; Apple receipt 6f4f4172e3136467b6ba4b29bbcc1e1047d82d75064d56a2b407bec8987b054a
+verifies 6 files. Run 39789281929 (d8e53d4) preserves those encrypted extension
+executables unchanged (six total), converts 32 other images and reaches dyld,
+which rejects Base.framework's old signature. Its Apple receipt
+34e85e2485696a5054b797bd7e768bc093afa90753172b751ba2b44dc826b49a
+verifies 13 files; Linux still fails Inbox (91 verified files). Main IPA and
+executable hashes remain the pinned original input on both hosts.
+
+Run 39789932688 (0673527) signs every converted image like PlayCover, crosses
+the Base.framework loader rejection, then exits with SIGTRAP and empty stderr.
+Apple receipt 6d127c3b316680068ef5653e0c51aae756b13249d7514f67f4ceaa918a911a2c
+verifies 13 files; this is not a working reference or a Things root-cause
+verdict. The new --reference-only option uses the same workflow and source
+products but actually skips native-userland, taking 97 seconds of total active
+runner time in that run (39 SDK + 58 Apple); no Linux acceptance is claimed.
+The existing failure collector now waits at most eight seconds for an OS .ips
+report with the actual owned PID and exact executable path, retaining selected
+exception/stack/image fields only. Validation is pending in 39790422933
+(82b7f1b); no runtime compatibility behavior was changed by these tool fixes.
+
 Run 39787844702 (647795d), Linux receipt
 33fc0724d76fe38e28c6d06a3b225934241292102e96b5007394af7b7cd6a090,
 verifies 109 files; Apple receipt
