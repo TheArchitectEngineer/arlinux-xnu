@@ -34,6 +34,7 @@ original. The package remains outside Git and is not uploaded as evidence.
 | Counter | Traditional Objective-C / UIKit app delegate, label, system button | Real pointer -> Count 1, normal close, fresh Count 0 |
 | Notes | Objective-C / text input, Foundation document URLs, atomic UTF-8 file write | Typed note saved, visible text survives close/relaunch |
 | Workers | Objective-C / UIKit plus pthread, mmap and dispatch | Separate thread, memory and asynchronous queue journeys, results visible |
+| SchedulingProbe | Source-owned UIKit app / public libdispatch APIs | Independent blocking handoff, 64-item backlog and timer-to-socket-read journeys; each repeats twice, closes normally and repeats in a new process |
 | Canvas | Objective-C / UIView drawRect, CoreGraphics colors and geometry | Real red pixels, click -> real green pixels, normal close |
 | Network | Objective-C / NSURLSession, HTTP, JSON, main queue | Two genuine HTTP requests recorded across normal close/new-process relaunch, each with visible answer 42 |
 | Web | Objective-C / WKWebView, WebKit helper/rendering, JavaScript, DOM | Actual DOM click changes WebCount 0 -> 1 in composed pixels |
@@ -61,6 +62,32 @@ additional framework dependencies. Legacy Swift 4 packages may bundle another
 runtime and remain a separate future input.
 
 ## Independent execution and shared mechanisms
+
+### Focused probe apps
+
+Source-owned probes supplement original-binary acceptance; they cannot establish
+that Calculator or Things works. Give each compatibility aspect its own
+`apps/probe-<aspect>` app.json, source and journeys.json, discovered by the
+existing app collection. Keep independent failure modes in short journeys and
+split unrelated aspects into another app rather than growing one workbench.
+Use only public iOS APIs to produce real effects, external input to start them,
+and the existing read-only observer plus screenshots to verify visible results.
+Logs localize actual submission, execution and delivery; they never replace
+effects. No private runtime calls, mocked services or special production paths
+for probe app identities. Build, selection, provenance and diagnostics use the
+same entry and pipeline as every other app.
+
+SchedulingProbe isolates pending-work progress from Things' database machinery.
+Blocking runs two default-QoS semaphore waiters whose releases require another
+global-queue task, followed by main-queue delivery. Backlog checks all 64 distinct
+background-to-main deliveries, with bounded CPU work between submissions and
+completion. Timer IO checks three actual ordered bytes produced by a dispatch
+timer and received through a socket-read source. Event coalescing is allowed;
+no exact timer latency or worker count is required. Every journey repeats twice
+in each of two process generations, requiring changed visible results, normal
+exit and fresh Ready state. Bounded waits report failure rather than inventing
+missing callbacks. Passing these flows does not certify all workqueue semantics
+or prove the cause of an original-app stall.
 
 Workers owns three short journeys, not one combined pass. Its queue journey
 requires two successive background-to-main deliveries (Queue 3 then Queue 6)

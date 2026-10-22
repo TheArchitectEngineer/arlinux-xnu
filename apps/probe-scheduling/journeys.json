@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "blocking",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "probe-scheduling"
+        },
+        {
+          "do": "see",
+          "text": "^Ready$"
+        },
+        {
+          "do": "click",
+          "text": "^Blocking$"
+        },
+        {
+          "do": "see",
+          "text": "^Blocking: OK 1$"
+        },
+        {
+          "do": "click",
+          "text": "^Blocking$"
+        },
+        {
+          "do": "see",
+          "text": "^Blocking: OK 2$"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "probe-scheduling"
+        },
+        {
+          "do": "launch",
+          "app": "probe-scheduling"
+        },
+        {
+          "do": "see",
+          "text": "^Ready$"
+        },
+        {
+          "do": "click",
+          "text": "^Blocking$"
+        },
+        {
+          "do": "see",
+          "text": "^Blocking: OK 1$"
+        },
+        {
+          "do": "click",
+          "text": "^Blocking$"
+        },
+        {
+          "do": "see",
+          "text": "^Blocking: OK 2$"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "probe-scheduling"
+        }
+      ]
+    },
+    {
+      "id": "backlog",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "probe-scheduling"
+        },
+        {
+          "do": "see",
+          "text": "^Ready$"
+        },
+        {
+          "do": "click",
+          "text": "^Backlog$"
+        },
+        {
+          "do": "see",
+          "text": "^Backlog: OK 1$"
+        },
+        {
+          "do": "click",
+          "text": "^Backlog$"
+        },
+        {
+          "do": "see",
+          "text": "^Backlog: OK 2$"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "probe-scheduling"
+        },
+        {
+          "do": "launch",
+          "app": "probe-scheduling"
+        },
+        {
+          "do": "see",
+          "text": "^Ready$"
+        },
+        {
+          "do": "click",
+          "text": "^Backlog$"
+        },
+        {
+          "do": "see",
+          "text": "^Backlog: OK 1$"
+        },
+        {
+          "do": "click",
+          "text": "^Backlog$"
+        },
+        {
+          "do": "see",
+          "text": "^Backlog: OK 2$"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "probe-scheduling"
+        }
+      ]
+    },
+    {
+      "id": "timer-io",
+      "steps": [
+        {
+          "do": "launch",
+          "app": "probe-scheduling"
+        },
+        {
+          "do": "see",
+          "text": "^Ready$"
+        },
+        {
+          "do": "click",
+          "text": "^Timer IO$"
+        },
+        {
+          "do": "see",
+          "text": "^Timer IO: OK 1$"
+        },
+        {
+          "do": "click",
+          "text": "^Timer IO$"
+        },
+        {
+          "do": "see",
+          "text": "^Timer IO: OK 2$"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "probe-scheduling"
+        },
+        {
+          "do": "launch",
+          "app": "probe-scheduling"
+        },
+        {
+          "do": "see",
+          "text": "^Ready$"
+        },
+        {
+          "do": "click",
+          "text": "^Timer IO$"
+        },
+        {
+          "do": "see",
+          "text": "^Timer IO: OK 1$"
+        },
+        {
+          "do": "click",
+          "text": "^Timer IO$"
+        },
+        {
+          "do": "see",
+          "text": "^Timer IO: OK 2$"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "exit",
+          "app": "probe-scheduling"
+        }
+      ]
+    }
+  ]
+}
