@@ -26,6 +26,8 @@ static __attribute__((noreturn)) void native_event_worker_start(struct native_th
 static long native_event_worker_return(const unsigned long long *);
 static void native_event_owner_exit(uint64_t);
 static uint32_t registered_pthread_size,registered_tsd,registered_thread_slot;
+static int native_workqueue_request_fd=-1;
+static int native_workqueue_pending_drain(const sigset_t *mask);
 /* Observe our actual upcall arguments before entering libpthread. Probing its
  * shared-cache code is unsafe when Mach copies that page into a shared memfd. */
 static void native_trace_workqueue_entry(struct native_thread *thread,uint64_t buffer,

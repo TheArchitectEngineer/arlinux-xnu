@@ -8,6 +8,59 @@
  * debugger inspection. Actual callbacks remain owned by registered libpthread. */
 static volatile struct darwin_workq_dispatch_config native_dispatch_config;
 static unsigned int native_workqueue_narrow_observations;
+/* XNU retains accepted thread requests when admission cannot create a worker.
+ * These counters belong to the existing readiness dispatcher; callers never
+ * wait for a slot while holding libdispatch's pending-worker accounting. */
+static unsigned int native_workqueue_pending[2][6];
+static long native_workqueue_create_worker(unsigned int qos,int overcommit,const sigset_t *mask)
+{
+    uint64_t size=D_GUEST_PAGE_SIZE+D_WORKQUEUE_STACK_SIZE+
+                  ((registered_pthread_size+D_GUEST_PAGE_SIZE-1)&~(D_GUEST_PAGE_SIZE-1));
+    long memory=anonymous_aligned(size,PROT_READ|PROT_WRITE,D_GUEST_PAGE_SIZE-1);
+    if ((unsigned long)memory>=(unsigned long)-4095) return memory;
+    long error=RAW(SYS_mprotect,memory,D_GUEST_PAGE_SIZE,PROT_NONE,0,0,0);
+    if(error) {RAW(SYS_munmap,memory,size,0,0,0,0);return error;}
+    uint64_t low=memory+D_GUEST_PAGE_SIZE,self=low+D_WORKQUEUE_STACK_SIZE;
+    uint32_t flags=D_WQ_PRIO_QOS|D_WQ_NEWSPI|qos|(overcommit ? D_WQ_OVERCOMMIT : 0);
+    unsigned long long arguments[6]={0,0,self,self,flags,0};
+    long result=native_thread_create_impl(arguments,mask,1,low);
+    if ((unsigned long)result>=(unsigned long)-4095) RAW(SYS_munmap,memory,size,0,0,0,0);
+    return result;
+}
+static int native_workqueue_pending_drain(const sigset_t *mask)
+{
+    int remaining=0;
+    for(int qos=6;qos>=1;qos--)for(unsigned int overcommit=0;overcommit<2;overcommit++) {
+        unsigned int *pending=&native_workqueue_pending[overcommit][qos-1];
+        unsigned int attempts=0;
+        while(__atomic_load_n(pending,__ATOMIC_ACQUIRE) && attempts++<NATIVE_THREADS) {
+            long result=native_workqueue_create_worker(qos,overcommit,mask);
+            if(result==-EAGAIN) {remaining=1;break;}
+            if((unsigned long)result>=(unsigned long)-4095) {
+                trace_record("DARWIN_WORKQUEUE_PENDING_ERROR qos/overcommit/result=0x",qos,overcommit,result);
+                darling_abort("create accepted workqueue request");
+            }
+            __atomic_fetch_sub(pending,1,__ATOMIC_ACQ_REL);
+            trace_record("DARWIN_WORKQUEUE_PENDING_STARTED qos/overcommit/pthread=0x",qos,overcommit,result);
+        }
+        if(__atomic_load_n(pending,__ATOMIC_ACQUIRE))remaining=1;
+    }
+    return remaining;
+}
+static long native_workqueue_defer(unsigned int qos,int overcommit,unsigned int count)
+{
+    unsigned int *pending=&native_workqueue_pending[overcommit][qos-1];
+    unsigned int previous=__atomic_load_n(pending,__ATOMIC_ACQUIRE);
+    do {if(previous>UINT32_MAX-count)return -EAGAIN;}
+    while(!__atomic_compare_exchange_n(pending,&previous,previous+count,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE));
+    uint64_t wake=1;
+    long result;
+    do {result=RAW(SYS_write,native_workqueue_request_fd,&wake,sizeof(wake),0,0,0);}while(result==-EINTR);
+    /* EAGAIN means the counter is already readable, so the wake is retained. */
+    if(result!=(long)sizeof(wake) && result!=-EAGAIN)darling_abort("wake accepted workqueue request");
+    trace_record("DARWIN_WORKQUEUE_REQUEST_DEFERRED qos/count/pending=0x",qos,count,previous+count);
+    return 0;
+}
 
 static int native_priority_qos(uint32_t priority)
 {
@@ -122,21 +175,12 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
         unsigned int observation=__atomic_fetch_add(&requests,1,__ATOMIC_RELAXED);
         if(observation<64)trace_record("DARWIN_WORKQUEUE_REQUEST count=0x",r[2],priority,qos);
         for (unsigned int i=0;i<r[2];i++) {
-            uint64_t size=D_GUEST_PAGE_SIZE+D_WORKQUEUE_STACK_SIZE+
-                          ((registered_pthread_size+D_GUEST_PAGE_SIZE-1)&~(D_GUEST_PAGE_SIZE-1));
-            long memory=anonymous_aligned(size,PROT_READ|PROT_WRITE,D_GUEST_PAGE_SIZE-1);
-            if ((unsigned long)memory>=(unsigned long)-4095) return memory;
-            long error=RAW(SYS_mprotect,memory,D_GUEST_PAGE_SIZE,PROT_NONE,0,0,0);
-            if (error) { RAW(SYS_munmap,memory,size,0,0,0,0); return error; }
-            uint64_t low=memory+D_GUEST_PAGE_SIZE,self=low+D_WORKQUEUE_STACK_SIZE;
             uint32_t flags=D_WQ_PRIO_QOS|D_WQ_NEWSPI|qos;
             if (priority&D_PRIORITY_OVERCOMMIT) flags|=D_WQ_OVERCOMMIT;
-            unsigned long long arguments[6]={0,0,self,self,flags,0};
-            long result=native_thread_create_impl(arguments,original_mask,1,low);
+            long result=native_workqueue_create_worker(qos,!!(priority&D_PRIORITY_OVERCOMMIT),original_mask);
             if(observation<64)trace_record("DARWIN_WORKQUEUE_CREATED request=0x",observation,flags,result);
-            if ((unsigned long)result>=(unsigned long)-4095) {
-                RAW(SYS_munmap,memory,size,0,0,0,0); return result;
-            }
+            if(result==-EAGAIN)return native_workqueue_defer(qos,!!(priority&D_PRIORITY_OVERCOMMIT),r[2]-i);
+            if ((unsigned long)result>=(unsigned long)-4095) return result;
         }
         return 0;
     }

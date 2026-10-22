@@ -753,26 +753,33 @@ static void native_event_dispatcher(void *argument)
     trace_record("DARWIN_EVENT_DISPATCHER tid=0x",RAW(SYS_gettid,0,0,0,0,0,0),native_event_dispatch_fd,0);
     for(;;) {
         struct epoll_event events[D_KQUEUE_BATCH];
-        long count=RAW(SYS_epoll_pwait,native_event_dispatch_fd,events,D_KQUEUE_BATCH,-1,0,8);
+        int pending=native_workqueue_pending_drain((const sigset_t *)&mask);
+        long count=RAW(SYS_epoll_pwait,native_event_dispatch_fd,events,D_KQUEUE_BATCH,pending ? 10 : -1,0,8);
         if(count==-EINTR)continue;
         if(count<0)darling_abort("wait for real workloop readiness");
         for(long i=0;i<count;i++) {
             struct native_kqueue *queue=events[i].data.ptr;
+            if (!queue) {
+                uint64_t value;
+                long result=RAW(SYS_read,native_workqueue_request_fd,&value,sizeof(value),0,0,0);
+                if(result<0 && result!=-EAGAIN && result!=-EINTR)darling_abort("read workqueue request wakeup");
+                continue;
+            }
             if(!queue->used || __atomic_load_n(&queue->client_owner,__ATOMIC_ACQUIRE) ||
                __atomic_load_n(&queue->worker,__ATOMIC_ACQUIRE))continue;
-            long result;
-            unsigned int deferred=0;
-            do {
-                /* The clone helper and worker inherit the caller's actual
-                 * syscall filter. No glibc, guest TLS or framework call is
-                 * made by this native dispatcher. Kernel masks are 8 bytes. */
-                result=native_kqueue_start_worker(queue,(const sigset_t *)&mask);
-                if(result==-EAGAIN) {
-                    if(!deferred++)trace_record("DARWIN_EVENT_WORKER_DEFERRED id=0x",queue->dynamic_id,0,result);
-                    struct timespec delay={.tv_nsec=10000000};
-                    RAW(SYS_nanosleep,&delay,0,0,0,0,0);
-                }
-            } while(result==-EAGAIN);
+            /* Rearm the one-shot subscription on EAGAIN.
+             * Return to the shared loop so pending ordinary work also gets
+             * admission attempts instead of blocking behind this one queue. */
+            long result=native_kqueue_start_worker(queue,(const sigset_t *)&mask);
+            if(result==-EAGAIN) {
+                struct timespec delay={.tv_nsec=10000000};
+                RAW(SYS_nanosleep,&delay,0,0,0,0,0);
+                native_kqueue_lock();
+                result=native_kqueue_arm(queue);
+                native_kqueue_unlock();
+                if(result)darling_abort("rearm deferred workloop worker");
+                continue;
+            }
             if(result) {
                 trace_record("DARWIN_EVENT_WORKER_ERROR id=0x",queue->dynamic_id,queue->fd,result);
                 darling_abort("start ready workloop worker");
@@ -790,6 +797,12 @@ static long native_event_dispatch_start(const sigset_t *mask)
     long fd=RAW(SYS_epoll_create1,EPOLL_CLOEXEC,0,0,0,0,0);
     long memory=-ENOMEM,result=fd;
     if(fd>=0) {
+        native_workqueue_request_fd=RAW(SYS_eventfd2,0,EFD_CLOEXEC|EFD_NONBLOCK,0,0,0,0);
+        result=native_workqueue_request_fd;
+        if(result<0)goto dispatch_done;
+        struct epoll_event request={.events=EPOLLIN,.data.ptr=NULL};
+        result=RAW(SYS_epoll_ctl,fd,EPOLL_CTL_ADD,native_workqueue_request_fd,&request,0,0);
+        if(result<0)goto dispatch_done;
         memory=RAW(SYS_mmap,0,D_THREAD_RUNTIME_STACK_SIZE,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
         result=memory;
         if((unsigned long)memory<(unsigned long)-4095) {
@@ -798,7 +811,10 @@ static long native_event_dispatch_start(const sigset_t *mask)
             result=darwin_clone_callback(memory+D_THREAD_RUNTIME_STACK_SIZE,native_event_dispatcher,&native_event_dispatch_mask);
         }
     }
+dispatch_done:
     if(result<0) {
+        if(native_workqueue_request_fd>=0)RAW(SYS_close,native_workqueue_request_fd,0,0,0,0,0);
+        native_workqueue_request_fd=-1;
         if((unsigned long)memory<(unsigned long)-4095)RAW(SYS_munmap,memory,D_THREAD_RUNTIME_STACK_SIZE,0,0,0,0);
         if(fd>=0)RAW(SYS_close,fd,0,0,0,0,0);
         native_event_dispatch_fd=-1;

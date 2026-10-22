@@ -52,6 +52,24 @@ read locally is tag libdispatch-1325.100.36, commit
 c5a8b9353b880a6f31cc24f631578a4b05222868; its queue layout is a reference, while
 the instruction evidence above comes from the actual pinned firmware.
 
+Run 39739256496 (0b29cecc11ae34c15d019152daaa8c111c3d66e7) reproduces a
+concrete admission failure: QoS-5 request 0x18 returns Linux -EAGAIN from the
+32-slot native thread allocator after a chain of same-QoS worker requests.
+The final queue still has head=tail, pending=1 and a real continuation (flags
+0x114, function 0x18db93790). Original task effects remain failed; receipt
+d1ee8f09d39467cf4079a2604348d4a67627b2c59456e48ac894e55074e0f2fd and 89 files
+verify. Upstream XNU workq_reqthreads retains requests that fail admission for
+later worker creation. Our synchronous error loses that request while libdispatch
+retains its pending count. The candidate repair retains only EAGAIN requests by
+QoS/overcommit, wakes the existing readiness dispatcher through eventfd, and
+retries admission until an actual worker can be created. Other immediate errors
+remain real errors; asynchronous permanent failures fail explicitly. The thread
+limit, libdispatch queue state and app callbacks are unchanged. Event-worker
+capacity retries rearm their real one-shot epoll subscription and return to the
+shared dispatcher so they cannot block ordinary pending requests indefinitely.
+Next verification must observe DEFERRED followed by PENDING_STARTED and the
+original block/Inbox effects; successful enqueue alone is not acceptance.
+
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.
 The collection currently has 12 source-owned apps, original Calculator and Things, 20 app
