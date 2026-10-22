@@ -89,7 +89,7 @@ def failure_summary(result,output):
     screenshots=[entry for entry in result.get('observations',[]) if 'screenshot' in entry]
     sample=screenshots if len(screenshots)<=4 else screenshots[:2]+screenshots[-2:]
     summary={'id':case,'failedStep':{key:failed[key] for key in
-        ('do','app','text','reason','seconds','diagnosticSeconds','observedApplicationState') if key in failed},
+        ('do','app','text','reason','seconds','diagnosticSeconds','width','height','observedViewport','observedApplicationState') if key in failed},
         'blockedSteps':sum(step['status']=='blocked' for step in result.get('steps',[])),
         'infrastructureFailure':result.get('infrastructureFailure',False),
         'processes':[],'screenshots':sample,'screenshotsRecorded':len(screenshots),

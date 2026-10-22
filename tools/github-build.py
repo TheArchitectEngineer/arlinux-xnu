@@ -154,9 +154,9 @@ def compare_runs(current, baseline):
     if not comparisons:print('No matching verified app result artifacts; comparison unavailable')
 
 
-def wait_for_run(run_id,commit):
+def wait_for_run(run_id,commit,evidence=False):
     previous=None
-    job_states={};reported_failures=set()
+    job_states={};reported_jobs=set();next_report={}
     while True:
         try:run=json.loads(api('actions/runs/'+run_id))
         except SystemExit:
@@ -178,8 +178,19 @@ def wait_for_run(run_id,commit):
             if state!=job_states.get(job['id']):
                 print(f"  {job['name']}: {state[0]} / {state[1]}"+(f' / {current}' if current else ''),flush=True)
                 job_states[job['id']]=state
-            if job['conclusion']=='failure' and job['id'] not in reported_failures:
-                report(run_id,job['name']);reported_failures.add(job['id'])
+            steps_finished=bool(job['steps']) and all(step['status']=='completed' for step in job['steps'])
+            ready=job['status']=='completed' or steps_finished
+            wanted=job['name'] in ('native-userland','apple-reference') or any(
+                step['conclusion']=='failure' for step in job['steps'])
+            if ready and wanted and job['conclusion']!='skipped' and job['id'] not in reported_jobs and time.monotonic()>=next_report.get(job['id'],0):
+                next_report[job['id']]=time.monotonic()+30
+                try:
+                    partial=report(run_id,job['name'])
+                    if not all(item.get('logState')=='downloaded' for item in partial['jobs']):continue
+                    if evidence:collect_evidence(partial)
+                    reported_jobs.add(job['id'])
+                except (SystemExit,OSError,ValueError,subprocess.SubprocessError):
+                    print(f'Job evidence not available yet; keep following run {run_id}',flush=True)
         time.sleep(10)
 
 
@@ -218,6 +229,8 @@ def print_observation(line):
     print(f"  APP_DIAGNOSIS {entry.get('id')}: {failed.get('do')} {failed.get('reason')}")
     print(f"    effect={failed.get('seconds')}s diagnosis={failed.get('diagnosticSeconds')}s blocked={entry.get('blockedSteps')} infrastructureFailure={entry.get('infrastructureFailure')}")
     if failed.get('observedApplicationState'):print('    Actual application state: '+json.dumps(failed['observedApplicationState']))
+    if failed.get('observedViewport'):
+        print(f"    Viewport: observed={failed['observedViewport']}; requested={[failed.get('width'),failed.get('height')]}")
     for process in entry.get('processes',[]):
         print(f"    Process {process.get('app')} generation={process.get('generation')} identity={json.dumps(process.get('identity'))}")
         print(f"    Logs: {process.get('runtimeLog')}; {process.get('stderr')}")
@@ -313,6 +326,13 @@ def report(run_id, job_name, verbose=False):
                                     datetime.fromisoformat(step['started_at'])).total_seconds())
                      for step in job['steps'] if step.get('completed_at') and step.get('started_at')]
         item['stepDurationsSeconds'] = dict(durations)
+        starts=[step['started_at'] for step in job['steps'] if step.get('started_at')]
+        if starts:
+            item['feedbackTiming']={'dispatchToFirstStepSeconds':(datetime.fromisoformat(min(starts))-
+                datetime.fromisoformat(run['created_at'])).total_seconds(),
+                'completedStepSeconds':sum(seconds for _,seconds in durations),
+                'note':'First-step delay includes dependencies and runner wait; step time is not billed time'}
+            print(f"  Feedback timing: first step after {item['feedbackTiming']['dispatchToFirstStepSeconds']:.0f}s; completed steps {item['feedbackTiming']['completedStepSeconds']:.0f}s")
         for name, seconds in sorted(durations, key=lambda entry: entry[1], reverse=True)[:3]:
             print(f"  Time: {seconds:.0f}s {name}")
         for step in job['steps']:
@@ -366,6 +386,11 @@ def report(run_id, job_name, verbose=False):
         markers=('APP_BUILD ','APP_CASE ','APP_DIAGNOSIS ','APP_SUITE ','APP_INPUT_VERIFIED ','APP_INPUT_HANDOFF ','APP_IPA_DOWNLOAD ','APP_ORIGINAL_INPUT ',
                  'COMPILER_CACHE_STATS ','APPLE_DOWNLOAD_TIMING ','APPLE_PREPARATION_TIMING ','APPLE_VOLUME_INPUT ','EXPERIMENT_RECEIPT ')
         item['observations']=[line for line in lines if line.startswith(markers)]
+        cases=[json.loads(line.split(' ',1)[1]) for line in item['observations'] if line.startswith('APP_CASE ')]
+        if cases:
+            item['appTiming']={key:round(sum(case.get(key,0) for case in cases),3)
+                for key in ('journeySeconds','effectSeconds','diagnosticSeconds')}
+            print(f"  App timing: effect={item['appTiming']['effectSeconds']}s; diagnosis={item['appTiming']['diagnosticSeconds']}s (included in journey)")
         for line in (lines if verbose else item['observations']):
             if verbose:print('  '+line)
             else:print_observation(line)
@@ -459,7 +484,7 @@ def main():
             match=re.search(r'https://github\.com/'+re.escape(repo)+r'/actions/runs/(\d+)',dispatch_output)
             if not match:raise SystemExit('Dispatch accepted but exact run URL was not returned; inspect status, do not redispatch')
             run_id=match[1]
-            wait_for_run(run_id,expected)
+            wait_for_run(run_id,expected,args.evidence)
             result=report(run_id,None,args.verbose)
             if args.baseline_run:compare_runs(result,args.baseline_run)
             elif args.evidence:collect_evidence(result)

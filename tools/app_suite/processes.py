@@ -206,7 +206,7 @@ class Processes:
                     time.sleep(.02)
                 with prefix.with_suffix('.startup.lldb.log').open('wb') as log:
                     result=subprocess.run(['sudo','-n','/usr/bin/lldb','--batch','--attach-pid',str(process.pid),
-                        '-o','settings set auto-confirm true','-o',invocation],stdout=log,stderr=subprocess.STDOUT,timeout=18)
+                        '-o','settings set auto-confirm true','-o',invocation],stdout=log,stderr=subprocess.STDOUT,timeout=24)
                 if result.returncode or not output.is_file():
                     self.infrastructure_failure=True
                     raise RuntimeError('Apple launch debugger failed; inspect startup.lldb.log')

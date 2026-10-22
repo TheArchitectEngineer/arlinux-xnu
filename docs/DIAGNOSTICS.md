@@ -219,6 +219,30 @@ the same original process stderr/cache; an abort symbol alone is not a cause.
 
 ## Short feedback loop
 
+For finished jobs, the workstation follower reports and verifies published
+evidence as soon as all job steps finish, even if GitHub's job/run conclusion
+lags behind. It continues following the same run; it does not report the
+workflow completed or redispatch. Transient evidence failures retry after
+30 seconds. Reports separate dispatch-to-first-step delay (dependencies plus
+runner wait), completed step time, actual app effect time and diagnosis time.
+These are observations, not billing estimates or a pure queue-time measurement.
+
+Apple launch faults keep bounded registers, a same-stop OS mapping table and
+atos symbols for at most twelve fault-thread frames in four actual mapped
+images. Prefer the mapped image/symbol over an LLDB label when image tracking
+failed during exec; retain both sources. No target expression is evaluated.
+The original stack plus mappings should arrive together, avoiding a separate
+runner iteration just to identify an unknown PC. This enhanced symbolication
+still needs hosted validation when another actual launch trace is required.
+
+Read the actual screenshot before changing a boundary. Run 39795030664's
+ordinary Apple Things launch crosses the prior SQLite assertion after real
+home preparation, but stops on the phone viewport requirement and visibly
+shows the original iPad-upgrade dialog. That is a host geometry/dialog
+comparison issue, not evidence of Linux's white-screen cause. Keep Linux phone
+geometry acceptance strict; do not turn this case green by ignoring its
+required user effects. No OCR or AI recognition is needed for this evidence.
+
 Runner time is spent to answer a question, not to validate every edit. Use this
 decision table before dispatching; it does not add a new build mode or test suite.
 

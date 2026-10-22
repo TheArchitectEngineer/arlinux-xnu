@@ -2,6 +2,20 @@
 
 ## Scope
 
+Ordinary Apple run 39795030664 (e7a2758), receipt
+8596721e5d11b4437410273699a9f9cc6616caba7349ab7a2b106370773098b4,
+verifies 83 files. Real home/tmp preparation crosses the SQLite assertion:
+Things remains alive and displays its original "Get Things for iPad" dialog
+with "No Thanks" and "App Store" buttons (000-failure.png viewed). UIKit state
+records 1024x768 then 1025x806, so the strict 375x667 viewport step fails before
+Inbox. The UIKit observer does not enumerate that native desktop dialog.
+This is not a working task journey, Android evidence or proof of the Linux
+white-screen cause. Next establish a real external Apple dialog/geometry
+comparison without weakening Linux's phone viewport or skipping user effects.
+The report records 81 seconds dispatch-to-first-step, 43 seconds completed
+steps and 9.228 seconds app effect plus 0.209 seconds diagnosis; the first
+number includes dependencies and runner wait, not app startup.
+
 Run 39793232793 (be1cfb2), receipt
 4b7b68751c998de02c1e33d0dbd44e51e562a08d3a3a1aeb10d2398ac67b33d2,
 verifies 16 files. vmmap identifies actual PC 0x105142ee4 in SyncronyCore's
