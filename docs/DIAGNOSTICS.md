@@ -700,3 +700,11 @@ A named original diagnostic symbol may request observeRegisters (at most eight
 ARM64 x0..x7 or d0..d7 names). LLDB records their actual textual register values
 at the real entry. Floating-point arguments must be read from their ABI registers,
 not inferred from x0 or a different public object's similarly named property.
+
+The opt-in geometry observer also records storage presence for app-owned visible
+view classes: up to sixteen declared ivars, runtime-adjusted offsets within the
+actual class instance size, and up to sixteen bytes per field. It emits only
+field name/offset/bytes-inspected/allZero. It calls no app getter, follows no
+stored pointer and exports no field payload. Empty Swift ivar type encodings
+are never cast to object references; allZero is storage evidence, not a general
+Swift optional/value interpretation. Apple framework classes are excluded.

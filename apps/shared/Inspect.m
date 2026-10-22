@@ -16,6 +16,31 @@ static NSUInteger becameActive,resignedActive;
 static NSArray *rect_values(CGRect rect) {
     return @[@(rect.origin.x),@(rect.origin.y),@(rect.size.width),@(rect.size.height)];
 }
+static NSArray *own_ivar_state(UIView *view) {
+    /* Inspect only bounded storage in app-owned view classes. In particular,
+     * an empty Swift type encoding is never cast to an Objective-C object.
+     * Emit presence, not pointer/string/value payloads; call no app getters. */
+    Class cls=object_getClass(view);
+    if([NSBundle bundleForClass:cls]!=[NSBundle mainBundle])return @[];
+    size_t instanceSize=class_getInstanceSize(cls);unsigned count=0;
+    Ivar *ivars=class_copyIvarList(cls,&count);NSMutableArray *records=[NSMutableArray new];
+    for(unsigned i=0;i<count && records.count<16;i++) {
+        ptrdiff_t offset=ivar_getOffset(ivars[i]);
+        if(offset<0 || (size_t)offset>=instanceSize)continue;
+        size_t end=instanceSize;
+        for(unsigned j=0;j<count;j++) {
+            ptrdiff_t next=ivar_getOffset(ivars[j]);
+            if(next>offset && (size_t)next<end)end=(size_t)next;
+        }
+        size_t bytes=MIN(end-(size_t)offset,(size_t)16);BOOL zero=YES;
+        const unsigned char *storage=(const unsigned char *)(__bridge const void *)view+offset;
+        for(size_t j=0;j<bytes;j++)if(storage[j]){zero=NO;break;}
+        const char *name=ivar_getName(ivars[i]);
+        if(name)[records addObject:@{@"name":[NSString stringWithUTF8String:name],@"offset":@(offset),
+            @"bytesInspected":@(bytes),@"allZero":@(zero)}];
+    }
+    free(ivars);return records;
+}
 static void collect_geometry(UIView *view,NSMutableArray *records,unsigned depth) {
     if (depth>18 || records.count>=128 || view.hidden || view.alpha<0.01) return;
     CALayer *layer=view.layer;CGAffineTransform transform=view.transform;
@@ -27,6 +52,7 @@ static void collect_geometry(UIView *view,NSMutableArray *records,unsigned depth
         @"layerFrame":rect_values(layer.frame),@"layerBounds":rect_values(layer.bounds),
         @"layerNeedsLayout":@(layer.needsLayout),@"layerNeedsDisplay":@(layer.needsDisplay),
         @"traitDisplayScale":@(view.traitCollection.displayScale),
+        @"ownIvarState":own_ivar_state(view),
         @"cornerRadius":@(layer.cornerRadius),@"masksToBounds":@(layer.masksToBounds),
         @"maskClass":layer.mask ? NSStringFromClass(layer.mask.class) : @"<absent>",
         @"maskBounds":rect_values(layer.mask ? layer.mask.bounds : CGRectZero),

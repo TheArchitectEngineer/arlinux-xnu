@@ -2,6 +2,23 @@
 
 ## Scope
 
+Run 39780682935 (cc33e5c), receipt
+95e879b2feb5f1276fd1e54ad2ee72bc65a747319d736a7a1bcd0ec43f0973e1,
+verifies all 93 files. The actual component update reaches MSAnimationManager,
+its supplied block at original 0x1000ae1e0 executes, animateUpdateWithContext:
+enters/returns, and didFinishUpdate enters/returns. LLDB detaches successfully;
+four mismatching nested return invocations are explicitly retained before the
+matching observed return. No missing block/completion is proven. The same blank
+journey remains failed. Stop repeating this passed callback chain.
+Next inspect bounded storage presence of app-owned view fields in the existing
+geometry samples, with no debugger. Runtime ivar offsets/instance sizes bound
+the reads; at most sixteen fields and sixteen bytes per field are checked only
+for all-zero storage, without values, pointer dereferences or app getters. Swift
+fields with empty type encodings are never treated as Objective-C objects. This
+checks whether the original list controller's adapter/navigation fields remain
+unset after the successful parent update; it does not interpret arbitrary Swift
+values or establish a platform cause.
+
 Run 39779602603 (75a9acd), receipt
 ffa820f2b3a5586033e8a23aa4fcf9bbeed56796c48f9587f3a13dd15cadbc73,
 verifies 93 files. Original setDisplayScale: receives actual d0=2. After it,

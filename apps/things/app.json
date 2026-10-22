@@ -16,31 +16,5 @@
     "bundleIdentifier": "com.culturedcode.ThingsiPhone",
     "build": "31701001",
     "binarySHA256": "cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4"
-  },
-  "diagnosticSymbols": [
-    {
-      "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent update]",
-      "observeReturn": true
-    },
-    {
-      "image": "Frameworks/QuartzAdditions.framework/QuartzAdditions",
-      "symbol": "-[MSAnimationManager animate:]",
-      "observeReturn": true,
-      "callbackBlockRegister": "x2",
-      "afterSymbol": "-[THTaskListSceneLayoutComponent update]"
-    },
-    {
-      "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent animateUpdateWithContext:]",
-      "observeReturn": true,
-      "afterSymbol": "-[THTaskListSceneLayoutComponent update]"
-    },
-    {
-      "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent didFinishUpdate]",
-      "observeReturn": true,
-      "afterSymbol": "-[THTaskListSceneLayoutComponent update]"
-    }
-  ]
+  }
 }
