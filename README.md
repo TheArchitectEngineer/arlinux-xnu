@@ -41,6 +41,7 @@ GitHub CLI are required. Compilation and execution happen only on hosted runners
 ./build.sh build --app all               # explicit full acceptance, after focused fixes pass
 ./build.sh build --app counter --wait --evidence # partial flow, then verified evidence
 ./build.sh build --app counter --reference # same input and journey on Linux and Apple host
+./build.sh build --case things--offline-task-persistence --reference-only --wait --evidence # Apple comparison only; no Linux acceptance
 ./build.sh cases                         # list exact journey IDs without dispatch
 ./build.sh build --case workers--queue,session--concurrent-relaunch --wait --evidence
 ./build.sh status --run-id RUN_ID

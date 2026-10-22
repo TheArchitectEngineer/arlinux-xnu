@@ -393,6 +393,7 @@ def main():
     parser.add_argument('--case',help='Exact comma-separated journey IDs; only their app dependencies are compiled and run')
     parser.add_argument('--baseline-run',help='Compare receipt-verified effects against this exact completed run (report or build --wait)')
     parser.add_argument('--reference',action='store_true',help='Also run the same app journeys on the Apple-host reference')
+    parser.add_argument('--reference-only',action='store_true',help='Only Apple comparison; skip Linux build/execution, never Linux acceptance')
     parser.add_argument('--lifecycle-context',action='store_true',help='Opt-in read-only loaded lifecycle ABI and host window-state evidence on Linux')
     parser.add_argument('--run-id', help='Exact GitHub Actions run to inspect or download')
     parser.add_argument('--ref', default='main', help='Pushed revision to build')
@@ -402,6 +403,8 @@ def main():
     parser.add_argument('--wait',action='store_true',help='Follow the exact newly dispatched run, then report its result without redispatch')
     parser.add_argument('--artifact', help='Download only this named artifact from the exact run')
     args = parser.parse_args()
+    if args.reference_only and args.command!='build':parser.error('--reference-only requires build')
+    if args.reference_only:args.reference=True
     if args.command=='build' and not (args.app or args.case):
         parser.error('Select --case JOURNEY_ID or --app APP_ID before dispatch; use --app all explicitly for full regression')
     if args.app is None:args.app='all'  # cases lists everything; --case resolves its own app dependencies.
@@ -444,7 +447,7 @@ def main():
             raise SystemExit('Selected local ref is not pushed: ' + args.ref +
                              ' local=' + expected + ' remote=' + remote)
         print('Dispatching exact pushed source ' + expected, flush=True)
-        command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'app=' + args.app, '-f', 'reference=' + str(args.reference).lower(),
+        command = ['workflow', 'run', 'experiment.yml', '--ref', args.ref, '-f', 'app=' + args.app, '-f', 'reference=' + str(args.reference).lower(), '-f', 'reference_only='+str(args.reference_only).lower(),
                    '-f','lifecycle_context='+str(args.lifecycle_context).lower()]
         if args.case:command+=['-f','case='+args.case]
         dispatched=subprocess.run(['gh',*command,'--repo',repo],capture_output=True,text=True)

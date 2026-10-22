@@ -71,6 +71,9 @@ for app in products['apps']:
                 'reason':'Encrypted optional extension; not converted or certified runnable'})
             continue
         run(OUT/'convert',binary);binary.chmod(0o755)
+        # Match PlayCover's per-image signing: --deep on the outer app alone
+        # left converted embedded frameworks with invalid old signatures.
+        run('codesign','--force','--sign','-',binary)
         converted.append({'path':binary.relative_to(bundle).as_posix(),
             'originalSHA256':original_hash})
     info=plistlib.loads((bundle/'Info.plist').read_bytes());info['LSMinimumSystemVersion']='11.0'

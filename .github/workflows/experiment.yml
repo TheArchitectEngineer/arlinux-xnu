@@ -14,6 +14,10 @@ name: iOS app collection
         description: Also run the same app inputs on the Apple-host reference
         default: false
         type: boolean
+      reference_only:
+        description: Run only Apple comparison; skip Linux compilation and acceptance
+        default: false
+        type: boolean
       lifecycle_context:
         description: Read-only loaded lifecycle ABI and host window-state evidence
         default: false
@@ -49,6 +53,7 @@ jobs:
         path: build/apps/
         retention-days: 30
   native-userland:
+    if: ${{ !inputs.reference_only }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
     env:
@@ -310,7 +315,7 @@ jobs:
         retention-days: 30
   apple-reference:
     needs: apps
-    if: always() && inputs.reference && needs.apps.result != 'cancelled'
+    if: always() && (inputs.reference || inputs.reference_only) && needs.apps.result != 'cancelled'
     runs-on: macos-15
     timeout-minutes: 20
     steps:
