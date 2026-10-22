@@ -93,6 +93,11 @@ static long native_workqueue(const unsigned long long *r,const sigset_t *origina
     case D_WQ_RETURN: {
         struct native_thread *thread=native_current_thread();
         if (!thread || !thread->workqueue || r[1] || r[2] || r[3]) return -EINVAL;
+        if (native_diagnose_syscalls) {
+            static unsigned int observations;
+            if(__atomic_fetch_add(&observations,1,__ATOMIC_RELAXED)<128)
+                trace_record("DARWIN_WORKQUEUE_BATCH_RETURN flags/return-pc/pthread=0x",thread->flags,r[30],thread->pthread);
+        }
         /* The signal-return owner re-enters libpthread with the actual XNU
          * exit upcall. Returning to __workq_kernreturn would trap, even on 0. */
         return 0;

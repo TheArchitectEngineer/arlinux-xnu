@@ -31,12 +31,12 @@ static uint32_t registered_pthread_size,registered_tsd,registered_thread_slot;
 static void native_trace_workqueue_entry(struct native_thread *thread,uint64_t buffer,
                                          uint64_t flags,int count)
 {
-    static unsigned int observations;
+    static unsigned int ordinary_observations,event_observations;
     if (!native_diagnose_syscalls) return;
-    unsigned int index=__atomic_fetch_add(&observations,1,__ATOMIC_RELAXED);
+    unsigned int index=__atomic_fetch_add(thread->workqueue==1 ? &ordinary_observations : &event_observations,1,__ATOMIC_RELAXED);
     if (index>128) return;
     if (index==128) {
-        trace_record("DARWIN_WORKQUEUE_ENTRY_OMITTED limit=0x",128,0,0);
+        trace_record("DARWIN_WORKQUEUE_ENTRY_OMITTED limit/kind=0x",128,thread->workqueue,0);
         return;
     }
     trace_record("DARWIN_WORKQUEUE_ENTRY flags/callback/count=0x",flags,workqueue_start_callback,(uint64_t)(int64_t)count);
