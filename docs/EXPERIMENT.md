@@ -2,6 +2,26 @@
 
 ## Scope
 
+Run 39787844702 (647795d), Linux receipt
+33fc0724d76fe38e28c6d06a3b225934241292102e96b5007394af7b7cd6a090,
+verifies 109 files; Apple receipt
+e6d044ca0e96fd06bc760a3031621b9e25eb3a11986c5f1510f1b9d534e81a2f
+verifies 27. UIView completion now passes on both hosts, validating the Apple
+window-publication wait. Things remains white and fails Inbox. Its initial
+sample has real MSFunctionAnimation opacity entries (duration 1.1 seconds) and
+a progress position animation. Samples 10/50/125 have 137 layers and **no
+registered animations anywhere in the sampled window tree**. This argues
+against a still-registered transition explaining the later white screen; it
+does not establish completion of app-specific bookkeeping or all animation
+mechanisms. The actual screenshot remains white, and the visible list still
+has no task-row subtree. No generic animation fix is justified by this run.
+
+Apple Things was rejected before launch by the old IPA reference guard, so it
+provides no app comparison. Extend the existing pinned PlayCover conversion to
+the same verified IPA and its bundled Mach-O frameworks/extensions. Preserve
+original provenance separately from converted/signed hashes. Validation is
+pending in 39788575603 (46ada9c); no successful original app launch is claimed.
+
 Animation control run 39786179630 (f7edd4a) passes both Linux journeys,
 including repeated actual callbacks, normal close and new-process repetition.
 UIView completions take 0.361–0.370 seconds; CA delegate stops take
