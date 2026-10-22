@@ -160,6 +160,13 @@ class Processes:
         if self.reference:
             binary=ROOT/'build/reference-apps'/(app['name']+'.app')/app['name']
             arguments=[str(binary)]
+            # Match the Linux launcher's real per-journey application home.
+            # CoreFoundation prefers CFFIXED_USER_HOME to the account's passwd
+            # home; cwd/HOME alone left original apps using the runner's home.
+            for relative in ('Documents','tmp','Library/Caches','Library/Preferences','Library/Application Support'):
+                (state/relative).mkdir(parents=True,exist_ok=True)
+            env.update(HOME=str(state.resolve()),CFFIXED_USER_HOME=str(state.resolve()),
+                TMPDIR=str((state/'tmp').resolve())+'/')
             if app.get('input',{}).get('kind') in ('firmware','ipa'):
                 env['DYLD_INSERT_LIBRARIES']=str(ROOT/'build/reference-tools/libarlinux-inspection.dylib')
         reference_trace=self.reference and app.get('input',{}).get('kind')=='ipa' and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1'
