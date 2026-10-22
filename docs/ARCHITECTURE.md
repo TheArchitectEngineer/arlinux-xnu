@@ -114,6 +114,34 @@ original QuartzCore does not imply that its Apple GPU/compositor backend works.
 The present software layer renderer is a starting point, not completed graphics
 compatibility.
 
+### Graphics boundary audit (2026-10-22)
+
+The current output path in src/darwin-ui.h calls renderInContext: on each
+window's model layer. Apple's [render(in:) documentation](https://developer.apple.com/documentation/quartzcore/calayer/render(in:))
+explicitly says this ignores animations added to the render tree. Consequently,
+timed completion callbacks and final-state screenshots do not establish visible
+interpolation. The [three-tree model](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/CoreAnimation_guide/CoreAnimationBasics/CoreAnimationBasics.html)
+separates model targets, in-flight presentation values and private render state.
+This is a confirmed rendering coverage gap, not proof of the current Things
+Inbox cause. Do not fix it by firing delegates, removing animations or forcing
+app layout. An actual animated intermediate frame needs its own observable
+effect before choosing a rendering replacement boundary.
+
+Community implementations illustrate different costs rather than a drop-in
+solution. [Darling](https://github.com/darlinghq/darling-docs/blob/master/src/internals/darlingserver/README.md)
+reports that reusing XNU services was easier than its earlier reimplementation;
+its [kqueue channels](https://github.com/darlinghq/darling-docs/blob/master/src/internals/darlingserver/kqchannels.md)
+connect server-owned Mach/process events to local epoll instead of blocking
+independently of local descriptor subscriptions. Preserve that shared readiness
+contract when adapting event delivery. [touchHLE](https://github.com/touchHLE/touchHLE)
+reimplements frameworks for early 32-bit games and explicitly describes UIKit
+as especially incomplete; it is not a replacement for retained iOS 16 UIKit.
+[ios-sweet](https://github.com/dipa-studio/ios-sweet) retains backboardd and
+the original compositor with IOSurface/framebuffer services and CPU rendering;
+its documented system-app results justify studying that boundary, not importing
+the entire phone service stack. PlayCover runs on an Apple Silicon macOS host,
+so its successes do not establish a Linux compositor or service implementation.
+
 The foreground HTTP boundary uses a public NSURLProtocol subclass in
 the injected platform library, preserving original NSURLSession task/client and
 Foundation response/JSON semantics. Linux libcurl owns actual HTTP/HTTPS, host
