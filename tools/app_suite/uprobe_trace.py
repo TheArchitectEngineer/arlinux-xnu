@@ -76,7 +76,9 @@ def start(specification,state_path):
                 'sha256':digest})
             for kind,suffix in (('p','entry'),('r','return')):
                 name=f'point{index}_{suffix}_{state["group"]}'
-                fetch=' receiver=%x20:x64 arg0=%x0:x64 arg1=%x1:x64 arg2=%x2:x64 arg3=%x3:x64 caller=%x30:x64 stack=$stack:x64' if kind=='p' else ' result=$retval:x64'
+                fetch=(' receiver=%x20:x64 arg0=%x0:x64 arg1=%x1:x64 arg2=%x2:x64 arg3=%x3:x64'
+                       +(' arg4=%x4:x64 arg5=%x5:x64' if record.get('captureWorkqueueArguments') else '')
+                       +' caller=%x30:x64 stack=$stack:x64') if kind=='p' else ' result=$retval:x64'
                 definition=f'{kind}:{state["group"]}/{name} {image}:{offset:#x}'
                 state['lastCommand']=definition+fetch
                 try:

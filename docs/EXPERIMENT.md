@@ -284,6 +284,19 @@ in the accepted branch, not the initially guessed next-update-pass method.
 The next focused trace replaces the unused predicates with that actual submit
 stub and the block/Swift/database worker entries from its pinned disassembly.
 
+The next scoped trace, [39723784073](https://github.com/taowen/arlinux-xnu/actions/runs/39723784073),
+source 543ca643a76351fef0b800080a229ad747684f05, observes that accepted branch
+calling the original `DispatchQueue.async` import stub once. Its exact copied
+block, Swift closure and database worker are not entered during the observation
+window; Inbox still fails. The process also made 69 actual
+`__pthread_wqthread_exit` calls, while the callback traces show many kevent and
+workloop deliveries. This proves ordinary pthread workqueue callbacks are
+created and exit, but does not identify whether a worker was available for this
+particular submitted block or whether libdispatch drained it. The next focused
+trace replaces already-established startup/upgrade entries with the original
+`__pthread_wqthread` entry and captures its actual flags and event count beside
+the submitted block. It remains a diagnostic Linux run, not Things acceptance.
+
 Two earlier kernel-setup attempts (39715347208 and 39716080783) produced no valid
 function trace: Python append mode sought to the end of the tracefs command
 file and received EINVAL before writing. The collector now issues a single

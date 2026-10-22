@@ -6,16 +6,11 @@
   "pixelAppearance": "mixed",
   "kernelTraceSymbols": [
     {
-      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "symbol": "_$s12ThingsCommon20THCDatabaseComponentC12startUpgrade10completionyyyc_tF"
-    },
-    {
-      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "symbol": "_$s12ThingsCommon20THCDatabaseComponentC6updateyyF"
-    },
-    {
-      "image": "Frameworks/FoundationAdditions.framework/FoundationAdditions",
-      "symbol": "_$s19FoundationAdditions16FAReactComponentC15consumeTriggers4withySbq0__SbztXE_tF"
+      "image": "usr/lib/system/libsystem_pthread.dylib",
+      "symbol": "__pthread_wqthread",
+      "label": "original libpthread workqueue callback",
+      "role": "workqueue-entry",
+      "captureWorkqueueArguments": true
     },
     {
       "image": "Frameworks/ThingsCommon.framework/ThingsCommon",

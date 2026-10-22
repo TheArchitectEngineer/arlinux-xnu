@@ -258,6 +258,12 @@ provenance. Do not cache test results as current execution, or bypass input
 verification with an old artifact. Do not add another orchestration framework
 or a separate heavyweight cache pipeline before demonstrating its savings.
 
+Cache snapshot writes are conditional on actual compiler-cache misses. In run
+39723784073, a 104 MB ccache snapshot restored in about two seconds, then all
+170 compilation calls hit; saving a new per-commit snapshot added no reusable
+objects. The workflow now records misses and skips that upload when the count is
+zero. Cache restore and fresh same-run build/evidence receipts remain required.
+
 For one worker behavior or cross-app scenario, use `--case` with exact IDs from
 `./build.sh cases`. Dispatch, SDK compilation and execution share one selector:
 only the chosen journeys' app dependencies are built, including scenario peers.

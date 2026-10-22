@@ -242,17 +242,20 @@ jobs:
       shell: bash
       run: if [[ -f build/results/weston.pid ]]; then kill -- "$(cat build/results/weston.pid)" || true; fi
     - name: Record compiler cache results
+      id: cache_stats
       if: always() && steps.cache_accounting.outcome == 'success'
       shell: bash
       run: |
         python3 - <<'PY'
-        import json, pathlib, subprocess
+        import json, os, pathlib, subprocess
         counters = dict((key, int(value)) for key, value in
                         (line.split() for line in subprocess.check_output(['ccache', '--print-stats'], text=True).splitlines()))
         summary = {'directHits': counters.get('direct_cache_hit', 0),
                    'preprocessedHits': counters.get('preprocessed_cache_hit', 0),
                    'misses': counters.get('cache_miss', 0),
                    'counters': counters}
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            stream.write('misses=' + str(summary['misses']) + '\n')
         for name in ('build/darling-ipc', 'build/native', 'build/results'):
             directory = pathlib.Path(name)
             if directory.exists():
@@ -261,7 +264,7 @@ jobs:
         PY
         ccache --show-stats
     - name: Save successful compilation cache
-      if: always() && steps.compiler_cache.outputs.cache-hit != 'true' && steps.native_build.outcome == 'success'
+      if: always() && steps.compiler_cache.outputs.cache-hit != 'true' && steps.native_build.outcome == 'success' && steps.cache_stats.outputs.misses != '0'
       uses: actions/cache/save@v4
       with:
         path: ${{ env.CCACHE_DIR }}
