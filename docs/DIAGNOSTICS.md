@@ -584,6 +584,16 @@ the corresponding libsystem_containermanager C boundary. The bounded disassembly
 is evidence for storage adaptation, not a daemon implementation. Embedded XML-only
 entitlements require DER transmutation for the native iOS SecTask consumer; a
 successful empty DER reply would incorrectly discard the input's declared groups.
+The host loader now serializes XML-only dictionaries before guest TLS entry,
+retaining original XML and protecting generated DER read-only. Existing embedded
+DER is preserved. Dictionary SET entries are sorted by encoded bytes; arrays
+retain order. Booleans, integers, strings, data, arrays and dictionaries have
+explicit size/depth/node bounds; other value types fail explicitly. The csops
+short-buffer protocol remains ERANGE with a big-endian required length. No
+entitlement is inferred from an app ID and no signature trust flags are granted.
+Format references inspected: ProcursusTeam/ldid af86971ae72ec3ed3d0a699107c4e882324c941b
+and Apple Security SecTask.c db15acbe6a7f257a859ad9a3bb86097bfe0679d9. The
+original consumer decoding and real user effects remain required validation.
 
 src/diagnostics/ios-ui.h owns the optional one-time view-tree diagnostic, using
 raw syscalls on the genuine UIKit main loop. Source-buffer capture belongs to

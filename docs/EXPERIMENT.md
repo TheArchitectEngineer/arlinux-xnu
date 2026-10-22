@@ -35,7 +35,14 @@ files. The previous libdispatch workloop error is crossed, but the original main
 thread now terminates with NSInternalInconsistencyException: INVocabulary requires
 com.apple.developer.siri. The original stderr retains the throw stack. Inbox and
 all task effects remain failed. Inspect original entitlements and the reusable
-SecTask/csops boundary before any new Things diagnostic run.
+SecTask/csops boundary before any new Things diagnostic run. Static inspection
+of the hash-matched original Things executable confirms its XML declares
+com.apple.developer.siri=true; the same failed runtime records DER op 16 returning
+-ENOTSUP. Candidate: host-side bounded XML-to-DER serialization of the unchanged
+embedded dictionary before guest entry, preserving existing DER and csops size
+negotiation. Next run only the ordinary Things task/persistence journey. Success
+requires original SecTask to decode the metadata and the real task effects, not
+just a conversion log. A later service failure must remain visible.
 
 User-requested resource work: cache only the two pinned OS volume DMGs on hosted
 Actions, verifying locked byte sizes/SHA-256 before use and keeping app data

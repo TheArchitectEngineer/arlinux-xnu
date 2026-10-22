@@ -1,8 +1,9 @@
 #pragma once
 #include <stdint.h>
 
-/* Original input metadata, retained in the loader's read-only mapping for the
- * process lifetime. Presence is not signature authentication or Apple trust. */
+/* Original input metadata, retained in read-only storage for process lifetime.
+ * DER may be a serialization of the embedded XML when no DER slot exists.
+ * Presence is not signature authentication or Apple trust. */
 struct darwin_code_metadata {
     uint32_t signature_bytes;
     const unsigned char *xml,*der;

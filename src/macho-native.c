@@ -72,6 +72,7 @@ static void rewrite_tls(struct image *im)
 
 #include "dyld-cache.h"
 #include "native-launch.h"
+#include "native-entitlements.h"
 
 int main(int argc,char **argv)
 {
@@ -115,6 +116,7 @@ int main(int argc,char **argv)
     const char *program=options.program;
     struct image im={0},dyld={0};
     load_image(program,&im,dynamic); map_guest(&im); rewrite_tls(&im);
+    native_launch_entitlements(&im.codesign);
     native_launch_groups(options.group_root,&im.codesign);
     if (dynamic) {
         load_image(options.dyld,&dyld,1);
