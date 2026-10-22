@@ -15,10 +15,11 @@ in app.json. Its original public endpoint returned 403 on runners; its archive
 size/SHA-256 remain verified before extraction. The IPA has been removed from
 Git history to keep source checkouts small.
 
-Apple run 39808238885 reaches home, dismisses the real introduction, opens the
+Apple run 39870327322 reaches home, dismisses the real introduction, opens the
 history page and shows its distinct empty state, then exits normally and starts
-a new process. Second-launch navigation is still unverified; the retained target
-screenshot shows the splash image when that click was attempted. Linux run
+a new process. Its second-launch failure screenshot reveals the welcome notice
+again, so the journey now dismisses that actual notice on each launch. The
+experimental AX hit check did not expose this occlusion and was removed. Linux run
 39809084493 aborts before its first viewport observation: the original IOSurface
 client cannot locate its kernel service. Neither backend has passed the complete
 journey. Media import/edit/export and Android remain unverified. See

@@ -81,7 +81,7 @@ class Case(Processes,Desktop):
         elif action == 'click':
             target_kind=step.get('target','control')
             if target_kind not in ('control','text'):raise RuntimeError('Unknown click target kind')
-            target = self.observe(step['text'], word=target_kind=='control',region=step.get('region'),pointer=True)
+            target = self.observe(step['text'], word=target_kind=='control',region=step.get('region'))
             self.click_target(target)
         elif action == 'focus':
             if self.reference:

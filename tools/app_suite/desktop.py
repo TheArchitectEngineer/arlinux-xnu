@@ -135,7 +135,7 @@ class Desktop:
                 'contrastSpan':max(0,high-low) if len(pixels)>=16 else 0,
                 'sha256':hashlib.sha256(crop.tobytes()).hexdigest()}
 
-    def observe(self,pattern,word=False,timeout_seconds=8,region=None,pointer=False):
+    def observe(self,pattern,word=False,timeout_seconds=8,region=None):
         if type(timeout_seconds) not in (int,float) or not 0<timeout_seconds<=120:
             raise RuntimeError('UI observation timeout must be positive and at most 120 seconds')
         if region is not None and (not isinstance(region,list) or len(region)!=4 or
@@ -158,17 +158,6 @@ class Desktop:
                 if rect is None:
                     if time.monotonic()>=deadline:raise RuntimeError('No visible Apple-host window before the UI observation deadline: '+pattern)
                     time.sleep(.2);continue
-                if pointer and state.get('observationSource')=='external-macos-accessibility':
-                    item=self.processes[self.current]
-                    hit=json.loads(command(ROOT/'build/reference-tools/desktop-events','hit-test',
-                        rect[0]+rect[2]//2,rect[1]+rect[3]//2,capture_output=True,text=True).stdout)
-                    Path(item['stdout']).with_suffix('.hit-test.json').write_text(json.dumps(hit,indent=2))
-                    self.steps[-1]['pointerHitTest']=hit
-                    ready=hit['error']==0 and any(entry['pid']==item['process'].pid and
-                        entry['text']==matches[0]['text'] for entry in hit['path'])
-                    if not ready:
-                        if time.monotonic()>=deadline:raise RuntimeError('External pointer target remains covered or unavailable: '+pattern)
-                        time.sleep(.2);continue
                 path=self.snapshot('observe');pixels=self.sample(path,rect)
                 self.observations[-1].update(uiState=state,target=matches[0],screenRect=rect,pixels=pixels)
                 # Require ink on a light surface, including native gray controls.

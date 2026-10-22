@@ -9,10 +9,6 @@ func application(_ index:Int) -> NSRunningApplication {
     return app
 }
 func output(_ value:Any) throws { print(String(data:try JSONSerialization.data(withJSONObject:value),encoding:.utf8)!) }
-func attribute(_ element:AXUIElement,_ name:String) -> CFTypeRef? {
-    var value:CFTypeRef?
-    return AXUIElementCopyAttributeValue(element,name as CFString,&value) == .success ? value : nil
-}
 switch args.count>1 ? args[1] : "" {
 case "focus":
     for _ in 0..<40 {
@@ -38,6 +34,10 @@ case "accessibility", "press":
     guard args.count >= 3,let pid=Int32(args[2]),args[1] != "press" || args.count==4 else { fatalError("Expected PID and optional exact button title") }
     let trusted=AXIsProcessTrusted()
     var records=[[String:Any]](),target:AXUIElement?,depthLimitReached=false
+    func attribute(_ element:AXUIElement,_ name:String) -> CFTypeRef? {
+        var value:CFTypeRef?
+        return AXUIElementCopyAttributeValue(element,name as CFString,&value) == .success ? value : nil
+    }
     func visit(_ element:AXUIElement,_ depth:Int) {
         if depth>24 { depthLimitReached=true;return }
         if records.count>=256 { return }
@@ -66,26 +66,6 @@ case "accessibility", "press":
     var result:[String:Any]=["trusted":trusted,"elements":records,"limitReached":records.count>=256 || depthLimitReached,"depthLimitReached":depthLimitReached,"found":target != nil,"displayScale":scale]
     if let target=target { result["actionError"]=AXUIElementPerformAction(target,kAXPressAction as CFString).rawValue }
     try output(result)
-case "hit-test":
-    guard args.count==4,let x=Double(args[2]),let y=Double(args[3]) else { fatalError("Expected global pixel coordinates") }
-    let scale=Double(CGDisplayPixelsWide(CGMainDisplayID()))/CGDisplayBounds(CGMainDisplayID()).width
-    var hit:AXUIElement?
-    let error=AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(),Float(x/scale),Float(y/scale),&hit)
-    var path=[[String:Any]]()
-    while let element=hit,path.count<24 {
-        var pid:pid_t=0
-        AXUIElementGetPid(element,&pid)
-        let text=(attribute(element,kAXTitleAttribute) as? String).flatMap{$0.isEmpty ? nil : $0}
-            ?? (attribute(element,kAXValueAttribute) as? String).flatMap{$0.isEmpty ? nil : $0}
-            ?? (attribute(element,kAXDescriptionAttribute) as? String) ?? ""
-        path.append(["pid":pid,"role":attribute(element,kAXRoleAttribute) as? String ?? "","text":String(text.prefix(256))])
-        if let parent=attribute(element,kAXParentAttribute),CFGetTypeID(parent)==AXUIElementGetTypeID() {
-            let next=parent as! AXUIElement
-            if CFEqual(next,element) { break }
-            hit=next
-        } else { hit=nil }
-    }
-    try output(["error":error.rawValue,"path":path,"limitReached":path.count>=24] as [String:Any])
 case "click":
     guard args.count==4,let x=Double(args[2]),let y=Double(args[3]) else { fatalError("Expected pixel coordinates") }
     let scale=Double(CGDisplayPixelsWide(CGMainDisplayID()))/CGDisplayBounds(CGMainDisplayID()).width
@@ -128,5 +108,5 @@ case "type":
             event.keyboardSetUnicodeString(stringLength:units.count,unicodeString:units);event.post(tap:.cghidEventTap)
         }
     }
-default:fatalError("Expected focus, close, bounds, accessibility, press, hit-test, click, sample or type")
+default:fatalError("Expected focus, close, bounds, accessibility, press, click, sample or type")
 }

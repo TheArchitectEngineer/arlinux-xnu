@@ -35,12 +35,6 @@ converted through the observed display scale and window pixel bounds. The last
 bounded raw accessibility observation is retained beside the process logs;
 permission failures are infrastructure failures. This isolates observer startup
 effects but does not establish their involvement in any original app failure.
-Before an original-IPA pointer click, the external helper also reads the actual
-system accessibility hit at the chosen screen point and its bounded parent
-chain. The target PID and accessible label must occur in that path; a covered
-or unavailable target stays pending until the ordinary observation deadline.
-The last hit path is retained with the process logs. This performs no AX action
-and does not bypass splash screens or invoke an application's methods.
 An original journey may explicitly declare reference.viewport=desktop and
 reference.startupDialogs for genuine desktop-only startup prompts. A desktop
 viewport observation records phoneDimensionsVerified=false and the requested
