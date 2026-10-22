@@ -20,6 +20,15 @@ workloop updates together. It preserves validated guest priorities and QoS-first
 pending admission, while Linux retains its inherited scheduling policy. This
 is not full XNU priority inheritance or performance equivalence.
 
+Run 39741993419 (3e39ff2) did not execute an app: firmware curl had reached
+only about 20 percent after 523 seconds of the preparation step, and the run was
+explicitly cancelled. Its curl survived Python termination and mutated the
+download log during receipt/upload; local evidence verification correctly
+rejected that artifact. Do not use it as app or QoS repair evidence. Download now
+has a 240-second outer deadline and cancellation kills/reaps curl before log
+publication; preparation has a six-minute step limit. No firmware mirror or
+different binary is substituted.
+
 Next execution: only things--offline-task-persistence, initially ordinary (no
 optional trace) to check the actual Inbox/task effects and whether this fault
 recurs. A failure retains the original kevent/fault evidence. Do not add tracing

@@ -13,6 +13,7 @@ import subprocess
 import struct
 import time
 import argparse
+import signal
 from concurrent.futures import ThreadPoolExecutor
 
 root = Path(__file__).resolve().parents[1]
@@ -63,7 +64,19 @@ def prepare_reader():
 
 def download_firmware():
     started=time.monotonic()
-    run('curl', '--fail', '--location', '--retry', '3', '--output', archive, source['url'])
+    arguments=['curl','--fail','--location','--connect-timeout','15',
+               '--max-time','180','--retry','1','--retry-max-time','220',
+               '--output',str(archive),source['url']]
+    print('>',*arguments,flush=True)
+    try:
+        # subprocess.run kills and reaps the actual curl on timeout or a
+        # Python exception, including the cancellation signal handler below.
+        subprocess.run(arguments,check=True,timeout=240)
+    except BaseException:
+        archive.unlink(missing_ok=True)
+        print('APPLE_DOWNLOAD_FAILED '+json.dumps({'seconds':round(time.monotonic()-started,3),
+            'deadlineSeconds':240,'partialRemoved':True}),flush=True)
+        raise
     return time.monotonic()-started
 
 
@@ -71,6 +84,10 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--download-only',action='store_true',
     help='Workflow-internal: fetch the declared firmware while apt installs tools; validation remains mandatory before extraction')
 args=parser.parse_args()
+def cancelled(signum,frame):
+    # Do not leave a curl writing evidence after the workflow takes its receipt.
+    raise SystemExit(128+signum)
+signal.signal(signal.SIGTERM,cancelled)
 if args.download_only:
     seconds=download_firmware()
     print('APPLE_DOWNLOAD_TIMING '+json.dumps({'seconds':round(seconds,3),
