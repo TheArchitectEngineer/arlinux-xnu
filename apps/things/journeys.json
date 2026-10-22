@@ -3,6 +3,7 @@
   "cases": [{
     "id": "offline-task-persistence",
     "display": {"width":375,"height":667,"scale":2},
+    "reference": {"viewport":"desktop","startupDialogs":[{"button":"No Thanks","optional":true}]},
     "steps": [
       {"do":"launch","app":"things"},
       {"do":"viewport","width":375,"height":667},

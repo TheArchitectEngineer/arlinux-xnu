@@ -25,6 +25,16 @@ pinned PlayCover converter and ad-hoc signing. Input metadata keeps original
 hashes separate from converted/signed hashes. Conversion is an input step, not
 compatibility acceptance; actual launch, window, input and persistence can still
 fail. Apple-host behavior is a comparison and never Linux/Android acceptance.
+An original journey may explicitly declare reference.viewport=desktop and
+reference.startupDialogs for genuine desktop-only startup prompts. A desktop
+viewport observation records phoneDimensionsVerified=false and the requested
+and actual dimensions; the Linux viewport check remains exact. Startup prompts
+use the existing external helper's bounded macOS accessibility traversal and
+exact button title, then AXPress on that actual button. Missing permission,
+ambiguous buttons and failed actions are observable failures. No app method,
+notification or acceptance callback is supplied, and a required UI effect after
+the prompt must still pass. The optional prompt observation is retained even
+when absent; it is never proof that the application reached its main screen.
 For an IPA with an early Apple-host trap and no OS crash report, use that same
 entry with --reference-only --lifecycle-context. The owned launch PID stops in
 a diagnostic Python wrapper before exec; LLDB follows it into the original

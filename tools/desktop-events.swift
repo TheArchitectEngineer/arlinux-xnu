@@ -30,6 +30,30 @@ case "bounds":
     }
     let scale=Double(CGDisplayPixelsWide(CGMainDisplayID()))/CGDisplayBounds(CGMainDisplayID()).width
     try output([bounds.minX*scale,bounds.minY*scale,bounds.width*scale,bounds.height*scale])
+case "accessibility", "press":
+    guard args.count >= 3,let pid=Int32(args[2]),args[1] != "press" || args.count==4 else { fatalError("Expected PID and optional exact button title") }
+    let trusted=AXIsProcessTrusted()
+    var records=[[String:Any]](),target:AXUIElement?
+    func attribute(_ element:AXUIElement,_ name:String) -> CFTypeRef? {
+        var value:CFTypeRef?
+        return AXUIElementCopyAttributeValue(element,name as CFString,&value) == .success ? value : nil
+    }
+    func visit(_ element:AXUIElement,_ depth:Int) {
+        if depth>12 || records.count>=128 { return }
+        let role=attribute(element,kAXRoleAttribute) as? String ?? ""
+        let title=attribute(element,kAXTitleAttribute) as? String ?? ""
+        let value=attribute(element,kAXValueAttribute) as? String ?? ""
+        records.append(["role":role,"title":String(title.prefix(256)),"value":String(value.prefix(256)),"depth":depth])
+        if args[1]=="press",role==(kAXButtonRole as String),title==args[3] {
+            if target != nil { fatalError("Ambiguous external accessibility button") }
+            target=element
+        }
+        for child in attribute(element,kAXChildrenAttribute) as? [AXUIElement] ?? [] { visit(child,depth+1) }
+    }
+    if trusted { visit(AXUIElementCreateApplication(pid),0) }
+    var result:[String:Any]=["trusted":trusted,"elements":records,"limitReached":records.count>=128,"found":target != nil]
+    if let target=target { result["actionError"]=AXUIElementPerformAction(target,kAXPressAction as CFString).rawValue }
+    try output(result)
 case "click":
     guard args.count==4,let x=Double(args[2]),let y=Double(args[3]) else { fatalError("Expected pixel coordinates") }
     let scale=Double(CGDisplayPixelsWide(CGMainDisplayID()))/CGDisplayBounds(CGMainDisplayID()).width
@@ -69,5 +93,5 @@ case "type":
             event.keyboardSetUnicodeString(stringLength:units.count,unicodeString:units);event.post(tap:.cghidEventTap)
         }
     }
-default:fatalError("Expected focus, close, bounds, click, sample or type")
+default:fatalError("Expected focus, close, bounds, accessibility, press, click, sample or type")
 }

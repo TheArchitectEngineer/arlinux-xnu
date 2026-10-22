@@ -255,6 +255,24 @@ class Processes:
             result=subprocess.run([str(ROOT/'build/reference-tools/desktop-events'),'focus',str(process.pid)],capture_output=True,timeout=7)
             if result.returncode:
                 stderr.write(b'REFERENCE_FOCUS_PENDING '+result.stderr);stderr.flush()
+            if number==1:
+                for dialog in self.case.get('reference',{}).get('startupDialogs',[]):
+                    deadline=time.monotonic()+5
+                    while True:
+                        self.guard()
+                        observation=json.loads(command(ROOT/'build/reference-tools/desktop-events','press',process.pid,
+                            dialog['button'],capture_output=True,text=True).stdout)
+                        self.steps[-1]['referenceDialog']=observation
+                        if not observation['trusted']:
+                            self.infrastructure_failure=True
+                            raise RuntimeError('Apple external accessibility permission unavailable')
+                        if observation['found']:
+                            if observation.get('actionError')!=0:raise RuntimeError('External native-dialog button press failed')
+                            break
+                        if time.monotonic()>=deadline:
+                            if not dialog.get('optional'):raise RuntimeError('Native startup dialog button missing: '+dialog['button'])
+                            break
+                        time.sleep(.2)
 
     def diagnose(self):
         # Read the failed original process, not a replay that changes scheduling.

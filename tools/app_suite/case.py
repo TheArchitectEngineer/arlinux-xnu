@@ -58,6 +58,10 @@ class Case(Processes,Desktop):
                 self.guard();observed=self.inspection(name)
                 self.steps[-1]['observedViewport']=observed.get('viewport') if observed else None
                 if observed and observed['viewport']==[step['width'],step['height']]:break
+                if self.reference and self.case.get('reference',{}).get('viewport')=='desktop' and observed and all(value>0 for value in observed['viewport']):
+                    self.steps[-1]['referenceGeometry']={'mode':'desktop comparison','phoneDimensionsVerified':False,
+                        'requested':[step['width'],step['height']],'observed':observed['viewport']}
+                    break
                 if time.monotonic()>=deadline:raise RuntimeError('Actual UIKit viewport does not match the declared phone dimensions')
                 time.sleep(.1)
         elif action == 'application-state':
