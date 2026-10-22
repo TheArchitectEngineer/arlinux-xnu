@@ -6,47 +6,28 @@
   "pixelAppearance": "mixed",
   "kernelTraceSymbols": [
     {
-      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "fileOffset": "0x3eea00",
-      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
-      "observedRun": "39716512266",
-      "label": "second supplied trigger predicate"
+      "image": "ThingsiPhone",
+      "fileOffset": "0x52c9f4",
+      "imageSHA256": "cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4",
+      "observedRun": "39754726627",
+      "label": "THWindowSceneDelegate scene:willConnectToSession:options:",
+      "siteSource": "Original ARM64 Objective-C class/method metadata; main executable SHA-256 pinned in input"
     },
     {
-      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "fileOffset": "0x4420bc",
-      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
-      "observedRun": "39717413546",
-      "label": "original DispatchQueue.async import stub",
-      "role": "dispatch-submit",
-      "siteSource": "disassembly of the original accepted trigger predicate and its submitted block"
+      "image": "ThingsiPhone",
+      "fileOffset": "0x52cb38",
+      "imageSHA256": "cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4",
+      "observedRun": "39754726627",
+      "label": "THWindowSceneDelegate sceneWillEnterForeground:",
+      "siteSource": "Original ARM64 Objective-C class/method metadata; main executable SHA-256 pinned in input"
     },
     {
-      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "fileOffset": "0x1179d8",
-      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
-      "observedRun": "39717413546",
-      "label": "original submitted Objective-C block bridge",
-      "role": "block-invoke",
-      "siteSource": "disassembly of the original accepted trigger predicate and its submitted block"
-    },
-    {
-      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "fileOffset": "0x3f6040",
-      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
-      "observedRun": "39717413546",
-      "label": "original Swift work closure from the accepted predicate",
-      "role": "swift-work",
-      "siteSource": "disassembly of the original accepted trigger predicate and its submitted block"
-    },
-    {
-      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
-      "fileOffset": "0x3ec468",
-      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
-      "observedRun": "39717413546",
-      "label": "original database worker called by that closure",
-      "role": "database-work",
-      "siteSource": "disassembly of the original accepted trigger predicate and its submitted block"
+      "image": "ThingsiPhone",
+      "fileOffset": "0x52cb40",
+      "imageSHA256": "cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4",
+      "observedRun": "39754726627",
+      "label": "THWindowSceneDelegate sceneDidBecomeActive:",
+      "siteSource": "Original ARM64 Objective-C class/method metadata; main executable SHA-256 pinned in input"
     }
   ],
   "input": {

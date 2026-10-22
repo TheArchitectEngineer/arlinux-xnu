@@ -599,7 +599,10 @@ The opt-in public UIKit geometry observer retains four bounded samples (up to
 128 visible views each) on its existing 200 ms timer: first window and samples
 10, 50 and 125. This observes later controller/layout changes without invoking
 layout or actions; frame count and timer scheduling do not imply wall-clock
-accuracy. Controller metadata remains in the existing APP_INSPECTION records.
+accuracy. Controller metadata remains in the existing APP_INSPECTION records. The same
+opt-in records include up to sixteen connected scenes' public activation state,
+delegate class, session role and window association, plus actual key-window state.
+No scene state or lifecycle callbacks are supplied by these observations.
 
 src/diagnostics/ios-ui.h owns the optional one-time view-tree diagnostic, using
 raw syscalls on the genuine UIKit main loop. Source-buffer capture belongs to

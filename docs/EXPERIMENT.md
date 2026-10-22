@@ -2,21 +2,24 @@
 
 ## Scope
 
-Latest verified run: 39753836535, source 4a3cc09949d70a2e4d8efa9373f1d2fa62521e05,
-receipt 6bd92e358a3b3f906a1ed78990e07e6a398bd591c85bcc8da6b2e166e18d3f1e;
-all 91 files verify. The image allocation and extension export aborts are crossed:
-Today Extension Data.json has 112 actual bytes, class-4 ordinary opens succeed,
-and the original app remains alive through the 30-second Inbox deadline. It
-still fails acceptance: screenshot is white, final public UI observation contains
-only offscreen bottom controls (y=667), not Inbox. Main thread is on its real
-CFRunLoop and frame commits continue. Database main.sqlite is 196608 bytes with
-WAL; this does not prove task persistence. No observed error currently establishes
-the blank-screen cause. Next collect the existing opt-in lifecycle/controller
-and geometry evidence after startup. Geometry previously sampled only the first
-window; four bounded samples on the existing observer now include later original
-controller swaps. Do not infer an animation, scheduling or rendering fix from
-this symptom alone. Related and full suite regressions remain required after the
-original journey advances.
+Latest diagnostic run: 39754726627, source fd207841a45208eea2bc7424db6e333c9592413a,
+receipt ca1df07cd074946388b6e84aa841396e1591b0cca2804f00aaeaaf6d16af2861;
+all 96 files verify. At samples 10, 50 and 125, original geometry remains stable:
+375x667 window/root, no transform or mask, THTaskListView exists but contains only
+its background; plus button is at y=667. The original scene controller replaced
+the upgrade controller; no active presentation transition is reported. The prior
+database worker/Swift work/block probes all return. These exclude neither absent
+app initialization nor an unimplemented display-driven callback. No blank-screen
+cause is proven. Next use public connected-scene activation metadata and replace
+the now-answered database probes with three original THWindowSceneDelegate
+callbacks (connect, foreground, active). Sites come from Objective-C method
+metadata in the pinned executable, never production offsets. Observe callbacks;
+do not invoke them. Task creation/edit/completion/relaunch remains unverified.
+
+Ordinary run 39753836535 (4a3cc09), receipt
+6bd92e358a3b3f906a1ed78990e07e6a398bd591c85bcc8da6b2e166e18d3f1e, verifies
+91 files. Today Extension Data.json has 112 real bytes; the image/export aborts
+are crossed. Main.sqlite is 196608 bytes with WAL, not task-persistence proof.
 
 Current baseline: run 39739768119, source aeef517fe6f0c4f3c025c2558574f4a27ac6625b,
 receipt dc8e20c3446e944bf1f7d56798291ee129287063f118413d5982851305df4682;

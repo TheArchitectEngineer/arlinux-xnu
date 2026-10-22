@@ -134,6 +134,18 @@ static void snapshot(void) {
         value[@"controllers"]=controllers;value[@"controllerLimitReached"]=@(controllers.count>=16);
         value[@"animationsEnabled"]=@([UIView areAnimationsEnabled]);
         value[@"protectedDataAvailable"]=@([UIApplication sharedApplication].protectedDataAvailable);
+        NSMutableArray *scenes=[NSMutableArray new];
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if (scenes.count>=16) break;
+            [scenes addObject:@{@"class":NSStringFromClass(scene.class),
+                @"activationState":@(scene.activationState),
+                @"delegateClass":scene.delegate ? NSStringFromClass([(id)scene.delegate class]) : @"<absent>",
+                @"role":scene.session.role ?: @"<absent>",
+                @"windowScene":@(scene==window.windowScene)}];
+        }
+        value[@"scenes"]=scenes;
+        value[@"sceneLimitReached"]=@(scenes.count>=16);
+        value[@"keyWindow"]=@(window.isKeyWindow);
     }
 #endif
     NSData *json=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:nil];
