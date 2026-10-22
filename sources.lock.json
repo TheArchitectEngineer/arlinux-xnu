@@ -25,7 +25,19 @@
     "build": "20H392",
     "bytes": 6035280776,
     "url": "https://updates.cdn-apple.com/2025FallFCS/fullrestores/122-77002/0281BFC6-38ED-485A-A8BE-8871861174B1/iPhone_4.7_P3_16.7.16_20H392_Restore.ipsw",
-    "sha256": "601cb23e740dacf8b61271fe02ffd5b3c146b518abb5a6e6b286e5f0475fe43b"
+    "sha256": "601cb23e740dacf8b61271fe02ffd5b3c146b518abb5a6e6b286e5f0475fe43b",
+    "images": {
+      "OS": {
+        "member": "087-86684-044.dmg",
+        "bytes": 4601371757,
+        "sha256": "9317e9414fd6265bc9ef54d986241ccfddc1db8469f80d70c430e4684ddbdb5e"
+      },
+      "Cryptex1,SystemOS": {
+        "member": "087-86580-047.dmg",
+        "bytes": 2743074816,
+        "sha256": "c30e091cd3aabfe0e045513b7270150373a9e0289a508dabb39ee64d6f7435a6"
+      }
+    }
   },
   "apfsReader": {
     "repository": "sgan81/apfs-fuse",

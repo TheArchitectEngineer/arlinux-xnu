@@ -455,7 +455,9 @@ supported private ABI; no claim of arbitrary iOS version support is made.
 blocked steps fail the case. [Diagnostics](DIAGNOSTICS.md) define evidence collection;
 [EXPERIMENT.md](EXPERIMENT.md) retains the current handoff, not the design history.
 Each run records source, environment, input identities and retained-file SHA-256.
-Apple firmware/cache/executables remain transient on runners. Upstream identities
+Only the two locked OS volume inputs may persist in the hosted input cache;
+each run validates their size/SHA-256 and mounts a fresh read-only view. Apple
+inputs and executables are excluded from execution artifacts/releases. Upstream identities
 and licenses live in component ORIGINS.json and README acknowledgements.
 
 Primary execution references: [tawcroot](https://github.com/taowen/tawc), imported

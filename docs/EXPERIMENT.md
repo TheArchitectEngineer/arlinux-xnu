@@ -29,13 +29,22 @@ has a 240-second outer deadline and cancellation kills/reaps curl before log
 publication; preparation has a six-minute step limit. No firmware mirror or
 different binary is substituted.
 
-Next execution: only things--offline-task-persistence, initially ordinary (no
-optional trace) to check the actual Inbox/task effects and whether this fault
-recurs. A failure retains the original kevent/fault evidence. Do not add tracing
-or repeat a timeout unless that evidence leaves a specific unresolved question.
-On progress, run related Workers/SchedulingProbe journeys and Calculator before
-full candidate regression. Android remains unverified. Earlier trace/admission
-history stays in Git and Actions rather than this current handoff.
+Ordinary run 39743269876 (7fd49d5) verifies receipt
+9c1b711f3465628bdffdc2c6328d4360297832f5e12d8439929626762b9b7fdd and all 89
+files. The previous libdispatch workloop error is crossed, but the original main
+thread now terminates with NSInternalInconsistencyException: INVocabulary requires
+com.apple.developer.siri. The original stderr retains the throw stack. Inbox and
+all task effects remain failed. Inspect original entitlements and the reusable
+SecTask/csops boundary before any new Things diagnostic run.
+
+User-requested resource work: cache only the two pinned OS volume DMGs on hosted
+Actions, verifying locked byte sizes/SHA-256 before use and keeping app data
+fresh. No full IPSW, boot/recovery payload, app state or test result is cached.
+First validate cold preparation with original Calculator regression, then warm
+reuse with a related scheduling journey; compare actual restore/preparation and
+job times, including cache-save overhead. Do not claim a size or time reduction
+before measuring. Afterwards continue the original Things entitlement fault.
+Android remains unverified. Earlier trace/admission history stays in Git/Actions.
 
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.

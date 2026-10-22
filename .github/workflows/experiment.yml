@@ -58,6 +58,15 @@ jobs:
       CCACHE_MAXSIZE: 256M
     steps:
     - uses: actions/checkout@v4
+    - name: Identify pinned OS volume inputs
+      id: volume_key
+      run: python3 tools/prepare-ios-userland.py --cache-key >> "$GITHUB_OUTPUT"
+    - name: Restore only pinned OS volumes
+      id: volume_cache
+      uses: actions/cache/restore@v4
+      with:
+        path: build/cache/ios-volumes
+        key: ${{ steps.volume_key.outputs.key }}
     - name: Install experiment toolchain once
       id: toolchain
       timeout-minutes: 6
@@ -160,10 +169,17 @@ jobs:
         ccache cc -Wall -Wextra -Werror -O2 -g -c src/native-service.c -o build/native/native-service.o
         cc build/native/macho-native.o build/native/xdg-shell-protocol.o build/native/runtime.o build/native/entry.o build/native/native-xpc.o build/native/native-http.o build/native/native-service.o "${spc_objects[@]}" "${core_flags[@]}" -ldl -lwayland-client -lxkbcommon -lcurl -lplist-2.0 -pthread -o build/native/macho-native
     - name: Prepare real pinned iOS userland
+      id: userland
       run: |-
         mkdir -p build/results
         python3 tools/prepare-ios-userland.py 2>&1 | tee build/results/input.log
       shell: bash
+    - name: Cache verified OS volume inputs
+      if: steps.volume_cache.outputs.cache-hit != 'true' && steps.userland.outcome == 'success'
+      uses: actions/cache/save@v4
+      with:
+        path: build/cache/ios-volumes
+        key: ${{ steps.volume_key.outputs.key }}
     - name: Receive same-run app products after parallel preparation
       id: app_inputs
       env:

@@ -67,8 +67,10 @@ debugger-altered runs do not establish ordinary launch behavior. The
 
 The optional Apple-host reference reuses the same input binaries and journey
 manifests with pinned PlayCover conversion and real host desktop input. It is a
-behavior comparison, not Linux or Android acceptance. No firmware, Apple SDK,
-framework or extracted Apple executable is uploaded. Retained app binaries and
+behavior comparison, not Linux or Android acceptance. Apple inputs are excluded
+from result artifacts and releases. The hosted input cache retains only the two
+fixed OS volumes required by the mounted userland; each restore checks their
+declared size/SHA-256. The full IPSW and app state are not cached. Retained app binaries and
 platform adapters are built from this repository's source. Downloaded products
 are checked against their same-source/run/attempt receipt and file hashes.
 

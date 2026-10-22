@@ -325,8 +325,9 @@ Prioritize savings in this order:
    Verify output hashes and issue a fresh same-run receipt on reuse. This cache
    is not implemented yet; do not claim savings or substitute an arbitrary prior
    run's artifact. Do not duplicate the build graph with manual cache inputs.
-4. Profile the 42-second userland preparation before changing it. Keep Apple
-   firmware/frameworks transient; do not upload them as a shortcut. A fixed
+4. Profile the 42-second userland preparation before changing it. The explicit
+   OS-volume input cache below replaces repeated CDN download/extraction, without
+   putting Apple inputs into execution artifacts or releases. A fixed
    source APFS reader took only 1.385 seconds in this run, so caching that
    product cannot explain or remove most of the 42 seconds. Measure firmware
    hashing, extraction and mounting before proposing another product cache.
@@ -449,8 +450,23 @@ skipping original-process LLDB collection.
 
 Runner setup declares the required packages with `--no-install-recommends`;
 optional distribution recommendations do not become implicit experiment inputs.
-Firmware remains transient and fully hash-verified; no Apple firmware/cache is
-uploaded for caching. Current measurements and acceptance are recorded once in
+The workflow restores only build/cache/ios-volumes by a key derived from the
+complete iosUserland lock entry, with no fallback restore key. It holds the OS
+and Cryptex1,SystemOS DMGs actually mounted by this runtime, not the complete
+IPSW, a copied home or an app prefix. Their sizes and hashes were pinned from
+receipt-verified run 39739768119. On a cold run the full IPSW SHA-256 and actual
+BuildManifest must match before extraction; on every run both DMGs must match
+the locked sizes and SHA-256 before mounting. Invalid cache bytes fail explicitly.
+Save only after successful preparation; app failure does not invalidate immutable
+input bytes. A warm run records inputValidation.mode=pinned-volume-cache and
+verifiedFirmwareSHA256=null: it verifies the derived volumes this run, rather
+than claiming a fresh whole-IPSW hash. The source IPSW identity remains recorded.
+The two raw DMGs total 7,344,446,573 bytes before Actions cache compression; this
+is CDN/extraction avoidance, not a small framework subset. Measure actual restore
+and save cost before claiming resource savings. Missing files must not be hidden
+by pruning framework resources to one observed app trace. Fresh mounts, app data,
+execution, receipts and effect checks still run. No Apple input is included in
+execution artifacts or releases. Current measurements and acceptance are recorded once in
 [EXPERIMENT.md](EXPERIMENT.md); historical runs remain in Git and Actions.
 
 ## Start with the effect that failed
@@ -471,7 +487,8 @@ Verify downloaded receipt.json against the exact run's published receipt SHA-256
 then verify each relied-upon artifact against that receipt. Selected downloads
 are isolated under build/runs/RUN_ID/attempt-N/ARTIFACT_NAME to prevent receipt collisions.
 Missing artifacts are
-unavailable, not passing. Apple firmware/cache/core/executables stay on the runner;
+unavailable, not passing. Apple firmware-derived inputs use only the named hosted
+input cache; Apple core dumps/executables are excluded from result artifacts;
 retain only safe text, screenshots and open-source products.
 
 Original fault symbolication retains bounded decoded instructions from the

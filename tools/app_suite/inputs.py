@@ -34,7 +34,8 @@ def prepare_firmware_app(app,root=None,firmware=None,destination=None,platform_l
                            '; matches='+str([str(path.relative_to(root)) for path,_ in matches]))
     original,info=matches[0]
     prepare_bundle(app,original,info,root,{'firmware':firmware['firmware'],
-        'verifiedFirmwareSHA256':firmware['verifiedFirmwareSHA256']},destination,platform_library)
+        'verifiedFirmwareSHA256':firmware['verifiedFirmwareSHA256'],
+        'inputValidation':firmware.get('inputValidation')},destination,platform_library)
 
 
 def prepare_bundle(app,original,info,root,origin,destination=None,platform_library=True):

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Runner-only input preparation; called by the root build.sh workflow.
 
-Apple firmware stays transient on the runner. Upload only provenance/logs, not
-the IPSW, disk image, extracted dyld or frameworks. No workstation compilation.
+Only the two pinned OS volume inputs may enter the hosted input cache. Never
+upload Apple inputs as result artifacts. No workstation compilation.
 """
 import hashlib
 import json
@@ -41,6 +41,14 @@ reader = json.loads((root / 'sources.lock.json').read_text())['apfsReader']
 reader_source = output / 'apfs-source'
 reader_build = output / 'apfs-build'
 archive = output / 'firmware.ipsw'
+volume_cache=root/'build/cache/ios-volumes'
+declared_images=source['images']
+if len({image['member'] for image in declared_images.values()})!=len(declared_images):
+    raise SystemExit('OS image basename collision')
+for image in declared_images.values():
+    if Path(image['member']).name!=image['member'] or not image['member'].endswith('.dmg'):
+        raise SystemExit('Unsafe declared OS image member')
+cached_volumes=all((volume_cache/image['member']).is_file() for image in declared_images.values())
 
 
 def prepare_reader():
@@ -83,12 +91,20 @@ def download_firmware():
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--download-only',action='store_true',
     help='Workflow-internal: fetch the declared firmware while apt installs tools; validation remains mandatory before extraction')
+parser.add_argument('--cache-key',action='store_true',help='Workflow-internal immutable OS-volume input cache key')
 args=parser.parse_args()
+if args.cache_key:
+    print('key=ios-volumes-v1-'+hashlib.sha256(json.dumps(source,sort_keys=True).encode()).hexdigest())
+    raise SystemExit(0)
 def cancelled(signum,frame):
     # Do not leave a curl writing evidence after the workflow takes its receipt.
     raise SystemExit(128+signum)
 signal.signal(signal.SIGTERM,cancelled)
 if args.download_only:
+    if cached_volumes:
+        print('APPLE_DOWNLOAD_TIMING '+json.dumps({'seconds':0,'bytes':0,'validated':False,
+            'source':'restored-volume-candidates'}),flush=True)
+        raise SystemExit(0)
     seconds=download_firmware()
     print('APPLE_DOWNLOAD_TIMING '+json.dumps({'seconds':round(seconds,3),
         'bytes':archive.stat().st_size,'validated':False}),flush=True)
@@ -100,7 +116,7 @@ if args.download_only:
 # nor a detached background download can become an input after a failure.
 started=time.monotonic()
 downloaded_before_preparation=archive.is_file()
-if downloaded_before_preparation:
+if cached_volumes or downloaded_before_preparation:
     # The workflow has joined its download process. Existing bytes are still
     # untrusted: the size and SHA-256 checks below run before any extraction.
     reader_seconds=prepare_reader()
@@ -114,42 +130,48 @@ else:
 print('APPLE_PREPARATION_TIMING '+json.dumps({'readerSeconds':round(reader_seconds,3),
     'downloadSeconds':round(firmware_seconds,3),'parallelSeconds':round(time.monotonic()-started,3),
     'downloadedBeforePreparation':downloaded_before_preparation}),flush=True)
-if source.get('bytes') and archive.stat().st_size!=source['bytes']:
-    raise SystemExit('Apple firmware byte size mismatch')
-actual = sha(archive)
-if actual != source['sha256']:
-    raise SystemExit('Apple firmware SHA-256 mismatch: ' + actual)
-print('APPLE_INPUT_SHA256', actual, flush=True)
-unzip = shutil.which('7zz') or shutil.which('7z')
-if not unzip:
-    raise SystemExit('7-Zip is required on the runner')
-run(unzip, 'e', '-y', '-o' + str(output), archive, 'BuildManifest.plist')
-manifest = plistlib.loads((output / 'BuildManifest.plist').read_bytes())
-if (manifest.get('ProductVersion'),manifest.get('ProductBuildVersion'))!=(source['version'],source['build']):
-    raise SystemExit('Firmware BuildManifest version/build mismatch')
-if source['device'] not in manifest.get('SupportedProductTypes',[]):
-    raise SystemExit('Requested device is not in this firmware BuildManifest')
-components={}
-for identity in manifest['BuildIdentities']:
-    for role in ('OS','Cryptex1,SystemOS'):
-        if role in identity['Manifest']:
-            components.setdefault(role,set()).add(identity['Manifest'][role]['Info']['Path'])
-if any(len(paths)!=1 for paths in components.values()):
-    raise SystemExit('Ambiguous device-specific OS images; select the requested board explicitly')
-images={role:paths.pop() for role,paths in components.items()}
+actual=None
+images={role:image['member'] for role,image in declared_images.items()}
+if not cached_volumes:
+    if source.get('bytes') and archive.stat().st_size!=source['bytes']:
+        raise SystemExit('Apple firmware byte size mismatch')
+    actual=sha(archive)
+    if actual!=source['sha256']:
+        raise SystemExit('Apple firmware SHA-256 mismatch: '+actual)
+    print('APPLE_INPUT_SHA256',actual,flush=True)
+    unzip=shutil.which('7zz') or shutil.which('7z')
+    if not unzip:raise SystemExit('7-Zip is required on the runner')
+    run(unzip,'e','-y','-o'+str(output),archive,'BuildManifest.plist')
+    manifest=plistlib.loads((output/'BuildManifest.plist').read_bytes())
+    if (manifest.get('ProductVersion'),manifest.get('ProductBuildVersion'))!=(source['version'],source['build']):
+        raise SystemExit('Firmware BuildManifest version/build mismatch')
+    if source['device'] not in manifest.get('SupportedProductTypes',[]):
+        raise SystemExit('Requested device is not in this firmware BuildManifest')
+    components={}
+    for identity in manifest['BuildIdentities']:
+        for role in declared_images:
+            if role in identity['Manifest']:
+                components.setdefault(role,set()).add(identity['Manifest'][role]['Info']['Path'])
+    if components!={role:{member} for role,member in images.items()}:
+        raise SystemExit('Firmware OS images differ from pinned volume inputs')
+    volume_cache.mkdir(parents=True,exist_ok=True)
+    for member in images.values():run(unzip,'e','-y','-o'+str(volume_cache),archive,member)
+    archive.unlink()
+validation_started=time.monotonic()
+for image in declared_images.values():
+    path=volume_cache/image['member']
+    if path.is_symlink() or path.stat().st_size!=image['bytes'] or sha(path)!=image['sha256']:
+        raise SystemExit('OS volume cache integrity mismatch: '+image['member'])
+input_validation={'mode':'pinned-volume-cache' if cached_volumes else 'verified-ipsw-extraction',
+    'sourceFirmwareSHA256':source['sha256'],'images':declared_images,
+    'validationSeconds':round(time.monotonic()-validation_started,3)}
+print('APPLE_VOLUME_INPUT '+json.dumps(input_validation),flush=True)
 (evidence/'firmware-layout.json').write_text(json.dumps({'product':source['device'],'components':images},indent=2)+'\n')
-if len({Path(member).name for member in images.values()})!=len(images):
-    raise SystemExit('OS image basename collision')
-for member in images.values():
-    relative=Path(member)
-    if relative.is_absolute() or '..' in relative.parts or not member.endswith('.dmg'):
-        raise SystemExit('Unsafe or unsupported OS image member: '+member)
-    run(unzip,'e','-y','-o'+str(output),archive,member)
-archive.unlink()
+
 mounts=[]
 for role,member in images.items():
     mount=output/('os-volume' if role=='OS' else 'system-volume');mount.mkdir(exist_ok=True)
-    run(reader_build/'apfs-fuse','-o','ro',output/Path(member).name,mount)
+    run(reader_build/'apfs-fuse','-o','ro',volume_cache/member,mount)
     mounts.append(mount)
 filesystem=output/'filesystem';filesystem.mkdir(exist_ok=True)
 merged=filesystem/'root';merged.mkdir(exist_ok=True)
@@ -211,7 +233,7 @@ except BaseException:
         subprocess.run(['fusermount3','-u',str(mount)],check=False)
     raise
 # Keep the read-only firmware mounted for the real loader's subsequent reads.
-# The hosted runner owns its lifetime; no Apple binary is uploaded.
+# The hosted runner owns mount lifetime; only immutable volume inputs are cached.
 print('APPLE_USERLAND_ROOT', filesystem / 'root', flush=True)
 system_version = plistlib.loads((filesystem / 'root/System/Library/CoreServices/SystemVersion.plist').read_bytes())
 version_record = {key: system_version.get(key) for key in
@@ -220,7 +242,8 @@ version_record = {key: system_version.get(key) for key in
 print('APPLE_SYSTEM_VERSION ' + json.dumps(version_record), flush=True)
 
 record = {'firmware': source, 'verifiedFirmwareSHA256': actual,
-          'images':{role:{'member':member,'sha256':sha(output/Path(member).name)} for role,member in images.items()},
+          'inputValidation':input_validation,
+          'images':declared_images,
           'apfsReader': reader, 'dyldBytes': loader.stat().st_size, 'dyldSHA256': sha(loader),
           'serviceIndexSHA256':sha(service_index)}
 (evidence / 'apple-input.json').write_text(json.dumps(record, indent=2) + '\n')
