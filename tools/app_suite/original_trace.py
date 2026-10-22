@@ -193,6 +193,25 @@ def trace(debugger,specification,runtime_path,stderr_path):
                         point=target.BreakpointCreateByAddress(address)
                         breakpoints[point.GetID()]=dict(stage='callback',address=hex(address),symbol=record['symbol'])
                         print('ORIGINAL_TRACE_ARMED',json.dumps(breakpoints[point.GetID()]))
+                    if record.get('callbackBlockRegister'):
+                        block=frame.FindRegister(record['callbackBlockRegister']).GetValueAsUnsigned()
+                        if not block:
+                            print('ORIGINAL_TRACE_BLOCK_ABSENT',record['symbol'])
+                        else:
+                            # ARM64 Blocks ABI: isa, flags/reserved, invoke,
+                            # descriptor. Read the supplied object, never copy,
+                            # retain or invoke it. Stack/global blocks are valid.
+                            region=lldb.SBMemoryRegionInfo()
+                            error=process.GetMemoryRegionInfo(block,region)
+                            if error.Fail() or not region.IsReadable() or region.IsExecutable() or block+32>region.GetRegionEnd():
+                                raise ValueError('original supplied block is outside readable metadata')
+                            error=lldb.SBError();data=process.ReadMemory(block,32,error)
+                            if error.Fail() or len(data)!=32:raise ValueError('original block metadata unreadable')
+                            address=struct.unpack_from('<Q',data,16)[0]
+                            error=process.GetMemoryRegionInfo(address,region)
+                            if not address or address%4 or error.Fail() or not region.IsExecutable():
+                                raise ValueError('original block invoke is outside executable memory')
+                            arm(dict(stage='callback',address=hex(address),symbol=record['symbol'],block=hex(block)))
             process.Continue()
             if not breakpoints:break
         print('ORIGINAL_TRACE_WINDOW_ENDED',json.dumps(dict(unhit=list(breakpoints.values())+deferred,returnInvocationMismatches=return_mismatches)))

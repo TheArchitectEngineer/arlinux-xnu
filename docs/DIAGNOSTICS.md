@@ -683,3 +683,10 @@ file-uprobe traps into anonymous memory; it remains timing-altering diagnosis,
 not an ordinary journey acceptance run. The metadata resolver's inspection of
 Things 3.17.1 resolves connect/foreground/active to text offsets 0x52c9f4,
 0x52cb38 and 0x52cb40; only the class/selector names are configured.
+
+A diagnostic symbol may name callbackBlockRegister to observe an actual supplied
+ARM64 Objective-C block. The existing debugger reads its 32-byte Blocks ABI
+header (invoke at offset 16), checks readable non-executable metadata and an
+executable aligned invoke address, then observes that address. Nil is recorded
+as absent. No block is copied, retained or invoked. First invocation is evidence
+of actual execution, not proof of user effects or captured-state correctness.

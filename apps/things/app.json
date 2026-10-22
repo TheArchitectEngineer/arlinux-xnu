@@ -20,17 +20,13 @@
   "diagnosticSymbols": [
     {
       "image": "ThingsiPhone",
-      "symbol": "-[THWindowSceneDelegate scene:willConnectToSession:options:]",
-      "observeReturn": true
+      "symbol": "-[THTaskListView setLayoutSubviewsBlock:]",
+      "observeReturn": true,
+      "callbackBlockRegister": "x2"
     },
     {
       "image": "ThingsiPhone",
-      "symbol": "-[THWindowSceneDelegate sceneWillEnterForeground:]",
-      "observeReturn": true
-    },
-    {
-      "image": "ThingsiPhone",
-      "symbol": "-[THWindowSceneDelegate sceneDidBecomeActive:]",
+      "symbol": "-[THTaskListView layoutSubviews]",
       "observeReturn": true
     }
   ]

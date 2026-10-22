@@ -2,6 +2,19 @@
 
 ## Scope
 
+Latest original callback evidence: run 39769922814, source 7cdec16036e94c68c2345ba8a5a6121429d128df,
+receipt 9200bb36d726f0dfb226b7964333edb319220f3a5a761d6a813df8af2cc590c9;
+all 93 files verify. Connect, foreground and active delegate methods each hit
+and return on the real main thread; no unhit points or return mismatches remain,
+and LLDB detaches successfully. This crosses the main-copy diagnostic boundary
+but leaves the same Inbox failure. The real app receives its activation events;
+do not add synthetic lifecycle callbacks. Next observe the original task-list
+view's layout block registration, its supplied invoke function and genuine layout
+entry/return. The existing collector reads only the original Blocks ABI invoke
+pointer, validates readable block/executable code and arms an observation; it
+never invokes the block or changes layout. These app-specific sites remain only
+in the opt-in manifest, not production compatibility logic.
+
 Latest diagnostic run: 39769180827, source c0e9674623c0a6fd9a0afbce33e67a3b9c005e75,
 receipt ae273c48fd749dfd492834d0a70431e4ec87b02d90781222ae48cf12b3633159;
 all 91 files verify. The actual original app launches, remains active and still
