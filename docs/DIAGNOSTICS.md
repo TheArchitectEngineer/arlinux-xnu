@@ -274,7 +274,10 @@ bundle directory. That run spent 153 seconds overall (64 seconds installing the
 runner toolchain and 47 seconds preparing the pinned userland) to reach a
 0.3-second infrastructure failure. The trace now resolves shared-cache images
 through the existing cache index; retry only this one Things journey after that
-fix, rather than paying setup cost for the 23-journey suite.
+fix, rather than paying setup cost for the 23-journey suite. Run 39728405889
+then exposed a collector import-path error before cache lookup; the standalone
+runner script now adds the repository's `tools/` directory to its module path.
+Neither run launched Things and neither is app-behavior evidence.
 
 For one worker behavior or cross-app scenario, use `--case` with exact IDs from
 `./build.sh cases`. Dispatch, SDK compilation and execution share one selector:
