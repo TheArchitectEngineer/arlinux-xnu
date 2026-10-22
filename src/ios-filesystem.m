@@ -194,7 +194,15 @@ void arlinux_ios_filesystem_start(const struct arlinux_ios_platform_api *api)
     storage=api;
     Method directory=class_getInstanceMethod([NSFileManager class],@selector(URLForDirectory:inDomain:appropriateForURL:create:error:));
     const char *directory_encoding=directory ? method_getTypeEncoding(directory) : NULL;
-    if(!directory_encoding || strcmp(directory_encoding,"@56@0:8Q16Q24@32B40^@48")) {
+    char *directory_return=directory ? method_copyReturnType(directory) : NULL;
+    BOOL supported=directory && method_getNumberOfArguments(directory)==7 && directory_return && !strcmp(directory_return,"@");
+    free(directory_return);
+    const char *arguments[]={"Q","Q","@","B","^@"};
+    for(unsigned int index=0;supported && index<5;index++) {
+        char *type=method_copyArgumentType(directory,index+2);
+        supported=type && !strcmp(type,arguments[index]);free(type);
+    }
+    if(!supported) {
         fprintf(stderr,"IOS_REPLACEMENT_DIRECTORY_BINDING_FAILED encoding=%s\n",directory_encoding ?: "<absent>");
         abort();
     }
