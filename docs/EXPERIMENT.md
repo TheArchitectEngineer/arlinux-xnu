@@ -155,12 +155,16 @@ The upgrade request/update/return again execute, but no database creation or
 ftruncate occurs in this run; Inbox still fails. It does not validate the new
 ftruncate path or prove that the ordinary stall shares the SQLite failure.
 The later ordinary full run also creates no task database and does not exercise
-ftruncate. Static inspection of the pinned ThingsCommon binary shows update
-queuing closures through FoundationAdditions' runInNextUpdatePass. The next
-targeted diagnostic observes that exported submission, its actual return and
-the supplied callback's execution with the existing one-shot collector. The
-original caller stack must identify whether this is the database component;
-the first submission by a different component cannot establish its progress.
+ftruncate. The pinned ThingsCommon update first calls FoundationAdditions'
+consumeTriggers(with:); its supplied closures decide whether later work is
+queued. The initial reading of those stub calls as unconditional
+runInNextUpdatePass submissions was incorrect. The lazy-bind table maps pointer
+0x531f80 to consumeTriggers(with:), and 0x531fc8 to runInNextUpdatePass in this
+fixed binary. These are static evidence addresses, never runtime patch offsets.
+The next observation is the actual exported consumeTriggers entry after update
+and its supplied callback, using the existing one-shot collector. The original
+caller stack must identify the database component; observing another component
+cannot establish its progress.
 
 Focused [39710756996](https://github.com/taowen/arlinux-xnu/actions/runs/39710756996),
 source 1630a3731e85aff9fd09e703de9d45058768549d, PID 5854/startTicks 18860,

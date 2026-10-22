@@ -18,8 +18,8 @@
     },
     {
       "image": "FoundationAdditions.framework/FoundationAdditions",
-      "symbol": "_$s19FoundationAdditions16FAReactComponentC19runInNextUpdatePassyyyycF",
-      "afterSymbol": "_$s12ThingsCommon20THCDatabaseComponentC12startUpgrade10completionyyyc_tF",
+      "symbol": "_$s19FoundationAdditions16FAReactComponentC15consumeTriggers4withySbq0__SbztXE_tF",
+      "afterSymbol": "_$s12ThingsCommon20THCDatabaseComponentC6updateyyF",
       "callbackRegister": "x0",
       "observeReturn": true
     }
