@@ -2,6 +2,18 @@
 
 ## Scope
 
+Run 39779602603 (75a9acd), receipt
+ffa820f2b3a5586033e8a23aa4fcf9bbeed56796c48f9587f3a13dd15cadbc73,
+verifies 93 files. Original setDisplayScale: receives actual d0=2. After it,
+canUpdate returns x0=1 and update enters/returns. No unhit points remain. Scale
+is not the current blocker; the earlier before-setter false was initialization.
+Static original update submits its own block through UIKitAdditions' UIView
+MSAnimations category to QuartzAdditions MSAnimationManager.animate:. Next arm
+that actual manager and supplied block only when the original component update
+is entered, alongside animateUpdateWithContext:/didFinishUpdate entry/return.
+This follows a real callback chain instead of assuming a missing animation tick.
+No display scale or app state is overridden.
+
 Run 39778756148 (a798ab3), receipt
 3693717c61a753198c9789f7e001169c2790f82ad4c4bf73021fcf0d57ad14d3,
 verifies 93 files. Initial canUpdate actually returns x0=0, followed later by a

@@ -20,23 +20,27 @@
   "diagnosticSymbols": [
     {
       "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent setDisplayScale:]",
-      "observeReturn": true,
-      "observeRegisters": [
-        "d0"
-      ]
-    },
-    {
-      "image": "ThingsiPhone",
-      "symbol": "-[THTaskListSceneLayoutComponent canUpdate]",
-      "observeReturn": true,
-      "afterSymbol": "-[THTaskListSceneLayoutComponent setDisplayScale:]"
-    },
-    {
-      "image": "ThingsiPhone",
       "symbol": "-[THTaskListSceneLayoutComponent update]",
+      "observeReturn": true
+    },
+    {
+      "image": "Frameworks/QuartzAdditions.framework/QuartzAdditions",
+      "symbol": "-[MSAnimationManager animate:]",
       "observeReturn": true,
-      "afterSymbol": "-[THTaskListSceneLayoutComponent setDisplayScale:]"
+      "callbackBlockRegister": "x2",
+      "afterSymbol": "-[THTaskListSceneLayoutComponent update]"
+    },
+    {
+      "image": "ThingsiPhone",
+      "symbol": "-[THTaskListSceneLayoutComponent animateUpdateWithContext:]",
+      "observeReturn": true,
+      "afterSymbol": "-[THTaskListSceneLayoutComponent update]"
+    },
+    {
+      "image": "ThingsiPhone",
+      "symbol": "-[THTaskListSceneLayoutComponent didFinishUpdate]",
+      "observeReturn": true,
+      "afterSymbol": "-[THTaskListSceneLayoutComponent update]"
     }
   ]
 }
