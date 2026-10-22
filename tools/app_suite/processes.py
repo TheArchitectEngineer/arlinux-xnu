@@ -167,7 +167,11 @@ class Processes:
                 (state/relative).mkdir(parents=True,exist_ok=True)
             env.update(HOME=str(state.resolve()),CFFIXED_USER_HOME=str(state.resolve()),
                 TMPDIR=str((state/'tmp').resolve())+'/')
-            if app.get('input',{}).get('kind') in ('firmware','ipa'):
+            if app.get('input',{}).get('kind')=='ipa':
+                # Original IPA references are observed externally. An injected
+                # UIKit timer must not initialize UIApplication before the app.
+                env.pop('DYLD_INSERT_LIBRARIES',None)
+            elif app.get('input',{}).get('kind')=='firmware':
                 env['DYLD_INSERT_LIBRARIES']=str(ROOT/'build/reference-tools/libarlinux-inspection.dylib')
         reference_trace=self.reference and app.get('input',{}).get('kind')=='ipa' and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1'
         if reference_trace:

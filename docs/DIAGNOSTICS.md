@@ -25,6 +25,12 @@ pinned PlayCover converter and ad-hoc signing. Input metadata keeps original
 hashes separate from converted/signed hashes. Conversion is an input step, not
 compatibility acceptance; actual launch, window, input and persistence can still
 fail. Apple-host behavior is a comparison and never Linux/Android acceptance.
+Original IPA references use external macOS accessibility and screenshots, without
+injecting the UIKit inspection library. AX rectangles are actual desktop points,
+converted through the observed display scale and window pixel bounds. The last
+bounded raw accessibility observation is retained beside the process logs;
+permission failures are infrastructure failures. This isolates observer startup
+effects but does not establish their involvement in any original app failure.
 An original journey may explicitly declare reference.viewport=desktop and
 reference.startupDialogs for genuine desktop-only startup prompts. A desktop
 viewport observation records phoneDimensionsVerified=false and the requested
@@ -54,8 +60,8 @@ truncation. Equal encodings do not certify behavior; missing optional methods do
 not establish the cause of a failure. It invokes no app
 actions or private framework lifecycle methods. This flag defaults off and is
 not injected as a Linux platform implementation on the Apple-host reference.
-The original-app reference observer may read the same public view/screen
-geometry there. It is diagnosis, not launch success.
+The firmware reference observer may read the same public view/screen
+geometry there. Original IPA references remain externally observed.
 For the Workers queue investigation, it also observes actual UIControl action
 dispatch through a typed, bounded forwarding wrapper. The original method gets
 unchanged arguments; no missing action is supplied. APP_WORKER_QUEUE records

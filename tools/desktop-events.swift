@@ -41,9 +41,19 @@ case "accessibility", "press":
     func visit(_ element:AXUIElement,_ depth:Int) {
         if depth>12 || records.count>=128 { return }
         let role=attribute(element,kAXRoleAttribute) as? String ?? ""
+        if role==(kAXMenuBarRole as String) { return }
         let title=attribute(element,kAXTitleAttribute) as? String ?? ""
         let value=attribute(element,kAXValueAttribute) as? String ?? ""
-        records.append(["role":role,"title":String(title.prefix(256)),"value":String(value.prefix(256)),"depth":depth])
+        let description=attribute(element,kAXDescriptionAttribute) as? String ?? ""
+        var record:[String:Any]=["role":role,"title":String(title.prefix(256)),"value":String(value.prefix(256)),"description":String(description.prefix(256)),"depth":depth]
+        if let position=attribute(element,kAXPositionAttribute),let size=attribute(element,kAXSizeAttribute),
+            CFGetTypeID(position)==AXValueGetTypeID(),CFGetTypeID(size)==AXValueGetTypeID() {
+            var point=CGPoint.zero,dimensions=CGSize.zero
+            if AXValueGetValue(position as! AXValue,.cgPoint,&point),AXValueGetValue(size as! AXValue,.cgSize,&dimensions) {
+                record["rect"]=[point.x,point.y,dimensions.width,dimensions.height]
+            }
+        }
+        records.append(record)
         if args[1]=="press",role==(kAXButtonRole as String),title==args[3] {
             if target != nil { fatalError("Ambiguous external accessibility button") }
             target=element
@@ -51,7 +61,8 @@ case "accessibility", "press":
         for child in attribute(element,kAXChildrenAttribute) as? [AXUIElement] ?? [] { visit(child,depth+1) }
     }
     if trusted { visit(AXUIElementCreateApplication(pid),0) }
-    var result:[String:Any]=["trusted":trusted,"elements":records,"limitReached":records.count>=128,"found":target != nil]
+    let scale=Double(CGDisplayPixelsWide(CGMainDisplayID()))/CGDisplayBounds(CGMainDisplayID()).width
+    var result:[String:Any]=["trusted":trusted,"elements":records,"limitReached":records.count>=128,"found":target != nil,"displayScale":scale]
     if let target=target { result["actionError"]=AXUIElementPerformAction(target,kAXPressAction as CFString).rawValue }
     try output(result)
 case "click":

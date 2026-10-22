@@ -40,7 +40,29 @@ class Desktop:
         return path
 
     def inspection(self,name=None):
-        item=self.processes[name or self.current]
+        name=name or self.current
+        item=self.processes[name]
+        if self.reference and self.apps[name].get('input',{}).get('kind')=='ipa':
+            helper=ROOT/'build/reference-tools/desktop-events'
+            raw=json.loads(command(helper,'accessibility',item['process'].pid,capture_output=True,text=True).stdout)
+            Path(item['stdout']).with_suffix('.accessibility.json').write_text(json.dumps(raw,indent=2))
+            if not raw['trusted']:
+                self.infrastructure_failure=True
+                raise RuntimeError('External Apple accessibility observation is not trusted')
+            bounds=json.loads(command(helper,'bounds',item['process'].pid,capture_output=True,text=True).stdout)
+            if bounds is None:return None
+            scale=raw['displayScale'];elements=[]
+            for entry in raw['elements']:
+                rect=entry.get('rect')
+                text=entry['title'] or entry['value'] or entry['description']
+                if not text or not rect or rect[2]<=0 or rect[3]<=0:continue
+                local=[rect[0]*scale-bounds[0],rect[1]*scale-bounds[1],rect[2]*scale,rect[3]*scale]
+                if local[0]<0 or local[1]<0 or local[0]+local[2]>bounds[2]+1 or local[1]+local[3]>bounds[3]+1:continue
+                elements.append({'text':text,'rect':local,'interactive':entry['role'] in ('AXButton','AXTextField','AXTextArea','AXCheckBox','AXPopUpButton')})
+            state={'viewport':bounds[2:],'windowPixelBounds':bounds,'elements':elements,
+                   'observationSource':'external-macos-accessibility','limitReached':raw['limitReached']}
+            self.observations_state=state
+            return state
         events=[]
         for line in Path(item['stdout']).read_text(errors='replace').splitlines():
             if line.startswith('APP_INSPECTION '):
@@ -52,6 +74,9 @@ class Desktop:
 
     def window(self,state):
         if self.reference:
+            if 'windowPixelBounds' in state:
+                bounds=state['windowPixelBounds']
+                return bounds[0],bounds[1],1,1
             try:
                 bounds=json.loads(command(ROOT/'build/reference-tools/desktop-events','bounds',self.processes[self.current]['process'].pid,capture_output=True,text=True).stdout)
             except (subprocess.SubprocessError,ValueError):
