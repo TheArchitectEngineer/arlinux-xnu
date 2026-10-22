@@ -662,3 +662,12 @@ startup loader copies text from a source mapping to anonymous executable memory,
 which can copy a kernel-owned breakpoint out of its original mapping. Run
 39767427316 trapped at the newly probed delegate entry, not a proven application
 fault. Use the public scene metadata observer for this lifecycle question.
+
+For a blank original-app screen after verified foreground activation, the opt-in
+lifecycle observer forwards actual CADisplayLink factory and scheduling calls
+unchanged. It retains at most sixteen weak link references, logging original
+target class/selector and public timestamp/duration/paused/FPS at bounded samples
+0, 50, 100 and 250 on its existing 100 ms timer. No target is invoked and no
+refresh is fabricated. This extends that optional timer observation to 25 seconds;
+actual timing still depends on the guest run loop. Missing/ticking links alone
+do not prove the cause of an app initialization stall.

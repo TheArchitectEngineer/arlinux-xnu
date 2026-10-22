@@ -2,6 +2,19 @@
 
 ## Scope
 
+Latest run 39768008670 (a405db3) verifies receipt
+be350856e5b921acce9f42ac582abdbfd3a2a4e8ad97fe01a7dac5adbdfef251 and 91
+files. Without main-image uprobes, Things remains alive but Inbox times out.
+The public UIWindowScene has activationState=0 (foreground active), the real
+THWindowSceneDelegate, application role and the observed window association.
+The window is key, UIApplication active and protected data available. These
+states do not prove every app delegate callback, but provide no support for an
+inactive-scene fix. Next observe actual CADisplayLink creation/scheduling and
+public timestamp progression using typed forwarding wrappers in the existing
+opt-in observer. Never call a display-link target or inject missing ticks.
+The original binary contains display-link callback references; that alone does
+not establish causation. Full task and regression acceptance remains incomplete.
+
 Diagnostic run 39767427316 (3596271), receipt
 ef57637d8bb73ebcf9ff2d37dc4aee380d954cf696b73ccaba3f19bb1f95eceb, verifies
 88 files but cannot diagnose the blank-screen cause: SIGTRAP is at the newly

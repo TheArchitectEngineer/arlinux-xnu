@@ -4,6 +4,7 @@
 #include <objc/runtime.h>
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,34 @@ static uint32_t last_flags=UINT32_MAX;
 static unsigned int samples;
 static void (*original_control_action)(id,SEL,SEL,id,id);
 static unsigned int control_actions;
+static NSHashTable *observed_display_links;
+static unsigned display_links_created;
+static CADisplayLink *(*original_display_link)(id,SEL,id,SEL);
+static void (*original_display_link_schedule)(id,SEL,id,id);
+static CADisplayLink *observe_display_link(id cls,SEL method,id target,SEL callback)
+{
+    CADisplayLink *link=original_display_link(cls,method,target,callback);
+    @synchronized(observed_display_links) {
+        unsigned sequence=display_links_created++;
+        if(sequence<16) {
+            if(link)[observed_display_links addObject:link];
+            fprintf(stderr,"IOS_DISPLAY_LINK_CREATED sequence=%u link=%p target=%.96s selector=%.160s\n",
+                sequence,link,target ? class_getName(object_getClass(target)) : "<absent>",
+                callback ? sel_getName(callback) : "<absent>");
+        } else if(sequence==16)fprintf(stderr,"IOS_DISPLAY_LINK_TRUNCATED limit=16\n");
+    }
+    return link;
+}
+static void observe_display_link_schedule(id link,SEL method,id loop,id mode)
+{
+    original_display_link_schedule(link,method,loop,mode);
+    @synchronized(observed_display_links) {
+        static unsigned schedules;
+        if(schedules++<16)
+            fprintf(stderr,"IOS_DISPLAY_LINK_SCHEDULED link=%p main_loop=%d mode=%.96s\n",
+                link,loop==[NSRunLoop mainRunLoop],[(NSString *)mode UTF8String]);
+    }
+}
 static void observe_control_action(id control,SEL method,SEL action,id target,id event)
 {
     unsigned int sequence=__atomic_fetch_add(&control_actions,1,__ATOMIC_RELAXED);
@@ -75,7 +104,16 @@ static void window_sample(CFRunLoopTimerRef timer,void *context)
             window.generation,window.pid,window.incarnation,window.width,window.height,
             window.refresh_millihz,window.flags);
     }
-    if (++samples>=100 && timer) CFRunLoopTimerInvalidate(timer);
+    if(samples==0 || samples==50 || samples==100 || samples==250) {
+        @synchronized(observed_display_links) {
+            fprintf(stderr,"IOS_DISPLAY_LINK_SAMPLE sample=%u created=%u live=%lu\n",
+                samples,display_links_created,(unsigned long)observed_display_links.count);
+            for(CADisplayLink *link in observed_display_links)
+                fprintf(stderr,"IOS_DISPLAY_LINK_STATE link=%p timestamp=%.9f duration=%.9f paused=%d preferred_fps=%ld\n",
+                    link,link.timestamp,link.duration,link.paused,(long)link.preferredFramesPerSecond);
+        }
+    }
+    if (++samples>250 && timer) CFRunLoopTimerInvalidate(timer);
 }
 static int lifecycle_method(const char *name)
 {
@@ -170,6 +208,16 @@ void arlinux_ios_lifecycle_diagnose(const struct arlinux_ios_platform_api *api)
     const char *enabled=getenv("ARLINUX_DIAGNOSE_LIFECYCLE");
     if (!enabled || strcmp(enabled,"1")) return;
     pointer_evidence_enabled=1;
+    observed_display_links=[[NSHashTable weakObjectsHashTable] retain];
+    Method create=class_getClassMethod([CADisplayLink class],@selector(displayLinkWithTarget:selector:));
+    Method schedule=class_getInstanceMethod([CADisplayLink class],@selector(addToRunLoop:forMode:));
+    const char *create_types=create ? method_getTypeEncoding(create) : NULL;
+    const char *schedule_types=schedule ? method_getTypeEncoding(schedule) : NULL;
+    if(create_types && schedule_types && !strcmp(create_types,"@32@0:8@16:24") && !strcmp(schedule_types,"v32@0:8@16@24")) {
+        original_display_link=(void *)method_setImplementation(create,(IMP)observe_display_link);
+        original_display_link_schedule=(void *)method_setImplementation(schedule,(IMP)observe_display_link_schedule);
+    } else fprintf(stderr,"IOS_DISPLAY_LINK_UNAVAILABLE create=%s schedule=%s\n",
+        create_types ?: "<absent>",schedule_types ?: "<absent>");
     /* Observe only actual UIKit dispatch. Forward the exact original arguments;
      * never call the app's selector or supply a missing action/event. */
     Class control=objc_getClass("UIControl");
