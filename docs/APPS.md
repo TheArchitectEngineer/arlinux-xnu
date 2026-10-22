@@ -7,44 +7,23 @@ source-owned apps compile against Apple's actual SDK. The runtime combines selec
 pinned Apple userland with production Linux-backed adapters and replacements.
 apps/shared/Screen.h is fixture UI layout, never a runtime shim.
 
-PureFrame (净影工坊) 1.2.3 is the next candidate after the Things Apple
-comparison also remained white without observer injection (run 39799642134).
-Its existing public decrypted cache was downloaded without login; the manifest
-pins the archive and original executable hashes. Static input inspection found
-thin ARM64, minimum iOS 16.4 and cryptid 0 in the main executable and five bundled
-frameworks, including React/Hermes. This is not a simple UIKit-only app.
-The first-screen/reopen journey dismisses the actual 知道了 introduction once,
-then clicks the observed combined label 转码记录, 查看历史结果 and requires
-the history page's 尚无转码记录 content, then normal close/relaunch and repeat.
-It does not certify media import,
-editing or export. Runner-side source
-availability is also required; a workstation download is not a runner cache.
-Run 39804175373 failed before app execution: the public cache endpoint returned
-HTTP 403 to runner curl. That exact downloaded IPA is now stored under
-apps/pureframe/input in Git, retaining the same archive/executable hashes.
-An attempted Git LFS upload was rejected because the account's LFS budget was
-exceeded; the 22.8 MB input therefore uses a normal binary Git object. No browser
-downloader or transferred workstation session is required.
-Run 39805815468 (a48ebda) prepared the exact repository input in 0.109 seconds
-and exited/relaunched normally. Its original broad title check passed, but both
-viewed screenshots still show the splash image. This is not interaction success.
-The external observer now excludes AXWindow titles, and the journey requires
-navigation into actual page content instead of matching the application name.
-Run 39806436244 (8345518), receipt
-95146c39860da3c05b4c1b45b46f3f219ce651ef5b478321b5f217253d52b616,
-verifies 20 files. Its screenshot shows the real home page and welcome dialog;
-the first navigation click was blocked by that undismissed introduction. The
-updated journey dismisses the genuine notice through its observed AX rectangle.
-Run 39807696309 (cd92177), receipt
-5f0738fc732da527f55cbbd11dda12458851c3386f55d894c0a37375b4133993,
-verifies 19 files. The notice closes and the full home page renders. The bounded
-AX tree reaches its contents at depth 17 without truncation. Navigation had not
-occurred: React combines the card title/subtitle into one accessible label,
-so the previous exact title-only click did not match. The journey now uses the
-observed label and requires a history-specific empty state, not the home's
-different recent-results message.
+PureFrame (净影工坊) 1.2.3 is the current original-app candidate. Its manifest
+pins the downloaded IPA and main executable; input inspection found ARM64,
+minimum iOS 16.4 and cryptid 0 in the main image and five frameworks, including
+React/Hermes. The exact 22.8 MB IPA is stored in Git because the public endpoint
+returned 403 on runners and Git LFS rejected upload for exceeded account budget.
+The same preparation verifies its archive size/SHA-256 before extraction.
 
-The next acquired original-binary candidate is Things iPhone 3.17.1/build
+Apple run 39808238885 reaches home, dismisses the real introduction, opens the
+history page and shows its distinct empty state, then exits normally and starts
+a new process. Second-launch navigation is still unverified; the retained target
+screenshot shows the splash image when that click was attempted. Linux run
+39809084493 aborts before its first viewport observation: the original IOSurface
+client cannot locate its kernel service. Neither backend has passed the complete
+journey. Media import/edit/export and Android remain unverified. See
+[the current evidence](EXPERIMENT.md) for receipts and the next boundary.
+
+The earlier original-binary candidate is Things iPhone 3.17.1/build
 31701001, bundle ID com.culturedcode.ThingsiPhone. Its community-decrypted IPA
 is 52,104,885 bytes, SHA-256
 **7e3d47be5a6e5bcc9a3f4972e452fd17c953e4cecaa11c2e9256212a46a203d8**,

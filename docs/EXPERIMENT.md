@@ -1,6 +1,36 @@
 # Current evidence and next boundary
 
-## Scope
+## Current PureFrame boundary
+
+Both backends used source dfe754d51df96d63989a27a30406fc5d9de80648 and the same
+IPA SHA-256 1bba6c62c2160db804ea915013864f32fb5c80e9ba9e037e768bdabe39baa483.
+The exact package is now a regular Git binary input; LFS upload was rejected for
+exceeded account budget. No browser downloader or copied credentials remain.
+
+Linux run 39809084493, receipt
+2b9b4c83b7cede4cf7783661d6f684906a448dcbdf4ed383047d50b105fd1f26,
+verifies 25 files. Input preparation takes 0.023 seconds. The original app
+reaches scene delivery/key-window setup, then aborts after about 3.7 seconds:
+`_iosConnectInitalize() unable to locate IOSurface kernel service` in
+IOSurfaceClient.m:491. The captured fault PC is 0x18dcad82c in libsystem_c's
+___abort, not a root-cause frame. No viewport/home interaction passed. The next
+compatibility question is which original IOSurface operation triggers this
+initialization and what Linux-backed behavior it requires; absence of the
+service does not establish a hardware-acceleration requirement.
+
+Apple run 39808238885, receipt
+e3dc6e8c9b1010e4725852c8be69621329f35fbb550f5af3bbb79559bacabe88,
+verifies 26 files. First launch dismisses 知道了, clicks the actual combined AX
+label 转码记录, 查看历史结果, and renders the history-specific 尚无转码记录
+message. Normal close returns 0 and a different PID relaunches. Its second
+navigation fails: the target snapshot is still the splash image, so this is not
+complete relaunch acceptance. Earlier title-only success was invalid as an
+interaction result; AXWindow titles are now excluded. The observer also reads
+nested React AX content and counts antialiased luminance cumulatively from each
+tail (eight pixels), rather than requiring eight pixels in an identical bin.
+No media import/edit/export or Android acceptance has passed.
+
+## Earlier Things investigation
 
 Ordinary Apple run 39795030664 (e7a2758), receipt
 8596721e5d11b4437410273699a9f9cc6616caba7349ab7a2b106370773098b4,
@@ -32,7 +62,7 @@ sets HOME/CFFIXED_USER_HOME/TMPDIR and prepares real Documents/Library/tmp.
 Apple's published CFPlatform.c confirms that CFFIXED_USER_HOME takes priority
 over the passwd home. e7a2758 aligns Apple launch preparation with that same
 fresh per-journey home and directories, preserving state only for relaunches
-inside that journey. Ordinary (no debugger) run 39795030664 is pending. No
+inside that journey. Ordinary (no debugger) run 39795030664 subsequently crossed that assertion. No
 SQLite database, result or app callback is supplied by the harness.
 
 Same-PID launch observation run 39791431370 (8d4ca53) finally captures Apple's
