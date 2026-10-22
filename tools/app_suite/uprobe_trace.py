@@ -61,10 +61,19 @@ def start(specification,state_path):
             image=Path(record['path']).resolve()
             if not image.is_file() or any(c.isspace() or c==':' for c in str(image)):
                 raise ValueError('unsupported uprobe image path')
-            offset=symbol_address(image,record['symbol'],file_offset=True)
-            if offset%4 or offset+4>image.stat().st_size:raise ValueError('uprobe offset outside original image')
+            digest=hashlib.sha256(image.read_bytes()).hexdigest()
+            if 'symbol' in record:
+                offset=symbol_address(image,record['symbol'],file_offset=True)
+            else:
+                # Stripped callbacks may have no export. A site must come
+                # from a recorded original argument and match its exact input;
+                # these addresses never enter production compatibility code.
+                if record.get('imageSHA256')!=digest or not record.get('observedRun') or not record.get('label'):
+                    raise ValueError('observed code site lacks exact image identity/provenance')
+                offset=int(record['fileOffset'],0)
+            if offset<0 or offset%4 or offset+4>image.stat().st_size:raise ValueError('uprobe offset outside original image')
             state['symbols'].append({**record,'fileOffset':hex(offset),
-                'sha256':hashlib.sha256(image.read_bytes()).hexdigest()})
+                'sha256':digest})
             for kind,suffix in (('p','entry'),('r','return')):
                 name=f'point{index}_{suffix}_{state["group"]}'
                 fetch=' receiver=%x20:x64 arg0=%x0:x64 arg1=%x1:x64 caller=%x30:x64 stack=$stack:x64' if kind=='p' else ' result=$retval:x64'

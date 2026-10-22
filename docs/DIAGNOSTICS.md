@@ -102,13 +102,18 @@ so it is not mistaken for ordinary app effect time.
 
 For an original-app ordering failure that changes under debugger attachment,
 an app may instead declare kernelTraceSymbols (bundle-relative image and exact
-exported symbol). --lifecycle-context then enables entry/return uprobes through
+exported symbol). A stripped callback may instead declare its observed
+fileOffset, exact imageSHA256, observedRun and label; the image hash is required
+before registration. Such sites come from actual original call arguments and
+stay in the pinned app declaration, never production compatibility code.
+--lifecycle-context then enables entry/return uprobes through
 the existing journey launcher, before the app starts, without a debugger entry
 stop. LLVM resolves actual Mach-O file offsets and the metadata records image
 hashes. Only declared function arguments/receiver/caller addresses are recorded;
 no app action is invoked. Each generation owns a private 128 KiB-per-CPU tracefs
-instance and removes its events during cleanup. No extra runner package or
-separate execution path is used. Setup/cleanup errors, kernel hit/miss counts,
+instance and removes its events before failure debugger attachment or on normal
+exit. The monotonic capture interval is retained. No extra runner package or
+separate execution path is used. Setup/cleanup errors, available kernel hit counts,
 ring-buffer CPU statistics and original trace records remain beside that
 generation's logs. An unavailable kernel facility or an overflowing trace is
 not evidence of non-execution. Kernel tracing also changes timing; the original

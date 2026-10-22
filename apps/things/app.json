@@ -16,6 +16,34 @@
     {
       "image": "Frameworks/FoundationAdditions.framework/FoundationAdditions",
       "symbol": "_$s19FoundationAdditions16FAReactComponentC15consumeTriggers4withySbq0__SbztXE_tF"
+    },
+    {
+      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
+      "fileOffset": "0x3ee9f8",
+      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
+      "observedRun": "39716512266",
+      "label": "first supplied trigger predicate"
+    },
+    {
+      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
+      "fileOffset": "0x3eea00",
+      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
+      "observedRun": "39716512266",
+      "label": "second supplied trigger predicate"
+    },
+    {
+      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
+      "fileOffset": "0x3eea08",
+      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
+      "observedRun": "39716512266",
+      "label": "third supplied trigger predicate"
+    },
+    {
+      "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
+      "fileOffset": "0x3eea50",
+      "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",
+      "observedRun": "39716512266",
+      "label": "fourth supplied trigger predicate"
     }
   ],
   "input": {

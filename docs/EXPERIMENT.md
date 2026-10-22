@@ -253,12 +253,29 @@ in runner minutes: feedback was 179 s versus 165 s, and the original app still
 fails Inbox after 30 s. SHOULD_NARROW remains unused. The vendor getter and task
 database initialization have not been reached in this no-startup-breakpoint run.
 
-The next observation follows the original upgrade request, update and trigger
-consumer with kernel uprobes instead of debugger entry stops. It uses the same
-original binary, exact journey and opt-in diagnostic profile, with file offsets
-resolved from exports and a private bounded tracefs instance. Kernel availability,
-hit/miss/overflow metadata and cleanup remain explicit. This collector has not
-yet been runner-verified and does not itself implement a compatibility fix.
+Kernel [39716512266](https://github.com/taowen/arlinux-xnu/actions/runs/39716512266),
+source ae8f0817e9d8590932ba81835172af74af996491, PID 5848/startTicks 50145,
+validates observation without a debugger entry stop. Its private trace records
+66/66 entries, no buffer overflow, all requested registers available and clean
+event removal before the failure LLDB attachment. Receipt
+**0c0294b76da2d8a7b988284c4bd9ff1a7aa76d88ea67512ef959d8d8fb273028**
+and all 89 files verify. Feedback was 185 s; Inbox still fails.
+
+The original startUpgrade executes once. Its actual receiver 0x30478b9a0 enters
+update during the request, calls consumeTriggers four times, returns, and updates
+again about 81 ms later. There are four update calls overall, including an
+earlier different receiver; thread/address alone cannot equate those instances.
+All observed entries have returns. The remaining stall is after request delivery
+and synchronous update, not a request that never arrived. The four supplied
+predicate code pointers were recorded by the actual trigger consumer; the next
+bounded observation follows their real entry/return on the same exact image.
+This does not yet establish a background submission or fix scheduling.
+
+Two earlier kernel-setup attempts (39715347208 and 39716080783) produced no valid
+function trace: Python append mode sought to the end of the tracefs command
+file and received EINVAL before writing. The collector now issues a single
+non-seeking command write, with parser errors and any unavailable fetch fields
+retained explicitly. Those earlier attempts are not negative execution evidence.
 
 ## Reusable changes and outstanding boundary
 
