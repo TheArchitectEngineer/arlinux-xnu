@@ -983,6 +983,10 @@ socketpair_done:
     case D_SYS_RENAME: result=native_storage_rename(D_AT_FDCWD,r[0],D_AT_FDCWD,r[1]); break;
     case D_SYS_RENAMEAT: result=native_storage_rename((int)r[0],r[1],(int)r[2],r[3]); break;
     case D_SYS_FSYNC: case D_SYS_FSYNC_NOCANCEL: result=RAW(SYS_fsync,r[0],0,0,0,0,0); break;
+    /* XNU's ARM64 ftruncate takes an int descriptor and a signed 64-bit
+     * off_t. SQLite's original WAL shared-memory initialization resizes an
+     * actual open file here; Linux owns size changes and descriptor/errors. */
+    case D_SYS_FTRUNCATE: result=RAW(SYS_ftruncate,(int)r[0],r[1],0,0,0,0); break;
     case D_SYS_FSTATAT64: result=guest_stat(r[1],r[2],D_SYS_FSTATAT64,(int)r[0],r[3]); break;
     case D_SYS_CLOSE: case D_SYS_CLOSE_NOCANCEL:
         result=native_close((int)r[0]);break;

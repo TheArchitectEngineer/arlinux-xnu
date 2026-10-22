@@ -283,6 +283,7 @@ jobs:
       with:
         name: ios-app-results-linux
         path: build/results/
+        include-hidden-files: true
         retention-days: 30
   apple-reference:
     needs: apps
@@ -315,4 +316,5 @@ jobs:
       with:
         name: ios-app-results-apple
         path: build/results/
+        include-hidden-files: true
         retention-days: 30
