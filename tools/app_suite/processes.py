@@ -130,6 +130,7 @@ class Processes:
         self.processes[name] = {**record, 'process': process, 'runtime': str(prefix.with_suffix('.runtime.log')), 'stdout': str(prefix.with_suffix('.stdout'))}
         self.current = name
         if trace_symbols:
+            diagnostic_started=time.monotonic()
             # The same owned original process stops before dyld. The debugger
             # records real entry/callback execution, never calls either one.
             specification=prefix.with_suffix('.trace-symbols.json')
@@ -160,6 +161,7 @@ class Processes:
                 finally:
                     # A collector failure must not leave the app stopped.
                     if process.poll() is None:os.kill(process.pid,signal.SIGCONT)
+                    self.steps[-1]['diagnosticSeconds']=round(time.monotonic()-diagnostic_started,3)
         if self.reference and app['kind']=='application':
             result=subprocess.run([str(ROOT/'build/reference-tools/desktop-events'),'focus',str(process.pid)],capture_output=True,timeout=7)
             if result.returncode:

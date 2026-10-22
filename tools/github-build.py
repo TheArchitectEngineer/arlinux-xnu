@@ -209,6 +209,9 @@ def print_observation(line):
     for process in entry.get('processes',[]):
         print(f"    Process {process.get('app')} generation={process.get('generation')} identity={json.dumps(process.get('identity'))}")
         print(f"    Logs: {process.get('runtimeLog')}; {process.get('stderr')}")
+        trace=process.get('startupTrace')
+        if trace:
+            print('    Original startup trace: '+json.dumps(trace))
         for fault in process.get('faultContexts',[]):
             print('    Fault: '+json.dumps(fault))
         for observed in process.get('observed',[]):

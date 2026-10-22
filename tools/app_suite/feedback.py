@@ -31,6 +31,22 @@ def witnesses(path,prefixes):
                     if line.startswith(prefix):found[prefix]=line.strip()[:512]
     return list(found.values())
 
+
+def startup_trace(path,output):
+    if not path.is_file():return None
+    summary={'log':str(path.relative_to(output)),'hits':[],'unhit':[],'collectorErrors':[]}
+    for line in path.read_text(errors='replace').splitlines():
+        if line.startswith('ORIGINAL_TRACE_HIT '):
+            summary['hits'].append(json.loads(line.split(' ',1)[1]))
+        elif line.startswith('ORIGINAL_TRACE_WINDOW_ENDED '):
+            summary['unhit']=json.loads(line.split(' ',1)[1])['unhit']
+        elif line.startswith(('ORIGINAL_TRACE_UNAVAILABLE ','STARTUP_TRACE_UNAVAILABLE ','ORIGINAL_TRACE_UNEXPECTED_STOP ')):
+            summary['collectorErrors'].append(line[:512])
+        elif line.startswith('ORIGINAL_TRACE_DETACH '):summary['detach']=line.split(' ',1)[1]
+        elif line.startswith('STARTUP_TRACE_EXIT status='):summary['exitStatus']=int(line.split('=',1)[1])
+    summary['note']='Bounded debugger observations; unhit is not proof of non-execution outside the window'
+    return summary
+
 def unimplemented_calls(runtime):
     """Observed ENOSYS counts and bounded original callers, not cause ranking."""
     if not runtime.is_file():return {}
@@ -77,6 +93,7 @@ def failure_summary(result,output):
             'identity':generation['identity'],
             'runtimeLog':str(runtime.relative_to(output)),
             'stderr':str(stderr.relative_to(output)),
+            'startupTrace':startup_trace(directory/(prefix+'.startup.lldb.log'),output),
             'faultContexts':fault_contexts(runtime),
             'unimplementedSyscalls':unimplemented_calls(runtime),
             'observed':witnesses(runtime,('DARWIN_FAULT signal=','DARWIN_NATIVE_FAULT','DARLING_RPC_ERROR ',
