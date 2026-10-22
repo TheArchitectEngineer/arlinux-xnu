@@ -16,5 +16,22 @@
     "bundleIdentifier": "com.culturedcode.ThingsiPhone",
     "build": "31701001",
     "binarySHA256": "cdfe781bd499abdae3a79d30cf634c70a70d3866b3505002185c19c57ec078d4"
-  }
+  },
+  "diagnosticSymbols": [
+    {
+      "image": "ThingsiPhone",
+      "symbol": "-[THWindowSceneDelegate scene:willConnectToSession:options:]",
+      "observeReturn": true
+    },
+    {
+      "image": "ThingsiPhone",
+      "symbol": "-[THWindowSceneDelegate sceneWillEnterForeground:]",
+      "observeReturn": true
+    },
+    {
+      "image": "ThingsiPhone",
+      "symbol": "-[THWindowSceneDelegate sceneDidBecomeActive:]",
+      "observeReturn": true
+    }
+  ]
 }

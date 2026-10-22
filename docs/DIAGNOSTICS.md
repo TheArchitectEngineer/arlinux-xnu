@@ -80,7 +80,10 @@ An app may declare diagnosticSymbols for an original image's exported symbols.
 Only --lifecycle-context enables the existing launcher to stop before dyld and
 attach the bounded original_trace.py collector. It first observes the actual
 main entry, resolves the requested symbol with the existing LLVM reader (including
-stripped Mach-O export tries)
+stripped Mach-O export tries and original instance-method names written as
+`-[Class selector:]`. Those method addresses come from the same image's LP64
+Objective-C class/method metadata, including relative lists, validated against
+file-backed executable segments)
 and actual dyld load address, and records its real breakpoint hit/stack. An
 explicit callbackRegister may observe the supplied code address and its later
 execution; it never invokes that callback.
@@ -671,3 +674,12 @@ target class/selector and public timestamp/duration/paused/FPS at bounded sample
 refresh is fabricated. This extends that optional timer observation to 25 seconds;
 actual timing still depends on the guest run loop. Missing/ticking links alone
 do not prove the cause of an app initialization stall.
+
+Original main-image delegate observations use the existing startup LLDB profile,
+after macho-image.h has copied the program and the actual main entry is reached.
+LLDB owns and removes breakpoints in that mapped code. The manifest declares
+Objective-C method names, never numeric program offsets. This avoids copying
+file-uprobe traps into anonymous memory; it remains timing-altering diagnosis,
+not an ordinary journey acceptance run. The metadata resolver's inspection of
+Things 3.17.1 resolves connect/foreground/active to text offsets 0x52c9f4,
+0x52cb38 and 0x52cb40; only the class/selector names are configured.

@@ -13,6 +13,71 @@ import subprocess
 import time
 
 
+def objc_method_address(data,class_name,selector):
+    """Resolve an original instance method from its own Mach-O metadata.
+
+    This is source inspection, not a guest Objective-C message or runtime patch.
+    Supports LP64 class_ro and ordinary/relative method lists in original IPAs.
+    """
+    segments=[];classlists=[];text=None;cursor=32
+    commands,command_bytes=struct.unpack_from('<II',data,16)
+    end=32+command_bytes
+    if end>len(data) or commands>16384:raise ValueError('invalid original load commands')
+    for _ in range(commands):
+        command,size=struct.unpack_from('<II',data,cursor)
+        if size<8 or cursor+size>end:raise ValueError('invalid original command bounds')
+        if command==0x19:
+            if size<72:raise ValueError('invalid original segment')
+            name,address,length,offset,file_bytes,_,protection,count,_=struct.unpack_from('<16sQQQQiiII',data,cursor+8)
+            if offset+file_bytes>len(data) or count>(size-72)//80:raise ValueError('invalid original segment bounds')
+            segments.append((address,file_bytes,offset,protection))
+            if name.rstrip(b'\0')==b'__TEXT':text=address
+            for n in range(count):
+                name,_,address,length,offset=struct.unpack_from('<16s16sQQI',data,cursor+72+n*80)
+                if name.rstrip(b'\0')==b'__objc_classlist':
+                    if length%8 or offset+length>len(data) or length>1024*1024:raise ValueError('invalid original class list')
+                    classlists.append((offset,length))
+        cursor+=size
+    def position(address,size):
+        for base,length,offset,_ in segments:
+            if base<=address and size<=length-(address-base):return offset+address-base
+        raise ValueError('original Objective-C metadata outside file-backed segments')
+    def pointer(address):return struct.unpack_from('<Q',data,position(address,8))[0]
+    def string(address):
+        offset=position(address,1);limit=min(len(data),offset+1024)
+        end=data.find(b'\0',offset,limit)
+        if end<0:raise ValueError('unbounded original Objective-C name')
+        position(address,end-offset+1)
+        return data[offset:end].decode('utf-8')
+    for offset,length in classlists:
+        for n in range(length//8):
+            cls=struct.unpack_from('<Q',data,offset+n*8)[0]
+            ro=pointer(cls+32)&~7
+            if string(pointer(ro+24))!=class_name:continue
+            methods=pointer(ro+32)
+            if not methods:raise ValueError('original class has no instance method list')
+            flags,count=struct.unpack_from('<II',data,position(methods,8));stride=flags&0xffff
+            relative=bool(flags&0x80000000)
+            if stride<(12 if relative else 24) or count>16384:raise ValueError('invalid original method list')
+            position(methods+8,count*stride)
+            for index in range(count):
+                entry=methods+8+index*stride
+                if relative:
+                    name,_,implementation=struct.unpack_from('<iii',data,position(entry,12))
+                    name=entry+name
+                    if not flags&0x40000000:name=pointer(name)
+                    implementation=entry+8+implementation
+                else:name,_,implementation=struct.unpack_from('<QQQ',data,position(entry,24))
+                if string(name)!=selector:continue
+                if text is None or implementation%4 or not any(
+                        base<=implementation and implementation+4<=base+size and protection&4
+                        for base,size,_,protection in segments):
+                    raise ValueError('original method is outside executable file-backed code')
+                return implementation-text
+            raise ValueError('declared original instance method not found')
+    raise ValueError('declared original Objective-C class not found')
+
+
 def symbol_address(path,name,file_offset=False):
     data=Path(path).read_bytes()
     magic,_,_,_,count,size,_,_=struct.unpack_from('<8I',data)
@@ -27,6 +92,10 @@ def symbol_address(path,name,file_offset=False):
             text_file=struct.unpack_from('<Q',data,offset+40)[0]
         offset+=length
     if base is None:raise ValueError('original text segment unavailable')
+    method=re.fullmatch(r'-\[([^ ]+) ([^\]]+)\]',name)
+    if method:
+        address=objc_method_address(data,*method.groups())
+        return address+(text_file if file_offset else 0)
     # LLVM already handles both nlist and stripped Mach-O export tries. Use
     # the runner's existing pinned toolchain instead of another format reader.
     symbols=subprocess.check_output(['llvm-nm-18','--defined-only','--format=posix',str(path)],text=True,timeout=3)

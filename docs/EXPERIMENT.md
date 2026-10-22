@@ -9,9 +9,11 @@ fails Inbox. The typed CADisplayLink factory observer is installed (no ABI
 unavailable marker), but samples 0, 50, 100 and 250 all record created=0/live=0.
 This supplies no evidence for a registered-but-not-firing display link; it does
 not cover alternative private constructors. Do not implement synthetic refresh
-ticks based on the blank screen. Next inspect original scene-delegate to list
-initialization control flow with the existing debugger after startup copying,
-not file uprobes on the main image. Foreground-active/key-window metadata and
+ticks based on the blank screen. Next observe original scene-delegate connect/foreground/active entry and return
+with the existing startup debugger after code copying. The source-owned metadata
+resolver now accepts original Objective-C instance-method names; the Things
+manifest names those three methods with observeReturn, without numeric sites.
+No file uprobes are placed on the main image. Foreground-active/key-window metadata and
 actual database/extension writes remain established; tasks remain unverified.
 
 The first same-source run 39768611350 did not launch the original app: all IPA
