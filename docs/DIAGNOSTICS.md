@@ -385,11 +385,16 @@ view transforms and layer geometry/clipping/contents properties. It changes
 no layout or drawing. Use APP_RENDER_GEOMETRY alongside the composed screenshot
 to distinguish a real layout overlap from lost masks/transforms in composition;
 calculation success alone does not certify rendering fidelity.
-Raw frame captures publish by atomic rename only after complete write/close.
-An interrupted temporary frame is explicitly unpublished and removed before
-encoding; the previous completed frame remains intact. Final published-frame
-size checks still fail on corruption. Run 39515854314 validates the encoding path
-after the interrupted-writer failure in 39515278534.
+Composed screenshots remain the display/effect evidence at the original journey
+steps. The main loop no longer rewrites a diagnostic bitmap on every paint.
+On failure the existing LLDB collector reads one completed source buffer while
+the actual process is stopped, excluding drawing slots and validating the
+readable non-executable mapping and a 64 MiB byte budget. It records the original
+PID, buffer sequence, slot and dimensions; this is not proof of presentation.
+Raw captures publish by atomic rename only after complete write/close. Partial
+captures remain unpublished and are removed before the existing PNG conversion;
+published-frame size checks still fail on corruption. A successful journey needs
+no additional raw bitmap because its actual composed screenshots are retained.
 
 ## Runtime boundaries
 
@@ -418,8 +423,9 @@ is evidence for storage adaptation, not a daemon implementation. Embedded XML-on
 entitlements require DER transmutation for the native iOS SecTask consumer; a
 successful empty DER reply would incorrectly discard the input's declared groups.
 
-src/diagnostics/ios-ui.h owns optional capture/view-tree diagnostics. Those run on
-the genuine UIKit main loop and use raw syscalls, never host libc/TLS. They do not
+src/diagnostics/ios-ui.h owns the optional one-time view-tree diagnostic, using
+raw syscalls on the genuine UIKit main loop. Source-buffer capture belongs to
+the existing stopped-process collector in tools/app_suite/dyld_metadata.py. They do not
 change layout, call control actions or supply implementation. API export/code
 inspection is opt-in with ARLINUX_DIAGNOSTICS; production imports are the distinct
 linkage contract in ios-framework-api.h. Required imports are not feature coverage.

@@ -10,9 +10,8 @@ static struct native_ui_state {
     void *pixels,*context[2],*color_space;
     struct darwin_frame_control *control;
     uint32_t width,height,sequence;
-    int notify,observer,drawing;
+    int notify,observer,drawing,inspect_tree;
     uint32_t pid,incarnation;
-    char capture_path[1024];
 } ui={.notify=-1};
 enum { NATIVE_CG_ALPHA_NONE_SKIP_FIRST=6, NATIVE_CG_BYTE_ORDER_32_LITTLE=2U<<12 };
 extern void darwin_objc_rect(void *object,void *selector,uint64_t message,uint64_t output[4]);
@@ -34,11 +33,7 @@ void darwin_native_ui_output(void *pixels,uint32_t width,uint32_t height,
         ui.pid=0; ui.incarnation=0;
     }
     /* Called before guest entry, while the host's own libc/TLS is active. */
-    const char *directory=getenv("ARLINUX_CAPTURE_DIR");
-    if (directory) {
-        int count=snprintf(ui.capture_path,sizeof(ui.capture_path),"%s/frame-%ld.bgra",directory,(long)getpid());
-        if (count<0 || count>=(int)sizeof(ui.capture_path)) ui.capture_path[0]=0;
-    }
+    ui.inspect_tree=getenv("ARLINUX_CAPTURE_DIR")!=NULL;
 }
 static void native_ui_frame(void *observer,uint64_t activity,void *info)
 {
@@ -103,7 +98,6 @@ static void native_ui_frame(void *observer,uint64_t activity,void *info)
             rendered++;
         }
         if (rendered) {
-            native_ui_capture(pixels,bytes);
             ui.control->sequence[slot]=++ui.sequence;
             __atomic_store_n(ui.control->state+slot,D_FRAME_READY,__ATOMIC_RELEASE);
             uint64_t token=1;

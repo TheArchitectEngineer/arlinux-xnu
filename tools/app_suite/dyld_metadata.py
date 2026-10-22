@@ -11,6 +11,44 @@ import struct
 import lldb
 
 
+def capture_frame(target,directory):
+    """One stopped-process source buffer, never per-frame guest-main-loop I/O."""
+    try:
+        process=target.GetProcess()
+        if process.GetState()!=lldb.eStateStopped:raise ValueError('original process is not stopped')
+        ui=target.FindFirstGlobalVariable('ui')
+        if not ui.IsValid():raise ValueError('original renderer metadata unavailable')
+        def field(name):return ui.GetChildMemberWithName(name).GetValueAsUnsigned()
+        width,height=field('width'),field('height');size=width*height*4
+        if not (0<width<=8192 and 0<height<=8192 and size<=64*1024*1024):
+            raise ValueError('source frame outside diagnostic byte budget')
+        control=ui.GetChildMemberWithName('control').Dereference()
+        state=control.GetChildMemberWithName('state');sequences=control.GetChildMemberWithName('sequence')
+        choices=[(sequences.GetChildAtIndex(i).GetValueAsUnsigned(),i) for i in range(2)
+                 if state.GetChildAtIndex(i).GetValueAsUnsigned() in (0,2,3)]
+        sequence,slot=max(choices,default=(0,0))
+        if not sequence:raise ValueError('no completed source buffer; drawing slots excluded')
+        address=field('pixels')+slot*size
+        region=lldb.SBMemoryRegionInfo();error=process.GetMemoryRegionInfo(address,region)
+        if error.Fail() or not region.IsReadable() or region.IsExecutable() or address+size>region.GetRegionEnd():
+            raise ValueError('source frame outside readable non-executable mapping')
+        output=Path(directory)/f'frame-{process.GetProcessID()}.bgra'
+        temporary=output.with_suffix('.bgra.tmp')
+        with temporary.open('wb') as stream:
+            stream.write(struct.pack('<III',width,height,width*4))
+            for offset in range(0,size,131072):
+                count=min(131072,size-offset);error=lldb.SBError()
+                data=process.ReadMemory(address+offset,count,error)
+                if error.Fail() or len(data)!=count:raise ValueError('incomplete source frame read: '+str(error))
+                stream.write(data)
+        temporary.replace(output)
+        print('ORIGINAL_SOURCE_FRAME',json.dumps(dict(pid=process.GetProcessID(),sequence=sequence,slot=slot,
+            width=width,height=height,bytes=size,path=str(output),
+            note='Completed source buffer; composed journey screenshots remain display acceptance')))
+    except (ValueError,OSError,OverflowError) as error:
+        print('ORIGINAL_SOURCE_FRAME_UNAVAILABLE',str(error))
+
+
 def collect(target, info_address, runtime_path):
     owned_images=[]
     process=target.GetProcess()

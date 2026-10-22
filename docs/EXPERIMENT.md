@@ -214,6 +214,25 @@ SHOULD_NARROW priority, counted workers and decision, without changing schedulin
 Its invocation counter is included in the existing process collector so an
 unused syscall path can be ruled out before attempting a scheduling repair.
 
+The same source c55f64044e7e9adf92ca967ee65759d9d69f8e79 was then measured in
+ordinary [39713029819](https://github.com/taowen/arlinux-xnu/actions/runs/39713029819)
+(PID 5744/startTicks 21449) and read-only-profile, no-startup-breakpoint
+[39713335953](https://github.com/taowen/arlinux-xnu/actions/runs/39713335953)
+(PID 5796/startTicks 22232). Both still fail Inbox; both retain 84 verified files.
+Receipts are respectively
+**507150c9f9fb4539b1e057f62308120635f54fb44805819fceb5e5cb30184da6** and
+**75d5a822fa08f59a248cc5cb5a004abe60572d94596bc8341f7558afeced70cc**.
+The actual SHOULD_NARROW invocation count is zero: the known policy mismatch
+does not explain this observed stall. No new scheduling behavior was installed.
+The no-breakpoint profile alone also does not establish upgrade completion.
+
+The latter main-thread stack is inside native_ui_capture, which overwrote about
+4 MB on every Things paint. This instrumentation cost is now removed from the
+guest main loop. Actual composed journey screenshots remain unchanged; failure
+collection takes one bounded, completed shared source buffer through the same
+LLDB attachment. This reduces repeated diagnostic I/O without weakening effect
+checks. Whether it affects the startup stall remains unverified.
+
 ## Reusable changes and outstanding boundary
 
 XML shared-group membership resolves to actual Linux roots; vectored writes,

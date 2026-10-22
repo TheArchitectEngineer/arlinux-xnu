@@ -222,6 +222,10 @@ class Processes:
         pid = live['process'].pid
         commands = ['settings set auto-confirm true', 'thread backtrace all --count 24',
                     'register read pc sp x0 x1 x2 x3 x4 x5 x6 x7', 'image list', 'process detach']
+        frame_directory=self.directory/f"{live['app']}-{live['generation']}-renderer"
+        frame_script=ROOT/'tools/app_suite/dyld_metadata.py'
+        commands.insert(-1,'script import runpy; '+f'runpy.run_path({str(frame_script)!r})["capture_frame"]('
+            f'lldb.debugger.GetSelectedTarget(),{str(frame_directory)!r})')
         # Exact original Atlas fault: retain its source-defined Image metadata,
         # not Mach-O bytes or an arbitrary heap dump. The actual x19 object
         # must lie entirely in a writable non-executable original VM range.

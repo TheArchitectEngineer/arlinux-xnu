@@ -16,7 +16,7 @@ static void native_ui_layout_description(void *window)
      * on its normal main run loop; never invoke control actions or alter layout.
      * Limit text emitted by this runtime, and never call host stdio with guest TLS.
      */
-    if (!ui.capture_path[0] || ui.sequence!=1) return;
+    if (!ui.inspect_tree || ui.sequence!=1) return;
     void *selector=native_ui_selector("recursiveDescription");
     if (!((signed char (*)(void *,void *,void *))(uintptr_t)ui.api.message)
             (window,native_ui_selector("respondsToSelector:"),selector)) return;
@@ -28,38 +28,4 @@ static void native_ui_layout_description(void *window)
     RAW(SYS_write,native_trace_fd,marker,sizeof(marker)-1,0,0,0);
     RAW(SYS_write,native_trace_fd,text,length,0,0,0);
     RAW(SYS_write,native_trace_fd,"\n",1,0,0,0);
-}
-static void native_ui_capture(void *pixels,unsigned long bytes)
-{
-    if (!ui.capture_path[0]) return;
-    /* Retain the last completed render, not only a possibly empty first frame. */
-    char temporary[sizeof(ui.capture_path)+4];
-    unsigned long name=0;
-    while (ui.capture_path[name]) { temporary[name]=ui.capture_path[name];name++; }
-    temporary[name++]='.';temporary[name++]='t';temporary[name++]='m';temporary[name++]='p';temporary[name]=0;
-    long fd=RAW(SYS_openat,AT_FDCWD,temporary,O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC,0600,0,0);
-    if (fd<0) { trace_record("UI_FRAME_CAPTURE_ERROR fd=0x",fd,0,0); return; }
-    uint32_t header[3]={ui.width,ui.height,ui.width*4};
-    unsigned long header_offset=0;
-    long written=0;
-    while (header_offset<sizeof(header)) {
-        written=RAW(SYS_write,fd,(unsigned char *)header+header_offset,sizeof(header)-header_offset,0,0,0);
-        if (written==-EINTR) continue;
-        if (written<=0) break;
-        header_offset+=written;
-    }
-    unsigned long offset=0;
-    while (header_offset==sizeof(header) && offset<bytes) {
-        written=RAW(SYS_write,fd,(unsigned char *)pixels+offset,bytes-offset,0,0,0);
-        if (written==-EINTR) continue;
-        if (written<=0) break;
-        if (written>0) offset+=written;
-    }
-    long closed=RAW(SYS_close,fd,0,0,0,0,0);
-    long published=-EIO;
-    if (header_offset==sizeof(header) && offset==bytes && !closed)
-        published=RAW(SYS_renameat,AT_FDCWD,temporary,AT_FDCWD,ui.capture_path,0,0);
-    if (published) RAW(SYS_unlinkat,AT_FDCWD,temporary,0,0,0,0);
-    trace_record("UI_FRAME_CAPTURE_PUBLISH status=0x",published,offset,closed);
-    trace_record("UI_FRAME_CAPTURE bytes=0x",offset,bytes,written<0 ? written : 0);
 }
