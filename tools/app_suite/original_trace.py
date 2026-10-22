@@ -11,20 +11,20 @@ import runpy
 import struct
 import subprocess
 import time
-import lldb
 
 
-def symbol_address(path,name):
+def symbol_address(path,name,file_offset=False):
     data=Path(path).read_bytes()
     magic,_,_,_,count,size,_,_=struct.unpack_from('<8I',data)
     if magic!=0xfeedfacf or count>16384 or size>16*1024*1024:
         raise ValueError('unsupported original Mach-O metadata')
-    offset=32;base=None
+    offset=32;base=None;text_file=None
     for _ in range(count):
         command,length=struct.unpack_from('<II',data,offset)
         if length<8 or offset+length>32+size:raise ValueError('invalid Mach-O commands')
         if command==0x19 and data[offset+8:offset+24].rstrip(b'\0')==b'__TEXT':
             base=struct.unpack_from('<Q',data,offset+24)[0]
+            text_file=struct.unpack_from('<Q',data,offset+40)[0]
         offset+=length
     if base is None:raise ValueError('original text segment unavailable')
     # LLVM already handles both nlist and stripped Mach-O export tries. Use
@@ -33,11 +33,12 @@ def symbol_address(path,name):
     for line in symbols.splitlines():
         fields=line.split()
         if len(fields)>=3 and fields[0]==name and fields[1].upper()=='T':
-            return int(fields[2],16)-base
+            return int(fields[2],16)-base+(text_file if file_offset else 0)
     raise ValueError('declared original symbol not found: '+name)
 
 
 def trace(debugger,specification,runtime_path,stderr_path):
+    import lldb
     target=debugger.GetSelectedTarget();process=target.GetProcess()
     deadline=time.monotonic()+20
     debugger.SetAsync(True)

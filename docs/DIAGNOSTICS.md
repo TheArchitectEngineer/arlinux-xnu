@@ -99,6 +99,20 @@ until its actual effects pass; debugger success cannot replace those effects.
 Reports retain hits, unhit observations, collector errors and detach status as
 separate startupTrace evidence. Startup tracing time counts as diagnosticSeconds,
 so it is not mistaken for ordinary app effect time.
+
+For an original-app ordering failure that changes under debugger attachment,
+an app may instead declare kernelTraceSymbols (bundle-relative image and exact
+exported symbol). --lifecycle-context then enables entry/return uprobes through
+the existing journey launcher, before the app starts, without a debugger entry
+stop. LLVM resolves actual Mach-O file offsets and the metadata records image
+hashes. Only declared function arguments/receiver/caller addresses are recorded;
+no app action is invoked. Each generation owns a private 128 KiB-per-CPU tracefs
+instance and removes its events during cleanup. No extra runner package or
+separate execution path is used. Setup/cleanup errors, kernel hit/miss counts,
+ring-buffer CPU statistics and original trace records remain beside that
+generation's logs. An unavailable kernel facility or an overflowing trace is
+not evidence of non-execution. Kernel tracing also changes timing; the original
+journey's effects and ordinary execution still require independent acceptance.
 File-mapping failures have a separate eight-request observation budget, retaining
 the original arguments, real descriptor path and saved caller frames even when
 successful startup mappings exhausted the ordinary trace limit. This addresses

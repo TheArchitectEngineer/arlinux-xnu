@@ -97,14 +97,30 @@ class Processes:
         capture.mkdir()
         env['ARLINUX_CAPTURE_DIR'] = str(capture)
         app = self.apps[name]
-        trace_symbols=app.get('diagnosticSymbols',[]) if not self.reference and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' else []
-        if trace_symbols:env['ARLINUX_DEBUG_ENTRY_STOP']='1'
-        if app.get('input',{}).get('kind') in ('firmware','ipa'):
-            env['ARLINUX_INSPECT_APPLICATION']='1'
         if app['build'] != 'passed':
             self.infrastructure_failure=True
             raise RuntimeError('App input failed: '+name+'; '+app.get('error','inspect its build log'))
         binary = ROOT / app['binary']
+        kernel_symbols=app.get('kernelTraceSymbols',[]) if not self.reference and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' else []
+        if kernel_symbols:
+            script=ROOT/'tools/app_suite/uprobe_trace.py'
+            specification=prefix.with_suffix('.kernel-symbols.json')
+            specification.write_text(json.dumps([{'path':str(binary.parent/point['image']),
+                'symbol':point['symbol']} for point in kernel_symbols],indent=2)+'\n')
+            state_path=prefix.with_suffix('.kernel-trace.json')
+            if not hasattr(self,'kernel_traces'):self.kernel_traces=[]
+            self.kernel_traces.append(state_path)
+            with prefix.with_suffix('.kernel-setup.log').open('wb') as log:
+                try:
+                    result=subprocess.run(['sudo','-n','--preserve-env=GITHUB_ACTIONS',sys.executable,str(script),'start',str(specification),str(state_path)],
+                        stdout=log,stderr=subprocess.STDOUT,timeout=15)
+                    log.write(f'\nKERNEL_TRACE_SETUP_EXIT status={result.returncode}\n'.encode())
+                except (OSError,subprocess.SubprocessError) as error:
+                    log.write(('KERNEL_TRACE_SETUP_UNAVAILABLE '+str(error)+'\n').encode())
+        trace_symbols=app.get('diagnosticSymbols',[]) if not self.reference and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' else []
+        if trace_symbols:env['ARLINUX_DEBUG_ENTRY_STOP']='1'
+        if app.get('input',{}).get('kind') in ('firmware','ipa'):
+            env['ARLINUX_INSPECT_APPLICATION']='1'
         arguments=[str(ROOT / 'build/native/macho-native'), '--role', app['kind'], '--dyld',
             str(ROOT / 'build/ios-input/dyld'), '--root', str(ROOT / 'build/ios-input/filesystem/root'),
             '--service-index',str(ROOT/'build/ios-input/xpc-services.plist'),

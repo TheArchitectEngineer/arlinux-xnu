@@ -187,6 +187,14 @@ class Case(Processes,Desktop):
                 if item['process'].stdin: item['process'].stdin.close()
             for stream in self.streams:
                 stream.close()
+            for state in getattr(self,'kernel_traces',[]):
+                if not state.is_file():continue
+                with state.with_suffix('.cleanup.log').open('wb') as log:
+                    try:
+                        subprocess.run(['sudo','-n','--preserve-env=GITHUB_ACTIONS',sys.executable,str(ROOT/'tools/app_suite/uprobe_trace.py'),'stop',str(state)],
+                            stdout=log,stderr=subprocess.STDOUT,timeout=10,check=True)
+                    except (OSError,subprocess.SubprocessError) as failure:
+                        log.write(('KERNEL_TRACE_CLEANUP_FAILED '+str(failure)+'\n').encode())
             for name, app in self.apps.items():
                 if 'helper' not in app:
                     continue

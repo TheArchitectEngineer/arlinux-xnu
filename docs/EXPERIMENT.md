@@ -253,6 +253,13 @@ in runner minutes: feedback was 179 s versus 165 s, and the original app still
 fails Inbox after 30 s. SHOULD_NARROW remains unused. The vendor getter and task
 database initialization have not been reached in this no-startup-breakpoint run.
 
+The next observation follows the original upgrade request, update and trigger
+consumer with kernel uprobes instead of debugger entry stops. It uses the same
+original binary, exact journey and opt-in diagnostic profile, with file offsets
+resolved from exports and a private bounded tracefs instance. Kernel availability,
+hit/miss/overflow metadata and cleanup remain explicit. This collector has not
+yet been runner-verified and does not itself implement a compatibility fix.
+
 ## Reusable changes and outstanding boundary
 
 XML shared-group membership resolves to actual Linux roots; vectored writes,
