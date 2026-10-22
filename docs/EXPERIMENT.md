@@ -2,6 +2,16 @@
 
 ## Scope
 
+Next targeted original control flow: the pinned executable's
+THTaskListSceneLayoutComponent.update constructs a real block and submits it to
+an animate: API; that block calls animateUpdateWithContext:. didFinishUpdate
+records actual stack/state snapshots. These are the app's explicit component
+update cycle, distinct from UIView layoutSubviews. Observe entry/return of these
+three methods with existing post-load LLDB; no new platform behavior or app
+callbacks are supplied. The static metadata resolves text offsets 0xae184,
+0xae220 and 0xb2424; only original method names are configured. Whether this
+update cycle actually blocks list population remains unproven.
+
 Latest read-only geometry evidence: run 39771576263, source
 a4d181a4c63c352e33448ee308d185f6ee0b7735, receipt
 4d6caaebb4d19775cbe9117ce840996ec0879f73bbd7489a277584267fd7b4fe;
