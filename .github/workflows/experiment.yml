@@ -3,8 +3,8 @@ name: iOS app collection
   workflow_dispatch:
     inputs:
       app:
-        description: all, or comma-separated app IDs (partial run)
-        default: all
+        description: Explicit app IDs, or all (full regression); use all with an exact case selection
+        required: true
         type: string
       case:
         description: Optional exact comma-separated journey IDs; only their apps are built

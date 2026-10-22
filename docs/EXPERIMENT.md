@@ -65,15 +65,15 @@ that a display difference is a rendering bug.
 
 ## Latest complete collection: failed, 19/23
 
-[Run 39702562664](https://github.com/taowen/arlinux-xnu/actions/runs/39702562664),
-source **46ce1f273e46a36a47d80dc860794c6c00008502**, attempt 1, passes 19/23
+[Run 39709336319](https://github.com/taowen/arlinux-xnu/actions/runs/39709336319),
+source **5ef9ba3c17ca07d968d8fef8e10585417d22d370**, attempt 1, passes 19/23
 journeys. All 17 previously passing journeys remain passing, including both
 original Calculator phone cases, Notes persistence, Network and the session
 scenarios. Two new scheduling probe journeys pass; its timer/I/O journey fails.
 Things, Web input and Share remain failed. This is not a full-suite pass.
-Receipt **01ef74f69645653c466acc49fa2a6ddeb185c3340d5c188f4f2c03a1e06f3cb5**
-and all 426 files verify. Dispatch-to-completion was 422 s; measured journeys
-278.2 s including 41.6 s diagnosis. Android remains unverified.
+Receipt **81f850f83ccfb300db90a7a99ce8b81510fc07fcbebd07a40876488ec6d91102**
+and all 435 files verify. Dispatch-to-completion was 429 s; measured journeys
+282.2 s including 41.6 s diagnosis. Android remains unverified.
 
 ## Focused scheduling probe: real failures, separate from original acceptance
 
@@ -112,7 +112,7 @@ read-handler delivery. This run changes diagnostics only, not subscription polic
 
 ## Things: original database-upgrade UI, no task acceptance
 
-The full run's Things process 7131/startTicks 28329 displays Upgrading Database
+The full run's Things process 7189/startTicks 38332 displays Upgrading Database
 and fails Inbox after 30.085 s; all 22 later task steps are blocked. The original
 IPA/version/hash remain fixed in APPS.md and apps/things/app.json. No original
 task creation, editing, completion or persistence has passed.
@@ -128,12 +128,39 @@ is a reported service failure; no such daemon process was observed launching.
 Receipt **35d22eade8569ae16ea026f4ca51a19f64e3b3071fa7bf44d1da5b661a2d6eb0**
 and all 85 files verify. The trace alters timing and cannot certify normal launch.
 
-The shared replacement-directory adapter now uses a real unique mkdtemp on the
+The shared replacement-directory adapter uses a real unique mkdtemp on the
 target filesystem and preserves failures, forwarding other directory requests
-to Foundation. Its actual invocation has not been observed in later ordinary
-Things runs, so creation and its effect on Things remain unverified. A normal
-run and a lifecycle-observation run without breakpoints both still stop at the
-upgrade UI. Standing Things private-symbol breakpoints have been removed.
+to Foundation. Ordinary Things runs still stop at the upgrade UI. The opt-in
+trace follows the original upgrade request, the next database-component update
+and its actual same-thread return; it never invokes an application action.
+
+Diagnostic [39708697684](https://github.com/taowen/arlinux-xnu/actions/runs/39708697684),
+source 10c93e52dba8d716f2ae4cbf09c1d3776280dc97, observed that update and return,
+actual replacement-directory creation, then an uncaught original SQLite error
+4618 on a background worker. The original shared-memory-file initialization
+called ftruncate(fd, 3), syscall 201, and received ENOSYS. SQLite identifies 4618
+as [SQLITE_IOERR_SHMOPEN](https://www.sqlite.org/rescode.html#ioerr_shmopen).
+This is an original-app storage failure, separate from the probe READ rejection.
+The run's receipt **d8bfb66c1fdc8e59c21588b5c734f0db8f83ef4cb17249674157595326b0aef3**
+and the four relevant stderr/runtime/startup-trace/symbol files individually
+verify. Its whole archive does NOT verify: Actions omitted hidden temporary
+database files that the receipt recorded. Result uploads now include hidden
+files on both platforms; the incomplete archive is not accepted as a full receipt.
+
+The runtime now forwards ARM64 ftruncate's descriptor and 64-bit length to the
+real Linux syscall, preserving errors. Diagnostic [39709263488](https://github.com/taowen/arlinux-xnu/actions/runs/39709263488),
+source 5ef9ba3c17ca07d968d8fef8e10585417d22d370, verifies receipt
+**3bca860640e46f229005af93830fa729f87b5d5fc6d19819c95b6139d33b4e90** and 86 files.
+The upgrade request/update/return again execute, but no database creation or
+ftruncate occurs in this run; Inbox still fails. It does not validate the new
+ftruncate path or prove that the ordinary stall shares the SQLite failure.
+The later ordinary full run also creates no task database and does not exercise
+ftruncate. Static inspection of the pinned ThingsCommon binary shows update
+queuing closures through FoundationAdditions' runInNextUpdatePass. The next
+targeted diagnostic observes that exported submission, its actual return and
+the supplied callback's execution with the existing one-shot collector. The
+original caller stack must identify whether this is the database component;
+the first submission by a different component cannot establish its progress.
 
 ## Reusable changes and outstanding boundary
 

@@ -5,7 +5,7 @@ Linux/Android. **Counter and Swift/UIKit interaction, close/relaunch, Console
 and Foundation journeys pass on Linux. Notes also passes text entry, atomic save
 and new-process readback. Foreground Foundation HTTP now passes a real request,
 normal close and a second request from a new process. The full run
-39702562664 passes 19/23 journeys, preserving the prior 17 passes and adding two
+39709336319 passes 19/23 journeys, preserving the prior 17 passes and two
 scheduling probe passes; Things, Web, Share and probe timer/I/O remain incomplete.
 Apple's original Calculator binary passes
 real composed display, external pointer calculation and normal close/relaunch
@@ -38,7 +38,7 @@ The sole workstation entry is `./build.sh`; Bash, Python 3 and authenticated
 GitHub CLI are required. Compilation and execution happen only on hosted runners.
 
 ```bash
-./build.sh build                         # entire app collection plus two-app scenarios
+./build.sh build --app all               # explicit full acceptance, after focused fixes pass
 ./build.sh build --app counter --wait --evidence # partial flow, then verified evidence
 ./build.sh build --app counter --reference # same input and journey on Linux and Apple host
 ./build.sh cases                         # list exact journey IDs without dispatch
@@ -57,6 +57,13 @@ Each independent journey gets a fresh shared Mach session and fresh app state;
 relaunch keeps only that journey's state. Concurrency scenarios alone share
 multiple app processes within one journey. Failures do not block unrelated apps.
 Selected subsets are reported as partial; they cannot certify the whole suite.
+An unscoped `build` is rejected before dispatch. Start diagnosis with one exact
+`--case`, read its existing evidence before rerunning, and expand to related
+journeys only after the changed boundary is actually exercised. Run the full
+collection once for a candidate revision, rather than after every edit.
+Enable `--reference` or `--lifecycle-context` only for a named unresolved question;
+debugger-altered runs do not establish ordinary launch behavior. The
+[feedback policy](docs/DIAGNOSTICS.md#short-feedback-loop) explains the limits.
 
 The optional Apple-host reference reuses the same input binaries and journey
 manifests with pinned PlayCover conversion and real host desktop input. It is a

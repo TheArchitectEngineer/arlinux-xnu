@@ -2,8 +2,8 @@
 
 Read the exact run before changing behavior. Use the sole build.sh entry:
 status and report inspect an existing run; download selects its retained evidence.
-See README for commands and APPS.md for acceptance. The default build runs the
-independent app collection, not a timeout/readiness check. Compilation and guest execution
+See README for commands and APPS.md for acceptance. Build requires an explicit
+app or journey selection; full acceptance uses --app all. Compilation and guest execution
 remain on hosted runners, never WSL or the workstation.
 
 The default failure collection symbolizes original stacks and records the live
@@ -164,7 +164,51 @@ one current boundary. It compiles only Counter plus its real shared adapter;
 Linux preparation runs concurrently with the SDK job. The app artifact name
 binds the producer receipt digest and run attempt; source/run/attempt plus every
 product hash are checked before execution. No older app binaries are reused.
-The default `all` still builds/runs the full collection and cross-app scenarios.
+`build` without --app or --case fails locally before GitHub dispatch. Full
+collection and cross-app acceptance requires explicit --app all; the Actions
+form also requires an explicit app input. `cases` lists journeys without using
+a runner.
+
+Choose runs by the question they can answer:
+
+1. Read/report the existing exact run first. Re-symbolize retained evidence or
+   inspect pinned source locally where possible. A failed artifact download,
+   missing log or report error calls for retrieval of that run, never a new build.
+2. State the blocked original-app effect, suspected platform boundary, and the
+   observation that would distinguish the hypothesis. Run one --case, adding
+   --lifecycle-context only if ordinary retained evidence cannot answer it.
+   Add a small probe only when the original app cannot isolate that boundary;
+   probe success does not establish the original app's cause or acceptance.
+3. Check that execution actually reached the changed path and produced the
+   required real result. If it did not, improve targeted observation rather than
+   adding unrelated journeys or repeating the same timeout without a hypothesis.
+   Do not shorten acceptance waits or remove failed effects to save runner time.
+4. After the target effect improves, select related existing journeys by the
+   shared implementation (for example storage/persistence, scheduling or input).
+   Preserve fresh journey state, close/relaunch and actual effect checks.
+5. Run --app all once for a candidate revision after focused work, or explicitly
+   for a cross-cutting change whose impact cannot be bounded. Keep pre-existing
+   failures visible and compare the same journey definitions. Use --reference
+   only for a concrete Apple behavior question; it is not a routine extra job.
+
+Avoid concurrent duplicate runs of the same revision/question. Inspect status
+before retrying an uncertain dispatch; superseded diagnostic runs may be
+cancelled, but an independently useful acceptance run should finish. Do not
+automatically cancel other users' runs. Keep ordinary and traced outcomes
+separate, because attachment changes scheduling.
+
+The existing Linux ccache already reuses unchanged compilation. Full run
+39709336319 recorded 162 hits / 8 misses, but still spent 286 seconds executing
+journeys; Things accounted for about 42 seconds. Dispatch-to-completion was
+429 seconds, with 56 seconds of toolchain installation and 41 seconds of userland
+preparation in the Linux job; the parallel Mac compilation took 65 seconds.
+These are measured durations, not a billing calculation or a promise that a
+focused run eliminates setup costs. Scope reduction is the first improvement.
+Further cache work should target measured repeated preparation and source-owned
+SDK products using complete input/output hashes, while retaining fresh run
+provenance. Do not cache test results as current execution, or bypass input
+verification with an old artifact. Do not add another orchestration framework
+or a separate heavyweight cache pipeline before demonstrating its savings.
 
 For one worker behavior or cross-app scenario, use `--case` with exact IDs from
 `./build.sh cases`. Dispatch, SDK compilation and execution share one selector:
