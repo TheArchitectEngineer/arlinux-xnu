@@ -162,6 +162,20 @@ the supplied callback's execution with the existing one-shot collector. The
 original caller stack must identify whether this is the database component;
 the first submission by a different component cannot establish its progress.
 
+Focused [39710756996](https://github.com/taowen/arlinux-xnu/actions/runs/39710756996),
+source 1630a3731e85aff9fd09e703de9d45058768549d, PID 5854/startTicks 18860,
+still fails Inbox. Receipt
+**fc6640325c47d9c92da21d16a7d63e645c35cfdc8d8521b0f91ec29cc9b977c1**
+and all 86 files verify. The exported runInNextUpdatePass entry is unhit in the
+20-second trace; the expected callback submission has not been established.
+The recorded update return matches thread/address but did not record its entry
+stack pointer. The collector now requires that pointer as well to disambiguate
+nested invocations before another return observation is used to exclude a stall.
+This diagnostic correction has not yet been runner-verified. The focused run
+took 211 seconds, versus 429 for the full collection; its 64.3-second journey
+includes 34.1 seconds of diagnosis, and all 170 Linux compile calls hit ccache.
+It does not validate ftruncate, original task behavior or Android execution.
+
 ## Reusable changes and outstanding boundary
 
 XML shared-group membership resolves to actual Linux roots; vectored writes,

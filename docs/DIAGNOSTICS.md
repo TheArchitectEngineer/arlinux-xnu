@@ -86,7 +86,9 @@ explicit callbackRegister may observe the supplied code address and its later
 execution; it never invokes that callback.
 An optional afterSymbol arms a one-shot symbol only after the named entry is
 actually hit, separating initial setup from the update following a request.
-observeReturn follows that hit's actual link register on the same thread; it
+observeReturn follows that hit's actual link register on the same thread and
+matches its entry stack pointer, so a nested call at the same return address
+cannot consume the observation. Mismatches are counted with four sample records. It
 does not change control flow or infer a successful operation from a return.
 The 20-second observation window,
 unhit breakpoints, unavailable metadata and detach result stay in the generation's

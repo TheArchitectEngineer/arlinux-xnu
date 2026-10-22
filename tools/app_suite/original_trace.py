@@ -47,7 +47,7 @@ def trace(debugger,specification,runtime_path,stderr_path):
     for name in ('SIGSYS','SIGSTOP'):
         number=signals.GetSignalNumberFromName(name)
         signals.SetShouldStop(number,False);signals.SetShouldNotify(number,False)
-    breakpoints={};deferred=[]
+    breakpoints={};deferred=[];return_mismatches=0
     def arm(record):
         point=target.BreakpointCreateByAddress(int(record['address'],16))
         if record.get('thread'):point.SetThreadID(record['thread'])
@@ -69,12 +69,26 @@ def trace(debugger,specification,runtime_path,stderr_path):
             for thread in process:
                 if thread.GetStopReason()!=lldb.eStopReasonBreakpoint:continue
                 key=thread.GetStopReasonDataAtIndex(0)
-                record=breakpoints.pop(key,None)
-                if record is not None:stopped.append((thread,key,record))
+                record=breakpoints.get(key)
+                if record is not None:
+                    # A recursive caller can reuse the same link register on
+                    # this thread. Only the entry stack pointer identifies the
+                    # invocation whose return we are observing (AAPCS64).
+                    if record.get('stackPointer') and thread.GetFrameAtIndex(0).GetSP()!=int(record['stackPointer'],16):
+                        return_mismatches+=1
+                        if return_mismatches<=4:
+                            print('ORIGINAL_TRACE_RETURN_OTHER_INVOCATION',json.dumps(dict(
+                                symbol=record['symbol'],tid=thread.GetThreadID(),
+                                expectedSP=record['stackPointer'],actualSP=hex(thread.GetFrameAtIndex(0).GetSP()))))
+                        stopped.append((thread,key,None))
+                        continue
+                    breakpoints.pop(key)
+                    stopped.append((thread,key,record))
             if not stopped:
                 print('ORIGINAL_TRACE_UNEXPECTED_STOP',process.GetState())
                 break
             for thread,key,record in stopped:
+                if record is None:continue
                 target.BreakpointDelete(key)
                 print('ORIGINAL_TRACE_HIT',json.dumps(dict(tid=thread.GetThreadID(),**record)))
                 if record['stage']=='original-main':
@@ -100,7 +114,9 @@ def trace(debugger,specification,runtime_path,stderr_path):
                         if record.get('observeReturn'):
                             address=frame.FindRegister('x30').GetValueAsUnsigned()
                             if not address or address%4:raise ValueError('original return address invalid')
-                            arm(dict(stage='return',address=hex(address),symbol=record['symbol'],thread=thread.GetThreadID()))
+                            stack=frame.GetSP()
+                            if not stack or stack%16:raise ValueError('original entry stack pointer invalid')
+                            arm(dict(stage='return',address=hex(address),symbol=record['symbol'],thread=thread.GetThreadID(),stackPointer=hex(stack)))
                     if record.get('callbackRegister'):
                         address=frame.FindRegister(record['callbackRegister']).GetValueAsUnsigned()
                         if not address or address%4:raise ValueError('original callback address invalid')
@@ -109,7 +125,7 @@ def trace(debugger,specification,runtime_path,stderr_path):
                         print('ORIGINAL_TRACE_ARMED',json.dumps(breakpoints[point.GetID()]))
             process.Continue()
             if not breakpoints:break
-        print('ORIGINAL_TRACE_WINDOW_ENDED',json.dumps(dict(unhit=list(breakpoints.values())+deferred)))
+        print('ORIGINAL_TRACE_WINDOW_ENDED',json.dumps(dict(unhit=list(breakpoints.values())+deferred,returnInvocationMismatches=return_mismatches)))
     except Exception as error:
         print('ORIGINAL_TRACE_UNAVAILABLE',str(error))
     finally:
