@@ -17,6 +17,9 @@ The first-screen/reopen journey is an initial launch comparison only; its text
 targets still require confirmation against actual UI. It does not certify image
 import, editing or export, and no execution has passed yet. Runner-side source
 availability is also required; a workstation download is not a runner cache.
+Run 39804175373 failed before app execution: the public cache endpoint returned
+HTTP 403 to runner curl. Its browserPage route now exercises normal browser
+download with the same pinned input, without transferring workstation sessions.
 
 The next acquired original-binary candidate is Things iPhone 3.17.1/build
 31701001, bundle ID com.culturedcode.ThingsiPhone. Its community-decrypted IPA
