@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "cases": [{
+    "id": "first-screen-reopen",
+    "display": {"width":375,"height":667,"scale":2},
+    "reference": {"viewport":"desktop"},
+    "steps": [
+      {"do":"launch","app":"pureframe"},
+      {"do":"viewport","width":375,"height":667},
+      {"do":"see","text":"净影工坊|添加照片|选择图片|相册|开始","timeoutSeconds":15},
+      {"do":"close"},
+      {"do":"exit","app":"pureframe"},
+      {"do":"launch","app":"pureframe"},
+      {"do":"see","text":"净影工坊|添加照片|选择图片|相册|开始","timeoutSeconds":15},
+      {"do":"close"},
+      {"do":"exit","app":"pureframe"}
+    ]
+  }]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "pureframe",
+  "name": "PureFrame",
+  "version": "1.2.3",
+  "kind": "application",
+  "pixelAppearance": "mixed",
+  "input": {
+    "kind": "ipa",
+    "url": "https://decrypt.34306.lol/api/v1/download/com.pureframe.app?region=cn",
+    "bytes": 22813663,
+    "sha256": "1bba6c62c2160db804ea915013864f32fb5c80e9ba9e037e768bdabe39baa483",
+    "bundleIdentifier": "com.pureframe.app",
+    "build": "1",
+    "binarySHA256": "f19791ccd9b6b6d0a96f3db35b2dc6b19781306a296edc4a5b4418f777270bf5"
+  }
+}

@@ -7,6 +7,17 @@ source-owned apps compile against Apple's actual SDK. The runtime combines selec
 pinned Apple userland with production Linux-backed adapters and replacements.
 apps/shared/Screen.h is fixture UI layout, never a runtime shim.
 
+PureFrame (净影工坊) 1.2.3 is the next candidate after the Things Apple
+comparison also remained white without observer injection (run 39799642134).
+Its existing public decrypted cache was downloaded without login; the manifest
+pins the archive and original executable hashes. Static input inspection found
+thin ARM64, minimum iOS 16.4 and cryptid 0 in the main executable and five bundled
+frameworks, including React/Hermes. This is not a simple UIKit-only app.
+The first-screen/reopen journey is an initial launch comparison only; its text
+targets still require confirmation against actual UI. It does not certify image
+import, editing or export, and no execution has passed yet. Runner-side source
+availability is also required; a workstation download is not a runner cache.
+
 The next acquired original-binary candidate is Things iPhone 3.17.1/build
 31701001, bundle ID com.culturedcode.ThingsiPhone. Its community-decrypted IPA
 is 52,104,885 bytes, SHA-256
