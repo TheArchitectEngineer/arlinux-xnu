@@ -104,23 +104,39 @@ def prepare_bundle(app,original,info,root,origin,destination=None,platform_libra
 def prepare_ipa_app(app):
     declared=app['input'];directory=ROOT/'build/ipa-input'/app['id']
     directory.mkdir(parents=True,exist_ok=False);archive=directory/'app.ipa'
-    # Mirrors name the same fixed object, never a substitute app/version. Each
-    # route has a wall deadline and all routes share one total budget. Validate
-    # bytes/hash before extraction even when a mirror succeeds.
-    deadline=time.monotonic()+185;errors=[];download_url=None
-    for url in [*declared.get('mirrors',[]),declared['url']]:
-        remaining=deadline-time.monotonic()
-        if remaining<=0:break
-        try:
-            subprocess.run(['curl','--fail','--location','--retry','1','--connect-timeout','10',
-                            '--max-time','60','--retry-max-time','45',
-                            '--output',str(archive),url],check=True,timeout=min(60,remaining))
-        except subprocess.SubprocessError as error:
-            errors.append(str(error));continue
-        download_url=url;break
-    if download_url is None:raise RuntimeError('IPA download routes failed within shared budget: '+'; '.join(errors))
-    if archive.stat().st_size!=declared['bytes'] or sha(archive)!=declared['sha256']:
-        raise RuntimeError('IPA size/SHA-256 mismatch')
+    # Same pinned object through declared routes, not substitute app versions.
+    # Race bounded downloads so two unavailable mirrors cannot delay a healthy
+    # canonical URL by 120 seconds. All partial files remain runner-local.
+    started=time.monotonic();deadline=started+65;errors=[];download_url=None;routes=[]
+    try:
+        for index,url in enumerate(dict.fromkeys([declared['url'],*declared.get('mirrors',[])])):
+            partial=archive.with_name(archive.name+f'.route-{index}')
+            process=subprocess.Popen(['curl','--silent','--show-error','--fail','--location',
+                '--retry','1','--connect-timeout','10','--max-time','60','--retry-max-time','45',
+                '--output',str(partial),url],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+            routes.append((url,partial,process))
+        pending=list(routes)
+        while pending and time.monotonic()<deadline and download_url is None:
+            for route in list(pending):
+                url,partial,process=route
+                if process.poll() is None:continue
+                pending.remove(route)
+                _,error=process.communicate()
+                if process.returncode:
+                    errors.append(f'{url}: '+error.decode(errors='replace')[-512:]);continue
+                if partial.stat().st_size!=declared['bytes'] or sha(partial)!=declared['sha256']:
+                    raise RuntimeError('IPA size/SHA-256 mismatch: '+url)
+                partial.replace(archive);download_url=url;break
+            if download_url is None:time.sleep(.05)
+        if download_url is None:raise RuntimeError('IPA download routes failed within shared budget: '+'; '.join(errors))
+    finally:
+        for _,partial,process in routes:
+            if process.poll() is None:process.kill()
+            process.communicate()
+            partial.unlink(missing_ok=True)
+    download_seconds=round(time.monotonic()-started,3)
+    print('APP_IPA_DOWNLOAD '+json.dumps(dict(app=app['id'],seconds=download_seconds,
+        routes=len(routes),downloadURL=download_url,bytes=declared['bytes'],sha256=declared['sha256'])),flush=True)
     unpacked=directory/'extracted';unpacked.mkdir();seen=set()
     with zipfile.ZipFile(archive) as package:
         entries=package.infolist()
@@ -148,7 +164,7 @@ def prepare_ipa_app(app):
     firmware=json.loads((ROOT/'sources.lock.json').read_text())['iosUserland']
     def version(value):return tuple(int(part) for part in value.split('.'))
     if version(info['MinimumOSVersion'])>version(firmware['version']):raise RuntimeError('IPA requires a newer iOS userland')
-    prepare_bundle(app,original,info,unpacked,{'url':declared['url'],'downloadURL':download_url,'archiveBytes':declared['bytes'],
+    prepare_bundle(app,original,info,unpacked,{'url':declared['url'],'downloadURL':download_url,'downloadSeconds':download_seconds,'archiveBytes':declared['bytes'],
         'archiveSHA256':declared['sha256'],'minimumOSVersion':info['MinimumOSVersion']})
 
 
