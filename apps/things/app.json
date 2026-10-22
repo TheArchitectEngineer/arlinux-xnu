@@ -4,26 +4,6 @@
   "version": "3.17.1",
   "kind": "application",
   "pixelAppearance": "mixed",
-  "diagnosticSymbols": [
-    {
-      "image": "ThingsCommon.framework/ThingsCommon",
-      "symbol": "_$s12ThingsCommon20THCDatabaseComponentC12startUpgrade10completionyyyc_tF",
-      "callbackRegister": "x0"
-    },
-    {
-      "image": "ThingsCommon.framework/ThingsCommon",
-      "symbol": "_$s12ThingsCommon20THCDatabaseComponentC6updateyyF",
-      "afterSymbol": "_$s12ThingsCommon20THCDatabaseComponentC12startUpgrade10completionyyyc_tF",
-      "observeReturn": true
-    },
-    {
-      "image": "FoundationAdditions.framework/FoundationAdditions",
-      "symbol": "_$s19FoundationAdditions16FAReactComponentC15consumeTriggers4withySbq0__SbztXE_tF",
-      "afterSymbol": "_$s12ThingsCommon20THCDatabaseComponentC6updateyyF",
-      "callbackRegister": "x0",
-      "observeReturn": true
-    }
-  ],
   "input": {
     "kind": "ipa",
     "url": "https://archive.org/download/thingsi-phone-3.17.1-le-ti/ThingsiPhone_3.17.1_LeTi.ipa",

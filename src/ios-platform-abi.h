@@ -1,9 +1,9 @@
 /* Private ARLinux guest-platform ABI, not an Apple implementation or syscall.
- * Query v6 returns a sized normal-call API. The syscall handler itself never
+ * Query v7 returns a sized normal-call API. The syscall handler itself never
  * calls UIKit/CF: the real guest dylib constructor invokes it after return. */
 #pragma once
 #include <stdint.h>
-#define ARLINUX_IOS_PLATFORM_ABI_VERSION 6UL
+#define ARLINUX_IOS_PLATFORM_ABI_VERSION 7UL
 #define ARLINUX_IOS_PLATFORM_QUERY 0x4152494fUL
 #define ARLINUX_IOS_PLATFORM_LIBRARY "libarlinux-ios.dylib"
 /* Actual per-dimension limit enforced by the CPU CALayer backing allocator. */
@@ -68,4 +68,7 @@ struct arlinux_ios_platform_api {
     /* Declared app group only: actual canonical Linux path, negative errno on
      * missing membership/storage. Shared across apps using the same group root. */
     long (*group_path)(const char *identifier,char *output,unsigned long capacity);
+    /* Persistent random UUID scoped to this Linux storage root and vendor.
+     * Real file/entropy failures remain negative errno, never a constant ID. */
+    long (*vendor_uuid)(const char *vendor,unsigned char *output,unsigned long size);
 };

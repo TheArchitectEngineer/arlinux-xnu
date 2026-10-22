@@ -180,6 +180,29 @@ took 211 seconds, versus 429 for the full collection; its 64.3-second journey
 includes 34.1 seconds of diagnosis, and all 170 Linux compile calls hit ccache.
 It does not validate ftruncate, original task behavior or Android execution.
 
+Diagnostic [39711398117](https://github.com/taowen/arlinux-xnu/actions/runs/39711398117),
+source 68de123256efcb8395484adb72c7dbff2bd04440, PID 5852/startTicks 55981,
+does reach the actual SQLite shared-memory initialization: syscall 201 returns
+0 after opening main.sqlite-shm. The original upgrade completion and a later
+queued callback execute. Return observations match thread, LR and entry SP,
+with zero invocation mismatches. Receipt
+**ddd324795ec55b27bf4a2ce601d3b5c87d85387df7e35b0938caa88e15bfff7a**
+and all 89 files verify. This is timing-sensitive traced progress, not ordinary
+launch acceptance or proof of a task database surviving. The run took 160 s.
+
+The next real fault is the original main-thread Swift BRK at 0x1001c9afc.
+Its branch at 0x1001c80d4 follows a nil UIDevice.currentDevice.identifierForVendor;
+the optional UUID is then force-unwrapped. The pinned binary's selector refs
+and UIDevice class binding identify that call. A Linux-backed vendor-identity
+adapter now stores a random UUID under the explicitly supplied shared storage
+root, isolated by the non-App-Store bundle-prefix vendor. Creation/readback use
+real file locking, entropy and persistence, preserving failures. No fixed UUID
+or app-specific return value is supplied. App Store vendor metadata and automatic
+reset after the last vendor app is uninstalled remain unsupported; clearing the
+shared development store resets it. This change still needs original-app runner
+verification. The obsolete upgrade breakpoint declarations have been removed;
+the next run uses ordinary execution of the same task journey.
+
 ## Reusable changes and outstanding boundary
 
 XML shared-group membership resolves to actual Linux roots; vectored writes,

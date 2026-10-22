@@ -10,6 +10,7 @@ void arlinux_ios_input_start(const struct arlinux_ios_platform_api *api);
 void arlinux_ios_filesystem_start(const struct arlinux_ios_platform_api *api);
 void arlinux_ios_network_start(const struct arlinux_ios_platform_api *api);
 void arlinux_ios_color_trace_start(void);
+void arlinux_ios_device_start(const struct arlinux_ios_platform_api *api);
 __attribute__((constructor)) static void arlinux_ios_platform_start(void)
 {
     register unsigned long version __asm__("x0")=ARLINUX_IOS_PLATFORM_ABI_VERSION;
@@ -25,6 +26,7 @@ __attribute__((constructor)) static void arlinux_ios_platform_start(void)
     arlinux_ios_lifecycle_diagnose(api);
     arlinux_ios_color_trace_start();
     arlinux_ios_filesystem_start(api);
+    arlinux_ios_device_start(api);
     arlinux_ios_network_start(api);
     arlinux_ios_rendering_start();
     arlinux_ios_input_start(api);

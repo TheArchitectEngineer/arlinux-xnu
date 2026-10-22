@@ -80,6 +80,7 @@ static void native_launch_groups(const char *path,const struct darwin_code_metad
     need(strcmp(canonical,"/") && strlen(canonical)<4096,"group root path");
     int root=open(canonical,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
     if(root<0)die("open group storage root");
+    need(!darwin_native_vendor_root_register(canonical),"register vendor identity storage");
     /* libplist parses the original XML blob; no app IDs or inferred grants.
      * DER-only membership needs a decoder and remains unsupported here. */
     plist_t metadata=NULL;
