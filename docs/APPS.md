@@ -10,9 +10,10 @@ apps/shared/Screen.h is fixture UI layout, never a runtime shim.
 PureFrame (净影工坊) 1.2.3 is the current original-app candidate. Its manifest
 pins the downloaded IPA and main executable; input inspection found ARM64,
 minimum iOS 16.4 and cryptid 0 in the main image and five frameworks, including
-React/Hermes. The exact 22.8 MB IPA is stored in Git because the public endpoint
-returned 403 on runners and Git LFS rejected upload for exceeded account budget.
-The same preparation verifies its archive size/SHA-256 before extraction.
+React/Hermes. The exact 22.8 MB IPA is a versioned GitHub Release asset declared
+in app.json. Its original public endpoint returned 403 on runners; its archive
+size/SHA-256 remain verified before extraction. The IPA has been removed from
+Git history to keep source checkouts small.
 
 Apple run 39808238885 reaches home, dismisses the real introduction, opens the
 history page and shows its distinct empty state, then exits normally and starts

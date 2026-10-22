@@ -13,11 +13,10 @@ completed download must pass size/SHA-256 before use. Pending curls are killed,
 reaped and their partial files removed. An unavailable or mismatched input fails
 explicitly; no other binary is substituted. APP_IPA_DOWNLOAD records actual
 download seconds, route count and selected URL alongside input provenance.
-An IPA declaration may pin a repository path. The same build entry verifies
-its declared size and SHA-256 before using the common archive/executable
-preparation. Its URL remains source provenance, not a fallback to mutable web
-content. Missing input or unmaterialized LFS pointers fail input preparation,
-never silently substitute another app.
+Fixed IPA inputs may be retained as versioned GitHub Release assets, with their
+original acquisition URL recorded separately. The common downloader verifies
+declared archive size/SHA-256 before extraction; source bytes are not stored in
+Git history. Missing or changed assets fail input preparation explicitly.
 Do not attach a standing catalogue of private-service symbol dumps to
 every failure. Use explicit targeted cache lookups only for the current failed
 effect. Production framework adaptation is allowed; the diagnostic harness must

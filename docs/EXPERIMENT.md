@@ -4,8 +4,10 @@
 
 Both backends used source dfe754d51df96d63989a27a30406fc5d9de80648 and the same
 IPA SHA-256 1bba6c62c2160db804ea915013864f32fb5c80e9ba9e037e768bdabe39baa483.
-The exact package is now a regular Git binary input; LFS upload was rejected for
-exceeded account budget. No browser downloader or copied credentials remain.
+The exact package is now a versioned GitHub Release input; its temporary Git
+binary storage has been removed by a history rewrite. Earlier source IDs below
+identify retained run receipts and map through the local filter-repo commit map.
+No browser downloader or copied credentials remain.
 
 Linux run 39809084493, receipt
 2b9b4c83b7cede4cf7783661d6f684906a448dcbdf4ed383047d50b105fd1f26,
