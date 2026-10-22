@@ -9,6 +9,17 @@ import time
 from .context import ROOT,command,sha,identity
 
 class Processes:
+    def stop_kernel_traces(self):
+        for state in getattr(self,'kernel_traces',[]):
+            if not state.is_file():continue
+            with state.with_suffix('.cleanup.log').open('ab') as log:
+                try:
+                    subprocess.run(['sudo','-n','--preserve-env=GITHUB_ACTIONS',sys.executable,
+                        str(ROOT/'tools/app_suite/uprobe_trace.py'),'stop',str(state)],
+                        stdout=log,stderr=subprocess.STDOUT,timeout=10,check=True)
+                except (OSError,subprocess.SubprocessError) as failure:
+                    log.write(('KERNEL_TRACE_CLEANUP_FAILED '+str(failure)+'\n').encode())
+
     def helper_processes(self, name):
         if self.reference:
             raise RuntimeError('iOS extension process identity is not certified by the Apple-host reference')
@@ -103,6 +114,7 @@ class Processes:
         binary = ROOT / app['binary']
         kernel_symbols=app.get('kernelTraceSymbols',[]) if not self.reference and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' else []
         if kernel_symbols:
+            diagnostic_started=time.monotonic()
             script=ROOT/'tools/app_suite/uprobe_trace.py'
             specification=prefix.with_suffix('.kernel-symbols.json')
             specification.write_text(json.dumps([{'path':str(binary.parent/point['image']),
@@ -117,6 +129,7 @@ class Processes:
                     log.write(f'\nKERNEL_TRACE_SETUP_EXIT status={result.returncode}\n'.encode())
                 except (OSError,subprocess.SubprocessError) as error:
                     log.write(('KERNEL_TRACE_SETUP_UNAVAILABLE '+str(error)+'\n').encode())
+            self.steps[-1]['diagnosticSeconds']=round(time.monotonic()-diagnostic_started,3)
         trace_symbols=app.get('diagnosticSymbols',[]) if not self.reference and env.get('ARLINUX_DIAGNOSE_LIFECYCLE')=='1' else []
         if trace_symbols:env['ARLINUX_DEBUG_ENTRY_STOP']='1'
         if app.get('input',{}).get('kind') in ('firmware','ipa'):

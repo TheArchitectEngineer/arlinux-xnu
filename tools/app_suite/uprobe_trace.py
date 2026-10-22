@@ -5,6 +5,7 @@ result. Public entry remains build.sh. No extra runner package is needed.
 Linux contract: docs.kernel.org/trace/uprobetracer.html.
 """
 import hashlib
+import errno
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,11 @@ TRACE=Path('/sys/kernel/tracing')
 
 
 def save(path,value):path.write_text(json.dumps(value,indent=2)+'\n')
+
+
+def error_log():
+    try:return (TRACE/'error_log').read_text()[-8192:]
+    except OSError:return 'kernel error log unavailable'
 
 
 def remove_events(group,events):
@@ -33,6 +39,8 @@ def start(specification,state_path):
             subprocess.run(['mount','-t','tracefs','tracefs',str(TRACE)],check=True,capture_output=True,timeout=5)
         instance.mkdir()
         (instance/'tracing_on').write_text('0')
+        (instance/'trace_clock').write_text('mono')
+        state['clock']=(instance/'trace_clock').read_text()
         (instance/'buffer_size_kb').write_text('128')
         # Record only the requested file-backed original code; no system-wide
         # syscall/scheduler catalogue or payload/string/heap capture.
@@ -50,16 +58,27 @@ def start(specification,state_path):
             for kind,suffix in (('p','entry'),('r','return')):
                 name=f'point{index}_{suffix}_{state["group"]}'
                 fetch=' receiver=%x20:x64 arg0=%x0:x64 arg1=%x1:x64 caller=%x30:x64 stack=$stack:x64' if kind=='p' else ' result=$retval:x64'
-                with (TRACE/'uprobe_events').open('a') as stream:
-                    stream.write(f'{kind}:{state["group"]}/{name} {image}:{offset:#x}{fetch}\n')
+                definition=f'{kind}:{state["group"]}/{name} {image}:{offset:#x}'
+                state['lastCommand']=definition+fetch
+                try:
+                    with (TRACE/'uprobe_events').open('a') as stream:stream.write(definition+fetch+'\n')
+                except OSError as error:
+                    if error.errno!=errno.EINVAL:raise
+                    state.setdefault('fetchUnavailable',[]).append(dict(command=definition+fetch,error=error_log()))
+                    # Counts/timestamps can answer an entry-order question;
+                    # unavailable register values must never be inferred.
+                    state['lastCommand']=definition
+                    with (TRACE/'uprobe_events').open('a') as stream:stream.write(definition+'\n')
                 state['events'].append(name)
                 save(state_path,state)
         (instance/'events'/state['group']/'enable').write_text('1')
         (instance/'tracing_on').write_text('1')
+        state['startedMonotonicNs']=time.monotonic_ns()
         state['status']='active'
     except (OSError,ValueError,subprocess.SubprocessError) as error:
         state['status']='unavailable'
         state['error']=str(error)
+        state['kernelError']=error_log()
         try:
             if instance.exists():
                 (instance/'tracing_on').write_text('0')
@@ -80,6 +99,7 @@ def stop(state_path):
     instance=TRACE/'instances'/group
     try:
         (instance/'tracing_on').write_text('0')
+        state['stoppedMonotonicNs']=time.monotonic_ns()
         (instance/'events'/group/'enable').write_text('0')
         state_path.with_suffix('.log').write_text((instance/'trace').read_text())
         state['cpuStatistics']={p.parent.name:p.read_text() for p in (instance/'per_cpu').glob('cpu*/stats')}

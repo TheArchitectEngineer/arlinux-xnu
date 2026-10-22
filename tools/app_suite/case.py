@@ -108,6 +108,7 @@ class Case(Processes,Desktop):
             if status != 0:
                 raise RuntimeError(f'Normal close returned {status}, expected 0')
             self.steps[-1]['exitStatus'] = status
+            self.stop_kernel_traces()
         elif action == 'alive':
             item = self.processes[name]
             if item['process'].poll() is not None or identity(item['process'].pid) != item['identity']:
@@ -158,7 +159,7 @@ class Case(Processes,Desktop):
                     self.steps[-1].update(status='failed', reason=error,seconds=round(max(0,time.monotonic()-started-self.steps[-1].get('diagnosticSeconds',0)),3))
                     diagnosis_started=time.monotonic()
                     failures=[]
-                    for collect in (lambda:self.snapshot('failure'),self.diagnose):
+                    for collect in (lambda:self.snapshot('failure'),self.stop_kernel_traces,self.diagnose):
                         try: collect()
                         except (RuntimeError,OSError,subprocess.SubprocessError) as diagnostic_error:
                             failures.append(str(diagnostic_error))
@@ -187,14 +188,7 @@ class Case(Processes,Desktop):
                 if item['process'].stdin: item['process'].stdin.close()
             for stream in self.streams:
                 stream.close()
-            for state in getattr(self,'kernel_traces',[]):
-                if not state.is_file():continue
-                with state.with_suffix('.cleanup.log').open('wb') as log:
-                    try:
-                        subprocess.run(['sudo','-n','--preserve-env=GITHUB_ACTIONS',sys.executable,str(ROOT/'tools/app_suite/uprobe_trace.py'),'stop',str(state)],
-                            stdout=log,stderr=subprocess.STDOUT,timeout=10,check=True)
-                    except (OSError,subprocess.SubprocessError) as failure:
-                        log.write(('KERNEL_TRACE_CLEANUP_FAILED '+str(failure)+'\n').encode())
+            self.stop_kernel_traces()
             for name, app in self.apps.items():
                 if 'helper' not in app:
                     continue
