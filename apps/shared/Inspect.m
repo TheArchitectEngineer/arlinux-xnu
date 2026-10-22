@@ -64,7 +64,20 @@ static void collect_layers(CALayer *layer,NSMutableArray *records,unsigned depth
     if(!layer || depth>24 || records.count>=256)return;
     NSUInteger index=records.count;CATransform3D t=layer.transform;
     NSArray *children=layer.sublayers;
-    [records addObject:@{@"parent":@(parent),@"depth":@(depth),
+    NSArray *keys=layer.animationKeys;NSMutableArray *animations=[NSMutableArray new];
+    for(NSString *key in keys) {
+        if(animations.count>=8)break;
+        CAAnimation *animation=[layer animationForKey:key];
+        if(!animation)continue;
+        [animations addObject:@{@"key":key,@"class":NSStringFromClass(animation.class),
+            @"delegateClass":animation.delegate ? NSStringFromClass([(id)animation.delegate class]) : @"<absent>",
+            @"duration":isfinite(animation.duration) ? @(animation.duration) : [NSNull null],
+            @"beginTime":isfinite(animation.beginTime) ? @(animation.beginTime) : [NSNull null],
+            @"timeOffset":isfinite(animation.timeOffset) ? @(animation.timeOffset) : [NSNull null],
+            @"speed":isfinite(animation.speed) ? @(animation.speed) : [NSNull null],
+            @"removedOnCompletion":@(animation.removedOnCompletion)}];
+    }
+    NSMutableDictionary *record=[@{@"parent":@(parent),@"depth":@(depth),
         @"class":NSStringFromClass(layer.class),@"bounds":rect_values(layer.bounds),
         @"position":@[@(layer.position.x),@(layer.position.y)],
         @"hidden":@(layer.hidden),@"opacity":@(layer.opacity),
@@ -74,7 +87,17 @@ static void collect_layers(CALayer *layer,NSMutableArray *records,unsigned depth
         @"maskBounds":rect_values(layer.mask ? layer.mask.bounds : CGRectZero),
         @"transform":@[@(t.m11),@(t.m12),@(t.m13),@(t.m14),@(t.m21),@(t.m22),@(t.m23),@(t.m24),
             @(t.m31),@(t.m32),@(t.m33),@(t.m34),@(t.m41),@(t.m42),@(t.m43),@(t.m44)],
-        @"sublayerCount":@(children.count)}];
+        @"sublayerCount":@(children.count),@"animations":animations,
+        @"animationCount":@(keys.count),@"animationLimitReached":@(keys.count>8)} mutableCopy];
+    /* Public, read-only presentation metadata; never advance or remove an
+     * animation to make an application transition complete. */
+    if(keys.count) {
+        CALayer *presentation=layer.presentationLayer;
+        record[@"presentationAvailable"]=@(presentation!=nil);
+        if(presentation)record[@"presentation"]=@{@"bounds":rect_values(presentation.bounds),
+            @"position":@[@(presentation.position.x),@(presentation.position.y)],@"opacity":@(presentation.opacity)};
+    }
+    [records addObject:record];
     for(CALayer *child in children)collect_layers(child,records,depth+1,(NSInteger)index);
 }
 static void observe_geometry(UIWindow *window) {
@@ -90,7 +113,7 @@ static void observe_geometry(UIWindow *window) {
     UIScreen *screen=window.screen;NSMutableArray *views=[NSMutableArray new],*layers=[NSMutableArray new];
     collect_geometry(window,views,0);
     collect_layers(window.layer,layers,0,-1);
-    NSDictionary *value=@{@"sample":@(sample),@"windowBounds":rect_values(window.bounds),
+    NSDictionary *value=@{@"sample":@(sample),@"mediaTime":@(CACurrentMediaTime()),@"windowBounds":rect_values(window.bounds),
         @"screenBounds":rect_values(screen.bounds),@"nativeBounds":rect_values(screen.nativeBounds),
         @"screenScale":@(screen.scale),@"nativeScale":@(screen.nativeScale),
         @"idiom":@([UIDevice currentDevice].userInterfaceIdiom),

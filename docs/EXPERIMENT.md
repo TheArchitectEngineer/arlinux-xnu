@@ -2,6 +2,24 @@
 
 ## Scope
 
+Animation control run 39786179630 (f7edd4a) passes both Linux journeys,
+including repeated actual callbacks, normal close and new-process repetition.
+UIView completions take 0.361–0.370 seconds; CA delegate stops take
+0.360–0.362 seconds and report finished=true after actual start callbacks.
+The Apple CA delegate journey passes; the UIView journey fails before input
+because desktop-events traps when UIKit inspection precedes WindowServer
+window publication. This is a harness failure, not an animation verdict.
+Report real window absence as null and poll within the existing observation
+deadline; helper errors remain infrastructure failures. Runner validation of
+that fix is pending. Linux has 47 verified result files and Apple has 30.
+
+Generic deferred layout and these timed animation APIs work. Next inspect
+bounded public animation keys and timing/delegate metadata on the original
+Things layer tree, with read-only presentation geometry for animated layers.
+This changes no callbacks or app behavior. It tests whether the original
+transition is still registered, rather than assuming generic completion loss.
+Things Inbox and task/persistence acceptance remain failed.
+
 Run 39784768561 (51643be), receipt
 5c26eff84b5e2292b5fc434953430266db3c2f2e577879948b52c373d1c97d7c,
 verifies 91 files. All later snapshots contain 137 actual layers with no

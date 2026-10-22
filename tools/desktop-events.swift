@@ -19,11 +19,15 @@ case "focus":
 case "close":
     guard application(2).terminate() else { fatalError("Normal termination rejected") }
 case "bounds":
-    let pid=application(2).processIdentifier
+    guard args.count==3,let pid=Int32(args[2]) else { fatalError("Expected app PID") }
     let windows=CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements],kCGNullWindowID) as? [[String:Any]] ?? []
     guard let window=windows.first(where:{ ($0[kCGWindowOwnerPID as String] as? Int32)==pid && ($0[kCGWindowLayer as String] as? Int)==0 }),
         let dictionary=window[kCGWindowBounds as String] as? [String:Any],
-        let bounds=CGRect(dictionaryRepresentation:dictionary as CFDictionary) else { fatalError("No visible app window") }
+        let bounds=CGRect(dictionaryRepresentation:dictionary as CFDictionary) else {
+        // UIKit state can precede WindowServer publication. Report absence;
+        // the journey's existing deadline decides whether it ever appeared.
+        print("null");break
+    }
     let scale=Double(CGDisplayPixelsWide(CGMainDisplayID()))/CGDisplayBounds(CGMainDisplayID()).width
     try output([bounds.minX*scale,bounds.minY*scale,bounds.width*scale,bounds.height*scale])
 case "click":

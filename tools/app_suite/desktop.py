@@ -4,6 +4,7 @@ Production framework adaptation is allowed; the harness supplies no substitute.
 """
 import json
 import re
+import subprocess
 import time
 from pathlib import Path
 from .context import ROOT,command,sha
@@ -51,7 +52,12 @@ class Desktop:
 
     def window(self,state):
         if self.reference:
-            bounds=json.loads(command(ROOT/'build/reference-tools/desktop-events','bounds',self.processes[self.current]['process'].pid,capture_output=True,text=True).stdout)
+            try:
+                bounds=json.loads(command(ROOT/'build/reference-tools/desktop-events','bounds',self.processes[self.current]['process'].pid,capture_output=True,text=True).stdout)
+            except (subprocess.SubprocessError,ValueError):
+                self.infrastructure_failure=True
+                raise
+            if bounds is None:return None
             return bounds[0],bounds[1],bounds[2]/state['viewport'][0],bounds[2]/state['viewport'][0]
         ids=command('xdotool','search','--onlyvisible','--class','[Ww]eston',capture_output=True,text=True).stdout.split()
         if len(ids)!=1:raise RuntimeError('No unique real nested compositor window')
@@ -69,7 +75,11 @@ class Desktop:
         return int(fields['X']),int(fields['Y']),int(fields['WIDTH'])/logical_width,int(fields['HEIGHT'])/logical_height
 
     def screen_rect(self,state,rect):
-        x,y,sx,sy=self.window(state)
+        window=self.window(state)
+        if window is None:
+            self.steps[-1]['windowPendingPolls']=self.steps[-1].get('windowPendingPolls',0)+1
+            return None
+        x,y,sx,sy=window
         return [round(x+rect[0]*sx),round(y+rect[1]*sy),max(1,round(rect[2]*sx)),max(1,round(rect[3]*sy))]
 
     def sample(self,path,rect):
@@ -107,7 +117,11 @@ class Desktop:
                          item['rect'][0]+item['rect'][2]<=right and item['rect'][1]+item['rect'][3]<=bottom]
             if len(matches)>1:raise RuntimeError('Ambiguous structured UI target: '+pattern)
             if matches:
-                path=self.snapshot('observe');rect=self.screen_rect(state,matches[0]['rect']);pixels=self.sample(path,rect)
+                rect=self.screen_rect(state,matches[0]['rect'])
+                if rect is None:
+                    if time.monotonic()>=deadline:raise RuntimeError('No visible Apple-host window before the UI observation deadline: '+pattern)
+                    time.sleep(.2);continue
+                path=self.snapshot('observe');pixels=self.sample(path,rect)
                 self.observations[-1].update(uiState=state,target=matches[0],screenRect=rect,pixels=pixels)
                 # Require ink on a light surface, including native gray controls.
                 # The complement of ink uses the same threshold on both hosts;
@@ -150,7 +164,11 @@ class Desktop:
         while True:
             self.guard();state=self.inspection()
             if state:
-                path=self.snapshot('pixels');rect=self.screen_rect(state,[0,0,*state['viewport']]);pixels=self.sample(path,rect)
+                rect=self.screen_rect(state,[0,0,*state['viewport']])
+                if rect is None:
+                    if time.monotonic()>=deadline:raise RuntimeError('No visible Apple-host window before the pixel observation deadline')
+                    time.sleep(.2);continue
+                path=self.snapshot('pixels');pixels=self.sample(path,rect)
                 self.observations[-1].update(screenRect=rect,pixels=pixels)
                 if pixels[step['color']]>=step['minimum']:return
             if time.monotonic()>=deadline:raise RuntimeError('Missing composed color effect: '+step['color'])
