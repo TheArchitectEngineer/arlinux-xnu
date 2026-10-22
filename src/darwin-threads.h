@@ -26,6 +26,23 @@ static __attribute__((noreturn)) void native_event_worker_start(struct native_th
 static long native_event_worker_return(const unsigned long long *);
 static void native_event_owner_exit(uint64_t);
 static uint32_t registered_pthread_size,registered_tsd,registered_thread_slot;
+/* Observe our actual upcall arguments before entering libpthread. Probing its
+ * shared-cache code is unsafe when Mach copies that page into a shared memfd. */
+static void native_trace_workqueue_entry(struct native_thread *thread,uint64_t buffer,
+                                         uint64_t flags,int count)
+{
+    static unsigned int observations;
+    if (!native_diagnose_syscalls) return;
+    unsigned int index=__atomic_fetch_add(&observations,1,__ATOMIC_RELAXED);
+    if (index>128) return;
+    if (index==128) {
+        trace_record("DARWIN_WORKQUEUE_ENTRY_OMITTED limit=0x",128,0,0);
+        return;
+    }
+    trace_record("DARWIN_WORKQUEUE_ENTRY flags/callback/count=0x",flags,workqueue_start_callback,(uint64_t)(int64_t)count);
+    trace_record("DARWIN_WORKQUEUE_ENTRY pthread/port/stack=0x",thread->pthread,thread->port,thread->stack_low);
+    trace_record("DARWIN_WORKQUEUE_ENTRY buffer/sp/workloop=0x",buffer,thread->guest_sp,thread->workloop_id);
+}
 extern long darwin_clone_thread(struct native_thread *);
 extern char darwin_clone_return[];
 extern __attribute__((noreturn)) void darwin_thread_enter(uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t);
@@ -89,6 +106,7 @@ void darwin_thread_boot(struct native_thread *thread)
 #endif
     if (thread->workqueue>=2) native_event_worker_start(thread);
     if (thread->workqueue) {
+        native_trace_workqueue_entry(thread,0,thread->flags,0);
         darwin_thread_enter(thread->guest_sp,workqueue_start_callback,thread->pthread,thread->port,
                             thread->stack_low,0,thread->flags,0);
     }

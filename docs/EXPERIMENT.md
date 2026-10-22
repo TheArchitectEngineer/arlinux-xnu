@@ -2,6 +2,22 @@
 
 ## Scope
 
+Current focused question: Things' accepted upgrade trigger submits an original
+dispatch block, but the block is not observed executing (baseline 39723784073).
+Run 39732010413 added a libpthread shared-cache uprobe and instead stopped at
+SIGTRAP at that exact probe site, 0x1d1b96ab4. Its original instruction is `stp`,
+while the fault map shows the page now belongs to a `darling-shared` memfd.
+The Mach remapping path copies already-adapted process memory; a copied probe
+breakpoint is a plausible diagnostic-induced trap, not proof of an app defect.
+The shared-cache probe is removed, with bounded actual upcall-argument records
+at the runtime's existing entry/resume boundaries instead. No scheduler behavior
+is changed. Next execution: only things--offline-task-persistence with the
+read-only profile. Correlate ordinary worker flags/counts with the original
+submit/block/worker sites. If it still traps, inspect the new exact mapping and
+fault before changing workqueue policy; if it stalls, use the observed submission
+and worker evidence to choose a reusable scheduling repair. Neither outcome
+passes task acceptance without actual Inbox/create/edit/complete/relaunch effects.
+
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.
 The collection currently has 12 source-owned apps, original Calculator and Things, 20 app

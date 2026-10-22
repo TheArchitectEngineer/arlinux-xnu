@@ -102,10 +102,14 @@ so it is not mistaken for ordinary app effect time.
 
 For an original-app ordering failure that changes under debugger attachment,
 an app may instead declare kernelTraceSymbols (bundle-relative image and exact
-exported symbol). A framework stored only in the firmware dyld shared cache may
-declare its exact absolute image path with `dyldCacheImage`; the collector resolves
-the symbol and backing split-cache file offset through the existing UUID-checked
-cache index. A stripped callback may instead declare its observed
+exported symbol). Firmware dyld-cache probes are rejected: Mach remapping can
+copy the temporary breakpoint into a shared memfd outside the original inode's
+probe ownership. Run 39732010413 faulted with SIGTRAP at the probed pthread entry
+after its page became `darling-shared`; its original instruction is an ordinary
+stack store. This is a diagnostic-interference hypothesis, not an original-app
+crash verdict. Observe actual workqueue upcall arguments at the runtime boundary
+instead; these bounded records do not alter executable bytes. A stripped app
+callback may instead declare its observed
 fileOffset, exact imageSHA256, observedRun and label; the image hash is required
 before registration. Such sites come from actual original call arguments or
 the pinned disassembly of an observed handler's direct call/block literal, and
@@ -188,6 +192,31 @@ the same original process stderr/cache; an abort symbol alone is not a cause.
 
 ## Short feedback loop
 
+Runner time is spent to answer a question, not to validate every edit. Use this
+decision table before dispatching; it does not add a new build mode or test suite.
+
+| Change or question | Work before spending another runner | Next execution |
+| --- | --- | --- |
+| Documentation, report formatting, lost download | Read or retrieve the exact retained run; inspect the diff locally | None |
+| Collector path/import/configuration repair | Inspect the whole dependency chain: standalone imports, IPA versus shared-cache backing, caller identity and mount access; perform available local syntax/import checks without executing guest code | One affected case, with the requested observation enabled |
+| New compatibility mechanism | State the failed effect, competing explanations, changed boundary and expected distinguishing evidence | One affected original-app case; a focused probe only when needed to isolate the boundary |
+| Target effect improved | Compare receipt-verified evidence with the existing baseline | Related journeys sharing the changed implementation |
+| Candidate for acceptance | Review focused results and remaining known failures | Full collection once; Apple reference only for a specific unresolved behavior |
+
+Keep a short current plan in EXPERIMENT.md: baseline run, failed effect,
+hypothesis, selected cases, observations and how each outcome changes the next
+action. Replace that plan when the question changes; do not accumulate a second
+historical run diary here. One diagnostic run should observe the known producer,
+submission and consumer together where practical. If it answers none of the
+competing explanations, do not repeat it with another timeout or unrelated probe.
+
+Classify failure before retrying: infrastructure before app launch, collector
+failure after launch, or actual failed app effect. Repairing collection does not
+establish compatibility progress. A repeated infrastructure failure calls for
+reviewing the full collector dependency chain before another dispatch, rather
+than fixing one newly exposed prerequisite per run. Local checks are development
+hygiene, never app acceptance; Linux-only behavior still needs the hosted runner.
+
 Use `./build.sh build --app counter --lifecycle-context --wait --evidence` for
 one current boundary. It compiles only Counter plus its real shared adapter;
 Linux preparation runs concurrently with the SDK job. The app artifact name
@@ -267,20 +296,14 @@ Cache snapshot writes are conditional on actual compiler-cache misses. In run
 objects. The workflow now records misses and skips that upload when the count is
 zero. Cache restore and fresh same-run build/evidence receipts remain required.
 
-Run 39727204563 confirmed the save was skipped at zero misses, but exposed a
-diagnostic configuration error before the app launched: Apple's
-`libsystem_pthread.dylib` is in the firmware dyld shared cache, not the IPA's
-bundle directory. That run spent 153 seconds overall (64 seconds installing the
-runner toolchain and 47 seconds preparing the pinned userland) to reach a
-0.3-second infrastructure failure. The trace now resolves shared-cache images
-through the existing cache index; retry only this one Things journey after that
-fix, rather than paying setup cost for the 23-journey suite. Run 39728405889
-then exposed a collector import-path error before cache lookup; the standalone
-runner script now adds the repository's `tools/` directory to its module path.
-Run 39729314604 resolved the collector but root could not read the normal-user
-FUSE firmware mount. The runner now enables the standard FUSE
-`user_allow_other` setting and shares the read-only APFS/union view with root.
-These failures occurred before Things launched and are not app-behavior evidence.
+The recent shared-cache trace setup exposed backing-file, standalone import and
+FUSE-access prerequisites over several separate runs before the app launched.
+Run 39727204563 alone spent 153 seconds overall (64 seconds installing the
+toolchain, 47 seconds preparing userland) to reach a 0.3-second infrastructure
+failure. This is avoidable feedback waste, not app progress. Review these
+prerequisites together when changing a collector. The subsequent run exposed the
+remapping hazard described above; shared-cache uprobes and the extra FUSE access
+have been removed. Historical run details belong in Git/Actions.
 
 For one worker behavior or cross-app scenario, use `--case` with exact IDs from
 `./build.sh cases`. Dispatch, SDK compilation and execution share one selector:

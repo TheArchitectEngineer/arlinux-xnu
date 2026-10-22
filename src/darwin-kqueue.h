@@ -674,6 +674,8 @@ static __attribute__((noreturn)) void native_event_worker_start(struct native_th
     const char label[]="DARWIN_EVENT_DELIVERY queue-id/count/tid follows\n";
     RAW(SYS_write,native_trace_fd,label,sizeof(label)-1,0,0,0);
     trace_call(0,0,queue->dynamic_id); trace_call(1,0,count); trace_call(2,0,thread->tid);
+    native_trace_workqueue_entry(thread,buffer,thread->flags|
+                                (thread->workloop_id ? D_WQ_WORKLOOP : D_WQ_KEVENT|D_WQ_EVENT_MANAGER),count);
     darwin_thread_enter(thread->guest_sp,workqueue_start_callback,thread->pthread,thread->port,
                         thread->stack_low,buffer,thread->flags|
                         (thread->workloop_id ? D_WQ_WORKLOOP : D_WQ_KEVENT|D_WQ_EVENT_MANAGER),count);

@@ -160,6 +160,7 @@ static int native_workqueue_resume(ucontext_t *uc,long result)
         count=result;
     } else buffer=0;
     trace_record("DARWIN_WORKQUEUE_UPCALL flags=0x",flags,workqueue_start_callback,(unsigned long)count);
+    native_trace_workqueue_entry(thread,buffer,flags,count);
     __builtin_memset(r,0,31*sizeof(*r));
     r[0]=thread->pthread;r[1]=thread->port;r[2]=thread->stack_low;
     r[3]=buffer;r[4]=flags;r[5]=(uint64_t)(int64_t)count;

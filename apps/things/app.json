@@ -6,14 +6,6 @@
   "pixelAppearance": "mixed",
   "kernelTraceSymbols": [
     {
-      "image": "/usr/lib/system/libsystem_pthread.dylib",
-      "symbol": "__pthread_wqthread",
-      "dyldCacheImage": true,
-      "label": "original libpthread workqueue callback",
-      "role": "workqueue-entry",
-      "captureWorkqueueArguments": true
-    },
-    {
       "image": "Frameworks/ThingsCommon.framework/ThingsCommon",
       "fileOffset": "0x3eea00",
       "imageSHA256": "7132381413ebfb972d4f37f85ea888481f6351f61d59e2828bf916664339d780",

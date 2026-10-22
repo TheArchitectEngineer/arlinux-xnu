@@ -14,7 +14,6 @@ import sys
 import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from original_trace import symbol_address
-from cache_symbols import CacheSymbols
 
 TRACE=Path('/sys/kernel/tracing')
 
@@ -42,20 +41,6 @@ def remove_events(group,events):
         control(f'-:{group}/{event}')
 
 
-def cached_symbol(cache_path,guest_image,symbol):
-    with CacheSymbols(cache_path) as cache:
-        images=[item for item in cache.images() if item['name']==guest_image]
-        if len(images)!=1:raise ValueError('dyld cache image is missing or ambiguous: '+guest_image)
-        matches=[address for address,name in cache.symbols(images[0]) if name==symbol]
-        if len(matches)!=1:raise ValueError('dyld cache symbol is missing or ambiguous: '+symbol)
-        member,offset=cache.locate(matches[0],4)
-        image=member.path.resolve()
-        digest=hashlib.sha256(image.read_bytes()).hexdigest()
-        identity={'cacheUUID':cache.primary.data[88:104].hex(),
-            'cacheImageAddress':hex(images[0]['address']),'cacheMember':image.name}
-        return image,offset,digest,identity
-
-
 def start(specification,state_path):
     state={'status':'configuring','events':[],'group':'arlinux_'+str(os.getpid())+'_'+str(time.time_ns())}
     instance=TRACE/'instances'/state['group']
@@ -75,18 +60,11 @@ def start(specification,state_path):
         state['symbols']=[]
         for index,record in enumerate(records):
             if record.get('dyldCacheImage'):
-                guest_image=record['image']
-                if not guest_image.startswith(('/usr/lib/','/System/Library/')):
-                    raise ValueError('unsupported dyld cache image path: '+guest_image)
-                cache_path=Path(record['cachePath']).resolve()
-                if any(c.isspace() or c==':' for c in str(cache_path)):
-                    raise ValueError('unsupported dyld cache path')
-                if 'symbol' not in record:
-                    raise ValueError('observed file offsets are not supported for dyld-cache images')
-                image,offset,digest,cache_identity=cached_symbol(cache_path,guest_image,record['symbol'])
+                # Mach remapping may copy a probed cache page to a shared
+                # memfd. Its copied breakpoint is no longer owned by uprobes.
+                raise ValueError('dyld cache uprobes are unsafe across Mach memory remapping; use runtime boundary observations')
             else:
                 image=Path(record['path']).resolve()
-                cache_identity={}
                 digest=hashlib.sha256(image.read_bytes()).hexdigest()
                 if 'symbol' in record:
                     offset=symbol_address(image,record['symbol'],file_offset=True)
@@ -101,7 +79,7 @@ def start(specification,state_path):
                 raise ValueError('unsupported uprobe image path: '+str(image))
             if not image.is_file():raise ValueError('uprobe image file is missing: '+str(image))
             if offset<0 or offset%4 or offset+4>image.stat().st_size:raise ValueError('uprobe offset outside original image')
-            state['symbols'].append({**record,**(cache_identity if record.get('dyldCacheImage') else {}),
+            state['symbols'].append({**record,
                 'path':str(image),'fileOffset':hex(offset),'sha256':digest})
             for kind,suffix in (('p','entry'),('r','return')):
                 name=f'point{index}_{suffix}_{state["group"]}'
