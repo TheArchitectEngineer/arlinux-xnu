@@ -715,3 +715,12 @@ bounds/position/transform, visibility/opacity, content/delegate class names and
 mask metadata. No layer is forced to draw/layout and no contents payload is
 exported. This distinguishes absent view labels from possible layer-only content;
 it does not certify composition or readable pixels. Truncation remains explicit.
+
+Do not equate a synchronous application update block/didFinishUpdate with timed
+Core Animation completion. The separate probe-animation journeys observe genuine
+UIView completion and CAAnimationDelegate start/stop callbacks, with measured
+elapsed time and externally visible results. Apple describes the model,
+presentation and render trees separately in its [Core Animation guide](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/CoreAnimation_guide/CoreAnimationBasics/CoreAnimationBasics.html),
+and [animationDidStop:finished:](https://developer.apple.com/documentation/quartzcore/caanimationdelegate/animationdidstop(_:finished:))
+distinguishes reaching the animation duration from removal. A passing probe is
+not evidence that the original Things app uses the same failing boundary.

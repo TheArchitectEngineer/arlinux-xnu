@@ -1,0 +1,21 @@
+{
+  "version":1,
+  "cases":[
+    {"id":"view-completion","display":{"width":375,"height":667,"scale":2},"steps":[
+      {"do":"launch","app":"probe-animation"},{"do":"see","text":"^Animation probe$"},
+      {"do":"click","text":"^Animate view$"},{"do":"see","text":"^UIView finished: 1$"},
+      {"do":"click","text":"^Animate view$"},{"do":"see","text":"^UIView finished: 2$"},
+      {"do":"close"},{"do":"exit","app":"probe-animation"},
+      {"do":"launch","app":"probe-animation"},{"do":"see","text":"^Animation probe$"},
+      {"do":"click","text":"^Animate view$"},{"do":"see","text":"^UIView finished: 1$"},
+      {"do":"close"},{"do":"exit","app":"probe-animation"}]},
+    {"id":"layer-delegate","display":{"width":375,"height":667,"scale":2},"steps":[
+      {"do":"launch","app":"probe-animation"},{"do":"see","text":"^Animation probe$"},
+      {"do":"click","text":"^Animate layer$"},{"do":"see","text":"^CA finished: 1$"},
+      {"do":"click","text":"^Animate layer$"},{"do":"see","text":"^CA finished: 2$"},
+      {"do":"close"},{"do":"exit","app":"probe-animation"},
+      {"do":"launch","app":"probe-animation"},{"do":"see","text":"^Animation probe$"},
+      {"do":"click","text":"^Animate layer$"},{"do":"see","text":"^CA finished: 1$"},
+      {"do":"close"},{"do":"exit","app":"probe-animation"}]}
+  ]
+}

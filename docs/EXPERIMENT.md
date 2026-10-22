@@ -2,6 +2,20 @@
 
 ## Scope
 
+Run 39784768561 (51643be), receipt
+5c26eff84b5e2292b5fc434953430266db3c2f2e577879948b52c373d1c97d7c,
+verifies 91 files. All later snapshots contain 137 actual layers with no
+truncation: no task-row layer subtree is visible in the list; several controls
+are transparent or offscreen. This does not prove the compositor lost populated
+rows. Important correction: earlier successful MSAnimationManager block and
+component didFinishUpdate observations are synchronous update execution, not
+proof of timed CAAnimation delegate/UIView completion delivery. Add a narrow
+probe-animation app with two independent journeys for those actual APIs. Only
+real callbacks after an elapsed animation interval update the result; no timer
+or harness callback supplies completion. Repeat, close/relaunch and repeat on
+Linux and the same-input Apple reference before changing animation semantics.
+These are complementary probes, not original Things acceptance.
+
 Layout control run 39783907861 (467b30b) passes the same deferred-layout journey
 on Linux and the Apple-host reference. Linux receipt
 1f3027a3c240092ec70e7b1dbf5b053266dd5390d629b976a03cfc42c52476f2 verifies
@@ -297,7 +311,7 @@ Android remains unverified. Earlier trace/admission history stays in Git/Actions
 
 Run original ARM64 iOS binaries using selected Apple frameworks and Linux-backed
 platform services. Compilation/execution run only on hosted runners via build.sh.
-The collection currently has 13 source-owned apps, original Calculator and Things, 21 app
+The collection currently has 14 source-owned apps, original Calculator and Things, 23 app
 journeys and three cross-app scenarios. Android execution is unverified.
 
 The fixed input is iPhone10,1 (iPhone 8/A11), iOS 16.7.16 / 20H392,
