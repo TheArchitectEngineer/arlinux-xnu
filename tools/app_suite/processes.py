@@ -217,7 +217,36 @@ class Processes:
     def diagnose(self):
         # Read the failed original process, not a replay that changes scheduling.
         if self.reference:
-            return  # actual exit/status and screenshot retained; no Linux cache/LLDB on Apple host
+            self.diagnostic={'collectionErrors':[],'appleCrashReport':None}
+            name=getattr(self,'diagnostic_target',self.current)
+            item=self.processes.get(name)
+            if not item or item['process'].poll() is None:return
+            app=self.apps[name];expected=ROOT/'build/reference-apps'/(app['name']+'.app')/app['name']
+            reports=Path.home()/'Library/Logs/DiagnosticReports';deadline=time.monotonic()+8
+            # ReportCrash publishes asynchronously. Read only this owned PID
+            # and executable, never unrelated host reports or another run.
+            while True:
+                for path in sorted(reports.glob(app['name']+'*.ips'),reverse=True)[:8]:
+                    try:
+                        if path.stat().st_size>16*1024*1024:continue
+                        text=path.read_text();header,end=json.JSONDecoder().raw_decode(text)
+                        report=json.loads(text[end:]) if text[end:].strip() else header
+                        if report.get('pid')!=item['process'].pid or report.get('procPath')!=str(expected):continue
+                        retained={key:report[key] for key in ('pid','procName','procPath','captureTime',
+                            'osVersion','exception','termination','faultingThread','threads','usedImages',
+                            'asi','lastExceptionBacktrace') if key in report}
+                        output=self.directory/'apple-crash.json'
+                        output.write_text(json.dumps(retained,indent=2)+'\n')
+                        self.diagnostic['appleCrashReport']={'path':str(output.relative_to(self.output)),
+                            'sha256':sha(output),'exception':retained.get('exception'),
+                            'termination':retained.get('termination')}
+                        return
+                    except (OSError,ValueError) as error:
+                        if len(self.diagnostic['collectionErrors'])<4:self.diagnostic['collectionErrors'].append(str(error))
+                if time.monotonic()>=deadline:break
+                time.sleep(.2)
+            self.diagnostic['reportUnavailable']='No matching OS crash report within 8 seconds'
+            return
         self.diagnostic={'collectionErrors':[]}
         cache = ROOT / 'build/ios-input/filesystem/root/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64'
         for item in self.processes.values():
