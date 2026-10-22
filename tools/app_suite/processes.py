@@ -359,7 +359,11 @@ class Processes:
         if not live:
             return
         pid = live['process'].pid
+        # Deep image decode stacks can consume the ordinary per-thread bound
+        # before reaching the calling framework. Extend only the selected
+        # stopped thread, leaving the other threads at their existing limit.
         commands = ['settings set auto-confirm true', 'thread backtrace all --count 24',
+                    'thread backtrace --count 64',
                     'register read pc sp x0 x1 x2 x3 x4 x5 x6 x7', 'image list', 'process detach']
         frame_directory=self.directory/f"{live['app']}-{live['generation']}-renderer"
         frame_script=ROOT/'tools/app_suite/dyld_metadata.py'
